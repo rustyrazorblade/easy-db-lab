@@ -215,7 +215,7 @@ easy-db-lab down [vpc-id] [options]
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab |
+| `--all` | Tear down all VPCs tagged `easy_cass_lab=1`. easy-db-lab tags everything it creates with both `easy_cass_lab=1` and `easy_db_lab=1`; `--all` searches on the first, so VPCs created before the second existed are found too |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 | `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0. With no cluster state, or a state that records no VPC and no Tailscale device, it reports that there is nothing to tear down and exits non-zero, as `down` does, and still changes nothing. When the VPC is already gone and only the control node's Tailscale device is left, it reports that the device would be removed |

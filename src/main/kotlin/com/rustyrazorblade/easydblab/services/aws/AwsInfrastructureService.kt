@@ -47,7 +47,7 @@ import java.util.concurrent.CompletableFuture
  * - Security groups (revoke rules, then delete)
  * - Route tables, subnets, internet gateway, VPC
  *
- * All resources are tagged with easy_cass_lab=1 to satisfy IAM policies.
+ * All resources carry the marker tags ([Constants.Vpc.MARKER_TAGS]); the IAM policies match on the legacy one.
  */
 @Suppress("TooManyFunctions")
 class AwsInfrastructureService(
@@ -229,7 +229,7 @@ class AwsInfrastructureService(
         log.info { "Setting up VPC networking for cluster: ${config.clusterName}" }
         eventBus.emit(Event.Infra.VpcNetworkingSetup(config.clusterName))
 
-        val baseTags = config.tags + mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to config.clusterId)
+        val baseTags = config.tags + Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to config.clusterId)
         val cidrBlock = CidrBlock(config.vpcCidr)
 
         // Construct full availability zone names
@@ -453,7 +453,7 @@ class AwsInfrastructureService(
     }
 
     /**
-     * Tears down all VPCs tagged with easy_cass_lab.
+     * Tears down all VPCs that carry the legacy marker tag ([Constants.Vpc.LEGACY_TAG_KEY]), which every easy-db-lab VPC has.
      *
      * @param dryRun If true, only discover and report resources without deleting
      * @param includePackerVpc If true, include the packer infrastructure VPC
@@ -464,12 +464,12 @@ class AwsInfrastructureService(
         includePackerVpc: Boolean = false,
     ): TeardownResult {
         log.info { "Starting teardown of all tagged VPCs (dryRun=$dryRun, includePackerVpc=$includePackerVpc)" }
-        eventBus.emit(Event.Infra.VpcTeardownSearching(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE))
+        eventBus.emit(Event.Infra.VpcTeardownSearching(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE))
 
-        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
-            eventBus.emit(Event.Infra.VpcTeardownNoneFound(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE))
+            eventBus.emit(Event.Infra.VpcTeardownNoneFound(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE))
             return TeardownResult.success(emptyList())
         }
 

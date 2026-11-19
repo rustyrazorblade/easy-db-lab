@@ -46,4 +46,11 @@ class PackerBuildCommandTest {
         assertThat(command.last()).isEqualTo("base.pkr.hcl")
         assertThat(command(SshTransport.Direct)).noneMatch { it.startsWith("release_version=") }
     }
+
+    @Test
+    fun `the builder and the AMI are tagged with both marker keys`() {
+        val command = command(SshTransport.Direct)
+
+        assertThat(command).containsSequence("-var", "marker_tags={\"easy_cass_lab\" = \"1\", \"easy_db_lab\" = \"1\"}")
+    }
 }

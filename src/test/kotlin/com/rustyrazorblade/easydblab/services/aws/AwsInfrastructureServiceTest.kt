@@ -231,9 +231,9 @@ class AwsInfrastructureServiceTest {
         fun `a VPC with only part of the easy-db-lab tags is kept`() {
             val partial =
                 listOf(
-                    mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+                    mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE),
                     mapOf("ClusterId" to "cluster-a"),
-                    mapOf(Constants.Vpc.TAG_KEY to "0", "ClusterId" to "cluster-a"),
+                    mapOf(Constants.Vpc.LEGACY_TAG_KEY to "0", "ClusterId" to "cluster-a"),
                 )
             whenever(vpcService.findEasyDbLabResourcesInVpc(vpcId)).thenReturn(ClusterVpcResources())
 
@@ -250,7 +250,7 @@ class AwsInfrastructureServiceTest {
         @Test
         fun `a dry run on a VPC easy-db-lab tagged previews the whole VPC and deletes nothing`() {
             whenever(vpcService.getVpcTags(vpcId))
-                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+                .thenReturn(mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
             setupEmptyResourcesFor(vpcId)
 
             val previewed = service.teardownVpcByTags(vpcId, dryRun = true).resourcesDeleted.single()
@@ -263,7 +263,7 @@ class AwsInfrastructureServiceTest {
         @Test
         fun `a VPC easy-db-lab tagged is torn down whole, VPC included`() {
             whenever(vpcService.getVpcTags(vpcId))
-                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+                .thenReturn(mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
             setupEmptyResourcesFor(vpcId)
             whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(listOf("i-1"))
 
@@ -820,6 +820,17 @@ class AwsInfrastructureServiceTest {
 
     @Nested
     inner class TeardownAllTagged {
+        /** VPCs from before the new marker carry only the legacy one, so `down --all` searches on it. */
+        @Test
+        fun `searches on the legacy marker tag, which old and new VPCs both carry`() {
+            whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(emptyList())
+
+            service.teardownAllTagged(dryRun = true)
+
+            verify(vpcService).findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
+            verify(vpcService, never()).findVpcsByTag(eq(Constants.Vpc.TAG_KEY), any())
+        }
+
         @Test
         fun `should return success when no VPCs found`() {
             whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(emptyList())
@@ -1083,6 +1094,18 @@ class AwsInfrastructureServiceTest {
 
             assertThat(events.ruleConfiguredLines()).doesNotContain("Configured security group ingress rule for port 22")
             assertThat(events.ruleConfiguredLines()).hasSize(3)
+        }
+
+        @Test
+        fun `the subnets carry both marker tags and the cluster id`() {
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            val tags = argumentCaptor<Map<String, String>>()
+            verify(vpcService).findOrCreateSubnet(any(), any(), any(), tags.capture(), any())
+            assertThat(tags.firstValue)
+                .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.CLUSTER_ID_TAG_KEY, "id-1")
         }
 
         @Test

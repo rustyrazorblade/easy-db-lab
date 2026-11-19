@@ -75,8 +75,7 @@ class AwsS3BucketService(
             mapOf(
                 "Profile" to context.profile,
                 "Owner" to user.email,
-                "easy_cass_lab" to "1",
-            ),
+            ) + Constants.Vpc.MARKER_TAGS,
         )
         user.s3Bucket = bucketName
         userConfigProvider.saveUserConfig(user)
@@ -225,7 +224,7 @@ class AwsS3BucketService(
                     val taggingRequest = GetBucketTaggingRequest.builder().bucket(bucket.name()).build()
                     val hasTag =
                         s3Client.getBucketTagging(taggingRequest).tagSet().any {
-                            it.key() == Constants.Vpc.TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
+                            it.key() == Constants.Vpc.LEGACY_TAG_KEY && it.value() == Constants.Vpc.TAG_VALUE
                         }
                     if (hasTag) bucket.name() else null
                 } catch (e: S3Exception) {
@@ -261,11 +260,11 @@ class AwsS3BucketService(
         putBucketPolicy(bucketName)
         tagBucket(
             bucketName,
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                "cluster_id" to clusterId,
-                "cluster_name" to clusterName,
-            ),
+            Constants.Vpc.MARKER_TAGS +
+                mapOf(
+                    "cluster_id" to clusterId,
+                    "cluster_name" to clusterName,
+                ),
         )
         eventBus.emit(Event.S3.DataBucketCreated(bucketName))
 

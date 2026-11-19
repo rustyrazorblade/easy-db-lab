@@ -131,7 +131,9 @@ class InfrastructureConfigTest {
                     sshPort = 22,
                 )
 
-            assertThat(config.tags).containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+            assertThat(config.tags)
+                .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
         }
 
         @Test

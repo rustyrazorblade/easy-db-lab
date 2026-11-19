@@ -21,7 +21,7 @@ class Vpcs : PicoBaseCommand() {
     private val vpcService: VpcService by inject()
 
     override fun execute() {
-        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+        val vpcIds = vpcService.findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
 
         if (vpcIds.isEmpty()) {
             eventBus.emit(Event.Command.NoVpcsFound)

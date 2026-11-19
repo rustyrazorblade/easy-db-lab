@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -136,7 +137,29 @@ class AWSpolicyTest {
         val policies = AWSPolicy.UserIAM.loadAll("123456789012")
 
         assertThat(policies.map { it.name }).containsExactly("EasyDBLabEC2", "EasyDBLabIAM", "EasyDBLabEMR", "EasyDBLabOpenSearch")
-        assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID") }
+        assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID", "LEGACY_TAG_KEY", "TAG_VALUE") }
+    }
+
+    /**
+     * Phase 1 of the tag rename keeps every IAM condition on the legacy marker key: older
+     * resources carry no other, so a condition on the new key would lock them out.
+     */
+    @Test
+    fun `the EC2 policy conditions match the legacy marker tag`() {
+        val ec2 = AWSPolicy.UserIAM.loadAll("123456789012").single { it.name == "EasyDBLabEC2" }
+        val conditions =
+            statements(ec2.body)
+                .mapNotNull { it["Condition"]?.jsonObject?.get("StringEquals")?.jsonObject }
+                .flatMap { it.entries }
+                .filter { (key, _) -> key.endsWith("/${Constants.Vpc.LEGACY_TAG_KEY}") }
+                .associate { (key, value) -> key to value.jsonPrimitive.content }
+
+        assertThat(conditions).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "aws:ResourceTag/${Constants.Vpc.LEGACY_TAG_KEY}" to Constants.Vpc.TAG_VALUE,
+                "ssm:resourceTag/${Constants.Vpc.LEGACY_TAG_KEY}" to Constants.Vpc.TAG_VALUE,
+            ),
+        )
     }
 
     /**

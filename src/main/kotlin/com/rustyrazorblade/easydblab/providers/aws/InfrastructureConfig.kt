@@ -128,7 +128,7 @@ data class InfrastructureConfig(
                         SecurityGroupRule.singlePort(sshPort, sshCidr),
                     ),
                 internetGatewayName = "easy-db-lab-packer-igw",
-                tags = mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+                tags = Constants.Vpc.MARKER_TAGS,
             )
 
         /**
@@ -193,7 +193,7 @@ data class InfrastructureConfig(
                 securityGroupDescription = "Security group for easy-db-lab cluster: $clusterName",
                 securityGroupRules = rules,
                 internetGatewayName = "easy-db-lab-$clusterName-igw",
-                tags = mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+                tags = Constants.Vpc.MARKER_TAGS,
             )
         }
     }

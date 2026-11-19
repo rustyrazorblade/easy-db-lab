@@ -39,12 +39,12 @@ jobs:
       - name: Validate base.pkr.hcl
         run: |
           cd packer/base
-          packer validate .
+          packer validate -var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1"}' .
 
       - name: Validate cassandra.pkr.hcl
         run: |
           cd packer/cassandra
-          packer validate .
+          packer validate -var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1"}' .
 
   shellcheck:
     name: Lint Shell Scripts

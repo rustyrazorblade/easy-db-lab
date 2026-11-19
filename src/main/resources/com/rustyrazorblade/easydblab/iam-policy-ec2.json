@@ -64,7 +64,7 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/easy_cass_lab": "1"
+          "aws:ResourceTag/LEGACY_TAG_KEY": "TAG_VALUE"
         }
       }
     },
@@ -95,7 +95,7 @@
       "Resource": "arn:aws:ec2:*:ACCOUNT_ID:instance/*",
       "Condition": {
         "StringEquals": {
-          "ssm:resourceTag/easy_cass_lab": "1"
+          "ssm:resourceTag/LEGACY_TAG_KEY": "TAG_VALUE"
         }
       }
     },

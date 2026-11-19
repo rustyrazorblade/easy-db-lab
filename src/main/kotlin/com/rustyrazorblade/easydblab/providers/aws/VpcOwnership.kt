@@ -18,7 +18,7 @@ object VpcOwnership {
      * VPC (it has no cluster) is told apart.
      */
     fun createdByEasyDbLab(vpcTags: Map<String, String>): Boolean =
-        vpcTags[Constants.Vpc.TAG_KEY] == Constants.Vpc.TAG_VALUE &&
+        vpcTags[Constants.Vpc.LEGACY_TAG_KEY] == Constants.Vpc.TAG_VALUE &&
             (
                 !vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY].isNullOrBlank() ||
                     vpcTags[NAME_TAG] == Constants.Vpc.PACKER_VPC_NAME

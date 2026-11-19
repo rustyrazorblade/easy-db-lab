@@ -654,7 +654,7 @@ class EC2VpcService(
             vpcId,
             listOf(
                 filterOf("tag-key", Constants.Vpc.CLUSTER_ID_TAG_KEY),
-                filterOf("tag:${Constants.Vpc.TAG_KEY}", Constants.Vpc.TAG_VALUE),
+                filterOf("tag:${Constants.Vpc.LEGACY_TAG_KEY}", Constants.Vpc.TAG_VALUE),
             ),
         )
     }

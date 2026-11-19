@@ -80,8 +80,13 @@ class Packer(
                     addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
                 }
                 releaseVersion?.let { addVar("release_version", it) }
+                addVar("marker_tags", hclMap(Constants.Vpc.MARKER_TAGS))
                 add(name)
             }
+
+        /** An HCL map literal for a `-var` of type `map(string)`, e.g. `{"a" = "1", "b" = "2"}`. */
+        private fun hclMap(entries: Map<String, String>): String =
+            entries.entries.joinToString(prefix = "{", postfix = "}", separator = ", ") { (key, value) -> "\"$key\" = \"$value\"" }
 
         private fun MutableList<String>.addVar(
             key: String,

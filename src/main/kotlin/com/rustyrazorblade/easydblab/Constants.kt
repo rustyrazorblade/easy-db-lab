@@ -1940,11 +1940,26 @@ object Constants {
         /** Default VPC CIDR block */
         const val DEFAULT_CIDR = "10.0.0.0/16"
 
-        /** Tag key used to identify easy-db-lab resources */
-        const val TAG_KEY = "easy_cass_lab"
+        /**
+         * Tag key that marks a resource as easy-db-lab's.  Every resource easy-db-lab creates
+         * carries it, alongside [LEGACY_TAG_KEY].  Nothing reads it yet: infrastructure created
+         * before it existed carries only the legacy key.
+         */
+        const val TAG_KEY = "easy_db_lab"
 
-        /** Tag value used to identify easy-db-lab resources */
+        /**
+         * The marker tag key from the project's old name.  Still written on every resource, and
+         * the only key read: IAM conditions, YACE discovery, the `down --all` VPC search, the
+         * ownership checks and the data-bucket search all look for it, because older
+         * infrastructure carries no other.
+         */
+        const val LEGACY_TAG_KEY = "easy_cass_lab"
+
+        /** Tag value of both marker keys */
         const val TAG_VALUE = "1"
+
+        /** The marker tags written on every resource easy-db-lab creates: the new key and the legacy key. */
+        val MARKER_TAGS: Map<String, String> = mapOf(LEGACY_TAG_KEY to TAG_VALUE, TAG_KEY to TAG_VALUE)
 
         /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
         const val CLUSTER_ID_TAG_KEY = "ClusterId"

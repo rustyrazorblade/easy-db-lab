@@ -93,7 +93,11 @@ class YaceManifestBuilderTest : BaseKoinTest() {
         val jobs = searchTagsByJob()
 
         for (type in listOf("AWS/EC2", "AWS/EBS", "AWS/ES")) {
-            assertThat(jobs[type]).describedAs(type).containsEntry("ClusterId", state.clusterId).containsEntry("easy_cass_lab", "1")
+            assertThat(jobs[type])
+                .describedAs(type)
+                .containsEntry("ClusterId", state.clusterId)
+                .containsEntry("easy_cass_lab", "1")
+                .doesNotContainKey("easy_db_lab")
         }
     }
 }

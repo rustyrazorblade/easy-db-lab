@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -12,6 +13,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -79,6 +81,27 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         verify(mockS3Client).putBucketPolicy(any<PutBucketPolicyRequest>())
         verify(mockS3Client).putBucketTagging(any<PutBucketTaggingRequest>())
         verify(mockS3Client).putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>())
+    }
+
+    @Test
+    fun `the data bucket carries both marker tags and the cluster metadata`() {
+        service.configureDataBucket("data-bucket", "cluster-123", "my-cluster", "metrics-id")
+
+        val request = argumentCaptor<PutBucketTaggingRequest>()
+        verify(mockS3Client).putBucketTagging(request.capture())
+        val tags =
+            request.firstValue
+                .tagging()
+                .tagSet()
+                .associate { it.key() to it.value() }
+        assertThat(tags).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE,
+                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
+                "cluster_id" to "cluster-123",
+                "cluster_name" to "my-cluster",
+            ),
+        )
     }
 
     @Test

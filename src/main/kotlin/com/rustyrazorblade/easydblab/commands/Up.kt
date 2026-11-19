@@ -189,7 +189,7 @@ class Up(
 
         val (vpcId, resolvedCidr) = resolveVpc(initConfig)
         val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
-        val baseTags = mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId) + initConfig.tags
+        val baseTags = Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId) + initConfig.tags
 
         val existingHosts = existingInstances.mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
         val instanceConfig = buildInstanceConfig(initConfig, vpcInfra.securityGroupId, vpcInfra.subnetIds, baseTags, existingInstances)
@@ -415,7 +415,7 @@ class Up(
         eventBus.emit(Event.Provision.VpcCreating(initConfig.name))
         val vpcTags =
             buildMap {
-                put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                putAll(Constants.Vpc.MARKER_TAGS)
                 put(Constants.Vpc.CLUSTER_ID_TAG_KEY, workingState.clusterId)
                 put(
                     Constants.Vpc.BUCKET_TAG_KEY,

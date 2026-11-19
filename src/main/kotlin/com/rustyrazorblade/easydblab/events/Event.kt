@@ -4815,7 +4815,8 @@ sealed interface Event {
         @Serializable
         @SerialName("Teardown.FindingTaggedVpcs")
         data object FindingTaggedVpcs : Teardown {
-            override fun toDisplayString(): String = "Finding all VPCs tagged with easy_cass_lab..."
+            override fun toDisplayString(): String =
+                "Finding all VPCs tagged with ${Constants.Vpc.LEGACY_TAG_KEY}=${Constants.Vpc.TAG_VALUE}..."
         }
 
         @Serializable

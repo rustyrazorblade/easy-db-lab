@@ -81,6 +81,8 @@ data class ClientNetworks(
             nodes: List<ProbedNode>,
             overrides: List<Ipv4Cidr>,
         ): ClientNetworks {
+            // A ':' only ever appears in IPv6, so it is enough to set those aside: everything else
+            // must parse as IPv4 in parseProbed, which fails with a clear message when it does not.
             val (ipv6, ipv4) = nodes.flatMap { node -> node.podCidrs + node.internalIps }.partition { it.contains(':') }
             val cidrs = (ipv4.map(::parseProbed) + overrides).distinct()
             require(cidrs.isNotEmpty()) {

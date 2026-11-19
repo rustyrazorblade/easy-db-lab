@@ -18,6 +18,7 @@ set -euo pipefail
 if errors="$(docker buildx imagetools inspect "$IMAGE" 2>&1 >/dev/null)"; then
   echo "$IMAGE is already published; not overwriting it."
   echo "exists=true" >> "$GITHUB_OUTPUT"
+# Wording of buildx v0.38.1, which publish-container.yml pins so it cannot drift.
 elif [[ "$errors" == *"ERROR: $IMAGE: not found"* ]]; then
   echo "$IMAGE is not published yet; publishing it."
   echo "exists=false" >> "$GITHUB_OUTPUT"

@@ -67,7 +67,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         val ARRIVAL: Duration = Duration.ofMinutes(4)
         val POLL: Duration = Duration.ofSeconds(5)
 
-        /** One trace lookup; a slow Tempo must not let one poll of ~400 lookups outlast [ARRIVAL]. */
+        /** One trace lookup, so a hung Tempo answers in seconds; the poll itself stops at [ARRIVAL]. */
         val TRACE_LOOKUP_TIMEOUT: Duration = Duration.ofSeconds(2)
 
         /** Older than Mimir's 1h out-of-order window, so Mimir answers 400. */
@@ -235,16 +235,19 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         start()
     }
 
-    /** Polls [arrived] until every number 1..[last] is in it, and returns the ones still missing. */
+    /**
+     * Polls [arrived] until every number 1..[last] is in it, and returns the ones still missing.
+     * [arrived] gets the deadline, so a poll that makes many requests can stop at it.
+     */
     private fun missingAfterArrival(
         last: Int,
-        arrived: () -> Set<Int>,
+        arrived: (deadline: Long) -> Set<Int>,
     ): List<Int> {
         val deadline = System.nanoTime() + ARRIVAL.toNanos()
-        var missing = (1..last) - arrived()
+        var missing = (1..last) - arrived(deadline)
         while (missing.isNotEmpty() && System.nanoTime() < deadline) {
             Thread.sleep(POLL.toMillis())
-            missing = (1..last) - arrived()
+            missing = (1..last) - arrived(deadline)
         }
         return missing
     }
@@ -286,16 +289,20 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
     /**
      * Adds to [found] every number in 1..[last] whose trace Tempo now finds, and returns [found].
      * Tempo answers 200 with an empty `trace` object for an id it does not have, so a trace counts
-     * as found only when the response carries its span.
+     * as found only when the response carries its span. The lookups run one after another, so the
+     * poll stops at [deadline] (from [System.nanoTime]) rather than outlast the arrival budget.
      */
     private fun tracesIn(
         tempo: GenericContainer<*>,
         last: Int,
         found: MutableSet<Int>,
+        deadline: Long,
     ): Set<Int> {
         val url = ObservabilityBackends.baseUrl(tempo, Constants.K8s.TEMPO_PORT)
         (1..last)
+            .asSequence()
             .filter { it !in found }
+            .takeWhile { System.nanoTime() < deadline }
             .filter { n ->
                 runCatching {
                     val response =
@@ -433,7 +440,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
             }
 
         val found = mutableSetOf<Int>()
-        val missing = missingAfterArrival(last) { tracesIn(tempo, last, found) }
+        val missing = missingAfterArrival(last) { deadline -> tracesIn(tempo, last, found, deadline) }
         assertThat(missing)
             .describedAs(
                 "of spans 1..$last sent, the ones missing from Tempo after a ${RETRY_LIMIT_OUTAGE.seconds}s outage; collector:\n" +

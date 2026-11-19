@@ -54,6 +54,13 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         val AFTER_START: Duration = Duration.ofSeconds(10)
         val PUSH_PERIOD: Duration = Duration.ofMillis(200)
 
+        /**
+         * Pyroscope 2.3.1 opens its HTTP port about 20ms before the segment writer reads its tokens
+         * file, and no setting delays the port, so a push in those first milliseconds is refused
+         * even with the tokens kept. Without the file the refusals last about 5.5s.
+         */
+        val START_RACE: Duration = Duration.ofMillis(100)
+
         /** Pyroscope's default `max_profile_stacktrace_samples`; edbl-ab1172 sent 18,995 and lost them. */
         const val DEFAULT_SAMPLE_LIMIT = 16_000
         const val STACK_DEPTH = 20
@@ -136,17 +143,23 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
 
     /**
      * Pushes a small profile every [PUSH_PERIOD] for [AFTER_START] from the moment [pyroscope]'s
-     * port opens, and returns `status: body` of each push it refused. A push that cannot connect yet
-     * is not counted: the agent retries those.
+     * port opens, and returns `+elapsed status: body` of each push it refused after [START_RACE]. A
+     * push that cannot connect yet is not counted: the agent retries those.
      */
     private fun refusedPushesAfterStart(pyroscope: GenericContainer<*>): List<String> {
         val refused = mutableListOf<String>()
-        val deadline = System.nanoTime() + AFTER_START.toNanos()
+        val start = System.nanoTime()
+        val deadline = start + AFTER_START.toNanos()
         while (System.nanoTime() < deadline) {
             runCatching { sendFolded(pyroscope, "it-after-restart", "main;work;compute 1\n") }
                 .getOrNull()
                 ?.takeIf { it.statusCode() != 200 }
-                ?.let { refused.add("${it.statusCode()}: ${it.body().take(RENDER_BODY_EXCERPT)}") }
+                ?.let {
+                    val at = Duration.ofNanos(System.nanoTime() - start)
+                    if (at > START_RACE) {
+                        refused.add("+${at.toMillis()}ms ${it.statusCode()}: ${it.body().take(RENDER_BODY_EXCERPT)}")
+                    }
+                }
             Thread.sleep(PUSH_PERIOD.toMillis())
         }
         return refused
@@ -256,10 +269,16 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             .exec()
         // A Java agent with queued profiles pushes as soon as the restarted server's port opens, before
         // /ready. A segment writer that rejoins its ring without its tokens refuses every push for
-        // about 5.5s, and the agent drops each refused one, so none may be refused.
+        // about 5.5s, and the agent drops each refused one, so none after the first [START_RACE] may be
+        // refused.
+        val restartedAt = System.nanoTime()
         val second = ObservabilityBackends.startPyroscopeListening(config, dataVolume).also { containers.add(it) }
         val refused = refusedPushesAfterStart(second)
-        assertThat(refused).describedAs("pushes refused after a restart (status: body)").isEmpty()
+        assertThat(refused)
+            .describedAs { "pushes refused after a restart (time after port open, status: body); server log:\n${second.logs}" }
+            .isEmpty()
+        // A restart over existing data must still pass /ready inside the startup-probe budget.
+        ObservabilityBackends.awaitPyroscopeReady(second, restartedAt)
         awaitTicks(second)
     }
 

@@ -50,6 +50,7 @@ object ObservabilityBackends {
     /** Tempo's OTLP HTTP receiver port. */
     const val TEMPO_OTLP_HTTP_PORT = 4321
     private val STARTUP: Duration = Duration.ofMinutes(3)
+    private val READY_POLL: Duration = Duration.ofMillis(500)
     private val GRACE: Duration = Duration.ofSeconds(30)
     private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(10)
 
@@ -144,15 +145,42 @@ object ObservabilityBackends {
     /**
      * Starts the Pyroscope server like [startPyroscope], but returns as soon as its HTTP port is
      * open, without waiting for `/ready`. A Java agent with queued profiles pushes at that moment,
-     * so a test of what a restarted server does with those pushes starts it this way.
+     * so a test of what a restarted server does with those pushes starts it this way, then calls
+     * [awaitPyroscopeReady].
      */
     fun startPyroscopeListening(
         config: String,
         volume: String,
     ): GenericContainer<*> =
         pyroscopeContainer(config, volume)
-            .waitingFor(Wait.forListeningPort().withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET))
-            .apply { start() }
+            .waitingFor(
+                // Any HTTP answer means the port is open. forListeningPort execs /bin/sh in the
+                // container to check, and the Pyroscope image has no shell.
+                Wait
+                    .forHttp("/ready")
+                    .forPort(PyroscopeManifestBuilder.SERVER_PORT)
+                    .forStatusCodeMatching { true }
+                    .withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET),
+            ).apply { start() }
+
+    /**
+     * Waits until [pyroscope] answers `/ready`, and fails if that takes longer than the
+     * Deployment's startup-probe budget counted from [startedAt] (a [System.nanoTime]), the window
+     * the kubelet allows before it kills the server.
+     */
+    fun awaitPyroscopeReady(
+        pyroscope: GenericContainer<*>,
+        startedAt: Long,
+    ) {
+        val deadline = startedAt + PYROSCOPE_STARTUP_PROBE_BUDGET.toNanos()
+        val url = "${baseUrl(pyroscope, PyroscopeManifestBuilder.SERVER_PORT)}/ready"
+        while (System.nanoTime() < deadline) {
+            val ready = runCatching { send(HttpRequest.newBuilder(URI(url)).GET().build()).statusCode() == HTTP_OK }
+            if (ready.getOrDefault(false)) return
+            Thread.sleep(READY_POLL.toMillis())
+        }
+        error("Pyroscope did not answer /ready within the startup-probe budget of $PYROSCOPE_STARTUP_PROBE_BUDGET")
+    }
 
     private fun pyroscopeContainer(
         config: String,

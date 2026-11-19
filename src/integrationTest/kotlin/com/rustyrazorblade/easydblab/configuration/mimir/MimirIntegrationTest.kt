@@ -45,7 +45,7 @@ import java.util.UUID
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
  *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
  *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 1h out-of-order window;
- * - a sample 30 minutes older than its series' newest, as a replay after an outage sends, is stored,
+ * - a sample 30 minutes older than the tenant's newest, as a replay after an outage sends, is stored,
  *   so the 1h out-of-order window is in effect (the old 10m window refused it);
  * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
  *   and the samples are still answered, now from the local block;
@@ -65,7 +65,7 @@ class MimirIntegrationTest : BaseKoinTest() {
         /** How long a written sample may take to be answered; the sample carries the host's clock, the query Docker's. */
         val ANSWER_WITHIN: Duration = Duration.ofSeconds(30)
 
-        /** How far a replayed sample trails its series' newest: past the old 10m window, inside the 1h one. */
+        /** How far a replayed sample trails the tenant's newest: past the old 10m window, inside the 1h one. */
         val REPLAY_AGE: Duration = Duration.ofMinutes(30)
     }
 
@@ -272,9 +272,10 @@ class MimirIntegrationTest : BaseKoinTest() {
     }
 
     /**
-     * After an outage, one collector's drained queue moves a series' head forward, and another's
-     * older samples for it arrive late. Mimir must store a sample [REPLAY_AGE] older than the
-     * series' newest instead of answering 400 and losing it.
+     * After an outage, newer samples move the tenant's head forward, and a drained queue's older
+     * samples arrive late. Mimir must store a sample [REPLAY_AGE] older than the tenant's newest
+     * instead of answering 400 and losing it. The window is measured from the tenant's head, so an
+     * outage plus its drain must stay inside it.
      */
     @Test
     fun `a sample replayed half an hour behind its series is stored`() {

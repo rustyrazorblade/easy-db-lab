@@ -5624,6 +5624,17 @@ sealed interface Event {
                 "\nCredential validation failed. Please try again. (Attempt $attempt of $maxAttempts)\n"
         }
 
+        /** Profile setup was given a region the AWS SDK does not know; the next attempt asks again. */
+        @Serializable
+        @SerialName("Setup.UnknownRegion")
+        data class UnknownRegion(
+            val region: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "'$region' is not an AWS region. Enter a region such as us-west-2."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.EmailPromptInfo")
         data object EmailPromptInfo : Setup {

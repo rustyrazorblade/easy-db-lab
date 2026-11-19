@@ -30,7 +30,7 @@
 ## 4. Profile
 
 - [x] 4.1 Test first: `AwsKeyPairService.generate` (key saved, permission error emitted then rethrown). Implement it in `services/aws` and remove the EC2 code and `getRequiredIAMPolicies` from `User`. `ShowIamPolicies` and `SetupProfile` call `AWSPolicy.UserIAM.loadAll`.
-- [x] 4.2 `AWSClientFactory` takes a `String` region, and adds `requireValidRegion` at today's call site. `SetupProfile` signatures use `String`. A test checks that a blank region is rejected as today.
+- [x] 4.2 `AWSClientFactory` takes a `String` region and adds `isKnownRegion` (`Region.regions()`). `SetupProfile` signatures use `String`, and its retry loop asks again for an unknown region (D7). Tests cover a blank, a misspelt, a saved unknown and a repeated unknown region.
 
 ## 5. Neutral values
 

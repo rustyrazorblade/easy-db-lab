@@ -195,6 +195,9 @@ class DefaultDockerClient(
         try {
             call()
         } catch (e: RuntimeException) {
+            // Only the bare wrapper is the transport. A subclass (DockerClientException around a
+            // local IOException, such as a build context it could not read) is not the daemon.
+            if (e.javaClass != RuntimeException::class.java) throw e
             val io = e.cause as? IOException ?: throw e
             val at = endpoint?.let { " at $it" }.orEmpty()
             throw DockerException("Docker could not $operation$at: ${io.messageOrString()}", e)

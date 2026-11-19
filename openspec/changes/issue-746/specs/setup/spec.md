@@ -1,14 +1,21 @@
 ## ADDED Requirements
 
-### Requirement: Profile setup region and key pair behave as today
+### Requirement: Profile setup checks the region and creates the key pair
 
-Profile setup SHALL validate the region and create the EC2 key pair exactly as today. The key-pair creation SHALL live in the AWS services layer, not in the user configuration model.
+Profile setup SHALL accept only a region the AWS SDK knows, and SHALL create the EC2 key pair as today. The key-pair creation SHALL live in the AWS services layer, not in the user configuration model.
 
-#### Scenario: Invalid region is rejected as today
+#### Scenario: Unknown region is asked for again
 
-- **GIVEN** a region value that profile setup rejects today
-- **WHEN** the user enters it during `easy-db-lab profile setup`
-- **THEN** it is rejected with the same error as today
+- **GIVEN** a region the AWS SDK does not know, such as a blank or misspelt name, entered or saved in the profile
+- **WHEN** profile setup reaches the credential check
+- **THEN** it reports that the region is not an AWS region, before any AWS call
+- **AND** the next attempt asks for the region again
+
+#### Scenario: Unknown region on every attempt
+
+- **GIVEN** an unknown region on every attempt of the credential retry loop
+- **WHEN** the last attempt ends
+- **THEN** profile setup fails, naming the region, and makes no AWS call
 
 #### Scenario: Valid region creates the key pair
 

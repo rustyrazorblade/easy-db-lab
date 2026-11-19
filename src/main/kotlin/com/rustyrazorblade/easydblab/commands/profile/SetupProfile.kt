@@ -123,13 +123,20 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, String> {
         var attempt = 0
+        var regionRejected = false
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
             // A saved AWS profile is used on the first attempt only. When it failed validation, the
-            // retry asks for the profile again instead of trying the same one.
-            val credentials = collectCoreCredentials(if (attempt == 1) existingConfig else existingConfig - "awsProfile")
-            AWSClientFactory.requireValidRegion(credentials.region)
+            // retry asks for the profile again instead of trying the same one. A rejected region is
+            // asked for again the same way.
+            val retryConfig = if (attempt == 1) existingConfig else existingConfig - "awsProfile"
+            val credentials = collectCoreCredentials(if (regionRejected) retryConfig - "region" else retryConfig)
             val region = credentials.region
+            if (!acceptRegion(region, lastAttempt = attempt >= MAX_CREDENTIAL_RETRIES)) {
+                // Stays set: a later credentials retry must not read the rejected saved region again.
+                regionRejected = true
+                continue
+            }
 
             try {
                 validateAwsCredentials(credentials, region)
@@ -144,6 +151,22 @@ class SetupProfile : PicoBaseCommand() {
         }
         // This shouldn't be reached, but satisfies the compiler
         throw SetupProfileException("Maximum credential validation attempts exceeded")
+    }
+
+    /**
+     * Whether [region] is one the SDK knows. An unknown region is reported, and the caller asks for
+     * it again; on the [lastAttempt] it fails setup instead.
+     *
+     * @throws SetupProfileException for an unknown region on the last attempt
+     */
+    private fun acceptRegion(
+        region: String,
+        lastAttempt: Boolean,
+    ): Boolean {
+        if (AWSClientFactory.isKnownRegion(region)) return true
+        eventBus.emit(Event.Setup.UnknownRegion(region))
+        if (lastAttempt) throw SetupProfileException("Unknown AWS region: '$region'")
+        return false
     }
 
     companion object {

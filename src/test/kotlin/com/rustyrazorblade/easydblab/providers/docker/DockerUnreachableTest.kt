@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.providers.docker
 
+import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.command.PullImageResultCallback
+import com.github.dockerjava.api.exception.DockerClientException
 import com.github.dockerjava.core.DefaultDockerClientConfig
 import com.github.dockerjava.core.DockerClientImpl
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient
@@ -17,7 +19,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 import java.time.Duration
 
 /**
@@ -101,6 +106,23 @@ class DockerUnreachableTest {
         val error = catchThrowable { client().inspectContainer("abc") }
 
         assertThat(DockerErrorHandler(dockerHost = null).describe(error)!!.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
+    }
+
+    @Test
+    fun `a docker-java client failure around a local IOException passes through, not as the daemon`() {
+        // DockerClientException (a RuntimeException subclass) around a local file problem, for
+        // example a build context docker-java could not read: the daemon is not to blame.
+        val local =
+            DockerClientException(
+                "Failed to read build context",
+                IOException("Permission denied"),
+            )
+        val docker = mock<DockerClient>()
+        whenever(docker.inspectContainerCmd("abc")).thenThrow(local)
+
+        val error = catchThrowable { DefaultDockerClient(docker, host).inspectContainer("abc") }
+
+        assertThat(error).isSameAs(local)
     }
 
     @Test

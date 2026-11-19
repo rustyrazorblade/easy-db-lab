@@ -83,11 +83,12 @@ Once `User.kt` loses `getRequiredIAMPolicies` and its key-pair code, `configurat
 - It must not be a `single`: its `credentialsFile` is lazy, so a single would keep stale SSO credentials across builds in REPL or Server mode.
 - No new type.  A neutral interface waits for a second implementation (the GCP base image), per epic decision D2.  It would have to live in `kernel`, because `containers` already imports the adapters.
 
-### D7. Region validation is unchanged
+### D7. Profile setup checks the region against the SDK's region list
 
 - `AWSClientFactory` takes `region: String` and calls `Region.of` internally.
-- `AWSClientFactory.requireValidRegion(region)` runs at today's spot, so the same input fails the same way.
-- `Region.of` only rejects a blank string.  Typo detection was explicitly declined.
+- `Region.of` only rejects a blank string, so it never caught a typo.  The five-lens review (L4) asked for a real check, and `AWSClientFactory.isKnownRegion(region)` checks the name against `Region.regions()`.
+- Profile setup checks the region inside its credential retry loop, before any AWS call.  An unknown region emits `Event.Setup.UnknownRegion` and the next attempt asks for the region again, including when the unknown region was the saved value.  When the last attempt still gives an unknown region, setup fails with `SetupProfileException`.
+- `Region.regions()` is compiled into the SDK release.  A region AWS opens after that release is refused until the SDK is upgraded.  That trade is accepted: a typo that fails at the first AWS call is worse.
 
 ### D8. `SparkJobState`
 
@@ -147,7 +148,7 @@ The policy comes from the exception class.  The four policy names become constan
 | `Main.kt` | Delete every catch and handler (`:40-160`). `main` starts Koin, runs the Redis check, and calls `parser.eval`. |
 | `OpenSearchStatus` | `OpenSearchService.lookupDomain(name)` returns `DomainLookup.Found`, `NotFound` (`ResourceNotFoundException`) or `Unavailable(reason)` (any other `SdkException`), caught *outside* `withAwsRetry`. A credentials or permission failure propagates to the reporter, so a denial shows the OpenSearch policy remedy. `describeDomain` stays for its other callers. |
 | `SparkService`/`SparkStatus` | `SparkJobState` (D8) |
-| `SetupProfile` | `String` region and `requireValidRegion` (D7); `AwsKeyPairService` |
+| `SetupProfile` | `String` region, checked with `isKnownRegion` inside the retry loop (D7); `AwsKeyPairService` |
 | `User.kt` | `services/aws/AwsKeyPairService(clientFactory, eventBus).generate(user, profileDir)` holds today's code. `getRequiredIAMPolicies` is removed; `ShowIamPolicies` and `SetupProfile` call `AWSPolicy.UserIAM.loadAll` directly. |
 | `Packer` | D6 |
 | SSM | Move `providers/ssm` to `providers/aws/ssm` (6 files); fold `ssmModule` into `AwsClientsModule`. |

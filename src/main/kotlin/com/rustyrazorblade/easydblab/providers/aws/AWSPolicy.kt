@@ -127,8 +127,7 @@ sealed class AWSPolicy {
                         policyStream?.bufferedReader()?.use { it.readText() }
                             ?: error("Unable to load IAM policy template: $fileName")
 
-                    // Replace ACCOUNT_ID placeholder with actual account ID
-                    val processedContent = policyContent.replace("ACCOUNT_ID", accountId)
+                    val processedContent = policyContent.replace(Constants.AWS.ACCOUNT_ID_PLACEHOLDER, accountId)
 
                     Policy(name = policyName, body = processedContent)
                 }

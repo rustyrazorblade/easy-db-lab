@@ -41,9 +41,6 @@ class AwsKeyPairService(
 ) {
     private companion object {
         const val OWNER_ONLY = "rw-------"
-
-        /** No account is known while the profile is being set up, so the policies keep their placeholder. */
-        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
     }
 
     /**
@@ -139,7 +136,7 @@ class AwsKeyPairService(
      */
     private fun emitPermissionError(description: ErrorDescription) {
         eventBus.emit(description.toEvent())
-        val policies = AWSPolicy.UserIAM.loadAll(ACCOUNT_ID_PLACEHOLDER)
+        val policies = AWSPolicy.UserIAM.loadAll(Constants.AWS.ACCOUNT_ID_PLACEHOLDER)
         policies.forEachIndexed { index, policy ->
             eventBus.emit(Event.Setup.AwsPermissionPolicyDisplay(index, policy.name, policy.body))
         }

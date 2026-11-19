@@ -66,7 +66,7 @@ Always use factory methods instead of creating manual retry configurations.
 | `createIAMRetryConfig()` | 5 | Exponential 1s→16s | IAM operations, handles 404 eventual consistency |
 | `createEC2InstanceRetryConfig<T>()` | 5 | Exponential 1s→16s | EC2 instance ops, retries `InvalidInstanceID.NotFound` (matched on the error code, since the message varies with the number of ids) |
 | `createAwsRetryConfig<T>()` | 3 | Exponential 1s→4s | S3, EC2, EMR (standard AWS) |
-| `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove; retries socket `IOException` and docker-java API errors except the 404 `NotFoundException` |
+| `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove; retries the project `DockerException` (a socket failure, from the client seam), `IOException` and docker-java API errors except the 404 `NotFoundException` |
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |
 | `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException` (`isSshNotReady`, in `providers/ssh/SshNotReady.kt`), fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
@@ -93,7 +93,8 @@ attempt, whatever the predicate says. For every retry:
 - Never retry an `InterruptedException`. Restore the interrupt flag and rethrow (`pollUntil` and
   `createPollUntilRetryConfig` do this).
 - A library that wraps an `IOException` in a bare `RuntimeException` (docker-java's HTTP
-  transport) needs the cause unwrapped before the predicate sees it (`ContainerExecutor`).
+  transport) needs it turned into a typed exception at the client seam before the predicate sees
+  it (`DefaultDockerClient.dockerTransport` raises the checked project `DockerException`).
 - A body whose only checked throws are local, non-transient failures (a local file delete inside
   an S3 retry) may stay on the plain decorator, so that failure escapes at once.
 

@@ -395,6 +395,10 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
+        // The account ID token in the IAM policy templates. AWSPolicy replaces it with the real
+        // account; setup paths that have no working credentials show the policies with it kept.
+        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
+
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
         // (Packer, SSM sessions) is pointed at the file with SHARED_CREDENTIALS_FILE_ENV.
         const val CREDENTIALS_FILE_PROFILE = "default"

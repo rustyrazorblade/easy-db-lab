@@ -88,9 +88,10 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 #### Scenario: Already-explained failures print one error block
 
-- **GIVEN** a site that adds detail to a provider failure, such as the AWS setup credential check or the key-pair permission path, both of which list the lab IAM policies
+- **GIVEN** a site that adds detail to a provider failure, such as the AWS setup credential check or the key-pair permission path
 - **WHEN** that site fails
-- **THEN** it emits the provider error once, as `Event.Command.ProviderError`, followed by its policy listing
+- **THEN** it emits the provider error once, as `Event.Command.ProviderError`
+- **AND** the lab IAM policy listing follows it for a key-pair denial and for a setup credentials failure, but not for an STS denial, which no lab policy fixes
 - **AND** no second provider or execution-error block follows it
 
 #### Scenario: Cleanup failure after a failed command

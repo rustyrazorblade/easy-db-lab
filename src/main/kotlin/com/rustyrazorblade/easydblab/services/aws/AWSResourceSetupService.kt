@@ -43,9 +43,6 @@ class AWSResourceSetupService(
             "IAM roles were created but failed validation. This may indicate an AWS propagation delay or configuration issue."
         private const val ERR_IAM_UNEXPECTED = "Unexpected error during IAM role setup"
 
-        /** The credentials did not work, so the policies shown keep their account ID placeholder. */
-        private const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
-
         private val ERR_IAM_PERMISSIONS =
             """
             Failed to create IAM roles and instance profiles.
@@ -245,7 +242,7 @@ class AWSResourceSetupService(
      * their count, and the policies keep the `ACCOUNT_ID` placeholder, since no account is known.
      */
     private fun showRequiredPolicies() {
-        val policies = AWSPolicy.UserIAM.loadAll(ACCOUNT_ID_PLACEHOLDER)
+        val policies = AWSPolicy.UserIAM.loadAll(Constants.AWS.ACCOUNT_ID_PLACEHOLDER)
         eventBus.emit(Event.AwsSetup.RequiredPolicies(policies.map { it.name }))
         policies.forEachIndexed { index, policy ->
             eventBus.emit(Event.AwsSetup.PolicyDisplay(index = index + 1, name = policy.name, body = policy.body))

@@ -22,7 +22,7 @@ It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are de
 - **Leak sites routed.**
   - `SparkJobState` enum, mapped inside `EMRSparkService`.
   - `OpenSearchService.lookupDomain`, which returns found, not found or unavailable.
-  - `AWSClientFactory` takes a `String` region and adds `requireValidRegion`.
+  - `AWSClientFactory` takes a `String` region and adds `isKnownRegion`; profile setup asks again for a region the SDK does not know.
   - `AwsKeyPairService` in `services/aws` takes the key-pair code out of `User`.
   - `AMIService.deleteWithSnapshots` returns an AWS failure as a value for `prune-amis`.
   - `show-iam-policies` drops its own credential message; the provider error report covers it.
@@ -45,7 +45,7 @@ It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are de
 
 - `spark-emr`: `spark status` reports a project-owned job state; an unknown EMR state shows as `UNKNOWN`.
 - `opensearch`: `opensearch status` for a missing domain keeps today's not-found output, and an AWS failure keeps today's warning.
-- `setup`: profile setup's region validation and key-pair creation behave as today; credential and permission failures are classified the same way as command failures.
+- `setup`: profile setup asks again for a region the SDK does not know, and key-pair creation behaves as today; credential and permission failures are classified the same way as command failures.
 
 ## Impact
 

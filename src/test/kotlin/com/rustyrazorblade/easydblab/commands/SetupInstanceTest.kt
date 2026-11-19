@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.NodeSetupService
+import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -95,7 +96,7 @@ class SetupInstanceTest : BaseKoinTest() {
                     }
                 }
                 single { HostOperationsService(get()) }
-                single { NodeSetupService(get(), get()) }
+                single { NodeSetupService(get(), get(), NodeTuningFiles()) }
                 single<RemoteOperationsService> { remoteOps }
                 single<CassandraProfilingService> { mock<CassandraProfilingService>().also { profilingService = it } }
             },
@@ -145,7 +146,7 @@ class SetupInstanceTest : BaseKoinTest() {
 
     /** Fails `setup_instance.sh` on db1 with [failure], runs the command, and returns the event it emitted. */
     private fun setupFailureOnDb1(failure: RemoteCommandFailedException): Event.Provision.InstanceSetupFailed {
-        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq("sudo bash setup_instance.sh"), any(), any()))
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq(DB_SETUP_COMMAND), any(), any()))
             .thenAnswer { throw failure }
         val events = mutableListOf<Event>()
         getKoin().get<EventBus>().addListener(
@@ -167,7 +168,7 @@ class SetupInstanceTest : BaseKoinTest() {
         stdout: String,
         stderr: String,
     ) = RemoteCommandFailedException(
-        command = "sudo bash setup_instance.sh",
+        command = DB_SETUP_COMMAND,
         stdout = stdout,
         stderr = stderr,
         summary = "10.0.1.101: exit status 1",
@@ -219,5 +220,8 @@ class SetupInstanceTest : BaseKoinTest() {
 
     private companion object {
         const val OVERLAP_WAIT_SECONDS = 5L
+
+        /** A db node's setup, with the database instance type the state's init config defaults to. */
+        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
     }
 }

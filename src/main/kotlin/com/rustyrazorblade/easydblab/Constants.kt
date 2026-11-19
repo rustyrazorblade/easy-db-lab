@@ -345,6 +345,8 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+        const val CONFLICT = 409
+        const val UNPROCESSABLE_ENTITY = 422
         const val TOO_MANY_REQUESTS = 429
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
@@ -542,6 +544,188 @@ object Constants {
         const val BYTES_PER_MIB = 1024L * 1024
     }
 
+    /**
+     * The OS tuning every node runs with (node-os-tuning): files packaged under [RESOURCE_DIR],
+     * uploaded by node setup into [REMOTE_DIR] beside `setup_instance.sh`, which installs them.
+     */
+    object NodeTuning {
+        /** The classpath directory that holds the tuning files. */
+        const val RESOURCE_DIR = "/com/rustyrazorblade/easydblab/commands/node-tuning"
+
+        /** Where node setup uploads them, relative to the login directory `setup_instance.sh` runs from. */
+        const val REMOTE_DIR = "node-tuning"
+
+        /** The sysctl file, which also holds the reserved ports. */
+        const val SYSCTL_FILE = "60-easydblab.conf"
+
+        /** Every file in [RESOURCE_DIR]; `setup_instance.sh` installs each one. */
+        val FILES =
+            listOf(
+                SYSCTL_FILE,
+                "90-easydblab.rules",
+                "easydblab-limits.conf",
+                "edl-node-tuning",
+                "edl-node-tuning.service",
+                "limits.conf",
+                "system.conf",
+            )
+
+        /** The first port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MIN = 30000
+
+        /** The last port of the Kubernetes NodePort range. */
+        const val NODE_PORT_MAX = 32767
+
+        /** The variable node setup passes `setup_instance.sh` the node's instance type in. */
+        const val INSTANCE_TYPE_VARIABLE = "EDL_INSTANCE_TYPE"
+
+        // Host listeners no manifest builder names, read from `ss -tlnp` and `ss -ulnp` on a
+        // running cluster's nodes. Each one is in the packaged ip_local_reserved_ports.
+
+        /** The K3s API server. */
+        const val K3S_API_PORT = 6443
+
+        /** The K3s supervisor's API proxy. */
+        const val K3S_SUPERVISOR_PORT = 6444
+
+        /** Embedded etcd's client port. */
+        const val ETCD_CLIENT_PORT = 2379
+
+        /** Embedded etcd's peer port. */
+        const val ETCD_PEER_PORT = 2380
+
+        /** Embedded etcd's loopback client port. */
+        const val ETCD_LOOPBACK_CLIENT_PORT = 2382
+
+        /** containerd's CRI stream server. */
+        const val CONTAINERD_STREAM_PORT = 10010
+
+        /** Pyroscope's metastore Raft listener, its built-in default, which its config file does not name. */
+        const val PYROSCOPE_RAFT_PORT = 9099
+
+        /** kubelet health. */
+        const val KUBELET_HEALTH_PORT = 10248
+
+        /** kube-proxy metrics. */
+        const val KUBE_PROXY_METRICS_PORT = 10249
+
+        /** The kubelet API. */
+        const val KUBELET_API_PORT = 10250
+
+        /** The legacy scheduler port. */
+        const val SCHEDULER_LEGACY_PORT = 10251
+
+        /** The legacy controller manager port. */
+        const val CONTROLLER_MANAGER_LEGACY_PORT = 10252
+
+        /** The kubelet read-only API. */
+        const val KUBELET_READ_ONLY_PORT = 10255
+
+        /** kube-proxy health. */
+        const val KUBE_PROXY_HEALTH_PORT = 10256
+
+        /** The controller manager. */
+        const val CONTROLLER_MANAGER_PORT = 10257
+
+        /** The scheduler. */
+        const val SCHEDULER_PORT = 10259
+
+        /** Cilium's health endpoint. */
+        const val CILIUM_HEALTH_PORT = 4240
+
+        /** The Hubble server. */
+        const val HUBBLE_SERVER_PORT = 4244
+
+        /** Hubble relay. */
+        const val HUBBLE_RELAY_PORT = 4245
+
+        /** The Cilium operator's health endpoint. */
+        const val CILIUM_OPERATOR_HEALTH_PORT = 9234
+
+        /** The Cilium agent's health endpoint. */
+        const val CILIUM_AGENT_HEALTH_PORT = 9878
+
+        /** The Cilium agent's local Envoy health endpoint. */
+        const val CILIUM_ENVOY_HEALTH_PORT = 9879
+
+        /** The Cilium agent's pprof endpoint. */
+        const val CILIUM_AGENT_PPROF_PORT = 9890
+
+        /** The Cilium operator's pprof endpoint. */
+        const val CILIUM_OPERATOR_PPROF_PORT = 9891
+
+        /** Cassandra's internode storage port. */
+        const val CASSANDRA_STORAGE_PORT = 7000
+
+        /** Cassandra's TLS internode storage port. */
+        const val CASSANDRA_TLS_STORAGE_PORT = 7001
+
+        /** Cassandra's JMX port. */
+        const val CASSANDRA_JMX_PORT = 7199
+
+        /** Cassandra's native protocol port. */
+        const val CASSANDRA_NATIVE_PORT = 9042
+
+        /** Cassandra's TLS native protocol port. */
+        const val CASSANDRA_TLS_NATIVE_PORT = 9142
+
+        /**
+         * The UDP port flannel's VXLAN backend binds when it creates flannel.1, on every node of a
+         * cluster whose CNI is flannel (`init --cni=flannel`).
+         */
+        const val FLANNEL_VXLAN_PORT = 8472
+
+        /** tailscaled's WireGuard UDP port, on every node that joins the tailnet. */
+        const val TAILSCALE_WIREGUARD_PORT = 41641
+
+        /**
+         * Every host listener no manifest builder names: K3s, its embedded etcd and containerd, the
+         * kubelet and kube-proxy, the Cilium agent and Hubble, Pyroscope's built-in Raft default,
+         * the database on db nodes, the stress metrics endpoint, flannel's VXLAN socket, and
+         * Tailscale. Each is reserved in
+         * [SYSCTL_FILE]; NodeTuningReservedPortsTest checks it.
+         */
+        val HOST_SERVICE_PORTS =
+            setOf(
+                K3S_API_PORT,
+                K3S_SUPERVISOR_PORT,
+                ETCD_CLIENT_PORT,
+                ETCD_PEER_PORT,
+                K3s.ETCD_METRICS_PORT,
+                ETCD_LOOPBACK_CLIENT_PORT,
+                CONTAINERD_STREAM_PORT,
+                PYROSCOPE_RAFT_PORT,
+                KUBELET_HEALTH_PORT,
+                KUBE_PROXY_METRICS_PORT,
+                KUBELET_API_PORT,
+                SCHEDULER_LEGACY_PORT,
+                CONTROLLER_MANAGER_LEGACY_PORT,
+                KUBELET_READ_ONLY_PORT,
+                KUBE_PROXY_HEALTH_PORT,
+                CONTROLLER_MANAGER_PORT,
+                SCHEDULER_PORT,
+                CILIUM_HEALTH_PORT,
+                HUBBLE_SERVER_PORT,
+                HUBBLE_RELAY_PORT,
+                CILIUM_OPERATOR_HEALTH_PORT,
+                CILIUM_AGENT_HEALTH_PORT,
+                CILIUM_ENVOY_HEALTH_PORT,
+                CILIUM_AGENT_PPROF_PORT,
+                CILIUM_OPERATOR_PPROF_PORT,
+                Cilium.AGENT_METRICS_PORT,
+                Cilium.OPERATOR_METRICS_PORT,
+                Cilium.HUBBLE_METRICS_PORT,
+                CASSANDRA_STORAGE_PORT,
+                CASSANDRA_TLS_STORAGE_PORT,
+                CASSANDRA_JMX_PORT,
+                CASSANDRA_NATIVE_PORT,
+                CASSANDRA_TLS_NATIVE_PORT,
+                Stress.PROMETHEUS_PORT,
+                FLANNEL_VXLAN_PORT,
+                TAILSCALE_WIREGUARD_PORT,
+            )
+    }
+
     // Configuration file paths
     object ConfigPaths {
         // Local config files
@@ -667,6 +851,65 @@ object Constants {
 
         /** Pod-template annotation carrying a hash of the ConfigMaps a workload reads; see ConfigHashAnnotator. */
         const val CONFIG_HASH_ANNOTATION = "easydblab.com/config-hash"
+
+        /** The Node condition the kubelet keeps True while the node can run pods. */
+        const val NODE_READY_CONDITION = "Ready"
+
+        /** The status of a Kubernetes condition that holds. */
+        const val CONDITION_TRUE = "True"
+
+        /** The label the DaemonSet controller puts on each pod: the DaemonSet generation it was made from. */
+        const val POD_TEMPLATE_GENERATION_LABEL = "pod-template-generation"
+
+        /**
+         * The DaemonSet annotation holding the generation of its current pod template; the controller
+         * copies it into [POD_TEMPLATE_GENERATION_LABEL]. Unlike `metadata.generation` it does not move
+         * on a spec change outside the template, such as the update strategy.
+         */
+        const val DAEMONSET_TEMPLATE_GENERATION_ANNOTATION = "deprecated.daemonset.template.generation"
+
+        /**
+         * At most this many nodes are read for each pending DaemonSet on each rollout look, for its pods
+         * that are not Ready, so a fresh rollout on a large cluster does not read every node on every
+         * poll. Each look reads on, by node name, from where the last one stopped. A node is read once per
+         * look however many DaemonSets ask for it.
+         */
+        const val ROLLOUT_NODE_CHECKS_PER_LOOK = 20
+
+        /**
+         * How long a node's Ready condition must have been False or Unknown before a DaemonSet pod on it
+         * blocks a rollout. A node that is still joining, or misses one heartbeat, recovers within it.
+         */
+        const val ROLLOUT_NODE_NOT_READY_GRACE_SECONDS = 60L
+
+        /**
+         * How many restarts a container in CrashLoopBackOff must have before it blocks a rollout. The
+         * kubelet reports CrashLoopBackOff after the first crash, and a pod may crash once or twice while
+         * a dependency (a backend Service, a lease) comes up; three crashes is a loop. Every other
+         * terminal reason, such as an image pull failure, blocks at once.
+         *
+         * `restartCount` counts over the life of the pod, not of one wait. A pod that crashed three
+         * times under an earlier rollout and is still current blocks at its next CrashLoopBackOff, even
+         * if a dependency it needed has since come up. That is deliberate: no per-wait baseline is
+         * kept, because one would stop a pod that is already crash-looping from a previous bad rollout,
+         * the main case, from failing the wait fast.
+         */
+        const val ROLLOUT_CRASH_LOOP_MIN_RESTARTS = 3
+
+        /** The waiting reason the kubelet gives a container it is restarting after crashes. */
+        const val CRASH_LOOP_BACK_OFF = "CrashLoopBackOff"
+
+        /**
+         * The label the DaemonSet controller puts on each pod and on each of its ControllerRevisions:
+         * the hash of the template the pod was made from.
+         */
+        const val CONTROLLER_REVISION_HASH_LABEL = "controller-revision-hash"
+
+        /** At most this many of a workload's unready pods are listed when a rollout wait times out. */
+        const val ROLLOUT_UNREADY_PODS_LISTED_PER_WORKLOAD = 5
+
+        /** The annotation the Deployment controller keeps on a Deployment and its ReplicaSets: the revision. */
+        const val DEPLOYMENT_REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
     }
 
     // OpenSearch configuration
@@ -1092,6 +1335,13 @@ object Constants {
         const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
+
+        /**
+         * The width of the stress metrics port window, starting at [PROMETHEUS_PORT]. Each run takes
+         * the next port in it, wrapping, so every run binds a port node tuning reserves. Run N and
+         * run N+100 on one node therefore share a port, and so the same `instance` label in metrics.
+         */
+        const val PROMETHEUS_PORT_COUNT = 100
 
         /**
          * The share of stress requests the OpenTelemetry agent traces. At 100% a stress job sent

@@ -370,6 +370,10 @@ Each recorded call contains:
 - `secret`: Whether input was masked (for passwords)
 - `returnedValue`: The value that was returned
 
+## Shell Script Tests
+
+`./gradlew testScripts` runs the shell unit tests in `src/test/shell/`. They need `bash`, and the node tuning suite also needs `flock` from util-linux, which every node has and macOS does not: run `brew install util-linux` once. When `dash` is installed the node tuning suite runs the script under it, as Ubuntu's `/bin/sh` does, so a bashism fails locally.
+
 ## Additional Resources
 
 - [AssertJ Documentation](https://assertj.github.io/doc/)

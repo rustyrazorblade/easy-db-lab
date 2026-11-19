@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CyclomaticComplexMethod:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$private fun describePodState(pod: io.fabric8.kubernetes.api.model.Pod): String</ID>
     <ID>EmptyFunctionBlock:CiliumInstallServiceIntegrationTest.kt$CiliumInstallServiceIntegrationTest.&lt;no name provided>${}</ID>
     <ID>EmptyFunctionBlock:CiliumServiceTest.kt$CiliumServiceTest.&lt;no name provided>${}</ID>
     <ID>EmptyFunctionBlock:MetricsRegistryServiceTest.kt$MetricsRegistryServiceTest.&lt;no name provided>${}</ID>

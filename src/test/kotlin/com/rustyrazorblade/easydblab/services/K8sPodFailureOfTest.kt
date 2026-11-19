@@ -102,6 +102,32 @@ class K8sPodFailureOfTest {
     }
 
     @Test
+    fun `failingContainer returns the failing status and skips containers the filter rejects`() {
+        val pod =
+            PodBuilder(buildPodWithWaitingContainer("two-pod", "first", "CrashLoopBackOff"))
+                .editStatus()
+                .addToContainerStatuses(
+                    ContainerStatusBuilder()
+                        .withName("second")
+                        .withRestartCount(7)
+                        .withState(
+                            ContainerStateBuilder().withWaiting(ContainerStateWaitingBuilder().withReason("ErrImagePull").build()).build(),
+                        ).build(),
+                ).endStatus()
+                .build()
+
+        val all = K8sPodUtils.failingContainer(pod)
+        val skipped = K8sPodUtils.failingContainer(pod) { it.name != "first" }
+
+        assertThat(all?.status?.name).isEqualTo("first")
+        assertThat(all?.description).isEqualTo(K8sPodUtils.failureOf(pod))
+        assertThat(skipped?.status?.name).isEqualTo("second")
+        assertThat(skipped?.status?.restartCount).isEqualTo(7)
+        assertThat(skipped?.reason).isEqualTo("ErrImagePull")
+        assertThat(skipped?.description).contains("two-pod").contains("second").contains("ErrImagePull")
+    }
+
+    @Test
     fun `TERMINAL_FAILURE_REASONS should contain all expected reasons`() {
         assertThat(K8sPodUtils.TERMINAL_FAILURE_REASONS)
             .containsExactlyInAnyOrder(

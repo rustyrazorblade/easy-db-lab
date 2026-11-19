@@ -1203,6 +1203,8 @@ class UpTest : UpTestFixture() {
 
     private companion object {
         const val OVERLAP_WAIT_SECONDS = 5L
-        const val SETUP_COMMAND = "sudo bash setup_instance.sh"
+
+        /** The db node's setup, with the default database instance type from the fixture's state. */
+        const val SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
     }
 }

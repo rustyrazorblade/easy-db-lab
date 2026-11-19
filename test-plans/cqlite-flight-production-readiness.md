@@ -357,8 +357,12 @@ the prelude. All read scenarios run in **snapshot** mode unless they say `needs:
 
 #### 7.1 [G] Metrics present & moving
 - **dimension:** d7 · **needs:** none
-- **Steps:** `curl` VictoriaMetrics for `cqlite_rpc_*`, `cqlite_rpc_phase_active_ratio`,
-  `cqlite_sstable_index_parses_total`, `cqlite_errors_total`.
+- **Steps:** query Mimir's Prometheus API (control node, port 9009, under `/prometheus`) with
+  the workspace `bin/curl` wrapper, which routes through the SOCKS tunnel, for
+  `cqlite_rpc_*`, `cqlite_rpc_phase_active_ratio`, `cqlite_sstable_index_parses_total` and
+  `cqlite_errors_total`, for example
+  `curl -sG -H "X-Scope-OrgID: $TENANT" "http://<CONTROL_PRIVATE_IP>:9009/prometheus/api/v1/query" --data-urlencode 'query={__name__=~"cqlite_.*"}'`.
+  Use `logs query` (Loki) for the OTel collector logs if a metric is missing.
 - **Pass:** the `cqlite_rpc_*` family present; rows/bytes climb during a scan; phase ratios
   move; `errors_total` sane (0 or lazily absent). (B2,B3,D2)
 - **On fail:** which metric absent/stuck, the OTel collector config/logs.

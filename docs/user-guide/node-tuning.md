@@ -99,7 +99,7 @@ The settings deliberately leave a few keys alone:
 
 Most `net.*` values are per network namespace. They apply to Cassandra, the stress server and every host-network pod, which is the whole observability stack, because those share the host's namespace.
 
-Every pod in the pod network, which is every kit database and operator, gets the per-namespace values too. `up` applies one cluster-wide admission policy, `easydblab-pod-network-sysctls`, before it starts any other pod. The policy adds these keys to each new pod's `securityContext.sysctls`, with the values from `60-easydblab.conf`:
+Every pod in the pod network, which is every kit database and operator, gets the per-namespace values too. `up` applies one cluster-wide admission policy, `easydblab-pod-network-sysctls`, before the observability stack and before any kit. The K3s system pods that start with the cluster (CoreDNS, metrics-server, the local-path provisioner, Hubble) come up before it and keep the kernel defaults. The policy adds these keys to each new pod's `securityContext.sysctls`, with the values from `60-easydblab.conf`:
 
 - `net.core.somaxconn`
 - `net.ipv4.tcp_max_syn_backlog`

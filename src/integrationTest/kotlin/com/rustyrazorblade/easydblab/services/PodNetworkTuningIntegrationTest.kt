@@ -139,9 +139,13 @@ class PodNetworkTuningIntegrationTest {
             }
         val pods = client.pods().inNamespace(namespace)
         pods.resource(reader).create()
-        pods
-            .withName("reads-sysctls")
-            .waitUntilCondition({ it?.status?.phase in setOf("Succeeded", "Failed") }, POD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val finished =
+            pods
+                .withName("reads-sysctls")
+                .waitUntilCondition({ it?.status?.phase in setOf("Succeeded", "Failed") }, POD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        assertThat(finished.status.phase)
+            .describedAs("the kubelet ran the pod (reason ${finished.status.reason}: ${finished.status.message})")
+            .isEqualTo("Succeeded")
 
         val log = pods.withName("reads-sysctls").log
         val read = log.lines().filter { "=" in it }.associate { it.substringBefore("=") to it.substringAfter("=") }

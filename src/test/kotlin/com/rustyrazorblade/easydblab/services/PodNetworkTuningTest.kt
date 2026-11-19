@@ -37,7 +37,7 @@ class PodNetworkTuningTest {
         }
 
     private fun tuning(probe: PodSysctlProbe) =
-        PodNetworkTuning(manifests, probe, eventBus, sysctls, Duration.ofMillis(300), Duration.ofMillis(10))
+        PodNetworkTuning(manifests, probe, eventBus, sysctls, Duration.ofSeconds(1), Duration.ofMillis(10))
 
     @Test
     fun `applies the policy and its binding and reports the injected values`() {
@@ -69,7 +69,7 @@ class PodNetworkTuningTest {
             .hasMessageContaining("net.core.somaxconn")
             .hasMessageContaining("net.ipv4.tcp_keepalive_time")
         assertThat(events).containsExactly(
-            Event.Platform.PodSysctlPolicyNotInEffect(listOf("net.core.somaxconn", "net.ipv4.tcp_keepalive_time"), 0, null),
+            Event.Platform.PodSysctlPolicyNotInEffect(listOf("net.core.somaxconn", "net.ipv4.tcp_keepalive_time"), 1, null),
         )
     }
 
@@ -79,7 +79,7 @@ class PodNetworkTuningTest {
 
         assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(CommandFailedException::class.java)
         assertThat(events).containsExactly(
-            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 0, "policy expression failed"),
+            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 1, "policy expression failed"),
         )
     }
 
@@ -101,7 +101,7 @@ class PodNetworkTuningTest {
 
         assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(CommandFailedException::class.java)
         assertThat(events).containsExactly(
-            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 0, "connect timed out"),
+            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 1, "connect timed out"),
         )
     }
 

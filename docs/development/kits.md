@@ -686,7 +686,7 @@ something the `install` phase creates, such as an operator's helm release, would
 
 Every pod in the pod network gets the tuned network sysctls the nodes run, with no work in the
 kit. `up` applies one cluster-wide MutatingAdmissionPolicy, `easydblab-pod-network-sysctls`,
-before any other pod starts. It adds the per-namespace keys of the node tuning file
+before the observability stack and before any kit. It adds the per-namespace keys of the node tuning file
 (`somaxconn`, `tcp_max_syn_backlog`, the TCP buffer and keepalive keys,
 `tcp_slow_start_after_idle`, `tcp_tw_reuse`) to every new pod's `securityContext.sysctls`. See
 [Node tuning](../user-guide/node-tuning.md) for the values.

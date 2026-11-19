@@ -260,6 +260,8 @@ class SidecarManifestBuilder(
             "-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=$clusterName",
             // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
             "-Dpyroscope.tenant.id=$tenant",
+            // The shared flags add -Dpyroscope.format=jfr, which is already agent 2.3.0's default
+            // (the AMI installs 2.3.0), so the sidecar sends the same CPU, alloc and lock profiles.
         ).plus(Constants.PyroscopeJavaAgent.PROFILER_FLAGS)
             .plus(Constants.PyroscopeJavaAgent.OUTAGE_FLAGS)
             .joinToString(" ")

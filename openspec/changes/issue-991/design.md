@@ -110,7 +110,7 @@ The test proves the chosen fix: it fails without it and passes with it.
 `CollectorReplayIntegrationTest` in `src/integrationTest`: the pinned collector with its rendered configuration, unedited, in front of the pinned Mimir with its rendered configuration (`ObservabilityBackends.startMimir`, LocalStack S3).  The containers share a user-defined Docker network, and Mimir carries the network alias `mimir.default.svc.cluster.local`, so the collector finds it again after a restart.
 
 1. Push one gauge sample a second over OTLP to the collector, each with its own timestamp and a value equal to its sequence number.
-2. After 15s, stop the Mimir container (its data volume stays), keep pushing for 60s (well past the old 5s deadline), start Mimir again, keep pushing for 15s.
+2. After 15s, stop the Mimir container (its data volume stays), keep pushing for 6 minutes (past the old 5s deadline and the 300s default retry limit that `prometheus_remote_write` also applies), start Mimir again, keep pushing for 15s.
 3. Assert that every pushed timestamp is in Mimir: a query over the whole run returns every sequence number, none missing.  Wait up to 4 minutes for the queue to drain.
 
 Before the fix, the batches sent while Mimir was down are dropped after 5s and the gap's sequence numbers are missing, so the test fails.

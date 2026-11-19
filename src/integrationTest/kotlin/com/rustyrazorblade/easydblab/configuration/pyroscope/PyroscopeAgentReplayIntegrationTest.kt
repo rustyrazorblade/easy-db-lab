@@ -212,6 +212,12 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         // it touches, so the agent's own log is what shows a drop. The restarted server opens its
         // port about 20ms before it reads its ring tokens, and a push in that instant is refused
         // with an empty ring: at most that one drop is allowed (the race the design states).
+        // The agent logs every failed upload with the prefix the check below reads, a connection
+        // error as well as a refused status. A 150s outage fails many uploads, so a log without
+        // the prefix means the agent's message changed and the check could no longer see a drop.
+        assertThat(jvm.logs.lines().count { UPLOAD_ERROR in it })
+            .describedAs("upload errors the agent logged in the outage; JVM log:\n${jvm.logs}")
+            .isPositive()
         val dropped = droppedUploads(jvm.logs)
         val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
         assertThat(other).describedAs("uploads the agent dropped; JVM log:\n${jvm.logs}").isEmpty()
@@ -251,4 +257,5 @@ private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1000L
 private const val GAVE_UP = "Gave up uploading"
 private const val EMPTY_RING = "empty ring"
-private val REFUSED_UPLOAD = Regex("Error uploading snapshot: (\\d{3}) ")
+private const val UPLOAD_ERROR = "Error uploading snapshot: "
+private val REFUSED_UPLOAD = Regex("$UPLOAD_ERROR(\\d{3}) ")

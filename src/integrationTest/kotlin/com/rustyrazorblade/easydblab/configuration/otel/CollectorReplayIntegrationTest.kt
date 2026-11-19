@@ -47,9 +47,10 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * A producer sends one numbered metric sample, log line or span a second to the collector, before,
  * during and after the outage, and the test asserts that every number arrives. Each outage is
- * chosen to fail the old configuration: Mimir's [METRICS_OUTAGE] outlasts the 5s push deadline that
- * dropped every batch, and the Loki and Tempo [RETRY_LIMIT_OUTAGE] outlasts the 300s retry limit
- * the logs and traces exporters had.
+ * chosen to fail the old configuration: [RETRY_LIMIT_OUTAGE] outlasts the 5s push deadline that
+ * dropped every Mimir batch, and the exporters' 300s default retry limit, which the Loki and Tempo
+ * exporters had and which `prometheus_remote_write` 0.161.0 also applies (it passes
+ * `max_elapsed_time` to its retry loop), so each test fails without `max_elapsed_time: 0`.
  */
 class CollectorReplayIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -61,7 +62,6 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         const val LOKI_LIMIT = 5000
         val SEND_INTERVAL: Duration = Duration.ofSeconds(1)
         val BEFORE: Duration = Duration.ofSeconds(15)
-        val METRICS_OUTAGE: Duration = Duration.ofSeconds(60)
         val RETRY_LIMIT_OUTAGE: Duration = Duration.ofMinutes(6)
         val AFTER: Duration = Duration.ofSeconds(15)
         val ARRIVAL: Duration = Duration.ofMinutes(4)
@@ -361,13 +361,13 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
 
         val last =
             produceAcross(collector, "/v1/metrics", ::metricBody) {
-                restartAfterOutage(mimir, METRICS_OUTAGE) { startMimir().also { mimir = it } }
+                restartAfterOutage(mimir, RETRY_LIMIT_OUTAGE) { startMimir().also { mimir = it } }
             }
 
         val missing = missingAfterArrival(last) { samplesIn { mimir } }
         assertThat(missing)
             .describedAs(
-                "of samples 1..$last sent, the ones missing from Mimir after a ${METRICS_OUTAGE.seconds}s restart; collector:\n" +
+                "of samples 1..$last sent, the ones missing from Mimir after a ${RETRY_LIMIT_OUTAGE.seconds}s outage; collector:\n" +
                     ClusterCollector.exportFailures(collector),
             ).isEmpty()
     }

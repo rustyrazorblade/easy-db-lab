@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.github.dockerjava.api.model.Bind
-import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
@@ -13,7 +12,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.services.TemplateService
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -24,13 +22,8 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.images.RemoteDockerImage
-import org.testcontainers.images.builder.Transferable
-import org.testcontainers.utility.DockerImageName
 import org.testcontainers.utility.LogUtils
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -181,13 +174,16 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
      */
     private fun refusedPushesAfterStart(pyroscope: ObservabilityBackends.GatedPyroscope): List<String> {
         val script = checkNotNull(javaClass.getResource(PUSHER_SCRIPT_RESOURCE)) { "$PUSHER_SCRIPT_RESOURCE is missing" }.readText()
-        RemoteDockerImage(DockerImageName.parse(ObservabilityBackends.BUSYBOX_IMAGE)).get()
         val name = URLEncoder.encode("it-after-restart{cluster=${state.clusterLabelName()}}", Charsets.UTF_8)
         val id =
-            docker
-                .createContainerCmd(ObservabilityBackends.BUSYBOX_IMAGE)
-                .withCmd("/bin/busybox", "sh", PUSHER_SCRIPT)
-                .withEnv(
+            ObservabilityBackends.startInNamespaceOf(
+                pyroscope.container.containerId,
+                ObservabilityBackends.BUSYBOX_IMAGE,
+                PUSHER_SCRIPT,
+                script,
+            ) {
+                withCmd("/bin/busybox", "sh", PUSHER_SCRIPT)
+                withEnv(
                     "URL=http://127.0.0.1:${PyroscopeManifestBuilder.SERVER_PORT}/ingest?name=$name&format=folded",
                     "TENANT=$TENANT",
                     "RELEASE=${pyroscope.release}",
@@ -195,23 +191,10 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
                     "AFTER_MS=${AFTER_START.toMillis()}",
                     "PERIOD_MS=${PUSH_PERIOD.toMillis()}",
                     "PUSH_TIMEOUT_SECONDS=${PUSH_TIMEOUT.toSeconds()}",
-                ).withLabels(ObservabilityBackends.SESSION_LABELS)
-                .withHostConfig(
-                    HostConfig
-                        .newHostConfig()
-                        .withNetworkMode("container:${pyroscope.container.containerId}")
-                        .withBinds(Bind(gateVolume, Volume(ObservabilityBackends.PYROSCOPE_GATE))),
-                ).exec()
-                .id
+                )
+                hostConfig?.withBinds(Bind(gateVolume, Volume(ObservabilityBackends.PYROSCOPE_GATE)))
+            }
         pusherIds += id
-        val tar = ByteArrayOutputStream()
-        TarArchiveOutputStream(tar).use { Transferable.of(script).transferTo(it, PUSHER_SCRIPT.removePrefix("/")) }
-        docker
-            .copyArchiveToContainerCmd(id)
-            .withTarInputStream(ByteArrayInputStream(tar.toByteArray()))
-            .withRemotePath("/")
-            .exec()
-        docker.startContainerCmd(id).exec()
         val exit =
             docker
                 .waitContainerCmd(id)

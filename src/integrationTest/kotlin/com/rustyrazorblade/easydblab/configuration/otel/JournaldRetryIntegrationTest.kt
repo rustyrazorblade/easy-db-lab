@@ -1,13 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
-import com.github.dockerjava.api.model.HostConfig
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -18,12 +17,8 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
-import org.testcontainers.images.RemoteDockerImage
 import org.testcontainers.images.builder.Transferable
-import org.testcontainers.utility.DockerImageName
 import org.testcontainers.utility.LogUtils
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.time.Duration
 import java.util.UUID
 
@@ -122,27 +117,14 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
         val config =
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/configuration/otel/otlp-debug-collector.yaml"))
                 .readText()
-        val image = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
-        RemoteDockerImage(DockerImageName.parse(image)).get()
         val id =
-            docker
-                .createContainerCmd(image)
-                .withCmd("--config=$COLLECTOR_CONFIG")
-                .withLabels(
-                    DockerClientFactory.DEFAULT_LABELS +
-                        (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID),
-                ).withHostConfig(HostConfig.newHostConfig().withNetworkMode("container:${fluentBit.containerId}"))
-                .exec()
-                .id
+            ObservabilityBackends.startInNamespaceOf(
+                fluentBit.containerId,
+                "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}",
+                COLLECTOR_CONFIG,
+                config,
+            ) { withCmd("--config=$COLLECTOR_CONFIG") }
         collectorIds += id
-        val tar = ByteArrayOutputStream()
-        TarArchiveOutputStream(tar).use { Transferable.of(config).transferTo(it, COLLECTOR_CONFIG.removePrefix("/")) }
-        docker
-            .copyArchiveToContainerCmd(id)
-            .withTarInputStream(ByteArrayInputStream(tar.toByteArray()))
-            .withRemotePath("/")
-            .exec()
-        docker.startContainerCmd(id).exec()
         val deadline = System.nanoTime() + COLLECTOR_STARTUP.toNanos()
         while (COLLECTOR_READY !in collectorLogs(id) && System.nanoTime() < deadline) {
             Thread.sleep(POLL.toMillis())

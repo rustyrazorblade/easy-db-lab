@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab
 
+import com.github.dockerjava.api.command.CreateContainerCmd
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.ContainerNetwork
@@ -12,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.AbstractWaitStrategy
@@ -19,6 +21,8 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.RemoteDockerImage
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.DockerImageName
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -60,6 +64,12 @@ object ObservabilityBackends {
     /** The Docker endpoint setting that picks which network gives a container its default route (API 1.48+). */
     private const val GATEWAY_PRIORITY = "GwPriority"
     private const val LOWEST_GATEWAY_PRIORITY = -1
+
+    /**
+     * The engine API that reads [GATEWAY_PRIORITY]. The engine reads it on a request at any API
+     * version, Testcontainers' default 1.44 included, so only the engine's own version matters.
+     */
+    private const val GATEWAY_PRIORITY_API = "1.48"
 
     /** How long the Pyroscope Deployment's startup probe lets the server take to answer `/ready`. */
     private val PYROSCOPE_STARTUP_PROBE_BUDGET: Duration =
@@ -223,6 +233,47 @@ object ObservabilityBackends {
         }
     }
 
+    /**
+     * Creates a container of [image] in the network namespace of the running container [joinedId],
+     * copies [fileContent] into it at [filePath], starts it, and returns its id. [configure] sets the
+     * command, environment and any binds (through `hostConfig`). The container is made with the
+     * Docker client, because Docker refuses a joined namespace for a container that carries the
+     * host-access name Testcontainers adds; it carries [SESSION_LABELS], so Ryuk removes it. If the
+     * copy or the start fails, the container is removed before the error is thrown.
+     */
+    fun startInNamespaceOf(
+        joinedId: String,
+        image: String,
+        filePath: String,
+        fileContent: String,
+        configure: CreateContainerCmd.() -> Unit,
+    ): String {
+        val docker = DockerClientFactory.instance().client()
+        RemoteDockerImage(DockerImageName.parse(image)).get()
+        val id =
+            docker
+                .createContainerCmd(image)
+                .withLabels(SESSION_LABELS)
+                .withHostConfig(HostConfig.newHostConfig().withNetworkMode("container:$joinedId"))
+                .apply(configure)
+                .exec()
+                .id
+        runCatching {
+            val tar = ByteArrayOutputStream()
+            TarArchiveOutputStream(tar).use { Transferable.of(fileContent).transferTo(it, filePath.removePrefix("/")) }
+            docker
+                .copyArchiveToContainerCmd(id)
+                .withTarInputStream(ByteArrayInputStream(tar.toByteArray()))
+                .withRemotePath("/")
+                .exec()
+            docker.startContainerCmd(id).exec()
+        }.onFailure {
+            runCatching { docker.removeContainerCmd(id).withForce(true).exec() }
+            throw it
+        }
+        return id
+    }
+
     /** A wait strategy that returns as soon as the container is running, for a caller that polls itself. */
     private object ContainerStarted : AbstractWaitStrategy() {
         override fun waitUntilReady() = Unit
@@ -362,16 +413,30 @@ object ObservabilityBackends {
         networkId: String,
         alias: String,
     ) {
+        val docker = DockerClientFactory.instance().client()
+        val engineApi = docker.versionCmd().exec().apiVersion
+        check(apiAtLeast(engineApi, GATEWAY_PRIORITY_API)) {
+            "Docker engine API $engineApi ignores $GATEWAY_PRIORITY (needs $GATEWAY_PRIORITY_API or later, Docker 28)"
+        }
         val endpoint = ContainerNetwork().withAliases(alias)
         DockerObjectAccessor.overrideRawValue(endpoint, GATEWAY_PRIORITY, LOWEST_GATEWAY_PRIORITY)
-        DockerClientFactory
-            .instance()
-            .client()
+        docker
             .connectToNetworkCmd()
             .withContainerId(container.containerId)
             .withNetworkId(networkId)
             .withContainerNetwork(endpoint)
             .exec()
+    }
+
+    /** Whether the Docker API version [actual] (`major.minor`) is [required] or later. */
+    private fun apiAtLeast(
+        actual: String,
+        required: String,
+    ): Boolean {
+        val parse = { v: String -> v.split(".").map { it.toInt() } }
+        val (aMajor, aMinor) = parse(actual)
+        val (rMajor, rMinor) = parse(required)
+        return aMajor > rMajor || (aMajor == rMajor && aMinor >= rMinor)
     }
 
     /**

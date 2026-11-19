@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -127,6 +128,11 @@ class SetupProfileTest : BaseKoinTest() {
 
     @Nested
     inner class WhenProfileAlreadySetUp {
+        private val updatePromptText =
+            Event.Setup.UpdatePrompt
+                .toDisplayString()
+                .trim()
+
         /** A complete profile from before the new marker, naming bucket legacy-bucket and key pair test-key. */
         private fun completeLegacyProfile() {
             whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
@@ -156,7 +162,7 @@ class SetupProfileTest : BaseKoinTest() {
         /** Nothing was asked, printed as an update prompt, or saved. */
         private fun assertStoppedBeforeAnyChange() {
             assertThat(testPrompter.getCallLog()).isEmpty()
-            assertThat(bufferedOutput.messages.joinToString("\n")).doesNotContain("Press Enter to keep")
+            assertThat(bufferedOutput.messages.joinToString("\n")).doesNotContain(updatePromptText)
             verify(mockUserConfigProvider, never()).saveUserConfig(any())
         }
 
@@ -212,6 +218,7 @@ class SetupProfileTest : BaseKoinTest() {
 
             SetupProfile().execute()
 
+            assertThat(bufferedOutput.messages.joinToString("\n")).contains(updatePromptText)
             verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
             val bucketTags = argumentCaptor<PutBucketTaggingRequest>()
             verify(get<S3Client>()).putBucketTagging(bucketTags.capture())

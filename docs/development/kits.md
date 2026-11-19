@@ -1154,6 +1154,11 @@ records: `type=db`, `type=app` and `type=control` on the nodes easy-db-lab build
 `init --role-nodes <role>=<key=value>[,...]` mapping, or no constraint at all (a cluster easy-db-lab
 did not build, where every role runs on any node until it is mapped).
 
+`--role-nodes` takes one `key=value` selector set per role: repeat the option once for each role
+you map (`--role-nodes db=pool=db --role-nodes app=pool=app`). The comma-separated pairs of a
+value are one set, and a node must carry every label in it. Giving a role twice is refused, and
+`<role>=` with nothing after it leaves that role unconstrained.
+
 - In a manifest template, put `nodeSelector: __DB_NODE_SELECTOR__` (or `__APP_NODE_SELECTOR__`) on
   the pod spec. It renders a JSON map, `{}` when the role is unconstrained. Never use
   `nodeAffinity` on `type`.

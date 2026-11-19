@@ -132,7 +132,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
         with:
-          # image-published.sh matches this release's "ERROR: <image>: not found" wording.
+          # image-published.sh matches this release's "ERROR: <image>: not found" wording. An
+          # upgrade that changes that wording makes the guard fail the job instead of pushing
+          # (the safe direction): update the match in image-published.sh along with this pin.
           version: v0.38.1
 
       - name: Log in to GitHub Container Registry

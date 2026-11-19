@@ -80,7 +80,7 @@ Every node needs a data disk separate from the 20 GB root volume. Each node moun
 
 A db node's data disk can come from either:
 
-- **Instance store (local NVMe)** — Instance types with a `d` suffix (e.g., `i3.xlarge`, `m8id.xlarge`, `c5d.2xlarge`) include local NVMe storage and require no extra configuration.
+- **Instance store (local NVMe)** — Instance types from the `i` family or with a `d` suffix (e.g., `i7i.xlarge`, `m8id.xlarge`, `c8id.2xlarge`) include local NVMe storage and require no extra configuration.
 - **EBS volumes** — Attach an EBS volume using `--ebs.type` for any other instance type.
 
 `--ebs.type` adds a volume to db nodes only, so the control and app instance types must have instance store. The defaults (`m8id.xlarge` control, `c8id.2xlarge` app) do.

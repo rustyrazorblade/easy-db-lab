@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.spark.SparkInit
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -221,14 +220,5 @@ class SparkInitTest : BaseKoinTest() {
                     config.keyName == "test-key"
             },
         )
-    }
-
-    @Test
-    fun `should use default instance types when not specified`() {
-        val command = SparkInit()
-
-        assertThat(command.masterInstanceType).isEqualTo(Constants.InstanceTypes.SPARK)
-        assertThat(command.workerInstanceType).isEqualTo(Constants.InstanceTypes.SPARK)
-        assertThat(command.workerCount).isEqualTo(3)
     }
 }

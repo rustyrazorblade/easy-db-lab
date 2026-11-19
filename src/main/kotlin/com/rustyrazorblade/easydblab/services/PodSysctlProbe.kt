@@ -76,8 +76,6 @@ class Fabric8PodSysctlProbe(
     }
 
     /** [pod] as the API server would create it, after every admission plugin and policy; nothing is created. */
-    fun admit(pod: Pod): Pod = clientProvider.createClient().use { admit(it, pod) }
-
     private fun admit(
         client: KubernetesClient,
         pod: Pod,

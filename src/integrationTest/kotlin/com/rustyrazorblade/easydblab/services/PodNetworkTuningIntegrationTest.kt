@@ -60,7 +60,16 @@ class PodNetworkTuningIntegrationTest {
     }
 
     /** The sysctls the API server gives [pod] at admission. */
-    private fun admittedSysctls(pod: Pod): Map<String, String> = Fabric8PodSysctlProbe.sysctlsOf(probe.admit(pod))
+    private fun admittedSysctls(pod: Pod): Map<String, String> = Fabric8PodSysctlProbe.sysctlsOf(admit(pod))
+
+    /** [pod] as the API server would create it (a `dryRun=All` create); nothing is created. */
+    private fun admit(pod: Pod): Pod =
+        client
+            .pods()
+            .inNamespace(namespace)
+            .resource(pod)
+            .dryRun()
+            .create()
 
     private fun pod(
         name: String,
@@ -117,7 +126,7 @@ class PodNetworkTuningIntegrationTest {
     @Test
     fun `a pod's other security context fields are kept`() {
         val withUser =
-            probe.admit(
+            admit(
                 pod("run-as-user") {
                     editSpec()
                         .withNewSecurityContext()

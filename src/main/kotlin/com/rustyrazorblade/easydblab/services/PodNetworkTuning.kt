@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.bringup.pollUntil
 import java.time.Duration
 
@@ -42,21 +43,33 @@ class PodNetworkTuning(
                 throw CommandFailedException("The pod network sysctl policy could not be applied: $reason", failure)
             }
         }
-        val last =
-            pollUntil<ProbeResult>(
-                "pod-sysctl-policy",
-                pollInterval,
-                readyTimeout,
-                done = { missing(it).isEmpty() },
-            ) { probe.probe() }
+        val polled =
+            runCatchingException {
+                pollUntil<ProbeResult>(
+                    "pod-sysctl-policy",
+                    pollInterval,
+                    readyTimeout,
+                    done = { missing(it).isEmpty() },
+                ) { probe.probe() }
+            }
+        val last = polled.getOrElse { notInEffect(sysctls.keys.toList(), it.reason(), it) }
         val missing = missing(last)
-        if (missing.isNotEmpty()) {
-            eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, reasonOf(last)))
-            throw CommandFailedException(
-                "The pod network sysctl policy was not in effect after ${readyTimeout.seconds}s; a new pod lacks $missing",
-            )
-        }
+        if (missing.isNotEmpty()) notInEffect(missing, reasonOf(last))
         eventBus.emit(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
+    }
+
+    /** Reports that a new pod still lacks [missing], and why when no pod was admitted, then fails `up`. */
+    private fun notInEffect(
+        missing: List<String>,
+        reason: String?,
+        cause: Throwable? = null,
+    ): Nothing {
+        eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, reason))
+        throw CommandFailedException(
+            "The pod network sysctl policy was not in effect after ${readyTimeout.seconds}s; a new pod lacks $missing" +
+                reason?.let { " ($it)" }.orEmpty(),
+            cause,
+        )
     }
 
     /** The injected keys [result] does not carry with the injected value; every key when no pod was admitted. */

@@ -9,15 +9,18 @@ import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.ProbeResult
 import com.rustyrazorblade.easydblab.services.RecordingManifests
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
+import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
- * Tests for [UpPostSteps]: the pod network sysctl policy is a gate, so when it never takes effect no
- * StorageClass, observability pod or annotation is created with the kernel defaults.
+ * Tests for [UpPostSteps]: the pod network sysctl policy is a gate that comes first, so when it never
+ * takes effect no StorageClass, observability pod or annotation is created with the kernel defaults.
  */
 class UpPostStepsTest {
     private val storage = mock<K8sStorageOperations>()
@@ -42,5 +45,38 @@ class UpPostStepsTest {
 
         assertThatThrownBy { steps.run(control, localTelemetry = true) }.isInstanceOf(CommandFailedException::class.java)
         verifyNoInteractions(storage, observability, annotator)
+    }
+
+    @Test
+    fun `the pod network policy is in effect before the StorageClasses and the observability stack`() {
+        val eventBus = EventBus()
+        val sysctls = mapOf("net.core.somaxconn" to "65535")
+        val manifests = RecordingManifests()
+        val calls = mutableListOf<String>()
+        val tuning =
+            PodNetworkTuning(
+                manifests,
+                {
+                    calls += "probe after ${manifests.applied.size} applied"
+                    ProbeResult.Admitted(sysctls)
+                },
+                eventBus,
+                sysctls,
+                Duration.ofMillis(50),
+                Duration.ofMillis(10),
+            )
+        whenever(storage.ensureLocalStorageClass()).thenAnswer {
+            calls += "storage"
+            Result.success(Unit)
+        }
+        whenever(storage.ensureLocalStorageWfcClass()).thenReturn(Result.success(Unit))
+        whenever(observability.deploy(any())).thenAnswer {
+            calls += "observability"
+            Result.success(Unit)
+        }
+
+        UpPostSteps(tuning, storage, observability, annotator, eventBus).run(control, localTelemetry = false)
+
+        assertThat(calls).containsExactly("probe after 2 applied", "storage", "observability")
     }
 }

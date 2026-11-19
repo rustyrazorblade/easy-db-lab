@@ -116,6 +116,19 @@ class PodNetworkTuningTest {
     }
 
     @Test
+    fun `a probe that throws fails up with the typed event, every key and the cause`() {
+        val defect = IllegalArgumentException("unexpected response body")
+        val probe = PodSysctlProbe { throw defect }
+
+        assertThatThrownBy { tuning(probe).apply() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasCause(defect)
+        assertThat(events).containsExactly(
+            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 1, "unexpected response body"),
+        )
+    }
+
+    @Test
     fun `a policy the API server rejects fails before any probe`() {
         manifests.failure = IllegalStateException("no kind MutatingAdmissionPolicy")
         var probes = 0

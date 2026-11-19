@@ -402,29 +402,50 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// KitFlagsDocumentedTest reads these user-guide pages off the filesystem to check they
-// document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
-// an edit that drops a flag row would be masked by an up-to-date or cached test result.
+// Several unit tests read the source tree off the filesystem instead of the classpath:
+// NoVictoriaReferencesTest scans every root below for stale backend names, KitFlagsDocumentedTest
+// reads the kit user guides under docs/, DevLauncherTelemetryTest runs bin/easy-db-lab, the
+// dashboard tests read dashboards/, the packer tests (NodeTenantRuleTest, CassandraJmxRulesTest,
+// EbpfExporterManifestBuilderTest) read packer/, and NodeTuningReservedPortsTest reads Kotlin
+// source text under src/main. Gradle can't infer those reads, so without declaring them an edit
+// to a scanned file (a test plan, a doc page, a comment) would be masked by an up-to-date or
+// cached test result.
+val sourceTreesReadByTests =
+    mapOf(
+        "mainSourceTree" to "src/main",
+        "dashboardsTree" to "dashboards",
+        "packerTree" to "packer",
+        "binTree" to "bin",
+        "docsTree" to "docs",
+        "testPlansTree" to "test-plans",
+        "claudeAgentsTree" to ".claude/agents",
+        "claudeCommandsTree" to ".claude/commands",
+        "claudeSkillsTree" to ".claude/skills",
+    )
+val sourceFilesReadByTests =
+    mapOf(
+        "rootClaudeMd" to "CLAUDE.md",
+        "rootBuildScript" to "build.gradle.kts",
+    )
+
 tasks.named<Test>("test") {
     // Unit tier only. Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which
     // holds every main class in ArchUnit's graph (without this it fails with "Java heap space"), on
     // top of up to forkEvery other classes in the same JVM. The integration tier has no such test.
     maxHeapSize = "1536m"
 
-    inputs
-        .file("docs/user-guide/sysbench.md")
-        .withPropertyName("sysbenchUserGuide")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs
-        .file("docs/user-guide/clickhouse-benchmark.md")
-        .withPropertyName("clickhouseBenchmarkUserGuide")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-
-    // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
-    inputs
-        .file("bin/easy-db-lab")
-        .withPropertyName("devLauncher")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
+    sourceTreesReadByTests.forEach { (property, path) ->
+        inputs
+            .dir(path)
+            .withPropertyName(property)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+    sourceFilesReadByTests.forEach { (property, path) ->
+        inputs
+            .file(path)
+            .withPropertyName(property)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
 
     // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
     // user runs, to check which OpenTelemetry exporter settings it hands the JVM.

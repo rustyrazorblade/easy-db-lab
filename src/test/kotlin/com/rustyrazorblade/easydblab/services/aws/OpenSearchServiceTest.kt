@@ -545,7 +545,7 @@ internal class OpenSearchServiceTest {
             .thenAnswer { invocation ->
                 val request = invocation.getArgument<DescribeDomainRequest>(0)
                 if (request.domainName() == "broken-domain") {
-                    throw RuntimeException("API error")
+                    throw SdkClientException.create("API error")
                 }
                 DescribeDomainResponse.builder().domainStatus(workingDomain).build()
             }

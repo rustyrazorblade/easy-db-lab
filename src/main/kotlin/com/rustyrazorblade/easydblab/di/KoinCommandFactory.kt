@@ -20,12 +20,8 @@ class KoinCommandFactory :
     CommandLine.IFactory,
     KoinComponent {
     override fun <K : Any> create(cls: Class<K>): K =
-        try {
-            // Try to get from Koin first (for commands registered in Koin)
-            getKoin().get(cls.kotlin)
-        } catch (e: Exception) {
-            // Fall back to default factory for classes not in Koin
-            // This handles parent commands (Runnable) and other PicoCLI internals
-            CommandLine.defaultFactory().create(cls)
-        }
+        // Try to get from Koin first (for commands registered in Koin); fall back to the default
+        // factory for classes not in Koin. This handles parent commands (Runnable) and other
+        // PicoCLI internals.
+        getKoin().getOrNull<K>(cls.kotlin) ?: CommandLine.defaultFactory().create(cls)
 }

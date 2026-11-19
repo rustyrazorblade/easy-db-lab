@@ -64,7 +64,7 @@ class SocksProxyNettyOptions(
                             initMethod.isAccessible = true
                             initMethod.invoke(typedHandler, ch)
                             log.debug { "Original handler initialized successfully" }
-                        } catch (e: Exception) {
+                        } catch (e: ReflectiveOperationException) {
                             log.error(e) { "Failed to initialize original channel handler" }
                             throw e
                         }

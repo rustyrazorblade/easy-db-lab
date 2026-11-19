@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.redactUrlCredentials
+import com.rustyrazorblade.easydblab.runCleaningUpOnFailure
 import com.rustyrazorblade.easydblab.ssh.RemoteOutputSink
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -166,12 +167,9 @@ class DefaultRemoteOperationsService(
                 output = false,
             ).text.trim()
         check(staging.startsWith("$parent/")) { "Staging directory '$staging' is not under $parent" }
-        try {
+        runCleaningUpOnFailure(cleanup = { executeRemotely(host, "sudo rm -rf $staging", output = false) }) {
             uploadDirectory(host, localDir, staging)
             executeRemotely(host, swapCommand(staging, remoteDir, owner), output = false)
-        } catch (e: Exception) {
-            executeRemotely(host, "sudo rm -rf $staging", output = false)
-            throw e
         }
     }
 

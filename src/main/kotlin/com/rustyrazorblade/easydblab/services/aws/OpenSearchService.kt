@@ -542,7 +542,7 @@ class OpenSearchService(
                     log.info { "Found OpenSearch domain $domainName in VPC" }
                     domainsInVpc.add(domainName)
                 }
-            } catch (e: Exception) {
+            } catch (e: SdkException) {
                 log.warn(e) { "Failed to describe domain $domainName, skipping" }
             }
         }

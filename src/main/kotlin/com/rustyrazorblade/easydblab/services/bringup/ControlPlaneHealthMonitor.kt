@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 
@@ -60,11 +61,7 @@ class ControlPlaneHealthMonitor(
     }
 
     private fun sample(): ControlPlaneHealth.Sample =
-        try {
-            sampler.sample()
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
+        runCatchingInterruptibly { sampler.sample() }.getOrElse { e ->
             log.debug(e) { "Health sample failed" }
             ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         }

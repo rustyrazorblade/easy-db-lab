@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.io.InterruptedIOException
 import java.time.Clock
@@ -83,6 +84,19 @@ class ControlPlaneHealthMonitorTest {
         assertThat(events.filterIsInstance<Event.Provision.ControlPlaneHealthy>().single().unhealthySeconds)
             .isEqualTo(STEP_SECONDS * 4)
         assertThat(failures).isEmpty()
+    }
+
+    @Test
+    fun `an interrupt while sampling stops the tick and is not reported as an unreachable API server`() {
+        val m = monitor(listOf({ throw InterruptedException("stop") }))
+
+        try {
+            assertThatThrownBy { m.tick() }.isInstanceOf(InterruptedException::class.java)
+        } finally {
+            Thread.interrupted()
+        }
+
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
     }
 
     @Test

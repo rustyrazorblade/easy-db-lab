@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
@@ -248,14 +249,16 @@ class SetupProfile : PicoBaseCommand() {
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
-        try {
+        // The command layer cannot name the SDK's exception types (the package-boundary test forbids
+        // it), so this boundary takes any failure of the validation and reports it as one.
+        runCatchingException {
             val identity = createAccountIdentity(credentials, region)
             identity.checkPermissions()
 
             eventBus.emit(Event.Setup.CredentialsValidSuccess)
 
             offerIamPolicyDisplay(identity)
-        } catch (e: Exception) {
+        }.onFailure { e ->
             eventBus.emit(Event.Setup.CredentialsValidFailed)
             throw SetupProfileException("AWS credentials are invalid", e)
         }
@@ -556,7 +559,7 @@ class SetupProfile : PicoBaseCommand() {
         archType: Arch,
         userConfig: User,
     ) {
-        try {
+        runCatchingException {
             eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
 
             val exitCode =
@@ -573,7 +576,7 @@ class SetupProfile : PicoBaseCommand() {
             } else {
                 eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, userConfig.region))
             }
-        } catch (buildError: Exception) {
+        }.onFailure { buildError ->
             eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
         }
     }

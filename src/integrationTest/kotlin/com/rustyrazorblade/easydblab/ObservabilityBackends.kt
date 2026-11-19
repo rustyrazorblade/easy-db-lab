@@ -51,8 +51,11 @@ object ObservabilityBackends {
     const val TEMPO_OTLP_HTTP_PORT = 4321
     private val STARTUP: Duration = Duration.ofMinutes(3)
     private val GRACE: Duration = Duration.ofSeconds(30)
-    private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(10)
-    private val http: HttpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build()
+    private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(10)
+
+    // Longer than any query a test runs on a cold store, so only a backend that hangs reaches it.
+    private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(60)
+    private val http: HttpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()
 
     /** Mimir's rendered config, pointed at LocalStack. */
     fun mimirConfig(rendered: String): String {
@@ -129,13 +132,7 @@ object ObservabilityBackends {
         config: String,
         volume: String,
     ): GenericContainer<*> =
-        GenericContainer(PyroscopeManifestBuilder.SERVER_IMAGE)
-            .withCreateContainerCmdModifier { cmd ->
-                cmd.withUser("root")
-                cmd.hostConfig?.withBinds(Bind(volume, Volume(PYROSCOPE_DATA)))
-            }.withCopyToContainer(Transferable.of(config), "/etc/pyroscope/config.yaml")
-            .withCommand("-config.file=/etc/pyroscope/config.yaml")
-            .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
+        pyroscopeContainer(config, volume)
             .waitingFor(
                 Wait
                     .forHttp("/ready")
@@ -143,6 +140,31 @@ object ObservabilityBackends {
                     .forStatusCode(HTTP_OK)
                     .withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET),
             ).apply { start() }
+
+    /**
+     * Starts the Pyroscope server like [startPyroscope], but returns as soon as its HTTP port is
+     * open, without waiting for `/ready`. A Java agent with queued profiles pushes at that moment,
+     * so a test of what a restarted server does with those pushes starts it this way.
+     */
+    fun startPyroscopeListening(
+        config: String,
+        volume: String,
+    ): GenericContainer<*> =
+        pyroscopeContainer(config, volume)
+            .waitingFor(Wait.forListeningPort().withStartupTimeout(PYROSCOPE_STARTUP_PROBE_BUDGET))
+            .apply { start() }
+
+    private fun pyroscopeContainer(
+        config: String,
+        volume: String,
+    ): GenericContainer<*> =
+        GenericContainer(PyroscopeManifestBuilder.SERVER_IMAGE)
+            .withCreateContainerCmdModifier { cmd ->
+                cmd.withUser("root")
+                cmd.hostConfig?.withBinds(Bind(volume, Volume(PYROSCOPE_DATA)))
+            }.withCopyToContainer(Transferable.of(config), "/etc/pyroscope/config.yaml")
+            .withCommand("-config.file=/etc/pyroscope/config.yaml")
+            .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
 
     /**
      * Starts Tempo with [config] on the Docker volume [volume] (its WAL, the control node's
@@ -191,17 +213,16 @@ object ObservabilityBackends {
             .apply { start() }
 
     /**
-     * Starts Loki with [config] on the Docker volume [volume], writing to [bucket] as the ingester
-     * `<tenant>.<clusterName>`. Runs as root so a fresh volume needs no chown; the pod runs as
-     * [LokiManifestBuilder.LOKI_UID] on a directory `up` chowns.
+     * Starts Loki with [config] on the Docker volume [volume], writing to [bucket] as [ingester].
+     * Runs as root so a fresh volume needs no chown; the pod runs as [LokiManifestBuilder.LOKI_UID]
+     * on a directory `up` chowns.
      */
     fun startLoki(
         config: String,
         volume: String,
         bucket: String,
         logsPrefix: String,
-        tenant: String,
-        clusterName: String,
+        ingester: LokiIngester,
     ): GenericContainer<*> =
         GenericContainer(LokiManifestBuilder.IMAGE)
             .withCreateContainerCmdModifier { cmd ->
@@ -211,8 +232,8 @@ object ObservabilityBackends {
             .withEnv("S3_BUCKET", bucket)
             .withEnv("AWS_REGION", SharedLocalStack.region())
             .withEnv("LOGS_S3_PREFIX", logsPrefix)
-            .withEnv("TENANT", tenant)
-            .withEnv("CLUSTER_NAME", clusterName)
+            .withEnv("TENANT", ingester.tenant)
+            .withEnv("CLUSTER_NAME", ingester.clusterName)
             .withCommand("-config.file=/etc/loki/loki.yaml", "-config.expand-env=true")
             .withExposedPorts(Constants.K8s.LOKI_HTTP_PORT)
             .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.LOKI_HTTP_PORT).withStartupTimeout(STARTUP))
@@ -289,6 +310,15 @@ object ObservabilityBackends {
                 .build(),
         )
 }
+
+/**
+ * Who a Loki test server ingests as: the cluster's ingester id is `<tenant>.<clusterName>`, so the
+ * two travel together.
+ */
+data class LokiIngester(
+    val tenant: String,
+    val clusterName: String,
+)
 
 /**
  * [ObservabilityHttp] for tests: sends each request to the container serving that port, with the

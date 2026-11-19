@@ -5,6 +5,7 @@ import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ContainerObservabilityHttp
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.PrometheusRemoteWrite
 import com.rustyrazorblade.easydblab.SharedLocalStack
@@ -154,8 +155,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
                 lokiVolume,
                 bucket,
                 LOGS_PREFIX,
-                TENANT,
-                CLUSTER,
+                LokiIngester(TENANT, CLUSTER),
             )
         containers.add(loki)
         running[Constants.K8s.LOKI_APP_LABEL] = loki

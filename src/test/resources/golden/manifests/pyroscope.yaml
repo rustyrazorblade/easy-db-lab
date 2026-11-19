@@ -47,9 +47,14 @@ data:
       index:
         cleanup_interval: 0s
 
+    # Restart: without a tokens file the segment writer joins its ring again with no tokens, and the
+    # distributor caches that empty ring for its 5s refresh, so for about 5.5s after start every push is
+    # refused (422), which the Java agent drops. Keeping the tokens on the data volume, which survives a
+    # pod restart, makes a restarted server take pushes as soon as its port opens.
     segment_writer:
       lifecycler:
         min_ready_duration: 0s
+        tokens_file_path: /data/segment-writer-tokens
 
     # Anonymous usage reporting to Grafana Labs. Its module stops last and holds shutdown 15s.
     analytics:

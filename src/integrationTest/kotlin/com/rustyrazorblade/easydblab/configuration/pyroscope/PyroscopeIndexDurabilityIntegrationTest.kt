@@ -50,6 +50,10 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         val WAIT: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
 
+        /** Past the ~5.5s a tokenless segment writer refuses pushes after start. */
+        val AFTER_START: Duration = Duration.ofSeconds(10)
+        val PUSH_PERIOD: Duration = Duration.ofMillis(200)
+
         /** Pyroscope's default `max_profile_stacktrace_samples`; edbl-ab1172 sent 18,995 and lost them. */
         const val DEFAULT_SAMPLE_LIMIT = 16_000
         const val STACK_DEPTH = 20
@@ -128,6 +132,24 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
                 .POST(HttpRequest.BodyPublishers.ofString(folded))
                 .build()
         return http.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    /**
+     * Pushes a small profile every [PUSH_PERIOD] for [AFTER_START] from the moment [pyroscope]'s
+     * port opens, and returns `status: body` of each push it refused. A push that cannot connect yet
+     * is not counted: the agent retries those.
+     */
+    private fun refusedPushesAfterStart(pyroscope: GenericContainer<*>): List<String> {
+        val refused = mutableListOf<String>()
+        val deadline = System.nanoTime() + AFTER_START.toNanos()
+        while (System.nanoTime() < deadline) {
+            runCatching { sendFolded(pyroscope, "it-after-restart", "main;work;compute 1\n") }
+                .getOrNull()
+                ?.takeIf { it.statusCode() != 200 }
+                ?.let { refused.add("${it.statusCode()}: ${it.body().take(RENDER_BODY_EXCERPT)}") }
+            Thread.sleep(PUSH_PERIOD.toMillis())
+        }
+        return refused
     }
 
     /**
@@ -232,7 +254,12 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             .stopContainerCmd(first.containerId)
             .withTimeout(30)
             .exec()
-        val second = startPyroscope(config)
+        // A Java agent with queued profiles pushes as soon as the restarted server's port opens, before
+        // /ready. A segment writer that rejoins its ring without its tokens refuses every push for
+        // about 5.5s, and the agent drops each refused one, so none may be refused.
+        val second = ObservabilityBackends.startPyroscopeListening(config, dataVolume).also { containers.add(it) }
+        val refused = refusedPushesAfterStart(second)
+        assertThat(refused).describedAs("pushes refused after a restart (status: body)").isEmpty()
         awaitTicks(second)
     }
 

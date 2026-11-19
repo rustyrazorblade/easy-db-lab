@@ -189,6 +189,8 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "data_dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "snapshots_dir")).startsWith(mount.mountPath + "/")
+        // Without its tokens a restarted segment writer refuses every push for about 5.5s (issue 991).
+        assertThat(scalarAt(config, "segment_writer", "lifecycler", "tokens_file_path")).startsWith(mount.mountPath + "/")
     }
 
     /** The limit at [key] under `limits` in the server config, as a number. */

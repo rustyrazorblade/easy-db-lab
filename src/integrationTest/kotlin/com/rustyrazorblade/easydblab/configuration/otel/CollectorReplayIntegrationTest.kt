@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -136,8 +137,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
                 volume,
                 bucket,
                 Constants.Observability.LOGS_ROOT,
-                TENANT,
-                CLUSTER,
+                LokiIngester(TENANT, CLUSTER),
             ).also { serve(it, LOKI_HOST) }
 
     private fun startTempo(): GenericContainer<*> =

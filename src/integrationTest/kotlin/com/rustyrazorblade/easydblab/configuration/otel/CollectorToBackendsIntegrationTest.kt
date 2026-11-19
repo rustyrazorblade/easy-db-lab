@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -100,8 +101,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 volumes[1],
                 bucket,
                 "loki",
-                TENANT,
-                CLUSTER,
+                LokiIngester(TENANT, CLUSTER),
             )
         containers.add(loki)
         return mimir to loki

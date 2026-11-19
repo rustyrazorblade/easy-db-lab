@@ -840,7 +840,9 @@ object Constants {
         /**
          * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
          * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
-         * full the agent drops the oldest. The default is 8, about 80 seconds.
+         * full the agent drops the oldest. The default is 8, about 80 seconds. The queue is in the
+         * profiled JVM's heap: measured on a Cassandra stress workload, a queued snapshot holds
+         * about 0.17 MB, so a full queue is about 62 MB, inside the owner's 256 MB budget.
          */
         const val PUSH_QUEUE_CAPACITY = 360
 

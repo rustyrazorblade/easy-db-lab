@@ -6185,6 +6185,23 @@ sealed interface Event {
                     "database kits. Give a narrower network unless that is intended."
         }
 
+        /**
+         * The cluster the user brought reports no IPv4 pod CIDR on any node (EKS VPC-CNI gives pods
+         * node-network addresses), so `init` recorded only the node addresses and any
+         * `--client-network` values, [networks]. A pod client outside them will be refused.
+         */
+        @Serializable
+        @SerialName("Setup.NoPodCidrClientNetworks")
+        data class NoPodCidrClientNetworks(
+            val networks: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Warning: the nodes report no pod CIDR, so only ${networks.joinToString(", ")} were recorded as " +
+                    "client networks. A database client in a pod with an address outside them will be refused. " +
+                    "If pods take addresses from the node network (EKS VPC-CNI), run init again with " +
+                    "--client-network <VPC CIDR>."
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {

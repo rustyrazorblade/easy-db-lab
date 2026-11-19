@@ -36,8 +36,10 @@ class ClientNetworkProbeIntegrationTest {
                 .address
         val override = Ipv4Cidr.parse("192.168.0.0/16").getOrThrow()
 
-        val networks = ClientNetworkProbe(ProxiedKubernetesClientFactory()).probe(api, listOf(override))
+        val result = ClientNetworkProbe(ProxiedKubernetesClientFactory()).probe(api, listOf(override))
 
-        assertThat(networks.cidrs.map { it.value }).containsExactly(podCidr, "$internalIp/32", override.value)
+        assertThat(result.networks.cidrs.map { it.value }).containsExactly(podCidr, "$internalIp/32", override.value)
+        // K3s reports the pod CIDR, so init has no reason to warn about pod clients.
+        assertThat(result.noPodCidr).isFalse()
     }
 }

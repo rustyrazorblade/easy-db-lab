@@ -116,7 +116,10 @@ class PostgresSysbenchAnywhereIntegrationTest {
                 initConfig = InitConfig(name = CLUSTER_NAME, kitStorageClass = RETAINED_CLASS),
                 capabilities = emptySet(),
                 roleSelectors = RoleSelectors.ANYWHERE,
-                clientNetworks = ClientNetworkProbe(ProxiedKubernetesClientFactory()).probe(api, emptyList()).cidrs.map { it.value },
+                clientNetworks =
+                    ClientNetworkProbe(
+                        ProxiedKubernetesClientFactory(),
+                    ).probe(api, emptyList()).networks.cidrs.map { it.value },
             ),
         )
         processEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), stateManager)

@@ -566,7 +566,8 @@ class Init :
         val extraClients = clientNetworks.map(ClientNetworks::parseOption)
         val extraClientNetworks = extraClients.map { it.value }
         // Probed before anything is cleaned or written too: a cluster that reports no network leaves the directory as it was.
-        val probedClientNetworks = broughtCluster?.let { api -> clientNetworkProbe.probe(api, extraClients).cidrs.map { it.value } }
+        val probe = broughtCluster?.let { api -> clientNetworkProbe.probe(api, extraClients) }
+        val probedClientNetworks = probe?.networks?.cidrs?.map { it.value }
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
@@ -593,7 +594,7 @@ class Init :
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
-        reportClientNetworks(clusterState, extraClients)
+        reportClientNetworks(clusterState, extraClients, probe?.noPodCidr == true)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
@@ -621,16 +622,21 @@ class Init :
 
     /**
      * Tells the user which networks the passwordless database kits will trust ([Event.Setup.ClientNetworksRecorded]),
-     * after warning about each very wide [extraClients] network ([Event.Setup.WideClientNetwork]).
+     * after warning about each very wide [extraClients] network ([Event.Setup.WideClientNetwork]), and then
+     * warning, when a probed cluster reported no pod CIDR ([noPodCidr]), that pod clients may be refused
+     * ([Event.Setup.NoPodCidrClientNetworks]). Neither warning fails `init`.
      */
     private fun reportClientNetworks(
         clusterState: ClusterState,
         extraClients: List<Ipv4Cidr>,
+        noPodCidr: Boolean,
     ) {
         extraClients.filter { it.isVeryWideClientNetwork }.forEach { cidr ->
             eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount))
         }
-        eventBus.emit(Event.Setup.ClientNetworksRecorded(ClientNetworks.from(clusterState).cidrs.map { it.value }))
+        val recorded = ClientNetworks.from(clusterState).cidrs.map { it.value }
+        eventBus.emit(Event.Setup.ClientNetworksRecorded(recorded))
+        if (noPodCidr) eventBus.emit(Event.Setup.NoPodCidrClientNetworks(recorded))
     }
 
     /**

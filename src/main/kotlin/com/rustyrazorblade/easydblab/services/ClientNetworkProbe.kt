@@ -25,7 +25,7 @@ class ClientNetworkProbe(
     fun probe(
         api: KubeApi,
         overrides: List<Ipv4Cidr>,
-    ): ClientNetworks =
+    ): ClientNetworkProbeResult =
         clientFactory.createClient(api).use { client ->
             val nodes =
                 client.nodes().list().items.map { node ->
@@ -43,10 +43,20 @@ class ClientNetworkProbe(
                                 .map { it.address },
                     )
                 }
-            ClientNetworks.probed(nodes, overrides)
+            ClientNetworkProbeResult(ClientNetworks.probed(nodes, overrides), ClientNetworks.reportsNoPodCidr(nodes))
         }
 
     private companion object {
         const val INTERNAL_IP = "InternalIP"
     }
 }
+
+/**
+ * What [ClientNetworkProbe] found: the [networks] to record, and whether no node reported an IPv4
+ * pod CIDR ([noPodCidr]), so the networks hold only node addresses and the overrides. `init` warns
+ * on that, since pods with addresses outside them (EKS VPC-CNI) would be refused.
+ */
+data class ClientNetworkProbeResult(
+    val networks: ClientNetworks,
+    val noPodCidr: Boolean,
+)

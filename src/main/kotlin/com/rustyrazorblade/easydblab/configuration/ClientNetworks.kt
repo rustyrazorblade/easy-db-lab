@@ -104,6 +104,13 @@ data class ClientNetworks(
         }
 
         /**
+         * Whether no node in [nodes] reports an IPv4 pod CIDR, so [probed] finds only node addresses.
+         * That is what a CNI whose pods take node-network addresses (EKS VPC-CNI) looks like, and
+         * its pods are then trusted only through an [OPTION] network.
+         */
+        fun reportsNoPodCidr(nodes: List<ProbedNode>): Boolean = nodes.flatMap { it.podCidrs }.none { ':' !in it }
+
+        /**
          * A pod CIDR or InternalIP a node reports; one that is not IPv4 or IPv6 was misread. The parse
          * reason is in the message, so the cause is not chained: the user sees one line.
          */

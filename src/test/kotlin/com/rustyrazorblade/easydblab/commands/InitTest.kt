@@ -110,7 +110,7 @@ class InitTest : BaseKoinTest() {
                             override fun createClient(api: KubeApi): KubernetesClient {
                                 probedApis += api
                                 val nodes = mock<NonNamespaceOperation<Node, NodeList, Resource<Node>>>()
-                                whenever(nodes.list()).thenReturn(NodeList().apply { items = listOf(BROUGHT_NODE) })
+                                whenever(nodes.list()).thenReturn(NodeList().apply { items = broughtNodes })
                                 return mock<KubernetesClient> { on { nodes() } doReturn nodes }
                             }
                         },
@@ -127,6 +127,9 @@ class InitTest : BaseKoinTest() {
 
     /** The APIs the probe was asked to reach. */
     private val probedApis = mutableListOf<KubeApi>()
+
+    /** The nodes the brought cluster reports. */
+    private var broughtNodes = listOf(BROUGHT_NODE)
 
     @BeforeEach
     fun setupMocks() {
@@ -993,6 +996,46 @@ class InitTest : BaseKoinTest() {
                 "The database kits will accept passwordless clients from: 172.16.0.0/16, " +
                     "${Constants.K3s.CLUSTER_CIDR}, 192.168.0.0/16",
             )
+        }
+
+        /**
+         * EKS VPC-CNI gives pods node-network addresses and its nodes report no pod CIDR, so the
+         * probe records only node /32s. `init` still succeeds, and warns which option admits the pods.
+         */
+        @Test
+        fun `on a cluster whose nodes report no pod CIDR, init records the node addresses and warns`() {
+            broughtNodes =
+                listOf(
+                    NodeBuilder(BROUGHT_NODE)
+                        .editSpec()
+                        .withPodCIDRs()
+                        .withPodCIDR(null)
+                        .endSpec()
+                        .build(),
+                )
+
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            assertThat(saved.lastValue.clientNetworks).containsExactly("192.168.1.5/32")
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains(Event.Setup.NoPodCidrClientNetworks(listOf("192.168.1.5/32")).toDisplayString())
+        }
+
+        @Test
+        fun `on a cluster whose nodes report a pod CIDR, init does not warn about pod clients`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("no pod CIDR")
         }
 
         @Test

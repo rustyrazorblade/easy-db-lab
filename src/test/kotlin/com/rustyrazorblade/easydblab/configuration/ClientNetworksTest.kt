@@ -107,6 +107,19 @@ class ClientNetworksTest {
             .containsExactly("10.244.0.0/24", "192.168.1.5/32", "192.168.0.0/16")
     }
 
+    /** EKS VPC-CNI gives pods node-network addresses, and its nodes report no pod CIDR. */
+    @Test
+    fun `nodes that report no IPv4 pod CIDR leave only node addresses, and one pod CIDR anywhere is enough`() {
+        val vpcCni = listOf(ProbedNode(podCidrs = emptyList(), internalIps = listOf("192.168.1.5")))
+        val ipv6PodsOnly = listOf(ProbedNode(podCidrs = listOf("fd00::/64"), internalIps = listOf("192.168.1.5")))
+        val oneWithPods =
+            vpcCni + ProbedNode(podCidrs = listOf("10.244.1.0/24"), internalIps = listOf("192.168.1.6"))
+
+        assertThat(ClientNetworks.reportsNoPodCidr(vpcCni)).isTrue()
+        assertThat(ClientNetworks.reportsNoPodCidr(ipv6PodsOnly)).isTrue()
+        assertThat(ClientNetworks.reportsNoPodCidr(oneWithPods)).isFalse()
+    }
+
     @Test
     fun `a probed IPv6 network of a dual-stack node is skipped`() {
         val nodes = listOf(ProbedNode(podCidrs = listOf("fd00::/64", "10.244.1.0/24"), internalIps = listOf("fd00::5")))

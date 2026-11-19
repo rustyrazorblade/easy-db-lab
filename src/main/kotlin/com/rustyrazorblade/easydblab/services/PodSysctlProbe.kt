@@ -2,9 +2,11 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
+import java.io.IOException
 
 /**
  * What a server-side dry-run pod came back with. `up` probes again until the deadline after any
@@ -43,6 +45,8 @@ fun interface PodSysctlProbe {
  *
  * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
  * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable] (see [resultOf]).
+ * So is a client that could not be made or a transport failure below fabric8, so every failure goes
+ * through the same retry, deadline and typed event in [PodNetworkTuning].
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
@@ -52,6 +56,12 @@ class Fabric8PodSysctlProbe(
             ProbeResult.Admitted(sysctlsOf(admit(probePod())))
         } catch (e: KubernetesClientException) {
             resultOf(e)
+        } catch (e: IOException) {
+            // No client: the kubeconfig could not be read, or the tunnel failed below fabric8.
+            ProbeResult.Unreachable(e.reason())
+        } catch (e: IllegalStateException) {
+            // No client: the workspace has no kubeconfig, or it did not parse.
+            ProbeResult.Unreachable(e.reason())
         }
 
     /** [pod] as the API server would create it, after every admission plugin and policy; nothing is created. */

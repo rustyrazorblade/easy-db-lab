@@ -1,9 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.api.model.StatusBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.net.ConnectException
 
 /**
@@ -28,6 +32,23 @@ class Fabric8PodSysctlProbeTest {
 
         assertThat(Fabric8PodSysctlProbe.resultOf(KubernetesClientException(status)))
             .isEqualTo(ProbeResult.Refused("policy 'easydblab-pod-network-sysctls' denied the request"))
+    }
+
+    @Test
+    fun `a workspace with no kubeconfig is unreachable, so up reports it through the typed event`(
+        @TempDir workspace: File,
+        @TempDir userDirectory: File,
+    ) {
+        val provider =
+            K8sClientProvider(
+                Context(easyDbLabUserDirectory = userDirectory, workingDirectory = workspace),
+                ProxiedKubernetesClientFactory(),
+            )
+
+        val result = Fabric8PodSysctlProbe(provider).probe()
+
+        assertThat(result).isInstanceOf(ProbeResult.Unreachable::class.java)
+        assertThat((result as ProbeResult.Unreachable).reason).contains("kubeconfig not found")
     }
 
     @Test

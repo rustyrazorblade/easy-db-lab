@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -8,6 +9,7 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.SysctlBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.utils.KubernetesSerialization
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -94,6 +96,22 @@ class PodNetworkTuningIntegrationTest {
             }
 
         assertThat(admittedSysctls(own)).isEqualTo(sysctls + ("net.ipv4.tcp_keepalive_time" to "300"))
+    }
+
+    /**
+     * fabric8 drops an empty list when it serializes a pod, so the empty `sysctls` an operator or a
+     * Helm chart can send is put back into the JSON tree and posted as written.
+     */
+    @Test
+    fun `a pod with an empty sysctls list gets every pod network sysctl`() {
+        val serialization = KubernetesSerialization()
+        val tree = serialization.convertValue(pod("empty-sysctls"), ObjectNode::class.java)
+        (tree.get("spec") as ObjectNode).putObject("securityContext").putArray("sysctls")
+        val uri = "/api/v1/namespaces/$namespace/pods?dryRun=All"
+
+        val admitted = serialization.unmarshal(client.raw(uri, "POST", tree.toString()), Pod::class.java)
+
+        assertThat(Fabric8PodSysctlProbe.sysctlsOf(admitted)).isEqualTo(sysctls)
     }
 
     @Test

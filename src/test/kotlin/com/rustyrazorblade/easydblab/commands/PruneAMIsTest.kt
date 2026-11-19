@@ -17,10 +17,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.time.Instant
 
 class PruneAMIsTest : BaseKoinTest() {
@@ -113,29 +111,30 @@ class PruneAMIsTest : BaseKoinTest() {
         }
 
         @Test
-        fun `a confirmed AMI is deregistered and its snapshots are deleted`() {
+        fun `a confirmed AMI is deleted with its snapshots`() {
+            whenever(mockAMIService.deleteWithSnapshots(oldAmi)).thenReturn(AMIService.AmiDeletion.Deleted)
+
             PruneAMIs().execute()
 
-            verify(mockAMIService).deregisterAMI("ami-old1")
-            verify(mockAMIService).deleteSnapshot("snap-old1")
+            verify(mockAMIService).deleteWithSnapshots(oldAmi)
             assertThat(outputHandler.messages.joinToString("\n")).contains("Deleted: 1")
         }
 
         @Test
         fun `an AWS failure deleting one AMI is reported and the run completes`() {
-            whenever(mockAMIService.deregisterAMI("ami-old1"))
-                .thenThrow(Ec2Exception.builder().message("UnauthorizedOperation").build())
+            whenever(mockAMIService.deleteWithSnapshots(oldAmi))
+                .thenReturn(AMIService.AmiDeletion.Failed("UnauthorizedOperation"))
 
             PruneAMIs().execute()
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Error deleting: UnauthorizedOperation")
-            verify(mockAMIService, never()).deleteSnapshot(any())
+            assertThat(output).contains("Deleted: 0")
         }
 
         @Test
         fun `a failure that is not an AWS failure propagates`() {
-            whenever(mockAMIService.deregisterAMI("ami-old1")).thenThrow(IllegalStateException("bug"))
+            whenever(mockAMIService.deleteWithSnapshots(oldAmi)).thenThrow(IllegalStateException("bug"))
 
             assertThatThrownBy { PruneAMIs().execute() }.isInstanceOf(IllegalStateException::class.java)
         }

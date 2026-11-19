@@ -20,11 +20,13 @@ services/aws/
 ├── AccountCapacity.kt         # The account facts the pre-launch checks read (port), LaunchDryRun, InstanceFamily
 ├── Ec2AccountCapacity.kt      # AccountCapacity from EC2 and Service Quotas; the dry run is on the EC2 throttle retry
 ├── LaunchCapacityPreflight.kt # The pre-launch capacity checks and the launch dry run, for the new instances only
-├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
+├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator); `deleteWithSnapshots` returns an AWS failure as `AmiDeletion.Failed`
 ├── AMIValidationService.kt    # AMI validation types and exceptions
 ├── AMIResolver.kt             # AMI resolution interface and implementations
 ├── EMRService.kt              # EMR cluster management (find, terminate, wait)
 ├── EMRSparkService.kt         # Spark job execution (implements SparkService)
+├── EMRProvisioningService.kt  # Creates the EMR cluster for `up` and `spark init`; reads the bootstrap stderr from S3 when it fails
+├── DataBucketTeardown.kt      # The data-bucket side of `down`: stops request metrics, deletes only empty data buckets (MetricsStop, DataBucketSweep)
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
@@ -107,7 +109,7 @@ Services that call S3 indirectly (via `ObjectStore`) also need integration tests
 
 ## Account compactor
 
-The compactor runs in a pod on every cluster (see `configuration/CLAUDE.md`), not in an AWS service. This package holds only `CompactorLeaseReader`: it reads `leases/compactor.json` with a client for the account bucket's region (`BucketRegion`) and returns `CompactorLease.None`, `Held(record, age)`, or `Unreadable(content)` when the body is not a valid lease. It never writes the lease. It reads through the `:compactor-lease` module's `S3ConditionalObjects`, the only conditional-write port; `S3ObjectStore` has no conditional writes.
+The compactor runs in a pod on every cluster (see `configuration/CLAUDE.md`), not in an AWS service. This package holds only `CompactorLeaseReader`: it reads `leases/compactor.json` with a client for the account bucket's region (`BucketRegion`) and returns `CompactorLease.None`, `Held(record, age)`, or `Unreadable(content)` when the body is not a valid lease. It never writes the lease. It reads through the `:compactor-lease` module's `compactorlease.aws.S3ConditionalObjects`, the only conditional-write port; `S3ObjectStore` has no conditional writes.
 
 ## S3 data handling
 

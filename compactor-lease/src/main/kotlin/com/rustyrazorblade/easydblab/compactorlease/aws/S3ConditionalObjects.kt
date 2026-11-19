@@ -1,5 +1,10 @@
-package com.rustyrazorblade.easydblab.compactorlease
+package com.rustyrazorblade.easydblab.compactorlease.aws
 
+import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjects
+import com.rustyrazorblade.easydblab.compactorlease.CreateResult
+import com.rustyrazorblade.easydblab.compactorlease.ObjectVersion
+import com.rustyrazorblade.easydblab.compactorlease.ReplaceResult
+import com.rustyrazorblade.easydblab.compactorlease.VersionedObject
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.SdkPlugin
 import software.amazon.awssdk.core.sync.RequestBody

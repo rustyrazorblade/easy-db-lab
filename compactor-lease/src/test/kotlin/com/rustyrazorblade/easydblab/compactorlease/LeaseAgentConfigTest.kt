@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
+import com.rustyrazorblade.easydblab.compactorlease.aws.leaseS3Client
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test

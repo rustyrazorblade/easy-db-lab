@@ -1,6 +1,6 @@
 ## Context
 
-Measured on `main` at `83e8fa51`.  The architect verified all 11 leak sites and both cycles in source and in bytecode (an ArchUnit probe against the compiled classes).  The bytecode found two leaks that no import shows:
+Measured on `main` at `83e8fa51`.  Re-measured on `main` at `fc0f33fde` when the change was ported; see "Port to main" below.  The architect verified all 11 leak sites and both cycles in source and in bytecode (an ArchUnit probe against the compiled classes).  The bytecode found two leaks that no import shows:
 - `ServicesModuleKt` depends on `EcrClient` through the reified `singleOf(::EcrPullSecretService)`.
 - `SetupProfile` depends on `Ec2Client` through an inferred return type.
 
@@ -9,7 +9,7 @@ Paths below are under `src/main/kotlin/com/rustyrazorblade/easydblab/`.
 ## Goals / Non-Goals
 
 **Goals:**
-- Zero SDK dependencies outside `providers.aws..` and `services.aws..`, enforced by a unit test with no allowlist.
+- Zero SDK dependencies outside `providers.aws..`, `services.aws..` and `compactorlease.aws..`, enforced by a unit test with no allowlist.
 - Break the two cycles `providers` <-> `services` and `configuration` <-> `providers`.
 - A user whose AWS call fails for credentials or permissions sees a typed message with a remedy.
 
@@ -21,12 +21,12 @@ Paths below are under `src/main/kotlin/com/rustyrazorblade/easydblab/`.
 
 - `providers/aws/AwsClientsModule.kt` holds:
   - `Region` and `AwsCredentialsProvider`;
-  - the 7 SDK clients, plus `AWS`, `RegionalClients` and `InstanceRolePolicies`;
+  - the SDK clients (Service Quotas included), plus `AccountIdentity`, `IamRoles`, `RegionalS3Clients` and `InstanceRolePolicies`;
   - `AWSClientFactory`, and the `AWSCredentialsManager` factory;
   - `AwsErrorHandler`, and the bindings folded in from `ssmModule`.
 
   Its only edges are `configuration`, `events` and `Context`.
-- `services/aws/AwsServicesModule.kt` holds every binding of a `services.aws` type, plus `ObjectStore`, `SparkService`, `ImagePullSecretService` and `AwsKeyPairService`.
+- `services/aws/AwsServicesModule.kt` holds every binding of a `services.aws` type, plus `ObjectStore`, `SparkService`, `DataBucketTeardown`, `EMRProvisioningService` and `AwsKeyPairService`.
 - `di/KoinModules` lists both.
 
 *Rejected:*
@@ -59,10 +59,11 @@ data class ErrorDescription(val provider: String, val kind: ProviderErrorKind, v
 
 ### D4. No duplicate error blocks
 
-Three sites already print a detailed message:
+Two sites already print a detailed message:
 - `AWSResourceSetupService.emitCredentialError`
 - the key-pair permission path
-- `CompactorService.withEcsAccess`
+
+(The original third site, `CompactorService.withEcsAccess`, was removed on main with the Fargate compactor.)
 
 Each keeps its event, then rethrows as `CommandFailedException(message, cause)`.  `CommandFailedException` gains a `cause` parameter.  `CommandFailureReporter` treats it as already reported: the cause chain stops there.
 
@@ -126,15 +127,14 @@ The error code is checked first: STS, IAM and S3 return 403 for bad credentials.
 - **CREDENTIALS:** "Run: easy-db-lab profile setup. If you use SSO with the AWS CLI, log in again with: aws sso login (add --profile and your profile name if it is not the default), and check with: aws sts get-caller-identity". `profile setup` is the unconditional path because a Homebrew install does not guarantee the AWS CLI; the handler takes no dependencies, so it cannot name the profile.
 - **PERMISSION_DENIED:** "If this is missing permissions on your AWS user, attach `<policy>` (print it with `easy-db-lab show-iam-policies <policy>`). For S3: "A bucket policy, SCP or KMS key policy can also deny the request."; for any other service: "An SCP or permissions boundary can also deny the request." A 403 does not prove the cause, so the remedy does not assert it.
 
-The policy comes from the exception class.  The five policy names become constants on `AWSPolicy.UserIAM`.
+The policy comes from the exception class.  The four policy names become constants on `AWSPolicy.UserIAM`.
 
 | Exception class | Policy |
 |---|---|
-| `Ec2Exception`, `EcrException`, `SsmException` | EasyDBLabEC2 |
+| `Ec2Exception`, `ServiceQuotasException`, `SsmException` | EasyDBLabEC2 |
 | `IamException`, `S3Exception` | EasyDBLabIAM |
 | `EmrException` | EasyDBLabEMR |
 | `OpenSearchException` | EasyDBLabOpenSearch |
-| `EcsException`, `CloudWatchLogsException` | EasyDBLabCompactor |
 | `StsException` | none: the only STS call is `GetCallerIdentity`, which needs no IAM permission, so the remedy points at an SCP, permissions boundary or session policy |
 | other | all policies |
 
@@ -143,14 +143,17 @@ The policy comes from the exception class.  The five policy names become constan
 | Site | Routing |
 |---|---|
 | `Main.kt` | Delete every catch and handler (`:40-160`). `main` starts Koin, runs the Redis check, and calls `parser.eval`. |
-| `OpenSearchStatus` | `OpenSearchService.describeDomainOrNull(name)` catches `ResourceNotFoundException` *outside* `withAwsRetry` and returns null. `describeDomain` stays for its other callers. |
+| `OpenSearchStatus` | `OpenSearchService.lookupDomain(name)` returns `DomainLookup.Found`, `NotFound` (`ResourceNotFoundException`) or `Unavailable(reason)` (any other `SdkException`), caught *outside* `withAwsRetry`. `describeDomain` stays for its other callers. |
 | `SparkService`/`SparkStatus` | `SparkJobState` (D8) |
 | `SetupProfile` | `String` region and `requireValidRegion` (D7); `AwsKeyPairService` |
 | `User.kt` | `services/aws/AwsKeyPairService(clientFactory, eventBus).generate(user, profileDir)` holds today's code. `getRequiredIAMPolicies` is removed; `ShowIamPolicies` and `SetupProfile` call `AWSPolicy.UserIAM.loadAll` directly. |
-| `CompactorTaskDefinition` | Pure move to `services/aws`, **together with `tempo-backend.yaml`**: it is loaded relative to the class. |
 | `Packer` | D6 |
 | SSM | Move `providers/ssm` to `providers/aws/ssm` (6 files); fold `ssmModule` into `AwsClientsModule`. |
-| `EcrPullSecretService` | Moves to `services/aws` and implements `services/ImagePullSecretService.ensureFor(controlHost, image, namespace)`. The binding moves to `AwsServicesModule`. |
+| `PruneAMIs` | `AMIService.deleteWithSnapshots(ami)` returns `AmiDeletion.Deleted` or `Failed(reason)`, catching `SdkException` outside each call's retry; the command emits `Event.Ami.DeleteFailed(reason)`. |
+| `ShowIamPolicies` | `AWSResourceSetupService.getAccountId()` emits `Event.Command.IamPoliciesCredentialError` on an `SdkException` and rethrows it unchanged. |
+| `DataBucketTeardown` | Pure move to `services/aws` (S3-only); the binding moves to `AwsServicesModule`. |
+| `EMRProvisioningService` | Pure move to `services/aws` (EMR-only, reads the bootstrap stderr from S3); the binding moves to `AwsServicesModule`. |
+| `compactorlease` | `S3ConditionalObjects` moves to `compactorlease/aws`, with `withS3LeaseStore`, the only place `LeaseAgentMain` reaches the SDK. `LeaseAgentMain` sees only the `ConditionalObjects` port. |
 
 ## Boundary tests
 
@@ -158,11 +161,11 @@ New test `architecture/PackageBoundaryTest.kt` in the unit tier.  Classes are im
 
 | Rule | What it checks |
 |---|---|
-| R0 (sanity) | The import holds `MainKt` and does not hold `BaseKoinTest`. |
+| R0 (sanity) | The import holds `MainKt` and the lease agent's `LeaseAgentMainKt`, and does not hold `BaseKoinTest`. |
 | R1a | No class outside the adapters depends on `software.amazon.awssdk..`. |
 | R1b | Custom `ArchCondition<JavaCodeUnit>`: no code unit outside the adapters catches a `software.amazon.awssdk..` throwable. The message names the method, the SDK type and the location. |
 | R2 | `providers..` does not depend on `services..`. |
-| R3 | `configuration..` does not depend on `providers..`. |
+| R3 | `configuration..` does not depend on `providers..`. `CompactorAgentInstaller` (added on main) runs SSH commands, so it moves to `services`. |
 
 ## Risks / Trade-offs
 
@@ -170,7 +173,6 @@ New test `architecture/PackageBoundaryTest.kt` in the unit tier.  Classes are im
 |---|---|
 | The Koin split and the `getAll` binding fail only at runtime. | A Koin resolution test covers both modules and the reporter's handler list. Smoke check: `bin/easy-db-lab --help` plus one AWS command. |
 | A handler that needed `User` would crash the error path itself. | No-dependency rule, plus a test that resolves the reporter with no profile. |
-| `tempo-backend.yaml` left behind fails at runtime. | The existing `CompactorTaskDefinitionTest` loads the resource and pins the registered request byte-for-byte. |
 | `Up.kt:225` retries on `SdkException` through `createVpcAutoCidrRetryConfig`, from outside the adapter. If an adapter ever translated exceptions, this retry would silently stop. | No translation in this slice. Record it in `providers/CLAUDE.md` as a blocker for adapter-level translation until the ClusterNetwork issue moves the retry. |
 | An SDK upgrade rewords a credential message (row 4). | Tests build row-4 exceptions from real SDK providers over an empty profile file, so a rewording fails the test. |
 | Moved classes break test mocks. | Listed per site in the tasks. |
@@ -179,3 +181,15 @@ New test `architecture/PackageBoundaryTest.kt` in the unit tier.  Classes are im
 ## Migration
 
 None: clusters are ephemeral.  Capture the expired-credentials output on `main` before stage 1, then compare it after.
+
+## Port to main
+
+The change was written on a branch whose base predates several main changes.  It was ported onto main as it is now, keeping main's structure and re-applying this change's intent on top:
+
+- **Fargate compactor removed (#1071).**  `CompactorTaskDefinition`, `CompactorService` and the ECS and CloudWatch Logs clients no longer exist, so their move, the compactor policy name and the `withEcsAccess` site are dropped.  The compactor is now a pod; its lease agent is the `:compactor-lease` module, which shares the package root and is scanned by the same test, so its S3 adapter gets its own `compactorlease.aws..` adapter package.
+- **ECR pull secrets removed (#1114).**  `EcrPullSecretService` and the proposed `ImagePullSecretService` are dropped.
+- **The `AWS` class split (#1141)** into `AccountIdentity`/`StsAccountIdentity`, `IamRoles`/`AwsIamRoles` and `S3BucketAdmin`.  Main's types are kept; `AWSClientFactory.createAccountIdentity*` takes the `String` region (D7).
+- **Service Quotas client added on main.**  `ServiceQuotasException` maps to `EasyDBLabEC2`, which holds `servicequotas:GetServiceQuota`.
+- **New SDK leaks on main**, routed as in the leak-site table: `PruneAMIs`, `ShowIamPolicies`, `DataBucketTeardown`, `EMRProvisioningService`, and the lease agent.  **A new R3 violation on main**: `CompactorAgentInstaller`.
+- **`OpenSearchStatus` on main** already reports an AWS failure as a warning, so `describeDomainOrNull` became `lookupDomain` with an `Unavailable` result that keeps that warning.
+

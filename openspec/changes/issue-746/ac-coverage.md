@@ -10,9 +10,9 @@
 | AC8 | An unowned exception still emits `ExecutionError` | `provider-errors: Exception owned by no provider` | ✅ |
 | AC9 | A wrapped exception is found through the cause chain | `provider-errors: Wrapped provider exception` | ✅ |
 | AC10 | `spark status`: every StepState unchanged | `spark-emr: Every EMR step state maps unchanged` | ✅ |
-| AC11 | `opensearch status` not-found output unchanged | `opensearch: Status of a domain that does not exist` | ✅ |
+| AC11 | `opensearch status` not-found output unchanged | `opensearch: Status of a domain that does not exist`; `Status when AWS cannot be reached` | ✅ |
 | AC12 | Invalid region rejected as today; key pair created in services/aws | `setup: Invalid region is rejected as today`; `Valid region creates the key pair` | ✅ |
-| AC13 | Compactor registered request identical | `account-compactor: Registered request is unchanged` | ✅ |
+| AC13 | Compactor registered request identical | — | ⚠️ Moot: main removed the Fargate compactor task definition (#1071) |
 | AC14 | `Main.kt` holds no SDK import or catch | `provider-errors: Entry point is provider-free` | ✅ |
 | AC15 | `check` passes on JDK 21 with no `@Suppress`, threshold or baseline change | — | ⚠️ Excluded as a scenario: a build gate, enforced by task 6.3 |
 | Risk | An STS 403 from bad credentials is misread as permission-denied | `provider-errors: Bad credentials that arrive as a 403` | ✅ |
@@ -21,7 +21,6 @@
 | Risk | Network errors misclassified as credentials errors | `provider-errors: Network failure is not misclassified` | ✅ |
 | Risk | A cause loop hangs the reporter | `provider-errors: Cause loop terminates` | ✅ |
 | Risk | The Koin split fails only at runtime; a handler needs a profile | `provider-boundary: Dependency wiring still resolves after the split` | ✅ |
-| Risk | `tempo-backend.yaml` left behind | `account-compactor: Registered request is unchanged` | ✅ |
 | Risk | Unknown EMR state shows "null" or throws an NPE | `spark-emr: Unknown EMR state` | ✅ |
 | Risk | Expired SSO in setup shows the permission guidance | `setup: Setup with expired SSO credentials` | ✅ |
 | Risk | `Up.kt:225` retry stops if adapters translate exceptions | — | ⚠️ Excluded: no translation in this slice; recorded in `providers/CLAUDE.md` (task 6.2) |

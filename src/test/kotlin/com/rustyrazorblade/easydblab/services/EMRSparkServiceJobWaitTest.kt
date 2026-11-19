@@ -65,7 +65,7 @@ class EMRSparkServiceJobWaitTest {
 
         val result = service().waitForJobCompletion("j-1", "s-1")
 
-        assertThat(result.getOrThrow().state).isEqualTo(StepState.COMPLETED)
+        assertThat(result.getOrThrow().state).isEqualTo(SparkJobState.COMPLETED)
         verify(emrClient, times(3)).describeStep(any<DescribeStepRequest>())
     }
 

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
+import com.rustyrazorblade.easydblab.services.TemplateService
 import org.koin.dsl.module
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
@@ -140,6 +141,19 @@ val awsServicesModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+
+        // The data-bucket side of `down`: stops request metrics, deletes empty data buckets
+        factory { DataBucketTeardown(get(), get()) }
+
+        // EMR provisioning service for Spark cluster creation
+        single<EMRProvisioningService> {
+            DefaultEMRProvisioningService(
+                get<EMRService>(),
+                get<ObjectStore>(),
+                get<TemplateService>(),
+                get<EventBus>(),
+            )
+        }
 
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
         factory { AwsKeyPairService(get(), get(), get<AwsErrorHandler>()) }

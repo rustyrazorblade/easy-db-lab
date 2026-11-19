@@ -15,6 +15,8 @@ import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
+import com.rustyrazorblade.easydblab.services.aws.EmrClusterProvisioningConfig
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService

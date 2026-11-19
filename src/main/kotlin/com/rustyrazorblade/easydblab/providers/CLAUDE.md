@@ -133,7 +133,7 @@ val states = pollUntilOrTimeout("instances to terminate", timeout, interval, don
 
 ## The SDK Boundary
 
-AWS SDK types stay inside `providers/aws` and `services/aws` (see the root `CLAUDE.md` and `architecture/PackageBoundaryTest`). Three rules follow:
+AWS SDK types stay inside `providers/aws` and `services/aws`, and `compactorlease/aws` in the lease agent module (see the root `CLAUDE.md` and `architecture/PackageBoundaryTest`). Three rules follow:
 
 - **No SDK-touching `inline` functions in the adapters.** An inline function copies its body, SDK references included, into every caller outside the adapter, and the boundary test then fails there.
 - **Translation wraps a retried call and never runs inside it.** A `catch` that turns an SDK exception into a value or a project exception goes outside `withAwsRetry` (see `OpenSearchService.lookupDomain`). Inside the retry, it would hide the exception from the retry's predicate.

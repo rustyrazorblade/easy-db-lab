@@ -1,5 +1,6 @@
-package com.rustyrazorblade.easydblab.compactorlease
+package com.rustyrazorblade.easydblab.compactorlease.aws
 
+import com.rustyrazorblade.easydblab.compactorlease.ObjectVersion
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach

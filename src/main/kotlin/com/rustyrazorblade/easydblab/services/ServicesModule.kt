@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -40,7 +39,7 @@ import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
 import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
@@ -194,7 +193,6 @@ val servicesModule =
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         factory { TailnetCleanup(get(), get(), get()) }
-        factory { DataBucketTeardown(get(), get()) }
         factory { TeardownPlanner(get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
@@ -254,16 +252,6 @@ val servicesModule =
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
-
-        // EMR provisioning service for Spark cluster creation
-        single<EMRProvisioningService> {
-            DefaultEMRProvisioningService(
-                get<EMRService>(),
-                get<ObjectStore>(),
-                get<TemplateService>(),
-                get<EventBus>(),
-            )
-        }
 
         // Cluster provisioning service for parallel instance creation
         single<ClusterProvisioningService> {

@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
-import software.amazon.awssdk.core.exception.SdkException
 
 /**
  * Display IAM policies with account ID populated.
@@ -30,13 +29,7 @@ class ShowIamPolicies : PicoBaseCommand() {
 
     override fun execute() {
         // Get account ID - REQUIRED, will fail if not configured
-        val accountId =
-            try {
-                awsResourceSetup.getAccountId()
-            } catch (e: SdkException) {
-                eventBus.emit(Event.Command.IamPoliciesCredentialError)
-                throw e
-            }
+        val accountId = awsResourceSetup.getAccountId()
 
         val policies = AWSPolicy.UserIAM.loadAll(accountId)
 

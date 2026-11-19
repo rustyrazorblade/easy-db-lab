@@ -10,5 +10,5 @@
 
 ## Conflicts with other in-flight changes
 
-- `issue-1034` (ClusterTooling, unmerged branch) touches `services/` and `ServicesModule.kt`, but not the AWS bindings or `EcrPullSecretService`'s binding line. A textual merge conflict in `ServicesModule.kt` is possible; there is no behavioural conflict.
+- `issue-1034` (ClusterTooling, unmerged branch) touches `services/` and `ServicesModule.kt`. A textual merge conflict in `ServicesModule.kt` is possible; there is no behavioural conflict.
 - `issue-1038` (Cassandra kit, spec only): no overlap.

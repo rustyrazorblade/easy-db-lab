@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.aws.model.AMI
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DeleteSnapshotRequest
 import software.amazon.awssdk.services.ec2.model.DeregisterImageRequest
@@ -100,6 +101,21 @@ class AMIService(
         val kept: List<AMI>,
         val deleted: List<AMI>,
     )
+
+    /**
+     * What happened when one AMI and its snapshots were deleted.
+     *
+     * An AWS failure is a value here, so a caller reports it without naming an SDK type.
+     */
+    sealed interface AmiDeletion {
+        /** The AMI is deregistered and every snapshot it held is deleted. */
+        data object Deleted : AmiDeletion
+
+        /** AWS refused or failed a call; [reason] is its message. Snapshots after the failure are kept. */
+        data class Failed(
+            val reason: String,
+        ) : AmiDeletion
+    }
 
     // ==================== Low-Level EC2 AMI Operations ====================
 
@@ -217,6 +233,21 @@ class AMIService(
                 ec2Client.deleteSnapshot(request)
             }.run()
     }
+
+    /**
+     * Deregisters [ami], then deletes its snapshots.
+     *
+     * Each call is retried on its own. An AWS failure that is left after the retries stops the
+     * deletion and is returned as [AmiDeletion.Failed]; any other failure propagates.
+     */
+    fun deleteWithSnapshots(ami: AMI): AmiDeletion =
+        try {
+            deregisterAMI(ami.id)
+            ami.snapshotIds.forEach { deleteSnapshot(it) }
+            AmiDeletion.Deleted
+        } catch (e: SdkException) {
+            AmiDeletion.Failed(e.message ?: e::class.simpleName.orEmpty())
+        }
 
     // ==================== Pruning ====================
 

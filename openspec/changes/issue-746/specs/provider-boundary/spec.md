@@ -2,7 +2,7 @@
 
 ### Requirement: Cloud SDK types stay inside the provider adapters
 
-No main class outside the AWS adapter packages (`providers.aws..` and `services.aws..`) SHALL depend on any AWS SDK type (`software.amazon.awssdk..`). This covers imports, signatures, class literals, type checks, and SDK types that appear only in a `catch` clause. The unit test tier SHALL enforce the rule with no allowlist. The rule SHALL scan main classes only.
+No main class outside the AWS adapter packages (`providers.aws..`, `services.aws..`, and the lease agent's `compactorlease.aws..`) SHALL depend on any AWS SDK type (`software.amazon.awssdk..`). This covers imports, signatures, class literals, type checks, and SDK types that appear only in a `catch` clause. The unit test tier SHALL enforce the rule with no allowlist. The rule SHALL scan main classes only.
 
 #### Scenario: The rule passes on the current tree
 
@@ -28,7 +28,7 @@ No main class outside the AWS adapter packages (`providers.aws..` and `services.
 - **GIVEN** test classes that use SDK types
 - **WHEN** the boundary test runs
 - **THEN** none of them is reported
-- **AND** the scanned set contains the application entry point and no test-support class, so the rule cannot pass by scanning nothing
+- **AND** the scanned set contains the application entry point, the lease agent's entry point and no test-support class, so the rule cannot pass by scanning nothing
 
 ### Requirement: AWS-boundary package cycles stay broken
 

@@ -1,13 +1,13 @@
 ## Why
 
-Part of the multi-cloud epic (#1062).  AWS SDK types (`software.amazon.awssdk.*`) are imported in 11 main files outside the AWS adapter packages.  That coupling blocks GCP (#702) and Azure (#40).  This is slice 1: confine the SDK to `providers/aws` and `services/aws`, enforce it with a test, and break the two AWS-boundary package cycles from #745.
+Part of the multi-cloud epic (#1062).  AWS SDK types (`software.amazon.awssdk.*`) are imported in 11 main files outside the AWS adapter packages.  That coupling blocks GCP (#702) and Azure (#40).  This is slice 1: confine the SDK to `providers/aws` and `services/aws` (and `compactorlease/aws` in the lease agent module), enforce it with a test, and break the two AWS-boundary package cycles from #745.
 
 It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are dead code, because `CommandExecutor.executeWithLifecycle` catches every exception first.  A user with expired credentials sees a raw `StsException: The security token included in the request is expired` cause chain.
 
 ## What Changes
 
 - **Boundary rule.**  New unit-tier ArchUnit tests over main classes only, with no allowlist:
-  - no class outside `providers.aws..` and `services.aws..` depends on `software.amazon.awssdk..`;
+  - no class outside `providers.aws..`, `services.aws..` and `compactorlease.aws..` depends on `software.amazon.awssdk..`;
   - the same applies to SDK types that appear only in a `catch` clause (a custom condition: the stock rule misses them);
   - `providers..` does not depend on `services..`;
   - `configuration..` does not depend on `providers..`.
@@ -21,11 +21,14 @@ It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are de
   - Sites that already print a detailed message rethrow as `CommandFailedException(message, cause)`, so the user sees one error block, not two.
 - **Leak sites routed.**
   - `SparkJobState` enum, mapped inside `EMRSparkService`.
-  - `OpenSearchService.describeDomainOrNull`.
+  - `OpenSearchService.lookupDomain`, which returns found, not found or unavailable.
   - `AWSClientFactory` takes a `String` region and adds `requireValidRegion`.
   - `AwsKeyPairService` in `services/aws` takes the key-pair code out of `User`.
-  - `CompactorTaskDefinition` and its `tempo-backend.yaml` move to `services/aws`.
-  - `EcrPullSecretService` moves to `services/aws` behind a new `ImagePullSecretService` interface.
+  - `AMIService.deleteWithSnapshots` returns an AWS failure as a value for `prune-amis`.
+  - `AWSResourceSetupService.getAccountId` emits the `show-iam-policies` credential message.
+  - `DataBucketTeardown` and `EMRProvisioningService` move to `services/aws`; both are AWS-only.
+  - The lease agent's S3 adapter (`S3ConditionalObjects`, and the client built in `withS3LeaseStore`) moves to `compactorlease/aws`.
+  - `CompactorAgentInstaller` moves from `configuration/compactor` to `services`: it runs SSH commands.
   - `Packer` gets `AWSCredentialsManager` from Koin as a factory.
   - `providers/ssm` moves to `providers/aws/ssm`.
 - **Koin split.**  `AWSModule` becomes `providers/aws/AwsClientsModule` (SDK clients, credentials, the error handler, SSM) and `services/aws/AwsServicesModule` (bindings for service classes).
@@ -41,12 +44,12 @@ It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are de
 ### Modified Capabilities
 
 - `spark-emr`: `spark status` reports a project-owned job state; an unknown EMR state shows as `UNKNOWN`.
-- `opensearch`: `opensearch status` for a missing domain keeps today's not-found output.
+- `opensearch`: `opensearch status` for a missing domain keeps today's not-found output, and an AWS failure keeps today's warning.
 - `setup`: profile setup's region validation and key-pair creation behave as today; credential and permission failures are classified the same way as command failures.
 
 ## Impact
 
-- About 30 main files move or change, plus their tests.  `providers/ssm` (6 files) and `CompactorTaskDefinition` change package.
+- About 30 main files move or change, plus their tests.  `providers/ssm` (6 files), `DataBucketTeardown`, `EMRProvisioningService`, `CompactorAgentInstaller` and `S3ConditionalObjects` change package.
 - User-visible changes:
   - expired or missing credentials, and 403s, get a message with a remedy;
   - an STS 403 caused by bad credentials is now reported as a credentials error, not a permissions error;

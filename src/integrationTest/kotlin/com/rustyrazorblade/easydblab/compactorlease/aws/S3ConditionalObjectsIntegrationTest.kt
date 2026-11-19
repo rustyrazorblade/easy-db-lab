@@ -1,6 +1,8 @@
-package com.rustyrazorblade.easydblab.compactorlease
+package com.rustyrazorblade.easydblab.compactorlease.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjects
+import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjectsContract
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
 

@@ -19,7 +19,7 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 #### Scenario: Permission denied from each AWS service
 
-- **GIVEN** an AWS call that fails with a permission error (`AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, or another 403) from STS, S3, EC2, IAM, ECS, EMR or OpenSearch
+- **GIVEN** an AWS call that fails with a permission error (`AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, or another 403) from STS, S3, EC2, IAM, EMR or OpenSearch
 - **WHEN** the command fails
 - **THEN** the user sees a permission-denied message
 - **AND** the message names the lab IAM policy that grants that service, and the command that prints it
@@ -82,7 +82,7 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 #### Scenario: Already-explained failures print one error block
 
-- **GIVEN** a site that already emits a detailed failure event, such as the profile credential check, the key-pair permission path, or the compactor's ECS access check
+- **GIVEN** a site that already emits a detailed failure event, such as the profile credential check or the key-pair permission path
 - **WHEN** that site fails
 - **THEN** the user sees that site's detailed message once
 - **AND** no second provider or execution-error block follows it

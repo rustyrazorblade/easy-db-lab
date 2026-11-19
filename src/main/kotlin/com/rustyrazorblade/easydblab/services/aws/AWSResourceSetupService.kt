@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 
 private val log = KotlinLogging.logger {}
 
@@ -64,9 +65,19 @@ class AWSResourceSetupService(
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
      *
+     * An AWS failure emits [Event.Command.IamPoliciesCredentialError] and is rethrown unchanged, so
+     * the command still fails and the provider error is still reported; any other failure propagates
+     * with no credential message.
+     *
      * @return The AWS account ID
      */
-    fun getAccountId(): String = accountIdentity.getAccountId()
+    fun getAccountId(): String =
+        try {
+            accountIdentity.getAccountId()
+        } catch (e: SdkException) {
+            eventBus.emit(Event.Command.IamPoliciesCredentialError)
+            throw e
+        }
 
     /**
      * Re-applies the instance role's inline policies, so `up` always launches instances under the

@@ -408,7 +408,7 @@ class Up(
                 val vpcTags = vpcService.getVpcTags(existingVpcId)
                 if (vpcTags[Constants.Vpc.BUCKET_TAG_KEY] == null) {
                     log.info { "Backfilling '${Constants.Vpc.BUCKET_TAG_KEY}' tag on VPC $existingVpcId" }
-                    vpcService.addTagsToVpc(existingVpcId, mapOf(Constants.Vpc.BUCKET_TAG_KEY to bucket))
+                    vpcService.addTags(listOf(existingVpcId), mapOf(Constants.Vpc.BUCKET_TAG_KEY to bucket))
                 }
             }
 

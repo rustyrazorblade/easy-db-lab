@@ -226,7 +226,7 @@ class EC2VpcService(
 
         // Apply tags to the route table if provided
         if (tags.isNotEmpty()) {
-            createTags(routeTableId, tags = tags)
+            createTags(listOf(routeTableId), tags)
             log.info { "Applied tags to route table: $routeTableId" }
         }
 
@@ -316,11 +316,11 @@ class EC2VpcService(
         tags: Map<String, String>,
     ) {
         log.info { "Adding tags to $resourceIds: ${tags.keys}" }
-        createTags(*resourceIds.toTypedArray(), tags = tags)
+        createTags(resourceIds, tags)
     }
 
     private fun createTags(
-        vararg resourceIds: String,
+        resourceIds: List<String>,
         tags: Map<String, String>,
     ) {
         val awsTags =
@@ -335,7 +335,7 @@ class EC2VpcService(
         val createTagsRequest =
             CreateTagsRequest
                 .builder()
-                .resources(*resourceIds)
+                .resources(resourceIds)
                 .tags(awsTags)
                 .build()
 
@@ -445,14 +445,6 @@ class EC2VpcService(
                 ?: error("VPC $vpcId not found")
 
         return vpc.tags().associate { it.key() to it.value() }
-    }
-
-    override fun addTagsToVpc(
-        vpcId: VpcId,
-        tags: Map<String, String>,
-    ) {
-        log.info { "Adding tags to VPC $vpcId: ${tags.keys}" }
-        createTags(vpcId, tags = tags)
     }
 
     override fun findInstancesInVpc(vpcId: VpcId): List<InstanceId> {

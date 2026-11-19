@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 
 /**
@@ -61,7 +62,7 @@ class EbpfExporterManifestBuilder {
      * Mounts kernel, BPF, proc, modules, and kernel source directories.
      */
     @Suppress("LongMethod")
-    fun buildDaemonSet() =
+    fun buildDaemonSet(): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)

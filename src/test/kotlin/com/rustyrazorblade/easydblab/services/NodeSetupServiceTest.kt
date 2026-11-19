@@ -44,7 +44,7 @@ class NodeSetupServiceTest {
     @BeforeEach
     fun setup() {
         whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
-        whenever(remoteOps.upload(any(), any(), any())).thenAnswer {
+        whenever(remoteOps.upload(any(), any(), any(), any())).thenAnswer {
             val target = it.getArgument<Host>(0).alias
             val source = it.getArgument<Path>(1)
             if (Files.exists(source)) uploads.getOrPut(target) { mutableListOf() }.add(Files.readString(source))
@@ -89,7 +89,7 @@ class NodeSetupServiceTest {
         val order = inOrder(remoteOps)
         order.verify(remoteOps).executeRemotely(eq(db0), eq("rm -rf node-tuning"), any(), any())
         order.verify(remoteOps).uploadDirectory(eq(db0), any<File>(), eq("node-tuning"))
-        order.verify(remoteOps).upload(eq(db0), any(), eq("setup_instance.sh"))
+        order.verify(remoteOps).upload(eq(db0), any(), eq("setup_instance.sh"), any())
         order.verify(remoteOps).executeRemotely(eq(db0), eq("sudo bash setup_instance.sh"), any(), any())
         assertThat(uploadedFiles).containsExactlyElementsOf(Constants.NodeTuning.FILES.sorted())
     }

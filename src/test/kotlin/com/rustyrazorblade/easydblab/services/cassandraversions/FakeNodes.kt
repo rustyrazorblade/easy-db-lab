@@ -102,6 +102,7 @@ class FakeNodes : RemoteOperationsService {
         host: Host,
         local: Path,
         remote: String,
+        notice: String,
     ) = error("the install path uploads nothing")
 
     override fun uploadDirectory(

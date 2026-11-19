@@ -525,6 +525,71 @@ class SetupProfileTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a misspelt region is reported and asked for again before any AWS call`() {
+            testPrompter =
+                TestPrompter(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "AWS Profile" to "my-profile",
+                        "IAM policies" to "N",
+                    ),
+                )
+            testPrompter.addSequentialResponses("AWS region", "us-wset-2", "us-west-2")
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            assertThat(bufferedOutput.errors.joinToString("\n") { it.first }).contains("'us-wset-2' is not an AWS region")
+            assertThat(bufferedOutput.messages.joinToString("\n")).contains("Account setup complete!")
+            assertThat(testPrompter.getCallLog().count { it.question.contains("AWS region") }).isEqualTo(2)
+            val region = argumentCaptor<String>()
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(any(), region.capture())
+            assertThat(region.allValues).containsExactly("us-west-2")
+        }
+
+        @Test
+        fun `a saved unknown region is asked for again, not reused, and the saved profile is kept`() {
+            testPrompter = TestPrompter(mapOf("IAM policies" to "N"))
+            testPrompter.addSequentialResponses("AWS region", "eu-west-1")
+            setupTestModule()
+            whenever(mockUserConfigProvider.loadExistingConfig())
+                .thenReturn(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "region" to "mars-north-1",
+                        "awsProfile" to "saved-profile",
+                        "keyName" to "test-key",
+                        // Empty, so the profile is not fully set up and setup runs the credential loop.
+                        "s3Bucket" to "",
+                    ),
+                )
+
+            SetupProfile().execute()
+
+            val profile = argumentCaptor<String>()
+            val region = argumentCaptor<String>()
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(profile.capture(), region.capture())
+            assertThat(region.allValues).containsExactly("eu-west-1")
+            // Only the region failed, so the saved profile is still the one used and is not asked for.
+            assertThat(profile.allValues).containsExactly("saved-profile")
+            assertThat(testPrompter.wasPromptedFor("AWS Profile")).isFalse()
+        }
+
+        @Test
+        fun `setup fails after the last attempt gives an unknown region`() {
+            testPrompter = TestPrompter(mapOf("email" to "user@test.com", "AWS Profile" to "my-profile"))
+            testPrompter.addSequentialResponses("AWS region", "nowhere-1")
+            setupTestModule()
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOf(SetupProfileException::class.java)
+                .hasMessageContaining("nowhere-1")
+            assertThat(testPrompter.getCallLog().count { it.question.contains("AWS region") })
+                .isEqualTo(SetupProfile.MAX_CREDENTIAL_RETRIES)
+            verify(mockAwsClientFactory, never()).createAccountIdentityWithProfile(any(), any())
+        }
+
+        @Test
         fun `execute throws SetupProfileException after max retries when credentials are invalid`() {
             // Given - AWS checkPermissions always throws exception
             doThrow(RuntimeException("Invalid credentials")).whenever(mockAws).checkPermissions()

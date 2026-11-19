@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Clock
 
@@ -11,9 +12,11 @@ import java.time.Clock
  * and feeds it to [health]: on the change to unhealthy it closes the [latch] (no join permit, no
  * replacement) and reports it, on recovery it opens the latch and reports how long it lasted, and
  * past the unhealthy deadline it calls [onFailed] with a reason naming the last sample, because
- * the control node has failed. A sampler that throws counts as an unreachable API server.
+ * the control node has failed. A sampler that throws counts as an unreachable API server, unless
+ * the monitor was stopped while it ran.
  *
- * `NodeBringUp` runs [tick] on a [Ticker] from the K3s server's start until the last pipeline ends.
+ * `ControlPipeline` runs [tick] on a [Ticker] from the K3s server's start until the last pipeline
+ * ends, and calls [stop] before it closes the ticker.
  */
 class ControlPlaneHealthMonitor(
     private val sampler: HealthSampler,
@@ -24,9 +27,24 @@ class ControlPlaneHealthMonitor(
     private val clock: Clock,
     private val onFailed: (reason: String) -> Unit,
 ) {
+    @Volatile private var stopped = false
+
+    /**
+     * Marks the monitor stopped, before its ticker is closed. Closing the ticker interrupts a sample
+     * in flight, and the client may fail without leaving the interrupt flag set; a sample that ends
+     * after this is not recorded.
+     */
+    fun stop() {
+        stopped = true
+    }
+
     /** Takes one sample and acts on what it changed. */
     fun tick() {
-        when (val transition = health.record(sample(), clock.instant())) {
+        if (stopped) return
+        val sample = sample()
+        // A sample cut short by the monitor's stop says nothing about the control plane.
+        if (stopped || Thread.currentThread().isInterrupted) return
+        when (val transition = health.record(sample, clock.instant())) {
             ControlPlaneHealth.Transition.None -> Unit
             is ControlPlaneHealth.Transition.BecameUnhealthy -> {
                 latch.markUnhealthy()
@@ -43,11 +61,7 @@ class ControlPlaneHealthMonitor(
     }
 
     private fun sample(): ControlPlaneHealth.Sample =
-        try {
-            sampler.sample()
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
+        runCatchingInterruptibly { sampler.sample() }.getOrElse { e ->
             log.debug(e) { "Health sample failed" }
             ControlPlaneHealth.Sample.Unreachable(e.messageOrString())
         }

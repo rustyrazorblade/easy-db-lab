@@ -21,7 +21,6 @@ import org.apache.commons.io.FileUtils
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import java.io.File
 import java.time.Duration
 import kotlin.io.path.createTempDirectory
@@ -34,7 +33,6 @@ class Packer(
     private val docker: Docker by inject { parametersOf(context) }
     private val packerImage: PackerImage by inject { parametersOf(docker) }
     private val eventBus: EventBus by inject()
-    private val credentialsProvider: AwsCredentialsProvider by inject()
     private val user: User by inject()
 
     // Used on build failure to capture diagnostics from, and tear down, the kept instance.
@@ -42,8 +40,8 @@ class Packer(
     private val ec2InstanceService: EC2InstanceService by inject()
     private val remoteOps: RemoteOperationsService by inject()
 
-    private val awsCredentialsManager by lazy { AWSCredentialsManager(context.profileDir, credentialsProvider) }
-    private val secretKeyFile by lazy { File(context.profileDir, "secret.pem") }
+    private val awsCredentialsManager: AWSCredentialsManager by inject()
+    private val secretKeyFile by lazy { File(context.profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE) }
 
     private val containerWorkingDir = Constants.Paths.LOCAL_MOUNT
     private val logger = KotlinLogging.logger {}

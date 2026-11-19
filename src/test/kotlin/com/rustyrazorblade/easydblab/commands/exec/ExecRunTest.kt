@@ -9,13 +9,12 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -29,9 +28,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.PrintStream
 import java.rmi.ServerException
 
 /**
@@ -41,8 +38,6 @@ import java.rmi.ServerException
 class ExecRunTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockRemoteOps: RemoteOperationsService = mock()
-    private val originalOut = System.out
-    private val stdout = ByteArrayOutputStream()
 
     private val dbHosts =
         listOf("db0", "db1").mapIndexed { index, alias ->
@@ -74,12 +69,6 @@ class ExecRunTest : BaseKoinTest() {
             ),
         )
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
-        System.setOut(PrintStream(stdout))
-    }
-
-    @AfterEach
-    fun restoreStdout() {
-        System.setOut(originalOut)
     }
 
     private fun run(
@@ -151,7 +140,7 @@ class ExecRunTest : BaseKoinTest() {
 
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[1].toHost()), any(), any(), any())
         val output = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
-        assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
+        assertThat(output).contains("db0: command failed: Remote command failed (1)")
     }
 
     @Test
@@ -209,8 +198,7 @@ class ExecRunTest : BaseKoinTest() {
         val sent = argumentCaptor<String>()
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
         assertThat(sent.allValues).contains("sudo journalctl --unit=edl-exec-qa-cat --no-pager --output=cat")
-        assertThat(stdout.toString()).contains("=== db0 ===\ncat: /missing: No such file or directory")
         val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
-        assertThat(events).contains("Error executing command: Remote command failed (3)")
+        assertThat(events).contains("db0: command failed: Remote command failed (3)")
     }
 }

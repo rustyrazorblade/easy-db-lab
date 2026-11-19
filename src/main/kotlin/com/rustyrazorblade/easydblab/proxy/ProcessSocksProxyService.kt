@@ -637,7 +637,8 @@ class ProcessSocksProxyService(
                 socket.connect(InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, port), VERIFY_CONNECT_TIMEOUT_MS)
             }
             true
-        } catch (_: Exception) {
+        } catch (_: IOException) {
+            // Refused, unreachable, or timed out (SocketTimeoutException): nothing is accepting.
             false
         }
 

@@ -27,6 +27,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tests for the Cilium branch of [Up]: the install on the K3s server-ready hook, the Tailscale
@@ -129,7 +130,7 @@ class UpCiliumTest : UpTestFixture() {
     // =========================================================================
 
     private fun captureEvents(): List<Event> {
-        val emitted = mutableListOf<Event>()
+        val emitted = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -262,7 +263,7 @@ class UpCiliumTest : UpTestFixture() {
         whenever(mockGrafanaClient.createAnnotation(any(), any()))
             .thenThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000/api/annotations returned 502"))
 
-        val emitted = mutableListOf<Event>()
+        val emitted = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {

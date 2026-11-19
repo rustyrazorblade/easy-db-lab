@@ -111,7 +111,7 @@ class EC2RegistryServiceTest : BaseKoinTest() {
     fun `generateAndUploadCert should propagate SSH exceptions`() {
         // Given
         org.mockito.kotlin
-            .whenever(mockRemoteOps.upload(eq(controlHost), any(), any()))
+            .whenever(mockRemoteOps.upload(eq(controlHost), any(), any(), any()))
             .thenThrow(RuntimeException("SSH connection refused"))
 
         // When/Then
@@ -178,7 +178,7 @@ class EC2RegistryServiceTest : BaseKoinTest() {
     fun `configureTlsOnNode should propagate SSH exceptions`() {
         // Given
         org.mockito.kotlin
-            .whenever(mockRemoteOps.upload(eq(workerHost), any(), any()))
+            .whenever(mockRemoteOps.upload(eq(workerHost), any(), any(), any()))
             .thenThrow(RuntimeException("S3 access denied"))
 
         val registryHost = controlHost.private

@@ -45,6 +45,7 @@ data class BringUpTiming(
     val sshInterval: Duration = Duration.ofSeconds(Constants.Scale.SSH_PROBE_INTERVAL_SECONDS),
     val retryInterval: Duration = Duration.ofSeconds(Constants.Scale.STEP_RETRY_INTERVAL_SECONDS),
     val attemptStopGrace: Duration = Duration.ofSeconds(Constants.Scale.ATTEMPT_STOP_GRACE_SECONDS),
+    val pipelineStopGrace: Duration = Duration.ofSeconds(Constants.Scale.PIPELINE_STOP_GRACE_SECONDS),
     val imageCheck: Duration = Duration.ofSeconds(Constants.Scale.IMAGE_CHECK_TIMEOUT_SECONDS),
     val setup: StepPolicy = StepPolicy.SETUP,
     val registryTls: StepPolicy = StepPolicy.REGISTRY_TLS,

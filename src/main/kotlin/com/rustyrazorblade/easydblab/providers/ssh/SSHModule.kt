@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.koin.dsl.module
 
 /**
@@ -15,7 +15,7 @@ import org.koin.dsl.module
  * - RemoteOperationsService as a factory (stateless operations)
  *
  * Note: SSHConfiguration must be provided by another module (e.g., contextModule), and
- * SsmSessionCommandBuilder by the SSM module.
+ * the SSM transport classes (SsmSshRoute and its parts) by AwsClientsModule.
  */
 val sshModule =
     module {

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -37,7 +38,8 @@ class ExecList : PicoBaseCommand() {
         for (type in types) {
             hostOperationsService.withHosts(clusterState.hosts, type, hosts.hostList, parallel = true) { host ->
                 val h = host.toHost()
-                try {
+                // A host that is not reachable is skipped silently.
+                runCatchingException {
                     val result =
                         remoteOps.executeRemotely(
                             h,
@@ -49,8 +51,6 @@ class ExecList : PicoBaseCommand() {
                     if (output.isNotEmpty()) {
                         println("=== ${h.alias} ===\n$output")
                     }
-                } catch (_: Exception) {
-                    // Host may not be reachable, skip silently
                 }
             }
         }

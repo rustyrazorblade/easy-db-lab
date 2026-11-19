@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services.bringup
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
 import com.rustyrazorblade.easydblab.messageOrString
 import java.time.Clock
@@ -49,7 +48,7 @@ fun interface LaunchSink {
 class NodeBringUp(
     private val ports: BringUpPortSet,
     private val settings: BringUpSettings,
-    private val eventBus: EventBus,
+    private val reporting: BringUpReporting,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -58,9 +57,13 @@ class NodeBringUp(
      * after the pipelines already started are stopped.
      */
     fun run(launch: (LaunchSink) -> Unit): BringUpResult =
-        BringUpRun(ports, settings, eventBus, clock).use { run ->
-            Executors.newVirtualThreadPerTaskExecutor().use { executor ->
-                Coordinator(run, executor).bringUp(launch)
+        BringUpRun(ports, settings, reporting, clock).use { run ->
+            PipelineThreads(run.timing.pipelineStopGrace) { running ->
+                run.eventBus.emit(Event.Provision.PipelinesAbandoned(running, run.timing.pipelineStopGrace.toMillis()))
+            }.use { threads ->
+                Executors.newThreadPerTaskExecutor(threads).use { executor ->
+                    Coordinator(run, executor).bringUp(launch)
+                }
             }
         }
 
@@ -111,7 +114,9 @@ class NodeBringUp(
                 ServerType.Control -> hosts.firstOrNull()?.let(::startControl)
                 ServerType.Cassandra, ServerType.Stress ->
                     hosts.filter { run.settings.includes(it.alias) }.forEach { host ->
-                        nodes.computeIfAbsent(host.alias) { submit { NodePipeline(run, serverType, host, origin).run() } }
+                        nodes.computeIfAbsent(host.alias) {
+                            submit(host.alias) { NodePipeline(run, serverType, host, origin).run() }
+                        }
                     }
             }
             // A node handed over after the control node failed has nothing to join: stop it too.
@@ -121,7 +126,7 @@ class NodeBringUp(
         private fun startControl(host: ClusterHost) {
             if (!controlStarted.complete(Unit)) return
             controlTask =
-                submit {
+                submit(host.alias) {
                     try {
                         ControlPipeline(run, host) { reason -> controlFailed(ControlNodeFailedException(host.alias, HEALTH, reason)) }
                             .run()
@@ -138,7 +143,9 @@ class NodeBringUp(
         /** The control node failed: record why first, so every waiter sees it, report it once, then stop every node. */
         private fun controlFailed(failure: ControlNodeFailedException) {
             if (!controlFailure.complete(failure)) return
-            run.eventBus.emit(Event.Provision.ControlNodeFailed(failure.alias, failure.step, failure.reason))
+            run.eventBus.emit(
+                Event.Provision.ControlNodeFailed(failure.alias, failure.step, failure.reason, run.nodeOutput.tail(failure.alias)),
+            )
             nodes.values.forEach { it.cancel(true) }
         }
 
@@ -152,8 +159,13 @@ class NodeBringUp(
                 throw controlFailure.getNow(null) ?: (e.cause ?: e)
             }
 
-        private fun <T> submit(task: () -> T): Future<T> =
+        /** Runs [task] on a pipeline thread named [alias], so one left running is reported by its node. */
+        private fun <T> submit(
+            alias: String,
+            task: () -> T,
+        ): Future<T> =
             executor.submit<T> {
+                Thread.currentThread().name = alias
                 commandName?.let(EventContext::push)
                 task()
             }

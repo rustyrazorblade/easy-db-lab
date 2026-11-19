@@ -4,10 +4,18 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.services.toEvent
+import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
@@ -27,6 +35,7 @@ class AWSResourceSetupService(
     private val iamRoles: IamRoles,
     private val eventBus: EventBus,
     private val instanceRolePolicies: InstanceRolePolicies,
+    private val errorHandler: ProviderErrorHandler,
 ) {
     companion object {
         // Error messages
@@ -56,6 +65,9 @@ class AWSResourceSetupService(
 
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
+     *
+     * A failure propagates unchanged; the command failure reporter turns an AWS credentials or
+     * permission failure into one provider error with its remedy.
      *
      * @return The AWS account ID
      */
@@ -130,29 +142,39 @@ class AWSResourceSetupService(
 
     /**
      * Validates AWS credentials before attempting any operations.
-     * Provides user-friendly guidance for credential and permission errors.
+     *
+     * A credentials or permission failure is reported here as the same [Event.Command.ProviderError]
+     * the command failure reporter emits, with the handler's remedy, and is rethrown as a
+     * [CommandFailedException] so the reporter does not report it again. Any other failure (a
+     * network error, clock skew, a bug) is rethrown unchanged: the reporter shows its real cause.
      */
     private fun validateCredentials() {
         try {
             accountIdentity.checkPermissions()
-        } catch (e: Exception) {
-            emitCredentialError(e)
+        } catch (e: SdkException) {
+            if (reportCredentialFailure(e)) {
+                log.error(e) { "AWS credential validation failed" }
+                // This exception's own message goes to the debug log only, never to the user.
+                throw CommandFailedException("AWS credential validation failed: ${e.message}", e)
+            }
             throw e
         }
     }
 
-    private fun emitCredentialError(e: Exception) {
-        when (e) {
-            is software.amazon.awssdk.services.sts.model.StsException -> {
-                if (e.statusCode() == Constants.HttpStatus.FORBIDDEN) {
-                    handlePermissionError(e)
-                } else {
-                    handleAuthenticationError(e)
-                }
-            }
-            is software.amazon.awssdk.core.exception.SdkServiceException -> handlePermissionError(e)
-            else -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
-        }
+    /**
+     * Emits the provider error for a credentials or permission failure; returns whether it did.
+     *
+     * Credentials that do not work are followed by the lab's IAM policies, which a new user attaches
+     * once the credentials work. A permission failure is not: the only call here is STS
+     * GetCallerIdentity, which needs no IAM permission, so no lab policy fixes it, and the remedy
+     * says what does.
+     */
+    private fun reportCredentialFailure(e: SdkException): Boolean {
+        val description = errorHandler.describe(e) ?: return false
+        if (description.kind == ProviderErrorKind.UNAVAILABLE) return false
+        eventBus.emit(description.toEvent())
+        if (description.kind == ProviderErrorKind.CREDENTIALS) showRequiredPolicies()
+        return true
     }
 
     /**
@@ -216,69 +238,15 @@ class AWSResourceSetupService(
     }
 
     /**
-     * Handles authentication errors (invalid/missing credentials).
-     * Provides guidance for reconfiguring easy-db-lab profile.
+     * Shows every lab IAM policy, numbered, after a credentials failure: the header names them and
+     * their count, and the policies keep the `ACCOUNT_ID` placeholder, since no account is known.
      */
-    private fun handleAuthenticationError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
-        eventBus.emit(Event.AwsSetup.AuthenticationError(exception.message ?: "Unknown error"))
-
-        // Show required IAM policies
-        val policies = AWSPolicy.UserIAM.loadAll("ACCOUNT_ID")
+    private fun showRequiredPolicies() {
+        val policies = AWSPolicy.UserIAM.loadAll(Constants.AWS.ACCOUNT_ID_PLACEHOLDER)
+        eventBus.emit(Event.AwsSetup.RequiredPolicies(policies.map { it.name }))
         policies.forEachIndexed { index, policy ->
-            eventBus.emit(
-                Event.AwsSetup.PolicyDisplay(
-                    index = index + 1,
-                    name = policy.name,
-                    body = policy.body,
-                ),
-            )
+            eventBus.emit(Event.AwsSetup.PolicyDisplay(index = index + 1, name = policy.name, body = policy.body))
         }
-
         eventBus.emit(Event.AwsSetup.PolicySeparator)
-    }
-
-    /**
-     * Handles permission errors (valid credentials but insufficient permissions).
-     * Provides detailed IAM policy guidance.
-     */
-    private fun handlePermissionError(exception: software.amazon.awssdk.core.exception.SdkServiceException) {
-        eventBus.emit(
-            Event.AwsSetup.IamPermissionError(
-                """
-                |
-                |========================================
-                |AWS PERMISSION ERROR
-                |========================================
-                |
-                |Error: ${exception.message}
-                |
-                |To fix this issue, add the following IAM policies to your AWS user.
-                |You need to create THREE separate inline policies:
-                |
-                """.trimMargin(),
-            ),
-        )
-
-        // Try to get account ID, fallback to placeholder if that fails
-        val accountId =
-            try {
-                accountIdentity.getAccountId()
-            } catch (e: Exception) {
-                eventBus.emit(Event.AwsSetup.AccountIdNote)
-                "ACCOUNT_ID"
-            }
-
-        val policies = AWSPolicy.UserIAM.loadAll(accountId)
-        policies.forEachIndexed { index, policy ->
-            eventBus.emit(
-                Event.AwsSetup.PolicyDisplay(
-                    index = index + 1,
-                    name = policy.name,
-                    body = policy.body,
-                ),
-            )
-        }
-
-        eventBus.emit(Event.AwsSetup.PolicyRecommendation)
     }
 }

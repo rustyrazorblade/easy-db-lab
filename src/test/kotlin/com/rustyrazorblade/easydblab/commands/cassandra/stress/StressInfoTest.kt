@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.captureStdout
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -65,15 +66,16 @@ class StressInfoTest : BaseKoinTest() {
             .thenReturn(Result.success("Workload info output"))
 
         val command = StressInfo()
-        command.execute()
+        val printed = captureStdout { command.execute() }
 
         verify(mockStressJobService).runCommand(
             any(),
             argThat { this == listOf("info") },
         )
 
-        val output = outputHandler.messages.joinToString("\n")
-        assertThat(output).contains("Workload info output")
+        // The job output is plain, untagged text, and no event carries it.
+        assertThat(printed).isEqualTo("Workload info output\n")
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("Workload info output")
     }
 
     @Test

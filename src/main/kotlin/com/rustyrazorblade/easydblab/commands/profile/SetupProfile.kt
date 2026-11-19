@@ -487,6 +487,8 @@ class SetupProfile : PicoBaseCommand() {
             userConfig.keyName = keyName
             userConfigProvider.saveUserConfig(userConfig)
             eventBus.emit(Event.Setup.KeyPairSaved)
+        } else {
+            keyPairService.ensureMarkerTags(userConfig)
         }
     }
 
@@ -500,10 +502,11 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates an S3 bucket for shared resources if one doesn't exist.
+     * Creates an S3 bucket for shared resources if one doesn't exist, and gives an existing one
+     * any marker tag it lacks.
      */
     private fun ensureS3Bucket(userConfig: User) {
-        s3BucketService.ensureAccountBucket(userConfig)
+        s3BucketService.ensureMarkedAccountBucket(userConfig)
     }
 
     /**

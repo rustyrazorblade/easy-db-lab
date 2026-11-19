@@ -96,7 +96,8 @@ class AwsKeyPairService(
             } catch (e: Ec2Exception) {
                 if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_KEY_PAIR_NOT_FOUND) throw e
                 throw ConfigurationException(
-                    "The key pair $keyName named in the profile does not exist in this region. Run `profile setup` again.",
+                    "The key pair $keyName named in the profile does not exist in this region. " +
+                        "Clear keyName in the profile settings, then run `profile setup` to create a new one.",
                     e,
                 )
             }

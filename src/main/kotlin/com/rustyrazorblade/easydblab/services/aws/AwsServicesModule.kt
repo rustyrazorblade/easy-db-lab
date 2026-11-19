@@ -158,6 +158,7 @@ val awsServicesModule =
 
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
         factory { AwsKeyPairService(get(), get(), get<AwsErrorHandler>()) }
+        factory { ProfileResourceMarkers(get(), get()) }
 
         factory { BucketRegion(get()) }
         factory {

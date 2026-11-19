@@ -67,6 +67,20 @@ class AwsS3BucketService(
      */
     fun ensureAccountBucket(user: User): String {
         if (user.s3Bucket.isNotBlank()) return user.s3Bucket
+        return createAccountBucket(user)
+    }
+
+    /**
+     * [ensureAccountBucket], then [ensureMarkerTags] on a bucket the profile already named. A
+     * bucket made by this call already carries every marker, so it is not read back.
+     */
+    fun ensureMarkedAccountBucket(user: User): String {
+        if (user.s3Bucket.isBlank()) return createAccountBucket(user)
+        ensureMarkerTags(user.s3Bucket)
+        return user.s3Bucket
+    }
+
+    private fun createAccountBucket(user: User): String {
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         createBucket(bucketName)

@@ -130,6 +130,38 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         verifyNoInteractions(mockS3Client)
     }
 
+    /** A bucket made in this call already carries both markers; reading it back would tag it twice. */
+    @Test
+    fun `a marked account bucket created now is tagged once and never read back`() {
+        val user = get<User>().apply { s3Bucket = "" }
+
+        val bucketName = service.ensureMarkedAccountBucket(user)
+
+        assertThat(bucketName).startsWith("easy-db-lab-")
+        verify(mockS3Client).putBucketTagging(any<PutBucketTaggingRequest>())
+        verify(mockS3Client, never()).getBucketTagging(any<GetBucketTaggingRequest>())
+    }
+
+    @Test
+    fun `a marked account bucket the profile already names gains a missing marker`() {
+        whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
+            GetBucketTaggingResponse.builder().tagSet(s3Tags("easy_cass_lab" to "1")).build(),
+        )
+        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+
+        assertThat(service.ensureMarkedAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+
+        val request = argumentCaptor<PutBucketTaggingRequest>()
+        verify(mockS3Client).putBucketTagging(request.capture())
+        assertThat(
+            request.firstValue
+                .tagging()
+                .tagSet()
+                .associate { it.key() to it.value() },
+        ).containsExactlyInAnyOrderEntriesOf(mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1"))
+        verify(mockS3Client, never()).createBucket(any<CreateBucketRequest>())
+    }
+
     @Test
     fun `a bucket with only the legacy marker gains the new one and keeps its other tags`() {
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(

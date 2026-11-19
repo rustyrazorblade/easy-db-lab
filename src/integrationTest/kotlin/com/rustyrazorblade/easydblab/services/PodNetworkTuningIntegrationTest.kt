@@ -33,6 +33,13 @@ class PodNetworkTuningIntegrationTest {
     private companion object {
         const val API_SERVER_DROP_IN = "/etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml"
         const val POD_TIMEOUT_SECONDS = 120L
+
+        /** The keys a pod keeps at the kernel default (R1), with the value a new network namespace starts with. */
+        val KERNEL_DEFAULT_KEYS =
+            mapOf(
+                "net.ipv4.ip_local_port_range" to "32768 60999",
+                "net.ipv4.ip_local_reserved_ports" to "",
+            )
     }
 
     private val container: K3sContainer = SharedK3s.newContainer(Constants.NodeTuning.POD_SYSCTL_PROBE_IMAGE)
@@ -151,8 +158,8 @@ class PodNetworkTuningIntegrationTest {
     }
 
     @Test
-    fun `a real pod starts and its network namespace runs the tuned values`() {
-        val keys = sysctls.keys
+    fun `a real pod starts and its network namespace runs the tuned values and the kernel default port range`() {
+        val keys = sysctls.keys + KERNEL_DEFAULT_KEYS.keys
         val command = keys.joinToString("; ") { "echo $it=$(cat /proc/sys/${it.replace('.', '/')})" }
         val reader =
             pod("reads-sysctls") {
@@ -184,6 +191,6 @@ class PodNetworkTuningIntegrationTest {
                         .split(Regex("\\s+"))
                         .joinToString(" ")
             }
-        assertThat(read).isEqualTo(sysctls)
+        assertThat(read).isEqualTo(sysctls + KERNEL_DEFAULT_KEYS)
     }
 }

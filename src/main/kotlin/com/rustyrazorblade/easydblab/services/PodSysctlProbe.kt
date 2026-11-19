@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.api.model.Pod
@@ -46,16 +47,17 @@ fun interface PodSysctlProbe {
  *
  * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
  * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable] (see [resultOf]).
- * So is a client that could not be made, so a workspace with no usable kubeconfig goes through the
- * same retry, deadline and typed event in [PodNetworkTuning]. fabric8 wraps a transport failure
+ * So is a workspace with no kubeconfig, or one that could not be read, so it goes through the same
+ * retry, deadline and typed event in [PodNetworkTuning]; a kubeconfig that does not parse is a defect
+ * and throws. fabric8 wraps a transport failure
  * below it in a [KubernetesClientException] with no status, which [resultOf] already maps.
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
 ) : PodSysctlProbe {
     /**
-     * Only a failure to make the client (the workspace has no kubeconfig, or it could not be read or
-     * parsed) is an unreachable cluster here; a defect in the request itself still throws.
+     * Only a workspace with no kubeconfig, or one that could not be read, is an unreachable cluster
+     * here; any other failure to make the client, or a defect in the request, still throws.
      */
     override fun probe(): ProbeResult {
         val client =
@@ -63,7 +65,7 @@ class Fabric8PodSysctlProbe(
                 clientProvider.createClient()
             } catch (e: IOException) {
                 return ProbeResult.Unreachable(e.reason())
-            } catch (e: IllegalStateException) {
+            } catch (e: KubeconfigNotFoundException) {
                 return ProbeResult.Unreachable(e.reason())
             }
         return client.use {

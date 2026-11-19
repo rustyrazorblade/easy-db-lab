@@ -63,7 +63,9 @@ class PodNetworkTuning(
         missing: List<String>,
         reason: String?,
     ): Nothing {
-        eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, reason))
+        eventBus.emit(
+            Event.Platform.PodSysctlPolicyNotInEffect(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, missing, readyTimeout.seconds, reason),
+        )
         throw CommandFailedException(
             "The pod network sysctl policy was not in effect after ${readyTimeout.seconds}s; a new pod lacks $missing" +
                 reason?.let { " ($it)" }.orEmpty(),

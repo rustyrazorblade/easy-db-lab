@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import io.fabric8.kubernetes.api.model.StatusBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -49,6 +52,23 @@ class Fabric8PodSysctlProbeTest {
 
         assertThat(result).isInstanceOf(ProbeResult.Unreachable::class.java)
         assertThat((result as ProbeResult.Unreachable).reason).contains("kubeconfig not found")
+    }
+
+    @Test
+    fun `a kubeconfig that does not parse is not unreachable, so up fails at once instead of waiting`(
+        @TempDir workspace: File,
+        @TempDir userDirectory: File,
+    ) {
+        WorkspaceKubeconfig.file(workspace).apply { parentFile.mkdirs() }.writeText("{ this is not a kubeconfig")
+        val provider =
+            K8sClientProvider(
+                Context(easyDbLabUserDirectory = userDirectory, workingDirectory = workspace),
+                ProxiedKubernetesClientFactory(),
+            )
+
+        assertThatThrownBy { Fabric8PodSysctlProbe(provider).probe() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .isNotInstanceOf(KubeconfigNotFoundException::class.java)
     }
 
     @Test

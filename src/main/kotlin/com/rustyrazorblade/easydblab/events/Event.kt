@@ -6275,12 +6275,13 @@ sealed interface Event {
         }
 
         /**
-         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys]; [reason] says why the last
-         * probe got no pod back, when the API server refused it or could not be reached.
+         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys] of [policy]; [reason] says
+         * why the last probe got no pod back, when the API server refused it or could not be reached.
          */
         @Serializable
         @SerialName("Platform.PodSysctlPolicyNotInEffect")
         data class PodSysctlPolicyNotInEffect(
+            val policy: String,
             val missingKeys: List<String>,
             val timeoutSeconds: Long,
             val reason: String? = null,

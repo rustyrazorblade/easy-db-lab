@@ -195,6 +195,13 @@ object Constants {
          */
         const val ATTEMPT_STOP_GRACE_SECONDS = 30L
 
+        /**
+         * How long a bring-up that is ending waits, in all, for its pipeline threads to stop. Longer
+         * than [ATTEMPT_STOP_GRACE_SECONDS], since a step waits that long for its attempt first; a
+         * pipeline still running after it is reported and left behind, so `up` never hangs on one.
+         */
+        const val PIPELINE_STOP_GRACE_SECONDS = 60L
+
         /** How long removing a stale Node and its node password waits for each to be gone. */
         const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
 
@@ -1665,8 +1672,47 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // Raw output of commands run on cluster nodes, printed through NodeOutput
+    object NodeOutput {
+        /** Lines of a node's recent output kept for its failure report. */
+        const val TAIL_LINES = 30
+
+        /** Bytes after which a line with no newline is emitted anyway, so it never grows without bound. */
+        const val MAX_LINE_BYTES = 8192
+
+        /**
+         * How far back from a hard cut a URL's `://` is looked for, so the URL moves whole to the
+         * next piece and its credential can still be redacted.
+         */
+        const val URL_CARRY_BYTES = 512
+
+        /**
+         * How long an interrupted command still waits for its queued output to print. A console
+         * that is stalled (a paused terminal) must not hold an abandoned worker forever.
+         */
+        val INTERRUPTED_DRAIN_WAIT: java.time.Duration = java.time.Duration.ofSeconds(INTERRUPTED_DRAIN_WAIT_SECONDS)
+
+        /** [INTERRUPTED_DRAIN_WAIT] in seconds. */
+        const val INTERRUPTED_DRAIN_WAIT_SECONDS = 5L
+
+        /** Name of the thread that prints one remote command's output lines. */
+        const val DRAIN_THREAD_NAME = "ssh-output"
+
+        /** Characters of a line kept in a node's tail; the console still prints the whole line. */
+        const val TAIL_ENTRY_CHARS = 512
+
+        /** Ends a tail entry that was cut to [TAIL_ENTRY_CHARS]. */
+        const val TAIL_ENTRY_ELLIPSIS = "…"
+
+        /** Marks a tail entry that came from stderr. */
+        const val TAIL_STDERR_PREFIX = "stderr: "
+    }
+
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
+        /** Name prefix of the platform threads a virtual thread's SSH calls run on (`ssh/PlatformThreadCall`). */
+        const val CALL_THREAD_NAME = "ssh-call"
+
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
         const val INSTALL_STAGING_PREFIX = "edl-staged-"
 

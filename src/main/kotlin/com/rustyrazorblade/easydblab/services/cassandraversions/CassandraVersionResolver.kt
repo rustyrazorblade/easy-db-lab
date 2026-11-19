@@ -5,7 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InstalledVersion
 import com.rustyrazorblade.easydblab.configuration.NodeState
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 
 /**
  * What the user asked for: a version name and the CLI options that shape its install.

@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.ssh
+package com.rustyrazorblade.easydblab
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -80,6 +80,38 @@ class RedactionTest {
         expected: Boolean,
     ) {
         assertThat(hasRedactedCredentials(url)).isEqualTo(expected)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            "tailscale up --authkey=tskey-auth-abc123 --hostname db0 | tailscale up --authkey=*** --hostname db0",
+            "curl ?token=ghp_abc&x=1 | curl ?token=*** ",
+            "SECRET=hunter2 PASSWORD=p4ss | SECRET=*** PASSWORD=***",
+            "api key=abcd1234 | api key=***",
+            "Authorization: Bearer eyJhbGciOi.payload | Authorization: ***",
+            "authorization: Basic dXNlcjpwYXNz rest | authorization: *** rest",
+            "aws_access_key_id=AKIAABCDEFGHIJKLMNOP | aws_access_key_id=***",
+            "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG | export AWS_SECRET_ACCESS_KEY=***",
+            "K3S_TOKEN=K10abc::server:def k3s | K3S_TOKEN=*** k3s",
+            "DB_PASSWORD=p4ss API_KEY=k3y | DB_PASSWORD=*** API_KEY=***",
+            "id AKIAABCDEFGHIJKLMNOP in use | id *** in use",
+            "https://u:p@h/x | https://***@h/x",
+        ],
+    )
+    fun `redact removes every kind of credential a node line can carry`(
+        input: String,
+        expected: String,
+    ) {
+        assertThat(redact(input)).isEqualTo(expected.trimEnd())
+    }
+
+    @Test
+    fun `redact leaves ordinary output alone`() {
+        val line = "Discarding blocks...Done. keyspace=system monkey=1 tokens 256"
+
+        assertThat(redact(line)).isEqualTo(line)
     }
 
     @Test

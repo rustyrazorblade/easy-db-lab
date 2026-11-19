@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import java.net.URI
 import java.net.URISyntaxException
 

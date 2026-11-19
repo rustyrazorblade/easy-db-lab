@@ -10,7 +10,9 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
@@ -38,6 +40,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 )
 class ExecRun : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     @Mixin
     var hosts = HostsMixin()
@@ -130,9 +133,19 @@ class ExecRun : PicoBaseCommand() {
                 // The ssm route refuses a host that has no instance ID.
                 e
             }
-        eventBus.emit(Event.Command.HostExecError(host.alias, failure.message ?: failure::class.simpleName ?: "Unknown error"))
+        eventBus.emit(Event.Command.HostExecError(host.alias, reason(failure)))
         return false
     }
+
+    /**
+     * Why [failure] failed, for the host's error event. A failed remote command already printed its
+     * stdout and stderr, tagged with the host, while it ran, so only its summary is repeated here.
+     */
+    private fun reason(failure: Exception): String =
+        when (failure) {
+            is RemoteCommandFailedException -> failure.summary
+            else -> failure.message ?: failure::class.simpleName ?: "Unknown error"
+        }
 
     /**
      * Runs the unit and waits for it, then prints its output from the journal. `systemd-run --wait`
@@ -149,15 +162,18 @@ class ExecRun : PicoBaseCommand() {
         run.getOrThrow()
     }
 
+    /**
+     * Prints the unit's journal, each line tagged with the host, so parallel hosts never interleave
+     * inside a line. An empty journal says so, so a host that printed nothing is not mistaken for one
+     * that was skipped.
+     */
     private fun printUnitOutput(
         host: Host,
         systemdUnit: String,
     ) {
         val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
-        val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
-        println("=== ${host.alias} ===")
-        if (logOutput.text.isNotEmpty()) println(logOutput.text)
-        if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
+        val journal = remoteOps.executeRemotely(host, journalCmd, output = true, secret = false)
+        if (journal.text.isBlank() && journal.stderr.isBlank()) nodeOutput.notice(host.alias, NO_OUTPUT_NOTICE)
     }
 
     internal fun deriveUnitName(commandString: String): String {
@@ -181,5 +197,9 @@ class ExecRun : PicoBaseCommand() {
         return "sudo systemd-run --unit=$unitName" +
             waitFlag +
             " -- bash -c ${commandString.shellQuote()}"
+    }
+
+    private companion object {
+        const val NO_OUTPUT_NOTICE = "no output"
     }
 }

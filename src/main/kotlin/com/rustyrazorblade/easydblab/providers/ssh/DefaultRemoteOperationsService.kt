@@ -2,11 +2,12 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.redactUrlCredentials
+import com.rustyrazorblade.easydblab.ssh.RemoteOutputSink
 import com.rustyrazorblade.easydblab.ssh.Response
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -30,10 +31,13 @@ class DefaultRemoteOperationsService(
     retryConfig: RetryConfig = defaultRetryConfig,
 ) : RemoteOperationsService,
     KoinComponent {
-    private val eventBus: EventBus by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     companion object {
         private val log = KotlinLogging.logger {}
+
+        /** Printed under a node when an interrupted command returned before all of its output printed. */
+        const val STALLED_NOTICE = "output still printing; the tail may be incomplete"
 
         /**
          * Default retry configuration for SSH operations:
@@ -90,15 +94,37 @@ class DefaultRemoteOperationsService(
         log.debug {
             "Executing command on ${host.alias}: ${if (secret) "[REDACTED]" else redactUrlCredentials(command)}"
         }
-        return withRetry(host) { connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret) }
+        // A secret command echoes its own argument, so it gets no sink here; SSHClient refuses one too.
+        val sink = if (output && !secret) NodeLineSink(host) else null
+        var attempt = 0
+        return withRetry(host) {
+            attempt++
+            // A retry can run the command again: mark where the next run's lines start, in the tail too.
+            if (sink != null && attempt > 1) nodeOutput.mark(host.alias, "retrying the command (attempt $attempt)")
+            connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret)
+        }
+    }
+
+    /** Sends one command's lines to [host]'s node output, under its alias and instance. */
+    private inner class NodeLineSink(
+        private val host: Host,
+    ) : RemoteOutputSink {
+        override fun line(
+            stream: NodeStream,
+            text: String,
+        ) = nodeOutput.line(host.alias, stream, text, host.instanceId)
+
+        override fun stalled() = nodeOutput.notice(host.alias, STALLED_NOTICE)
     }
 
     override fun upload(
         host: Host,
         local: Path,
         remote: String,
+        notice: String,
     ) {
         log.info { "Uploading $local to ${host.alias}:$remote" }
+        nodeOutput.notice(host.alias, notice)
         withRetry(host) {
             connectionProvider.getConnection(host).uploadFile(local, remote)
         }
@@ -110,7 +136,7 @@ class DefaultRemoteOperationsService(
         remoteDir: String,
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
-        eventBus.emit(Event.Ssh.UploadingDirectory(localDir.toString(), remoteDir))
+        nodeOutput.notice(host.alias, "uploading $localDir to $remoteDir")
         withRetry(host) {
             connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
         }

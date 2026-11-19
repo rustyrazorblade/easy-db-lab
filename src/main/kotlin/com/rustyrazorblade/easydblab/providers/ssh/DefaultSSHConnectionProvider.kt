@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
+import com.rustyrazorblade.easydblab.ssh.PlatformThreadCall
 import com.rustyrazorblade.easydblab.ssh.SSHClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.sshd.client.SshClient
@@ -74,7 +75,10 @@ class DefaultSSHConnectionProvider(
      * @param host The host to connect to
      * @return A new SSH client connected to the host
      */
-    private fun createNewConnection(host: Host): ISSHClient {
+    private fun createNewConnection(host: Host): ISSHClient = PlatformThreadCall.run { connectOnce(host) }
+
+    /** Dials, verifies and authenticates one session; MINA blocks in monitors here, hence [PlatformThreadCall]. */
+    private fun connectOnce(host: Host): ISSHClient {
         val endpoint = route.endpoint(host)
         log.info { "Creating new SSH connection to ${host.alias} (${endpoint.address}:${endpoint.port})" }
 

@@ -115,6 +115,12 @@ class Init : PicoBaseCommand() {
     var start = false
 
     @Option(
+        names = ["--quiet", "-q"],
+        description = ["With --up: hide the output of each node's scripts; Ready lines, progress and failures still print"],
+    )
+    var quiet = false
+
+    @Option(
         names = ["--instance", "-i"],
         description = [
             "Legacy alias for --db.instance-type. Database instance type. " +
@@ -394,13 +400,14 @@ class Init : PicoBaseCommand() {
         if (start) {
             eventBus.emit(Event.Setup.ProvisioningInstances)
             // Schedule Up to run after Init's full lifecycle completes
-            commandExecutor.schedule { Up() }
+            commandExecutor.schedule { Up().also { it.quiet = quiet } }
         } else {
             eventBus.emit(Event.Setup.InitNextSteps)
         }
     }
 
     private fun validateParameters() {
+        require(!quiet || start) { "--quiet hides the output of the nodes 'up' brings up, so it needs --up" }
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }

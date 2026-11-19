@@ -4,8 +4,8 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.services.StressJobService
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -23,8 +23,8 @@ import picocli.CommandLine.Parameters
     description = ["View logs from stress jobs"],
 )
 class StressLogs : PicoBaseCommand() {
-    private val log = KotlinLogging.logger {}
     private val stressJobService: StressJobService by inject()
+    private val nodeOutput: NodeOutput by inject()
 
     @Parameters(
         index = "0",
@@ -51,11 +51,9 @@ class StressLogs : PicoBaseCommand() {
             error("No pods found for job: $jobName")
         }
 
-        // Get logs from each pod
+        // Each pod's lines are tagged with its name, as node output is, so pods never blur together.
         for (pod in pods) {
-            if (pods.size > 1) {
-                eventBus.emit(Event.Stress.PodLogHeader(podName = pod.name, podStatus = pod.status))
-            }
+            nodeOutput.passthrough(pod.name, "status ${pod.status}")
 
             val logsResult = stressJobService.getPodLogs(pod.name, tailLines)
             if (logsResult.isFailure) {
@@ -69,15 +67,7 @@ class StressLogs : PicoBaseCommand() {
             }
 
             val logs = logsResult.getOrThrow()
-            if (logs.isEmpty()) {
-                eventBus.emit(Event.Stress.PodLogsEmpty)
-            } else {
-                eventBus.emit(Event.Stress.PodLogOutput(logs))
-            }
-
-            if (pods.size > 1) {
-                eventBus.emit(Event.Stress.PodLogSeparator)
-            }
+            nodeOutput.passthrough(pod.name, logs.ifEmpty { "(no logs available yet)" })
         }
     }
 }

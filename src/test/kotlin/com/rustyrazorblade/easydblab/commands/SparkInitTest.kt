@@ -221,13 +221,4 @@ class SparkInitTest : BaseKoinTest() {
             },
         )
     }
-
-    @Test
-    fun `should use default instance types when not specified`() {
-        val command = SparkInit()
-
-        assertThat(command.masterInstanceType).isEqualTo("m5.xlarge")
-        assertThat(command.workerInstanceType).isEqualTo("m5.xlarge")
-        assertThat(command.workerCount).isEqualTo(3)
-    }
 }

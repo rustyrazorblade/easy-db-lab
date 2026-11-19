@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TailSignal
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -270,9 +271,9 @@ class ClusterStateTest {
 
         // Missing values should use defaults
         assertThat(config.stressInstances).isEqualTo(0)
-        assertThat(config.instanceType).isEqualTo("i4i.xlarge")
+        assertThat(config.instanceType).isEqualTo(Constants.InstanceTypes.DB)
         assertThat(config.controlInstances).isEqualTo(1)
-        assertThat(config.controlInstanceType).isEqualTo("m5d.xlarge")
+        assertThat(config.controlInstanceType).isEqualTo(Constants.InstanceTypes.CONTROL)
     }
 
     @Test

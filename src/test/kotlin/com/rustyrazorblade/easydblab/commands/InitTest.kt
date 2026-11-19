@@ -506,7 +506,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 2
@@ -523,7 +523,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a control instance type without instance store fails, naming the node type and instance type`() {
-            withStore("i4i.xlarge", "c6id.2xlarge")
+            withStore("i7i.xlarge", "c8id.2xlarge")
             val command = Init()
             command.clean = true
 
@@ -537,7 +537,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a db instance type without instance store fails without an ebs type and passes with one`() {
-            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val noEbs = Init()
             noEbs.clean = true
             noEbs.instanceType = "c5.2xlarge"
@@ -560,7 +560,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails even with no app nodes`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 0
@@ -575,7 +575,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `the default db, control and app instance types pass`() {
-            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", "c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 1

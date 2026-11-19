@@ -59,7 +59,7 @@ locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   version = var.release_version != "" ? var.release_version : local.timestamp
   # We need to use a Graviton instance type for arm
-  instance_type = var.arch == "amd64" ? "c6i.2xlarge" : "c8g.2xlarge"
+  instance_type = var.arch == "amd64" ? "c8i.2xlarge" : "c8g.2xlarge"
 }
 
 source "amazon-ebs" "ubuntu" {

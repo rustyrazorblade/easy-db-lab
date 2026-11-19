@@ -105,7 +105,7 @@ class NodeSetupServiceTest {
                             listOf(ClusterHost("54.0.0.12", "10.0.2.12", "control0", "us-west-2a")),
                     ),
                 initConfig =
-                    InitConfig(instanceType = "i4i.2xlarge", stressInstanceType = "c6id.4xlarge", controlInstanceType = "m5d.xlarge"),
+                    InitConfig(instanceType = "i4i.2xlarge", stressInstanceType = "c6id.4xlarge", controlInstanceType = "m8id.xlarge"),
             )
         val fromState = NodeSetupContext.from(state)
         regionOn("app0", "us-west-2\n")
@@ -119,7 +119,7 @@ class NodeSetupServiceTest {
         assertThat(setupCommands.allValues.filter { it.endsWith("setup_instance.sh") }).containsExactly(
             "sudo EDL_INSTANCE_TYPE=i4i.2xlarge bash setup_instance.sh",
             "sudo EDL_INSTANCE_TYPE=c6id.4xlarge bash setup_instance.sh",
-            "sudo EDL_INSTANCE_TYPE=m5d.xlarge bash setup_instance.sh",
+            "sudo EDL_INSTANCE_TYPE=m8id.xlarge bash setup_instance.sh",
         )
     }
 

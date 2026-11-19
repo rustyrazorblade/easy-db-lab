@@ -162,7 +162,7 @@ class FakeControlPlane(
  * throw, block or end the instance. [imageDefects] gives what an alias's image lacks.
  *
  * Every call that runs over SSH in production is counted while it runs: [sshPeak] is the most
- * at once and [sshInFlight] the count now. Each one holds its session for [sshHoldMs].
+ * at once and [sshInFlight] the count now. While [holdSsh] is set, every one holds its session open.
  */
 class FakeNodeSteps(
     private val controlPlane: FakeControlPlane,
@@ -173,7 +173,7 @@ class FakeNodeSteps(
     val imageDefects: MutableMap<String, ImageDefect> = ConcurrentHashMap()
     private val attempts = ConcurrentHashMap<String, AtomicInteger>()
     val lastAccess = AtomicReference<ControlPlaneAccess>()
-    var sshHoldMs = 0L
+    val holdSsh = AtomicBoolean(false)
     private val inFlight = AtomicInteger()
     private val peak = AtomicInteger()
 
@@ -196,7 +196,7 @@ class FakeNodeSteps(
     ) {
         peak.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
         try {
-            if (sshHoldMs > 0) Thread.sleep(sshHoldMs)
+            while (holdSsh.get()) Thread.sleep(1)
             call(name, host)
         } finally {
             inFlight.decrementAndGet()

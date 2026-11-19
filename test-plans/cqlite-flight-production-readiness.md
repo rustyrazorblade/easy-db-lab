@@ -26,7 +26,9 @@ cluster builds):
 
 **Ordering rule:** scenarios that mutate cluster state (`needs: live-mode`, `fresh-cluster`,
 or any D10 scenario) run **last** in a session, or on a fresh prelude, so they don't corrupt
-the baseline other scenarios rely on. The agent orders selected scenarios accordingly.
+the baseline other scenarios rely on. The agent orders selected scenarios accordingly. If a
+mutating scenario fails midway, the baseline is no longer trusted: stop, and run any remaining
+scenarios only after `$EDB down --auto-approve` and a fresh prelude.
 
 ---
 
@@ -420,7 +422,8 @@ the prelude. All read scenarios run in **snapshot** mode unless they say `needs:
 
 > The distinctive dimension: cqlite-flight reads SSTables from under a **live, mutating**
 > Cassandra cluster. These scenarios mutate cluster state — run them **last** or on a fresh
-> prelude. Each verifies reads stay correct through the operation.
+> prelude. Each verifies reads stay correct through the operation. They change only Cassandra
+> data and topology; none clears observability data, and `$EDB down` is the only teardown.
 
 #### 10.1 [G] Deletes / tombstones
 - **dimension:** d10 · **needs:** none (mutates data — run after correctness scenarios)

@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.reason
-import com.rustyrazorblade.easydblab.runCatchingException
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.bringup.pollUntil
 import java.time.Duration
 
@@ -44,7 +44,7 @@ class PodNetworkTuning(
             }
         }
         val polled =
-            runCatchingException {
+            runCatchingInterruptibly {
                 pollUntil<ProbeResult>(
                     "pod-sysctl-policy",
                     pollInterval,
@@ -52,7 +52,7 @@ class PodNetworkTuning(
                     done = { missing(it).isEmpty() },
                 ) { probe.probe() }
             }
-        val last = polled.getOrElse { notInEffect(sysctls.keys.toList(), it.reason(), it) }
+        val last = polled.getOrElse { probeFailed(it) }
         val missing = missing(last)
         if (missing.isNotEmpty()) notInEffect(missing, reasonOf(last))
         eventBus.emit(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
@@ -62,14 +62,19 @@ class PodNetworkTuning(
     private fun notInEffect(
         missing: List<String>,
         reason: String?,
-        cause: Throwable? = null,
     ): Nothing {
         eventBus.emit(Event.Platform.PodSysctlPolicyNotInEffect(missing, readyTimeout.seconds, reason))
         throw CommandFailedException(
             "The pod network sysctl policy was not in effect after ${readyTimeout.seconds}s; a new pod lacks $missing" +
                 reason?.let { " ($it)" }.orEmpty(),
-            cause,
         )
+    }
+
+    /** Reports a probe that threw (the poll does not retry an exception), then fails `up` with it as the cause. */
+    private fun probeFailed(failure: Throwable): Nothing {
+        val reason = failure.reason()
+        eventBus.emit(Event.Platform.PodSysctlProbeFailed(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, reason))
+        throw CommandFailedException("The pod network sysctl policy probe failed: $reason", failure)
     }
 
     /** The injected keys [result] does not carry with the injected value; every key when no pod was admitted. */

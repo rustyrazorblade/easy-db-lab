@@ -264,7 +264,9 @@ The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwo
   through `K8sManifestOperations`, then polls `PodSysctlProbe` (a `dryRun=All` pod,
   `Fabric8PodSysctlProbe`) until the pod carries every value, up to
   `POD_SYSCTL_POLICY_READY_SECONDS`. It emits `Platform.PodSysctlPolicyReady`, or
-  `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` and throws `CommandFailedException`.
+  `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` / `PodSysctlProbeFailed` (a probe
+  that threw, which the poll does not retry) and throws `CommandFailedException`; an interrupt
+  propagates and emits nothing.
 - K3s only: `KubeletSysctlsDropIn` installs `25-kubelet-sysctls.yaml` (`kubelet-arg+:
   allowed-unsafe-sysctls=...`) before the start script on the server (`DefaultK3sService.startServer`)
   and every agent (`DefaultK3sAgentService.start`). `start-k3s-server.sh` writes

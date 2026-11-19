@@ -116,16 +116,31 @@ class PodNetworkTuningTest {
     }
 
     @Test
-    fun `a probe that throws fails up with the typed event, every key and the cause`() {
+    fun `a probe that throws fails up at once as a probe failure, not a timeout`() {
         val defect = IllegalArgumentException("unexpected response body")
         val probe = PodSysctlProbe { throw defect }
 
         assertThatThrownBy { tuning(probe).apply() }
             .isInstanceOf(CommandFailedException::class.java)
             .hasCause(defect)
+            .hasMessageContaining("unexpected response body")
+            .hasMessageNotContaining("after 1s")
         assertThat(events).containsExactly(
-            Event.Platform.PodSysctlPolicyNotInEffect(sysctls.keys.toList(), 1, "unexpected response body"),
+            Event.Platform.PodSysctlProbeFailed(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, "unexpected response body"),
         )
+    }
+
+    @Test
+    fun `an interrupt during the wait stops up without a policy failure`() {
+        val probe = PodSysctlProbe { throw InterruptedException("stopped") }
+
+        try {
+            assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(InterruptedException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+            assertThat(events).isEmpty()
+        } finally {
+            Thread.interrupted()
+        }
     }
 
     @Test

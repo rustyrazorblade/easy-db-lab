@@ -6260,6 +6260,21 @@ sealed interface Event {
         }
 
         /**
+         * The dry-run probe for [policy] failed with an error that is neither a refusal nor an
+         * unreachable API server, so `up` stopped at once instead of waiting; [reason] is the error.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlProbeFailed")
+        data class PodSysctlProbeFailed(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the probe for the pod network sysctl policy $policy failed: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * After [timeoutSeconds], a dry-run pod still lacked [missingKeys]; [reason] says why the last
          * probe got no pod back, when the API server refused it or could not be reached.
          */

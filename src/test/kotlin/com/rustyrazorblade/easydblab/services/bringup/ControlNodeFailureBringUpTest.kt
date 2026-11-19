@@ -83,7 +83,10 @@ class ControlNodeFailureBringUpTest {
         }
 
         try {
-            assertThatThrownBy { h.run() }.isInstanceOf(ControlNodeFailedException::class.java)
+            assertThatThrownBy { h.run() }
+                .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
+                    assertThat(it.reason).contains("k3s.service failed")
+                }
 
             assertThat(h.eventsOf<Event.Provision.PipelinesAbandoned>())
                 .containsExactly(Event.Provision.PipelinesAbandoned(listOf("db1"), SETTLE_MS))

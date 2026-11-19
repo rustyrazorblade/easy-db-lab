@@ -11,7 +11,8 @@ import java.time.Clock
  * and feeds it to [health]: on the change to unhealthy it closes the [latch] (no join permit, no
  * replacement) and reports it, on recovery it opens the latch and reports how long it lasted, and
  * past the unhealthy deadline it calls [onFailed] with a reason naming the last sample, because
- * the control node has failed. A sampler that throws counts as an unreachable API server.
+ * the control node has failed. A sampler that throws counts as an unreachable API server, unless
+ * the monitor's own stop interrupted it.
  *
  * `NodeBringUp` runs [tick] on a [Ticker] from the K3s server's start until the last pipeline ends.
  */
@@ -26,7 +27,11 @@ class ControlPlaneHealthMonitor(
 ) {
     /** Takes one sample and acts on what it changed. */
     fun tick() {
-        when (val transition = health.record(sample(), clock.instant())) {
+        val sample = sample()
+        // Stopping the monitor interrupts this thread, which can cut the sample short; that says
+        // nothing about the control plane, so it is not recorded.
+        if (Thread.currentThread().isInterrupted) return
+        when (val transition = health.record(sample, clock.instant())) {
             ControlPlaneHealth.Transition.None -> Unit
             is ControlPlaneHealth.Transition.BecameUnhealthy -> {
                 latch.markUnhealthy()

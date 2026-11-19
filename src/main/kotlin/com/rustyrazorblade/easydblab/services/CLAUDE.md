@@ -215,6 +215,10 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
   the attempt and waits once, up to `BringUpTiming.attemptStopGrace`, only if it is still running;
   one still running after that is emitted as `Provision.AttemptAbandoned` and left behind. When the
   instance ended, it interrupts the attempt and returns at once, so the replacement starts.
+  A node that fails before its node cleanup, after a replacement or when launched in this `up`,
+  deletes the alias's old Node and node password in `NodePipeline.failedBeforeJoin`, so a stale
+  NotReady Node cannot fail the post-steps' rollout wait. `ControlPlaneHealthMonitor.tick` drops a
+  sample cut short by its own stop (thread interrupted).
 - **Output tail**: every node's script lines go to `output/NodeOutput` as `[alias] ...`, each line
   carrying the instance that printed it. `NodeBringUp` takes a `BringUpReporting` (the event bus and
   the `NodeOutput`); `BringUpRun` exposes both. `InstanceRun` calls `reset(alias, instanceId)` when

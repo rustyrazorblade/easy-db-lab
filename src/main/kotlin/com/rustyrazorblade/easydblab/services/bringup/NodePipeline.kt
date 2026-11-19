@@ -59,12 +59,12 @@ internal class NodePipeline(
             } catch (e: Stopped) {
                 e
             }
-        if (!stopped.replaceable) return failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, stopped.reason))
+        if (!stopped.replaceable) return failedBeforeJoin(NodeEnd.Failed(stopped.host, replacements, stopped.step, stopped.reason))
         enter(PipelineStep.REPLACING)
         val failure = NodeReplacer.Failure(stopped.step, stopped.reason)
         return when (val outcome = run.replacer.replace(serverType, stopped.host, failure)) {
             is NodeReplacer.Outcome.NotReplaced ->
-                failed(NodeEnd.Failed(stopped.host, replacements, stopped.step, outcome.reason, outcome.oldInstanceKept))
+                failedBeforeJoin(NodeEnd.Failed(stopped.host, replacements, stopped.step, outcome.reason, outcome.oldInstanceKept))
             is NodeReplacer.Outcome.Replaced -> {
                 run.progress.replaced()
                 bringUp(outcome.host, outcome.replacement)
@@ -188,6 +188,30 @@ internal class NodePipeline(
         val elapsed = Duration.between(startedAt, run.clock.instant()).toSeconds()
         run.eventBus.emit(Event.Provision.NodeReady(alias, host.instanceId, elapsed, replacements))
         return NodeEnd.Ready(host, replacements)
+    }
+
+    /**
+     * Ends the node as failed at a step of its pipeline. When its last instance never reached its
+     * join and the alias may hold an older instance's Node (a replacement was made, or the first
+     * instance was launched in this `up`), that Node and its node password are removed first: the
+     * Node's kubelet is gone, so it stays NotReady, and the DaemonSet pods bound to it would hold
+     * the post-steps' rollout wait on a node already reported failed. A removal that fails is
+     * added to the reason; the node has failed anyway.
+     */
+    private fun failedBeforeJoin(end: NodeEnd.Failed): NodeEnd {
+        val older = end.replacements > 0 || origin == LaunchSink.Origin.LAUNCHED
+        if (!older || end.step >= PipelineStep.NODE_CLEANUP || run.settings.noSetup) return failed(end)
+        // Waits for the gate, as a join would; an interrupt (the control node failed) propagates.
+        val connection = run.controlPlane.get().connection
+        val removed =
+            runCatchingException { connection.cleanup(alias) }
+                .onFailure { log.warn(it) { "Removing $alias's old node after it failed did not succeed" } }
+        return failed(
+            removed.fold(
+                { end },
+                { end.copy(reason = "${end.reason}; removing the old node $alias from the control plane failed: ${it.messageOrString()}") },
+            ),
+        )
     }
 
     private fun failed(end: NodeEnd.Failed): NodeEnd {

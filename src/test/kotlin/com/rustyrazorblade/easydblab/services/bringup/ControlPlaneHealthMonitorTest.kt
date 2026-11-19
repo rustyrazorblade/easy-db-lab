@@ -96,6 +96,32 @@ class ControlPlaneHealthMonitorTest {
         assertThat(unhealthy.toDisplayString()).contains("API server unreachable (connection refused)")
     }
 
+    /**
+     * Stopping the monitor interrupts its thread, which can cut a sample short: the client fails
+     * with its interrupt flag set. That says nothing about the control plane, so nothing changes.
+     */
+    @Test
+    fun `a sample cut short by the monitor's stop changes nothing`() {
+        val m =
+            monitor(
+                listOf({
+                    Thread.currentThread().interrupt()
+                    error("An error has occurred.")
+                }),
+            )
+
+        try {
+            m.tick()
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+
+        assertThat(latch.healthy).isTrue()
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
+        assertThat(progress.snapshot().controlPlane).isNotEqualTo(Event.Provision.ControlPlaneState.UNHEALTHY)
+    }
+
     @Test
     fun `unhealthy past the deadline calls the failure handler with the last sample`() {
         val samples = (0..DEADLINE_SECONDS / STEP_SECONDS).map { reading(SLOW + it) }

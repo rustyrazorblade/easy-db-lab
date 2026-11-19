@@ -56,3 +56,24 @@ A step whose pipeline is interrupted MUST interrupt its running attempt and wait
 #### Scenario: A retried step marks its attempts
 - **WHEN** db1's setup succeeds on its third attempt
 - **THEN** db1's output holds `setup attempt 2` before the second attempt's lines and `setup attempt 3` before the third's
+
+### Requirement: A node that fails before it joins leaves no old Node behind
+
+A database or application node that fails at a step before its node cleanup MUST delete the alias's Node object and its K3s node password when it fails, if an earlier instance of the alias may have registered them: the node was replaced in this `up`, or its first instance was launched in this `up`.  It MUST NOT delete them for a node `up` found running and never replaced, because they may be its own.  The Node's kubelet is gone, so it never posts status again, and the DaemonSet pods bound to it would fail the post-steps' rollout wait on a node already reported failed.  A deletion that fails MUST be added to the node's failure reason; the node has failed either way.
+
+#### Scenario: A replaced node fails at setup
+- **GIVEN** app0 was found running and registered, and its setup fails on every instance
+- **WHEN** app0 fails after its 2 replacements
+- **THEN** app0's Node object and node password are deleted, and the observability rollout does not wait on app0
+
+#### Scenario: A found-running node fails with no replacement
+- **WHEN** a found-running db1 fails at its image check
+- **THEN** db1's Node object and node password are kept
+
+### Requirement: The health monitor's stop is not an unhealthy sample
+
+A health sample cut short because the monitor itself was stopped (its thread was interrupted) MUST NOT be recorded: it MUST NOT report `Provision.ControlPlaneUnhealthy` or change the latch.
+
+#### Scenario: The bring-up ends during a sample
+- **WHEN** the last pipeline ends while a health sample is in flight
+- **THEN** no `Control plane unhealthy` line is printed

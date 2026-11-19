@@ -220,6 +220,43 @@ class NodeBringUpTest {
         assertThat(failed.reason).contains("db1").contains("deletionTimestamp=t")
     }
 
+    /**
+     * A node that ends failed before it joined, after a replacement, leaves the alias's old Node
+     * (its first instance's, now terminated) in the cluster unless it is removed. That Node never
+     * posts status again, and the DaemonSet pods bound to it hold the observability rollout past
+     * its NotReady grace, so the post-steps fail on a node that is already reported failed. It is
+     * removed when the node fails. A node found running that never reached a replacement keeps its
+     * objects: they may be its own.
+     */
+    @Test
+    fun `a node that fails before it joins, after a replacement, removes its alias's old cluster objects`() {
+        val h = harness(dbs = 2, apps = 1)
+        h.foundRunning = setOf("db0", "db1", "app0")
+        failSetupOn(h, "app0") { true }
+
+        val result = h.run()
+
+        val end = result.nodes.getValue("app0")
+        assertThat(end).isInstanceOf(NodeEnd.Failed::class.java)
+        assertThat(end.replacements).isEqualTo(2)
+        assertThat(h.plane.cleaned).containsExactly("app0")
+        assertThat(h.steps.callsOf("join").map { it.substringBefore(" ") }).doesNotContain("app0")
+    }
+
+    @Test
+    fun `a found-running node that fails with no replacement keeps its alias's cluster objects`() {
+        val h = harness(dbs = 2)
+        h.foundRunning = setOf("db0", "db1")
+        h.plane.cleanupFailures["db1"] = "should not be called"
+        val report = Event.Cilium.NodeImageMissingFixes(listOf("db1"), listOf("/etc/sysctl.d/99-cilium.conf"))
+        h.steps.imageDefects["db1"] = ImageDefect("its image lacks 99-cilium.conf", report)
+
+        val result = h.run()
+
+        assertThat((result.nodes.getValue("db1") as NodeEnd.Failed).step).isEqualTo(PipelineStep.IMAGE_CHECK)
+        assertThat(h.plane.cleaned).isEmpty()
+    }
+
     @Test
     fun `a cleanup that fails once and then succeeds ends Ready with no replacement`() {
         val h = harness(dbs = 2)

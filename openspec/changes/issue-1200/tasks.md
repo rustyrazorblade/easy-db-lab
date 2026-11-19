@@ -71,6 +71,7 @@
 - [x] 8.9 `setup-instances` reports any failed remote command of a setup as `InstanceSetupFailed`; `cassandra nt` fails with the summary; `exec run` prints `no output` for an empty journal; `logs query` prints its lines and `Logs.QueryResults` is removed
 - [x] 8.10 Test fixes: thread-safe event lists in `UpVpcCidrTest` and `ClusterProvisioningServiceTest`; `MockSSHClient` streams through the real splitter; `UpdateConfigTest` checks `patch-config` runs with its output; `SSHClientTest` lost-connection case
 - [x] 8.11 roborev 6460: SCP upload and download fetch the SCP client before the platform-thread hop (a virtual-thread SCP integration test hung before); the interrupt hand-off is ordered by one lock; `redact` covers names ending in a secret key (`AWS_SECRET_ACCESS_KEY=`, `K3S_TOKEN=`); `AttemptAbandoned` is an error
+- [x] 8.12 Real-cluster findings on c6bad499: a node that fails before it joins, after a replacement or when launched in this `up`, deletes the alias's old Node and node password (a stale NotReady Node failed the observability rollout); a health sample cut short by the monitor's own stop is not recorded (a spurious `Control plane unhealthy` line at the end of every `up`).  `NodeBringUpTest`, `ControlPlaneHealthMonitorTest`
 
 ## 9. Verify
 

@@ -130,8 +130,8 @@ sealed class AWSPolicy {
                     val processedContent =
                         policyContent
                             .replace(Constants.AWS.ACCOUNT_ID_PLACEHOLDER, accountId)
-                            .replace("LEGACY_TAG_KEY", Constants.Vpc.LEGACY_TAG_KEY)
-                            .replace("TAG_VALUE", Constants.Vpc.TAG_VALUE)
+                            .replace("__LEGACY_TAG_KEY__", Constants.Vpc.LEGACY_TAG_KEY)
+                            .replace("__TAG_VALUE__", Constants.Vpc.TAG_VALUE)
 
                     Policy(name = policyName, body = processedContent)
                 }

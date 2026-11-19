@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -81,6 +82,26 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         verify(mockS3Client).putBucketPolicy(any<PutBucketPolicyRequest>())
         verify(mockS3Client).putBucketTagging(any<PutBucketTaggingRequest>())
         verify(mockS3Client).putBucketMetricsConfiguration(any<PutBucketMetricsConfigurationRequest>())
+    }
+
+    @Test
+    fun `a new account bucket carries both marker tags`() {
+        val user = get<User>().apply { s3Bucket = "" }
+
+        val bucketName = service.ensureAccountBucket(user)
+
+        val request = argumentCaptor<PutBucketTaggingRequest>()
+        verify(mockS3Client).putBucketTagging(request.capture())
+        val tags =
+            request.firstValue
+                .tagging()
+                .tagSet()
+                .associate { it.key() to it.value() }
+        assertThat(request.firstValue.bucket()).isEqualTo(bucketName)
+        assertThat(tags)
+            .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
+            .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+            .containsEntry("Owner", user.email)
     }
 
     @Test

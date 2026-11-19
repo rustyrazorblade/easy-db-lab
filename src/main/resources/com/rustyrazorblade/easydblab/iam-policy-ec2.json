@@ -64,7 +64,7 @@
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "aws:ResourceTag/LEGACY_TAG_KEY": "TAG_VALUE"
+          "aws:ResourceTag/__LEGACY_TAG_KEY__": "__TAG_VALUE__"
         }
       }
     },
@@ -95,7 +95,7 @@
       "Resource": "arn:aws:ec2:*:ACCOUNT_ID:instance/*",
       "Condition": {
         "StringEquals": {
-          "ssm:resourceTag/LEGACY_TAG_KEY": "TAG_VALUE"
+          "ssm:resourceTag/__LEGACY_TAG_KEY__": "__TAG_VALUE__"
         }
       }
     },

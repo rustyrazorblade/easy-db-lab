@@ -36,15 +36,17 @@ jobs:
           cd ../cassandra
           packer init .
 
+      # marker_tags is required and has no default. Packer.buildCommand passes the real tags from
+      # Constants.Vpc.MARKER_TAGS; validate only checks the type, so any map works here.
       - name: Validate base.pkr.hcl
         run: |
           cd packer/base
-          packer validate -var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1"}' .
+          packer validate -var 'marker_tags={"validate" = "1"}' .
 
       - name: Validate cassandra.pkr.hcl
         run: |
           cd packer/cassandra
-          packer validate -var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1"}' .
+          packer validate -var 'marker_tags={"validate" = "1"}' .
 
   shellcheck:
     name: Lint Shell Scripts

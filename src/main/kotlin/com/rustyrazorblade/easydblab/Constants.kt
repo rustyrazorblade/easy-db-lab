@@ -1102,7 +1102,7 @@ object Constants {
                 "-Dpyroscope.profiler.lock=10ms",
             )
 
-        /** The two agent options above, as JVM flags, for every JVM the tool attaches the agent to. */
+        /** [INGEST_MAX_TRIES] and [PUSH_QUEUE_CAPACITY] as JVM flags, for every JVM the tool attaches the agent to. */
         val OUTAGE_FLAGS: List<String> =
             listOf(
                 "-Dpyroscope.ingest.max.tries=$INGEST_MAX_TRIES",

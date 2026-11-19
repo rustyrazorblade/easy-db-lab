@@ -40,6 +40,21 @@ object ObservabilityBackends {
     private const val LOKI_DATA = "/loki"
     private const val TEMPO_DATA = "/var/tempo"
     private const val PYROSCOPE_DATA = "/data"
+    private const val PYROSCOPE_CONFIG = "/etc/pyroscope/config.yaml"
+    private const val PYROSCOPE_ARGS = "-config.file=$PYROSCOPE_CONFIG"
+
+    /** Where a gated Pyroscope's gate volume is mounted, in the server and in whoever releases it. */
+    const val PYROSCOPE_GATE = "/gate"
+
+    /** The static busybox a test runs in another container's namespace, or copies into a shell-less image. */
+    const val BUSYBOX_IMAGE = "busybox:1.37.0-musl"
+    private const val GATE_RELEASE = "release"
+    private const val GATE_BUSYBOX = "$PYROSCOPE_GATE/busybox"
+    private const val GATE_POLL_MICROS = 1000
+
+    /** The labels that put a container made with the Docker client into this session, so Ryuk removes it. */
+    val SESSION_LABELS: Map<String, String> =
+        DockerClientFactory.DEFAULT_LABELS + (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID)
     private const val HTTP_OK = 200
 
     /** The Docker endpoint setting that picks which network gives a container its default route (API 1.48+). */
@@ -149,30 +164,63 @@ object ObservabilityBackends {
             ).apply { start() }
 
     /**
-     * A Pyroscope server started by [startPyroscopeUnwaited]. [startedAt] is when its container
-     * started, a [System.nanoTime] value, where the kubelet starts counting the startup-probe budget.
+     * A Pyroscope server started by [startPyroscopeGated], held at its start gate until a process
+     * creates [release] in the gate volume, which it mounts at [PYROSCOPE_GATE]. [startedAt] is when
+     * its container started, a [System.nanoTime] value, where the kubelet starts counting the
+     * startup-probe budget.
      */
-    data class StartedPyroscope(
+    data class GatedPyroscope(
         val container: GenericContainer<*>,
         val startedAt: Long,
-    )
+    ) {
+        val release: String = "$PYROSCOPE_GATE/$GATE_RELEASE"
+    }
 
     /**
-     * Starts the Pyroscope server like [startPyroscope], but returns as soon as its container runs,
-     * without waiting for `/ready`. A Java agent with queued profiles pushes as soon as the port
-     * opens, so a test of what a restarted server does with those pushes starts it this way, pushes
-     * from inside its network namespace, then calls [awaitPyroscopeReady] with
-     * [StartedPyroscope.startedAt].
+     * Starts the Pyroscope server like [startPyroscope], but held before its binary runs, and
+     * returns as soon as its container runs. A Java agent with queued profiles pushes the moment
+     * the port opens, so a test of what a restarted server does with those pushes starts it this
+     * way. The test then starts a pusher in the server's network namespace, with [gateVolume]
+     * mounted at [PYROSCOPE_GATE]. The pusher sees the port closed, releases the gate and pushes,
+     * so no moment of the start can pass before it watches. Docker will not start a container in
+     * the namespace of one that is not running yet, so the gate stands in for that order.
+     * Afterwards the test calls [awaitPyroscopeReady] with [GatedPyroscope.startedAt].
+     *
+     * The image has no shell, so the gate is a static busybox copied into [gateVolume]. It waits
+     * for the release file, then execs Pyroscope with its usual arguments.
      */
-    fun startPyroscopeUnwaited(
+    fun startPyroscopeGated(
         config: String,
         volume: String,
+        gateVolume: String,
         onCreated: (GenericContainer<*>) -> Unit = {},
-    ): StartedPyroscope {
-        val container = pyroscopeContainer(config, volume).waitingFor(ContainerStarted)
+    ): GatedPyroscope {
+        installGate(gateVolume)
+        val container = pyroscopeContainer(config, volume, gateVolume).waitingFor(ContainerStarted)
         onCreated(container)
         container.start()
-        return StartedPyroscope(container, System.nanoTime())
+        return GatedPyroscope(container, System.nanoTime())
+    }
+
+    /** Copies the static busybox into [gateVolume], for a server image that has no shell. */
+    private fun installGate(gateVolume: String) {
+        val docker = DockerClientFactory.instance().client()
+        RemoteDockerImage(DockerImageName.parse(BUSYBOX_IMAGE)).get()
+        val id =
+            docker
+                .createContainerCmd(BUSYBOX_IMAGE)
+                .withCmd("/bin/busybox", "cp", "/bin/busybox", GATE_BUSYBOX)
+                .withLabels(SESSION_LABELS)
+                .withHostConfig(HostConfig.newHostConfig().withBinds(Bind(gateVolume, Volume(PYROSCOPE_GATE))))
+                .exec()
+                .id
+        try {
+            docker.startContainerCmd(id).exec()
+            val exit = docker.waitContainerCmd(id).start().awaitStatusCode()
+            check(exit == 0) { "copying the start gate's busybox exited $exit" }
+        } finally {
+            docker.removeContainerCmd(id).withForce(true).exec()
+        }
     }
 
     /** A wait strategy that returns as soon as the container is running, for a caller that polls itself. */
@@ -199,16 +247,30 @@ object ObservabilityBackends {
         error("Pyroscope did not answer /ready within the startup-probe budget of $PYROSCOPE_STARTUP_PROBE_BUDGET")
     }
 
+    /** The server on [volume]; with a [gateVolume], held at the start gate [startPyroscopeGated] describes. */
     private fun pyroscopeContainer(
         config: String,
         volume: String,
+        gateVolume: String? = null,
     ): GenericContainer<*> =
         GenericContainer(PyroscopeManifestBuilder.SERVER_IMAGE)
             .withCreateContainerCmdModifier { cmd ->
                 cmd.withUser("root")
-                cmd.hostConfig?.withBinds(Bind(volume, Volume(PYROSCOPE_DATA)))
-            }.withCopyToContainer(Transferable.of(config), "/etc/pyroscope/config.yaml")
-            .withCommand("-config.file=/etc/pyroscope/config.yaml")
+                val data = Bind(volume, Volume(PYROSCOPE_DATA))
+                if (gateVolume == null) {
+                    cmd.hostConfig?.withBinds(data)
+                } else {
+                    cmd.hostConfig?.withBinds(data, Bind(gateVolume, Volume(PYROSCOPE_GATE)))
+                    cmd.withEntrypoint(GATE_BUSYBOX)
+                    cmd.withCmd(
+                        "sh",
+                        "-c",
+                        "until [ -e $PYROSCOPE_GATE/$GATE_RELEASE ]; do $GATE_BUSYBOX usleep $GATE_POLL_MICROS; done; " +
+                            "exec /usr/bin/pyroscope $PYROSCOPE_ARGS",
+                    )
+                }
+            }.withCopyToContainer(Transferable.of(config), PYROSCOPE_CONFIG)
+            .withCommand(PYROSCOPE_ARGS)
             .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
 
     /**

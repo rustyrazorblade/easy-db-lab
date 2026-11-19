@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
+import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.HostConfig
+import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ObservabilityBackends
@@ -75,7 +77,6 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
 
         /** How long the pusher waits for the restarted server's port, the startup-probe budget's order. */
         val PORT_WAIT: Duration = Duration.ofMinutes(2)
-        const val PUSHER_IMAGE = "busybox:1.37.0-musl"
         const val PUSHER_SCRIPT = "/push-after-start.sh"
         const val PUSHER_SCRIPT_RESOURCE = "push-after-start.sh"
 
@@ -90,7 +91,8 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     private val docker = DockerClientFactory.instance().client()
     private val bucket = "pyroscope-durability-${UUID.randomUUID().toString().take(8)}"
     private val dataVolume = newVolumeName()
-    private val volumes = mutableListOf(dataVolume)
+    private val gateVolume = newVolumeName()
+    private val volumes = mutableListOf(dataVolume, gateVolume)
     private val state =
         ClusterState(
             name = "pyroscope-it",
@@ -163,38 +165,43 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     }
 
     /**
-     * Pushes a small profile every [PUSH_PERIOD] for [AFTER_START] from the moment [pyroscope]'s
-     * port opens, and returns `REFUSED <ms after open> <error>` for each push it refused more than
-     * [START_RACE] after that. A push that cannot connect yet is not counted: the agent retries those.
+     * Releases [pyroscope]'s start gate, pushes a small profile every [PUSH_PERIOD] for
+     * [AFTER_START] from the moment its port opens, and returns `REFUSED <ms after open> <error>`
+     * for each push it refused more than [START_RACE] after that. A push that cannot connect yet is
+     * not counted: the agent retries those.
      *
-     * The pushes come from `push-after-start.sh` in a busybox container in [pyroscope]'s network
+     * The pushes come from `push-after-start.sh` in a busybox container in the server's network
      * namespace, the way the agent's reach the server. Sent from the test JVM they would go through
      * Docker's port proxy, which on Docker Desktop holds a connection made before the server listens
      * and answers it up to a second and a half later. The first pushes after the port opens, the
-     * ones a refusing server refuses, would then sometimes never be sent. The container is created
-     * with the Docker client, because Docker refuses a joined namespace for a container that carries
-     * the host-access name Testcontainers adds.
+     * ones a refusing server refuses, would then sometimes never be sent. The script sees the port
+     * closed before it releases the gate, so it cannot start after the port has opened and measure
+     * from the wrong moment. The container is created with the Docker client, because Docker refuses
+     * a joined namespace for a container that carries the host-access name Testcontainers adds.
      */
-    private fun refusedPushesAfterStart(pyroscope: GenericContainer<*>): List<String> {
+    private fun refusedPushesAfterStart(pyroscope: ObservabilityBackends.GatedPyroscope): List<String> {
         val script = checkNotNull(javaClass.getResource(PUSHER_SCRIPT_RESOURCE)) { "$PUSHER_SCRIPT_RESOURCE is missing" }.readText()
-        RemoteDockerImage(DockerImageName.parse(PUSHER_IMAGE)).get()
+        RemoteDockerImage(DockerImageName.parse(ObservabilityBackends.BUSYBOX_IMAGE)).get()
         val name = URLEncoder.encode("it-after-restart{cluster=${state.clusterLabelName()}}", Charsets.UTF_8)
         val id =
             docker
-                .createContainerCmd(PUSHER_IMAGE)
+                .createContainerCmd(ObservabilityBackends.BUSYBOX_IMAGE)
                 .withCmd("/bin/busybox", "sh", PUSHER_SCRIPT)
                 .withEnv(
                     "URL=http://127.0.0.1:${PyroscopeManifestBuilder.SERVER_PORT}/ingest?name=$name&format=folded",
                     "TENANT=$TENANT",
+                    "RELEASE=${pyroscope.release}",
                     "PORT_WAIT_SECONDS=${PORT_WAIT.toSeconds()}",
                     "AFTER_MS=${AFTER_START.toMillis()}",
                     "PERIOD_MS=${PUSH_PERIOD.toMillis()}",
                     "PUSH_TIMEOUT_SECONDS=${PUSH_TIMEOUT.toSeconds()}",
-                ).withLabels(
-                    DockerClientFactory.DEFAULT_LABELS +
-                        (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID),
-                ).withHostConfig(HostConfig.newHostConfig().withNetworkMode("container:${pyroscope.containerId}"))
-                .exec()
+                ).withLabels(ObservabilityBackends.SESSION_LABELS)
+                .withHostConfig(
+                    HostConfig
+                        .newHostConfig()
+                        .withNetworkMode("container:${pyroscope.container.containerId}")
+                        .withBinds(Bind(gateVolume, Volume(ObservabilityBackends.PYROSCOPE_GATE))),
+                ).exec()
                 .id
         pusherIds += id
         val tar = ByteArrayOutputStream()
@@ -324,9 +331,10 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         // /ready. A segment writer that rejoins its ring without its tokens refuses every push for
         // about 5.5s, and the agent drops each refused one, so none after the first [START_RACE] may be
         // refused.
-        val restarted = ObservabilityBackends.startPyroscopeUnwaited(config, dataVolume) { containers.add(it) }
+        docker.createVolumeCmd().withName(gateVolume).exec()
+        val restarted = ObservabilityBackends.startPyroscopeGated(config, dataVolume, gateVolume) { containers.add(it) }
         val second = restarted.container
-        val refused = refusedPushesAfterStart(second)
+        val refused = refusedPushesAfterStart(restarted)
         assertThat(refused)
             .describedAs { "pushes refused after a restart (ms after port open, error); server log:\n${second.logs}" }
             .isEmpty()

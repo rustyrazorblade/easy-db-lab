@@ -39,6 +39,6 @@
 
 ## 7. Gates
 
-- [ ] 7.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 through a Sonnet build-engineer, under the local Gradle lock.  No detekt suppressions.
-- [ ] 7.2 `openspec validate issue-1077 --strict`.
-- [ ] 7.3 Real-cluster test, 3 nodes, `--tag embark_offhours=off`: (a) bring a cluster up with the current release, then with the new build run a kit step, a wrapped `kubectl` from a freshly sourced `env.sh`, `socks5-status`, `socks stop`, `socks start` and `down`, and check that `state.json`, `.socks5-proxy.env` and `bin/` were converted as specified; (b) a fresh cluster with the new build through the same commands.  Record commands and output in the PR.
+- [x] 7.1 `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 through a Sonnet build-engineer, under the local Gradle lock.  No detekt suppressions.
+- [x] 7.2 `openspec validate issue-1077 --strict`.
+- [x] 7.3 Real-cluster test, 3 nodes, `--tag embark_offhours=off`: (a) bring a cluster up with the current release, then with the new build run a kit step, a wrapped `kubectl` from a freshly sourced `env.sh`, `socks5-status`, `socks stop`, `socks start` and `down`, and check that `state.json`, `.socks5-proxy.env` and `bin/` were converted as specified; (b) a fresh cluster with the new build through the same commands.  Record commands and output in the PR.

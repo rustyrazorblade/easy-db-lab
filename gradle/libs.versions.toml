@@ -85,6 +85,7 @@ kover = "0.9.8"
 jib = "3.5.2"
 
 [libraries]
+pyroscope-agent = { module = "io.pyroscope:agent", version.ref = "pyroscope-agent" }
 # Kotlin
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }

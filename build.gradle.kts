@@ -450,7 +450,7 @@ val pyroscopeAgentVersion: String =
         .get()
 
 dependencies {
-    pyroscopeAgentConfig("io.pyroscope:agent:$pyroscopeAgentVersion")
+    pyroscopeAgentConfig(libs.pyroscope.agent)
 }
 
 // The account compactor's integration test runs the real lease agent jar in containers.

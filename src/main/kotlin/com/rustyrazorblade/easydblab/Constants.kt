@@ -1084,8 +1084,10 @@ object Constants {
          * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
          * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
          * full the agent drops the oldest. The default is 8, about 80 seconds. The queue is in the
-         * profiled JVM's heap: measured on a Cassandra stress workload, a queued snapshot holds
-         * about 0.17 MB, so a full queue is about 62 MB, inside the owner's 256 MB budget.
+         * profiled JVM's heap: measured on a Cassandra stress JVM, a queued snapshot holds about
+         * 0.17 MB, so a full queue there is about 62 MB, inside the owner's 256 MB budget. The size
+         * depends on the workload; a synthetic load with many stacks measured 5 to 15 MB a snapshot,
+         * so other JVMs (kits, Spark, the sidecar) can hold far more during a long outage.
          */
         const val PUSH_QUEUE_CAPACITY = 360
 

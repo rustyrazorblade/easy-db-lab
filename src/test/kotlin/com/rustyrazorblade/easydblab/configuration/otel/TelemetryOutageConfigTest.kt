@@ -105,8 +105,14 @@ class TelemetryOutageConfigTest : BaseKoinTest() {
      * into an in-memory queue sized for about an hour.
      */
     @Test
-    fun `every backend exporter queues in memory and retries without a limit`() {
-        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+    fun `every backend exporter queues in memory and retries without a limit, locally and under redirect`() {
+        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        assertQueuesAndRetriesWithoutLimit(local)
+        assertQueuesAndRetriesWithoutLimit(redirected)
+    }
+
+    private fun assertQueuesAndRetriesWithoutLimit(yaml: String) {
         val prw = arrayOf("exporters", "prometheus_remote_write")
 
         assertThat(scalarAt(yaml, *prw, "timeout")).isEqualTo("0")

@@ -381,6 +381,32 @@ internal class AWSResourceSetupServiceTest :
     }
 
     @Test
+    fun `a failure that is neither credentials nor permission is rethrown unchanged with no guidance`() {
+        val userConfig = createUserConfig()
+        stubInvalidRoleSetup()
+        val clockSkew =
+            StsException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode(Constants.AWS.ErrorCodes.CLOCK_SKEW)
+                        .errorMessage("Signature expired")
+                        .build(),
+                ).message("Signature expired")
+                .build()
+        whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
+            .thenThrow(clockSkew)
+
+        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(clockSkew)
+
+        assertThat(capturedEvents).noneMatch {
+            it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError
+        }
+    }
+
+    @Test
     fun `ensureAWSResources should create all 3 IAM roles`() {
         // Given: IAM resources not configured (fails initially, then succeeds)
         val userConfig = createUserConfig()

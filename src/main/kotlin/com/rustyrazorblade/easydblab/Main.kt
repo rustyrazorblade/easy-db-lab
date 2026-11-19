@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.di.KoinModules
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import org.koin.core.context.startKoin
 import kotlin.system.exitProcess
@@ -26,5 +27,12 @@ fun main(arguments: Array<String>) {
         }
     }
 
-    CommandLineParser().eval(arguments)
+    // Building the parser registers kit subcommands and resolves beans; a failure there is reported
+    // like a command's, not left to escape as a stack trace. An Error is not ours to report.
+    runCatchingException { CommandLineParser() }
+        .onFailure { failure ->
+            koin.get<CommandFailureReporter>().report(failure)
+            exitProcess(Constants.ExitCodes.ERROR)
+        }.getOrThrow()
+        .eval(arguments)
 }

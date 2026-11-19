@@ -12,7 +12,6 @@ import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import io.github.oshai.kotlinlogging.KotlinLogging
-import software.amazon.awssdk.core.exception.SdkException
 
 private val log = KotlinLogging.logger {}
 
@@ -65,19 +64,12 @@ class AWSResourceSetupService(
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
      *
-     * An AWS failure emits [Event.Command.IamPoliciesCredentialError] and is rethrown unchanged, so
-     * the command still fails and the provider error is still reported; any other failure propagates
-     * with no credential message.
+     * A failure propagates unchanged; the command failure reporter turns an AWS credentials or
+     * permission failure into one provider error with its remedy.
      *
      * @return The AWS account ID
      */
-    fun getAccountId(): String =
-        try {
-            accountIdentity.getAccountId()
-        } catch (e: SdkException) {
-            eventBus.emit(Event.Command.IamPoliciesCredentialError)
-            throw e
-        }
+    fun getAccountId(): String = accountIdentity.getAccountId()
 
     /**
      * Re-applies the instance role's inline policies, so `up` always launches instances under the
@@ -148,27 +140,38 @@ class AWSResourceSetupService(
 
     /**
      * Validates AWS credentials before attempting any operations.
-     * Provides user-friendly guidance for credential and permission errors.
+     *
+     * A credentials or permission failure gets the detailed guidance block, and is rethrown as a
+     * [CommandFailedException] so the executor does not print a second block. Any other failure (a
+     * network error, clock skew, a bug) is rethrown unchanged: credentials guidance would point the
+     * user the wrong way, and the executor's report shows the real cause chain.
      */
     private fun validateCredentials() {
         try {
             accountIdentity.checkPermissions()
         } catch (e: Exception) {
-            emitCredentialError(e)
-            log.error(e) { "AWS credential validation failed" }
-            // The detailed message above is the report; the executor must not print a second block.
-            // This exception's own message goes to the debug log only, never to the user.
-            throw CommandFailedException("AWS credential validation failed: ${e.message}", e)
+            if (emitCredentialError(e)) {
+                log.error(e) { "AWS credential validation failed" }
+                // This exception's own message goes to the debug log only, never to the user.
+                throw CommandFailedException("AWS credential validation failed: ${e.message}", e)
+            }
+            throw e
         }
     }
 
-    private fun emitCredentialError(e: Exception) {
+    /** Emits the guidance block for a credentials or permission failure; returns whether it did. */
+    private fun emitCredentialError(e: Exception): Boolean =
         when (errorHandler.describe(e)?.kind) {
-            ProviderErrorKind.CREDENTIALS -> handleAuthenticationError(e)
-            ProviderErrorKind.PERMISSION_DENIED -> handlePermissionError(e)
-            ProviderErrorKind.UNAVAILABLE, null -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
+            ProviderErrorKind.CREDENTIALS -> {
+                handleAuthenticationError(e)
+                true
+            }
+            ProviderErrorKind.PERMISSION_DENIED -> {
+                handlePermissionError(e)
+                true
+            }
+            ProviderErrorKind.UNAVAILABLE, null -> false
         }
-    }
 
     /**
      * Creates all 3 IAM roles and instance profiles with wildcard S3 policy.

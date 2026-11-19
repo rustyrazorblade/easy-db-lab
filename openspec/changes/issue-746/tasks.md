@@ -24,7 +24,7 @@
 - [x] 3.1 Move `DataBucketTeardown` and `EMRProvisioningService` to `services/aws`, with their tests; their bindings move to `AwsServicesModule`.
 - [x] 3.2 Move `S3ConditionalObjects` to `compactorlease/aws`, and the agent's S3 client into `withS3LeaseStore` there; `LeaseAgentMain` uses the port only.
 - [x] 3.4 Move `CompactorAgentInstaller` from `configuration/compactor` to `services` (R3).
-- [x] 3.5 `AMIService.deleteWithSnapshots` for `PruneAMIs`, and the credential message in `AWSResourceSetupService.getAccountId` for `ShowIamPolicies`, with tests.
+- [x] 3.5 `AMIService.deleteWithSnapshots` for `PruneAMIs`, and `ShowIamPolicies` reporting through the provider error report, with tests.
 - [x] 3.3 `Packer` injects `AWSCredentialsManager`, bound as a `factory`.
 
 ## 4. Profile

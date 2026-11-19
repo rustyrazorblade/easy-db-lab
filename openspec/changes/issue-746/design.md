@@ -150,7 +150,7 @@ The policy comes from the exception class.  The four policy names become constan
 | `Packer` | D6 |
 | SSM | Move `providers/ssm` to `providers/aws/ssm` (6 files); fold `ssmModule` into `AwsClientsModule`. |
 | `PruneAMIs` | `AMIService.deleteWithSnapshots(ami)` returns `AmiDeletion.Deleted` or `Failed(reason)`, catching `SdkException` outside each call's retry; the command emits `Event.Ami.DeleteFailed(reason)`. |
-| `ShowIamPolicies` | `AWSResourceSetupService.getAccountId()` emits `Event.Command.IamPoliciesCredentialError` on an `SdkException` and rethrows it unchanged. |
+| `ShowIamPolicies` | The command's own `SdkException` catch and `IamPoliciesCredentialError` are removed: the failure propagates and `CommandFailureReporter` reports it once as a provider error with its remedy. |
 | `DataBucketTeardown` | Pure move to `services/aws` (S3-only); the binding moves to `AwsServicesModule`. |
 | `EMRProvisioningService` | Pure move to `services/aws` (EMR-only, reads the bootstrap stderr from S3); the binding moves to `AwsServicesModule`. |
 | `compactorlease` | `S3ConditionalObjects` moves to `compactorlease/aws`, with `withS3LeaseStore`, the only place `LeaseAgentMain` reaches the SDK. `LeaseAgentMain` sees only the `ConditionalObjects` port. |

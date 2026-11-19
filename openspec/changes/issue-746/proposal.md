@@ -25,7 +25,7 @@ It also fixes a user-facing bug.  `Main.kt`'s friendly AWS error handlers are de
   - `AWSClientFactory` takes a `String` region and adds `requireValidRegion`.
   - `AwsKeyPairService` in `services/aws` takes the key-pair code out of `User`.
   - `AMIService.deleteWithSnapshots` returns an AWS failure as a value for `prune-amis`.
-  - `AWSResourceSetupService.getAccountId` emits the `show-iam-policies` credential message.
+  - `show-iam-policies` drops its own credential message; the provider error report covers it.
   - `DataBucketTeardown` and `EMRProvisioningService` move to `services/aws`; both are AWS-only.
   - The lease agent's S3 adapter (`S3ConditionalObjects`, and the client built in `withS3LeaseStore`) moves to `compactorlease/aws`.
   - `CompactorAgentInstaller` moves from `configuration/compactor` to `services`: it runs SSH commands.

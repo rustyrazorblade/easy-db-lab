@@ -3392,14 +3392,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("AwsSetup.CredentialValidationFailed")
-        data object CredentialValidationFailed : AwsSetup {
-            override fun toDisplayString(): String = "AWS credential validation failed. Please check your AWS credentials and permissions."
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("AwsSetup.AuthenticationError")
         data class AuthenticationError(
             val exceptionMessage: String,
@@ -4713,14 +4705,6 @@ sealed interface Event {
             val policyName: String,
         ) : Command {
             override fun toDisplayString(): String = "No policies found matching: $policyName"
-        }
-
-        @Serializable
-        @SerialName("Command.IamPoliciesCredentialError")
-        data object IamPoliciesCredentialError : Command {
-            override fun toDisplayString(): String = "Failed to get AWS account ID. Please run 'easy-db-lab init' to set up credentials."
-
-            override fun isError(): Boolean = true
         }
 
         @Serializable

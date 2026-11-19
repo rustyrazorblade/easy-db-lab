@@ -1613,6 +1613,20 @@ class KitEndpointToTargetVarsTest {
     }
 
     @Test
+    fun `every port-carrying endpoint uses the port it is reached on, not the one it declares`() {
+        val reachedOn = 31555
+        val ported =
+            listOf(
+                endpoint(KitEndpoint.EndpointType.NATIVE, port = 9000).toTargetVars("h", sqlCap, reachedOn)["TARGET_NATIVE_PORT"],
+                endpoint(KitEndpoint.EndpointType.POSTGRESQL, port = 5432).toTargetVars("h", sqlCap, reachedOn)["TARGET_PG_PORT"],
+                endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306).toTargetVars("h", sqlCap, reachedOn)["TARGET_MYSQL_PORT"],
+            )
+        assertThat(ported).containsOnly(reachedOn.toString())
+        assertThat(endpoint(KitEndpoint.EndpointType.HTTP, port = 8080).toTargetVars("h", null, reachedOn))
+            .containsEntry("TARGET_HTTP_URL", "http://h:$reachedOn")
+    }
+
+    @Test
     fun `native endpoint on a target with no sql capability has an empty user`() {
         val vars = endpoint(KitEndpoint.EndpointType.NATIVE, port = 30900).toTargetVars("10.0.1.5", null)
         assertThat(vars).containsEntry("TARGET_NATIVE_USER", "")

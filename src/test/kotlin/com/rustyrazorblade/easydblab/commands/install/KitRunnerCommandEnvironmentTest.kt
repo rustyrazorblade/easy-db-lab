@@ -153,6 +153,8 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
         assertThat(invalid.file).isEqualTo(File(File(workingDir, "broken"), Constants.Kit.CONFIG_FILE).path)
         assertThat(invalid.reason).isNotBlank()
         assertThat(invalid.isError()).isTrue()
+        // The user sees this one line and no stack trace: the parser's message can span lines.
+        assertThat(invalid.toDisplayString()).doesNotContain("\n")
         assertThat(ran).doesNotExist()
     }
 

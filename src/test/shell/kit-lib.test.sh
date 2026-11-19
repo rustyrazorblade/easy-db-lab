@@ -439,9 +439,8 @@ test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl() {
 test_a_push_against_a_hung_api_server_is_bounded_and_only_warns() {
   start_test "hung API server"
   echo nodes > "${STUB_STATE}/api-hang"
-  local started=${SECONDS}
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
-  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ ! -e "${STUB_STATE}/api-hung" ] || fail "the push waited on the hung API server: $(cat "${STUB_STATE}/api-hung")"
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
   [ "${err}" = "warning: could not push sysbench gauges: could not find the control node; the dashboard will not show this run" ] ||
@@ -452,9 +451,8 @@ test_a_push_against_a_hung_api_server_is_bounded_and_only_warns() {
 test_a_push_whose_core_pod_lookup_hangs_is_bounded_and_only_warns() {
   start_test "hung core pod lookup"
   echo pods > "${STUB_STATE}/api-hang"
-  local started=${SECONDS}
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
-  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ ! -e "${STUB_STATE}/api-hung" ] || fail "the push waited on the hung API server: $(cat "${STUB_STATE}/api-hung")"
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
   [ "${err}" = "warning: could not push sysbench gauges: could not list the otel-collector pods on control node control0; the dashboard will not show this run" ] ||

@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
+import com.rustyrazorblade.easydblab.configuration.isVeryWideClientNetwork
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
@@ -626,8 +627,8 @@ class Init :
         clusterState: ClusterState,
         extraClients: List<Ipv4Cidr>,
     ) {
-        extraClients.filter(ClientNetworks::isVeryWide).forEach { cidr ->
-            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, ClientNetworks.addressCount(cidr)))
+        extraClients.filter { it.isVeryWideClientNetwork }.forEach { cidr ->
+            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount))
         }
         eventBus.emit(Event.Setup.ClientNetworksRecorded(ClientNetworks.from(clusterState).cidrs.map { it.value }))
     }

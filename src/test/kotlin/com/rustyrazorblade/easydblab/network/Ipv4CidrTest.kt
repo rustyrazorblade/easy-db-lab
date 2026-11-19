@@ -100,5 +100,12 @@ class Ipv4CidrTest {
         assertThat(cidr("192.168.0.0/16").subnet(19, 7).value).isEqualTo("192.168.224.0/19")
     }
 
+    @Test
+    fun `the address count is two to the power of the host bits, up to every address of a slash 0`() {
+        assertThat(cidr("203.0.113.7/32").addressCount).isEqualTo(1L)
+        assertThat(cidr("10.0.0.0/7").addressCount).isEqualTo(33_554_432L)
+        assertThat(cidr("0.0.0.0/0").addressCount).isEqualTo(4_294_967_296L)
+    }
+
     private fun cidr(raw: String): Ipv4Cidr = Ipv4Cidr.parse(raw).getOrThrow()
 }

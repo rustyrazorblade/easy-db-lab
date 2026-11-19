@@ -8,6 +8,10 @@
 # (exists=false). Any other inspect failure - authentication, network, rate limit - fails the job
 # and writes nothing, because guessing "not published" there would overwrite a published tag.
 #
+# This guards only this job. A manual `docker push` to ghcr, or another workflow with write access
+# to the package, can still replace a published tag: the tag is immutable by convention, not by the
+# registry.
+#
 # Tested by image-published.test.sh (./gradlew testPyroscopeAgentPublished).
 
 set -euo pipefail

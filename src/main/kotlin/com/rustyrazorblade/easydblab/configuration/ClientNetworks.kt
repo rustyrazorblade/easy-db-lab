@@ -41,23 +41,19 @@ data class ClientNetworks(
         }
 
         /**
-         * Whether [cidr] is wide enough (/1 to [Constants.ClientNetworks.WIDE_PREFIX_WARNING_MAX])
-         * that `init` warns before giving it passwordless trust.
-         */
-        fun isVeryWide(cidr: Ipv4Cidr): Boolean = cidr.prefixLength <= Constants.ClientNetworks.WIDE_PREFIX_WARNING_MAX
-
-        /** How many addresses [cidr] covers. */
-        fun addressCount(cidr: Ipv4Cidr): Long = 1L shl (IPV4_BITS - cidr.prefixLength)
-
-        private const val IPV4_BITS = 32
-
-        /**
          * The networks [state] records, or, for a state that records none (the nodes easy-db-lab
          * builds), the VPC CIDR and the K3s cluster CIDR easy-db-lab passes to K3s, followed by
          * the networks added with [OPTION], each once.
+         *
+         * @throws IllegalStateException when the state records an empty list: `init` never writes
+         * one (a probe that finds nothing fails), and rendering it would trust no client at all.
          */
         fun from(state: ClusterState): ClientNetworks {
             val recorded = state.clientNetworks
+            check(recorded == null || recorded.isNotEmpty()) {
+                "state.json records an empty client network list, so the database kits would accept no client. " +
+                    "Remove clientNetworks from state.json, or run init again with $OPTION <cidr>."
+            }
             val values =
                 recorded
                     ?: (
@@ -129,3 +125,10 @@ data class ProbedNode(
     val podCidrs: List<String>,
     val internalIps: List<String>,
 )
+
+/**
+ * Whether this network is wide enough (/1 to [Constants.ClientNetworks.WIDE_PREFIX_WARNING_MAX])
+ * that `init` warns before giving it passwordless trust as a client network.
+ */
+val Ipv4Cidr.isVeryWideClientNetwork: Boolean
+    get() = prefixLength <= Constants.ClientNetworks.WIDE_PREFIX_WARNING_MAX

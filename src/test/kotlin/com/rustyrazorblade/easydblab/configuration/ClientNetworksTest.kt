@@ -57,6 +57,36 @@ class ClientNetworksTest {
     }
 
     @Test
+    fun `a recorded empty list is refused, naming state json and the option, instead of trusting no client`() {
+        assertThatThrownBy { ClientNetworks.from(state(cidr = "172.16.0.0/16", clientNetworks = emptyList())) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("state.json")
+            .hasMessageContaining(ClientNetworks.OPTION)
+    }
+
+    @Test
+    fun `a slash 0 option is refused, naming the value`() {
+        assertThatThrownBy { ClientNetworks.parseOption("0.0.0.0/0") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("0.0.0.0/0")
+            .hasMessageContaining(ClientNetworks.OPTION)
+    }
+
+    @Test
+    fun `an option with host bits set is refused, naming the value`() {
+        assertThatThrownBy { ClientNetworks.parseOption("10.0.0.1/8") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("10.0.0.1/8")
+    }
+
+    @Test
+    fun `a slash 1 to slash 7 network is very wide, a slash 8 is not`() {
+        assertThat(cidr("128.0.0.0/1").isVeryWideClientNetwork).isTrue()
+        assertThat(cidr("10.0.0.0/7").isVeryWideClientNetwork).isTrue()
+        assertThat(cidr("10.0.0.0/8").isVeryWideClientNetwork).isFalse()
+    }
+
+    @Test
     fun `recorded networks win over the VPC`() {
         val networks = ClientNetworks.from(state(cidr = "172.16.0.0/16", clientNetworks = listOf("192.168.0.0/16")))
 

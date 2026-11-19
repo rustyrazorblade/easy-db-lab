@@ -4,16 +4,19 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.access.DirectServiceAccess
+import com.rustyrazorblade.easydblab.services.access.PortForwardServiceAccess
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.access.ServiceEndpoint
 import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.services.access.SocksServiceAccess
+import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.net.InetAddress
 
 /**
  * Tests for DefaultKitEndpointResolver — resolves target kit endpoints into TARGET_* env vars.
@@ -185,6 +188,22 @@ class KitEndpointResolverTest {
                 assertThat(e.file).isEqualTo(File(kitDir, "kit.yaml"))
                 assertThat(e.reason).isNotBlank()
                 assertThat(e.message).contains("broken").contains(File(kitDir, "kit.yaml").path).contains(e.reason)
+            }
+    }
+
+    @Test
+    fun `the parse problem of a target kit yaml is one line that keeps the parser's messages and positions`() {
+        val kitDir = File(workspaceDir, "unclosed").also { it.mkdirs() }
+        File(kitDir, "kit.yaml").writeText("name: [unclosed")
+
+        assertThatThrownBy { resolver.resolveTargetVars(kitDir, clusterState) }
+            .isInstanceOfSatisfying(TargetKitConfigException::class.java) { e ->
+                assertThat(e.reason)
+                    .doesNotContain("\n")
+                    .doesNotContain("^")
+                    .contains("while parsing a flow sequence")
+                    .contains("at line 1, column 7")
+                    .contains("expected ',' or ']', but got <stream end>")
             }
     }
 
@@ -376,6 +395,44 @@ class KitEndpointResolverServiceDnsTest {
         assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://127.0.0.1:24123")
         assertThat(opened.single()).isEqualTo(ServiceTarget("default", "clickhouse-nodeport", 8123, ServerType.Cassandra, 30123))
     }
+
+    /**
+     * The REPL and the server run kit phases one after another in one process, against the one
+     * process-wide access. Each phase resolves the HTTP endpoint again; the forward it opened the
+     * first time is reused, so repeated phases never pile up forwards.
+     */
+    @Test
+    fun `repeated phases in one process reuse one port-forward to the target's Service`() {
+        val forwards = mutableListOf<LocalPortForward>()
+        val access =
+            PortForwardServiceAccess(
+                { _, localPort -> livingForward(localPort).also { forwards += it } },
+                generateSequence(24123) { it + 1 }.iterator()::next,
+            )
+        val resolver = DefaultKitEndpointResolver(access)
+
+        val urls = (1..3).map { resolver.resolveTargetVars(httpKit(), noHosts)["TARGET_HTTP_URL"] }
+
+        assertThat(urls).containsOnly("http://127.0.0.1:24123")
+        assertThat(forwards).hasSize(1)
+    }
+
+    private fun livingForward(port: Int): LocalPortForward =
+        object : LocalPortForward {
+            override fun getLocalAddress(): InetAddress = InetAddress.getLoopbackAddress()
+
+            override fun getLocalPort(): Int = port
+
+            override fun isAlive(): Boolean = true
+
+            override fun errorOccurred(): Boolean = false
+
+            override fun getClientThrowables(): Collection<Throwable> = emptyList()
+
+            override fun getServerThrowables(): Collection<Throwable> = emptyList()
+
+            override fun close() = Unit
+        }
 
     @Test
     fun `the HTTP endpoint never resolves to a Service DNS name this machine cannot look up`() {

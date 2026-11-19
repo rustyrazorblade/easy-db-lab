@@ -108,7 +108,16 @@ class DefaultKitEndpointResolver(
         configFile: File,
     ): KitConfig =
         runCatching { installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText()) }
-            .getOrElse { e -> throw TargetKitConfigException(target, configFile, e.message ?: e::class.simpleName.orEmpty(), e) }
+            .getOrElse { e ->
+                throw TargetKitConfigException(
+                    target,
+                    configFile,
+                    oneLineParseProblem(
+                        e.message ?: e::class.simpleName.orEmpty(),
+                    ),
+                    e,
+                )
+            }
 
     private fun address(
         target: String,
@@ -146,4 +155,19 @@ class DefaultKitEndpointResolver(
         val serverType = runCatching { ServerType.from(endpoint.nodeType) }.getOrNull() ?: return null
         return clusterState.hosts[serverType]?.firstOrNull()?.privateIp
     }
+}
+
+/**
+ * The YAML parser's [message] as one line for the user: its problem and position lines joined, with
+ * the quoted source line and the caret under it dropped (a caret line, and the line above it).
+ */
+internal fun oneLineParseProblem(message: String): String {
+    val lines = message.lines()
+    val isCaret = { index: Int -> lines.getOrNull(index)?.trim() == "^" }
+    return lines
+        .filterIndexed { index, _ -> !isCaret(index) && !isCaret(index + 1) }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString(" ")
+        .removeSuffix(":")
 }

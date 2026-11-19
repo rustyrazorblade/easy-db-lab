@@ -242,6 +242,8 @@ class Repl : PicoBaseCommand() {
             when (e) {
                 is UserInterruptException -> true
                 is EndOfFileException -> false
+                // A thread interrupt is a request to stop, not one more failed line.
+                is InterruptedException -> false
                 else -> {
                     systemRegistry.trace(e)
                     true

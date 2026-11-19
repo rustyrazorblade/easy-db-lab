@@ -15,7 +15,7 @@ import org.koin.dsl.module
  * - RemoteOperationsService as a factory (stateless operations)
  *
  * Note: SSHConfiguration must be provided by another module (e.g., contextModule), and
- * SsmSessionCommandBuilder by the SSM module.
+ * the SSM transport classes (SsmSshRoute and its parts) by AwsClientsModule.
  */
 val sshModule =
     module {

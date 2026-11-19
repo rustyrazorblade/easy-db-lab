@@ -450,18 +450,29 @@ object Constants {
             const val CLOCK_SKEW = "RequestTimeTooSkewed"
 
             /**
-             * Prefixes of the `SdkClientException` messages a credentials provider raises when it finds no usable
-             * credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGE]. An expired SSO session
-             * has its own type, `ExpiredTokenException`, so it needs no message here.
+             * Prefixes of the `SdkClientException` messages a credentials or SSO token provider raises when it finds
+             * no usable credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGES]. The legacy SSO
+             * profile's expired session has its own type, `ExpiredTokenException`, so it needs no message here; an
+             * `sso_session` profile's `SsoOidcTokenProvider` raises the last two.
              */
             val CREDENTIALS_MESSAGES =
                 listOf(
                     "Unable to load credentials",
                     "Profile file contained no credentials for profile",
+                    "Token is expired",
+                    "Unable to load SSO token",
                 )
 
-            /** The SDK package whose providers raise a missing-credentials `SdkClientException`. */
-            const val CREDENTIALS_PROVIDER_PACKAGE = "software.amazon.awssdk.auth.credentials."
+            /**
+             * The SDK packages whose providers raise a missing-credentials `SdkClientException`: the credentials
+             * providers, the SSO OIDC token provider and the SSO credentials provider.
+             */
+            val CREDENTIALS_PROVIDER_PACKAGES =
+                listOf(
+                    "software.amazon.awssdk.auth.credentials.",
+                    "software.amazon.awssdk.services.ssooidc.",
+                    "software.amazon.awssdk.services.sso.",
+                )
 
             /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
             const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
@@ -783,6 +794,9 @@ object Constants {
 
         // Per-profile user settings, written under the active profile directory
         const val PROFILE_SETTINGS_FILE = "settings.yaml"
+
+        // The profile key pair's private key, written owner-only under the active profile directory
+        const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }
 
     // K3s configuration

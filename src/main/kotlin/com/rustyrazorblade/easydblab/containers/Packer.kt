@@ -41,7 +41,7 @@ class Packer(
     private val remoteOps: RemoteOperationsService by inject()
 
     private val awsCredentialsManager: AWSCredentialsManager by inject()
-    private val secretKeyFile by lazy { File(context.profileDir, "secret.pem") }
+    private val secretKeyFile by lazy { File(context.profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE) }
 
     private val containerWorkingDir = Constants.Paths.LOCAL_MOUNT
     private val logger = KotlinLogging.logger {}

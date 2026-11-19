@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import org.assertj.core.api.Assertions.assertThat
@@ -92,9 +94,18 @@ class AwsKeyPairServiceTest {
             .isInstanceOf(CommandFailedException::class.java)
             .hasCause(denied)
 
-        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
-        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionPolicyDisplay>()).isNotEmpty
-        assertThat(emitted).contains(Event.Setup.AwsPermissionPolicyFooter)
+        val error = emitted.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(error.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(error.remedy).contains(AWSPolicy.UserIAM.EC2_POLICY)
+        assertThat(error.response?.errorCode).isEqualTo("UnauthorizedOperation")
+        // The policy listing follows the provider error, one entry per lab policy.
+        assertThat(emitted.indexOf(error)).isLessThan(emitted.indexOfFirst { it is Event.Setup.AwsPermissionPolicyDisplay })
+        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionPolicyDisplay>().map { it.name })
+            .containsExactlyElementsOf(AWSPolicy.UserIAM.ALL_NAMES)
+        val footer = emitted.filterIsInstance<Event.Setup.AwsPermissionPolicyFooter>().single()
+        assertThat(footer.toDisplayString())
+            .contains("Create ${AWSPolicy.UserIAM.ALL_NAMES.size} managed policies")
+            .contains(AWSPolicy.UserIAM.OPENSEARCH_POLICY)
     }
 
     @Test
@@ -114,7 +125,8 @@ class AwsKeyPairServiceTest {
             .isInstanceOf(CommandFailedException::class.java)
             .hasCause(denied)
 
-        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>().single().kind)
+            .isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
         assertThat(File(profileDir, "secret.pem")).doesNotExist()
     }
 
@@ -136,8 +148,7 @@ class AwsKeyPairServiceTest {
         CommandFailureReporter(eventBus, listOf(AwsErrorHandler())).report(failure)
 
         assertThat(emitted).hasSize(afterService)
-        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
-        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).hasSize(1)
     }
 
     @Test
@@ -171,7 +182,7 @@ class AwsKeyPairServiceTest {
 
         assertThatThrownBy { service.generate(profileDir, ec2) }.isSameAs(other)
 
-        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).isEmpty()
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
     }
 
     @Test

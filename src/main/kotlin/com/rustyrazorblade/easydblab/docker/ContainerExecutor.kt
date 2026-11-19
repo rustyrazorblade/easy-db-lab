@@ -68,18 +68,25 @@ class ContainerExecutor(
                 }.run()
             eventBus.emit(Event.Docker.ContainerStarting(containerId))
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
-            val errorMsg = "Docker error starting container: $containerId"
-            log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
-            throw DockerException("Failed to start container $containerId", e)
+            failStart(e, DockerException("Failed to start container $containerId", e))
         } catch (e: IOException) {
-            val errorMsg = "IO error starting container: $containerId"
-            log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
-            throw DockerException("IO error starting container $containerId", e)
+            failStart(e, DockerException("IO error starting container $containerId", e))
+        } catch (e: DockerException) {
+            // The client seam already named the operation and kept the socket failure as the cause.
+            failStart(e, e)
         }
 
         return waitForContainerToComplete(containerId, maxWaitTime)
+    }
+
+    /** Logs and reports a container that failed to start, then throws [failure]. */
+    private fun failStart(
+        cause: Exception,
+        failure: DockerException,
+    ): Nothing {
+        log.error(cause) { failure.message }
+        eventBus.emit(Event.Docker.ContainerStartError(cause.message.orEmpty()))
+        throw failure
     }
 
     /**

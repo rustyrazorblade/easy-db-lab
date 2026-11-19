@@ -16,12 +16,14 @@ import software.amazon.awssdk.services.sts.StsClient
 interface AWSClientFactory {
     companion object {
         /**
-         * Rejects a blank region, which is the only input `Region.of` refuses. Callers outside the
-         * adapter hold a plain region name, so this is where their bad input fails, before any
-         * client is built. A misspelt region is not detected here, by decision.
+         * Rejects a region the SDK does not know (`Region.regions()`), blank or misspelt. Callers
+         * outside the adapter hold a plain region name, so this is where their bad input fails,
+         * before any client is built. `Region.of` alone accepts any non-blank string.
+         *
+         * @throws IllegalArgumentException for an unknown region
          */
         fun requireValidRegion(region: String) {
-            Region.of(region)
+            require(Region.regions().any { it.id() == region }) { "Unknown AWS region: '$region'" }
         }
     }
 

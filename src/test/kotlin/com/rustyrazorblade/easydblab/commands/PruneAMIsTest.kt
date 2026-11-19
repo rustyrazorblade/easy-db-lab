@@ -123,12 +123,15 @@ class PruneAMIsTest : BaseKoinTest() {
         @Test
         fun `an AWS failure deleting one AMI is reported and the run completes`() {
             whenever(mockAMIService.deleteWithSnapshots(oldAmi))
-                .thenReturn(AMIService.AmiDeletion.Failed("UnauthorizedOperation"))
+                .thenReturn(
+                    AMIService.AmiDeletion.Failed(oldAmi.id, "delete snapshot snap-a", listOf("snap-a", "snap-b"), "UnauthorizedOperation"),
+                )
 
             PruneAMIs().execute()
 
             val output = outputHandler.messages.joinToString("\n")
-            assertThat(output).contains("Error deleting: UnauthorizedOperation")
+            assertThat(output).contains("Error deleting ${oldAmi.id} (failed to delete snapshot snap-a): UnauthorizedOperation")
+            assertThat(output).contains("Snapshots left: snap-a, snap-b")
             assertThat(output).contains("Deleted: 0")
         }
 

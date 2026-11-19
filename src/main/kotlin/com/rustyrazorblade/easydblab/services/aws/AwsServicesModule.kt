@@ -127,6 +127,7 @@ val awsServicesModule =
                 get<IamRoles>(),
                 get<AccountIdentity>(),
                 get<EventBus>(),
+                get<AwsErrorHandler>(),
             )
         }
 

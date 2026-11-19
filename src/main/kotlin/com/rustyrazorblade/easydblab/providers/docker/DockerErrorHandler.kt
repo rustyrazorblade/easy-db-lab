@@ -19,7 +19,12 @@ import java.net.URI
  *
  * - a connection failure sits below a Docker exception (docker-java's, or the project's
  *   [DockerException]) in the cause chain, or
- * - a connection failure names the Docker socket (`docker.sock`) or the configured `DOCKER_HOST`.
+ * - a connection failure names the Docker socket (`docker.sock`) or the configured `DOCKER_HOST`
+ *   (its host and port, or its socket path for a `unix://` host).
+ *
+ * docker-java itself reports a missing or dead socket as a bare `RuntimeException` around a
+ * `SocketException` that names no path; `DefaultDockerClient` rethrows that as a [DockerException],
+ * which is what puts it under the first rule.
  *
  * The detail is the message of the exception that matched, not of whatever wraps it. A file or
  * bind-mount error that names the socket is not a connection failure and is not claimed. An answer
@@ -34,7 +39,7 @@ import java.net.URI
 class DockerErrorHandler(
     dockerHost: String? = System.getenv(DOCKER_HOST_ENV),
 ) : ProviderErrorHandler {
-    private val hostMarkers: Pair<String, String>? = dockerHost?.let(::hostAndPort)
+    private val endpointMarkers: List<String>? = dockerHost?.let(::markersOf)
 
     override fun describe(error: Throwable): ErrorDescription? {
         val chain = error.causeChain()
@@ -68,18 +73,27 @@ class DockerErrorHandler(
 
     private fun namesDockerEndpoint(message: String): Boolean =
         message.contains(SOCKET_FILE) ||
-            hostMarkers?.let { (host, port) -> message.contains(host) && message.contains(":$port") } == true
+            endpointMarkers?.let { markers -> markers.all { message.contains(it) } } == true
 
-    private fun hostAndPort(value: String): Pair<String, String>? =
-        runCatching { URI(value) }
-            .getOrNull()
-            ?.takeIf { it.host != null && it.port != -1 }
-            ?.let { it.host to it.port.toString() }
+    /**
+     * What a failure message must contain to name the configured endpoint: the host and `:port` of a
+     * `tcp://` host, or the socket path of a `unix://` one (colima, Rancher Desktop and Docker
+     * Desktop's per-user socket all use one, and a unix URI has no host).
+     */
+    private fun markersOf(value: String): List<String>? {
+        val uri = runCatching { URI(value) }.getOrNull() ?: return null
+        return when {
+            uri.scheme == UNIX_SCHEME -> uri.path?.takeIf { it.isNotEmpty() }?.let { listOf(it) }
+            uri.host != null && uri.port != -1 -> listOf(uri.host, ":${uri.port}")
+            else -> null
+        }
+    }
 
     private companion object {
         const val PROVIDER = "Docker"
         const val REMEDY = "Check that Docker is running, then run the command again."
         const val DOCKER_HOST_ENV = "DOCKER_HOST"
+        const val UNIX_SCHEME = "unix"
 
         /** The default Docker daemon socket, which a unix-socket client names when it cannot open it. */
         const val SOCKET_FILE = "docker.sock"

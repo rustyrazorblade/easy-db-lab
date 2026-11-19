@@ -125,7 +125,9 @@ class PruneAMIs : PicoBaseCommand() {
                 true
             }
             is AMIService.AmiDeletion.Failed -> {
-                eventBus.emit(Event.Ami.DeleteFailed(deletion.reason))
+                eventBus.emit(
+                    Event.Ami.DeleteFailed(deletion.amiId, deletion.failedStep, deletion.remainingSnapshotIds, deletion.reason),
+                )
                 false
             }
         }

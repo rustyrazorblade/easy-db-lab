@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsIamRoles
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
@@ -380,12 +381,18 @@ internal class AWSResourceSetupServiceTest :
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(exception)
 
-        // When/Then: the detailed message is emitted once and the failure is rethrown as already reported
+        // When/Then: the provider error is emitted once and the failure is rethrown as already reported
         assertThatThrownBy { service.ensureAWSResources(userConfig) }
             .isInstanceOf(CommandFailedException::class.java)
             .hasCause(exception)
 
-        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.IamPermissionError }
+        // GetCallerIdentity needs no IAM permission, so the remedy names no lab policy and no policy is listed.
+        val error = capturedEvents.map { it.event }.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(error.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(error.remedy).contains("no lab policy fixes this")
+        assertThat(error.response?.errorCode).isEqualTo("AccessDenied")
+        assertThat(error.response?.statusCode).isEqualTo(403)
+        assertThat(capturedEvents).noneMatch { it.event is Event.AwsSetup.PolicyDisplay || it.event is Event.AwsSetup.RequiredPolicies }
     }
 
     @Test
@@ -409,8 +416,31 @@ internal class AWSResourceSetupServiceTest :
 
         assertThatThrownBy { service.ensureAWSResources(userConfig) }.isInstanceOf(CommandFailedException::class.java)
 
-        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.AuthenticationError }
-        assertThat(capturedEvents).noneMatch { it.event is Event.AwsSetup.IamPermissionError }
+        val events = capturedEvents.map { it.event }
+        val error = events.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(error.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+        assertThat(error.remedy).contains("easy-db-lab profile setup")
+        // The policy listing follows the provider error and names every lab policy, with their count.
+        val header = events.filterIsInstance<Event.AwsSetup.RequiredPolicies>().single()
+        assertThat(events.indexOf(error)).isLessThan(events.indexOf(header))
+        assertThat(header.toDisplayString()).contains("needs ${AWSPolicy.UserIAM.ALL_NAMES.size} IAM policies")
+        assertThat(events.filterIsInstance<Event.AwsSetup.PolicyDisplay>().map { it.name })
+            .containsExactlyElementsOf(AWSPolicy.UserIAM.ALL_NAMES)
+    }
+
+    @Test
+    fun `the setup credential failure reaches the reporter once, as the provider error the service emitted`() {
+        stubInvalidRoleSetup()
+        whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
+            .thenThrow(stsFailure(403, "ExpiredToken"))
+        val failure = runCatching { service.ensureAWSResources(createUserConfig()) }.exceptionOrNull()!!
+
+        com.rustyrazorblade.easydblab.services
+            .CommandFailureReporter(eventBus, listOf(AwsErrorHandler()))
+            .report(failure)
+
+        assertThat(capturedEvents.map { it.event }.filterIsInstance<Event.Command.ProviderError>()).hasSize(1)
+        assertThat(capturedEvents).noneMatch { it.event is Event.Command.ExecutionError }
     }
 
     @ParameterizedTest(name = "{0}")
@@ -424,7 +454,7 @@ internal class AWSResourceSetupServiceTest :
         assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
-            it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError
+            it.event is Event.Command.ProviderError || it.event is Event.AwsSetup.PolicyDisplay
         }
     }
 
@@ -443,7 +473,7 @@ internal class AWSResourceSetupServiceTest :
         assertThatThrownBy { unavailableService.ensureAWSResources(createUserConfig()) }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
-            it.event is Event.AwsSetup.AuthenticationError || it.event is Event.AwsSetup.IamPermissionError
+            it.event is Event.Command.ProviderError || it.event is Event.AwsSetup.PolicyDisplay
         }
     }
 

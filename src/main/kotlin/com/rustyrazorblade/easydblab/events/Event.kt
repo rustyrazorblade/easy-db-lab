@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderResponse
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -3392,44 +3393,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("AwsSetup.AuthenticationError")
-        data class AuthenticationError(
-            val exceptionMessage: String,
-        ) : AwsSetup {
-            override fun toDisplayString(): String =
-                """
-                |
-                |========================================
-                |AWS CREDENTIAL ERROR
-                |========================================
-                |
-                |Unable to validate AWS credentials: $exceptionMessage
-                |
-                |This usually means:
-                |  - AWS credentials are not configured
-                |  - AWS credentials have expired
-                |  - AWS access key or secret key is invalid
-                |
-                |To fix this issue, reconfigure your easy-db-lab profile:
-                |
-                |  1. Remove incorrect profile: rm -rf ~/.easy_cass_lab/profiles/<PROFILE>
-                |     (Replace <PROFILE> with your profile name, usually 'default')
-                |
-                |  2. Run: easy-db-lab profile setup
-                |
-                |  3. When prompted, enter your AWS access key and secret key
-                |
-                |To verify your credentials are working, run:
-                |  aws sts get-caller-identity
-                |
-                |For full AWS permissions required by easy-db-lab, add THREE inline policies:
-                |
-                """.trimMargin()
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("AwsSetup.Ec2RoleReady")
         data class Ec2RoleReady(
             val roleName: String,
@@ -3514,6 +3477,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "✓ AWS resources setup complete and validated"
         }
 
+        /**
+         * A credentials failure in AWS setup is followed by the lab's IAM policies, which a new user
+         * attaches once the credentials work; this heads that listing.
+         *
+         * @property policyNames every lab user policy, in the order they are listed
+         */
+        @Serializable
+        @SerialName("AwsSetup.RequiredPolicies")
+        data class RequiredPolicies(
+            val policyNames: List<String>,
+        ) : AwsSetup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |easy-db-lab needs ${policyNames.size} IAM policies on your AWS user: ${policyNames.joinToString(", ")}.
+                |They are listed below with ACCOUNT_ID in place of your AWS account ID.
+                |
+                """.trimMargin()
+        }
+
         @Serializable
         @SerialName("AwsSetup.PolicyDisplay")
         data class PolicyDisplay(
@@ -3540,44 +3523,6 @@ sealed interface Event {
                 |========================================
                 |
                 """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("AwsSetup.AccountIdNote")
-        data object AccountIdNote : AwsSetup {
-            override fun toDisplayString(): String =
-                """
-                |NOTE: Replace ACCOUNT_ID in the policies below with your AWS account ID.
-                |You can find your account ID in the error message above (the 12-digit number in the ARN).
-                |
-                """.trimMargin()
-        }
-
-        @Serializable
-        @SerialName("AwsSetup.PolicyRecommendation")
-        data object PolicyRecommendation : AwsSetup {
-            @Suppress("MaxLineLength")
-            override fun toDisplayString(): String =
-                "========================================\n" +
-                    "\n" +
-                    "RECOMMENDED: Create managed policies and attach to a group\n" +
-                    "  \u2022 No size limits (inline policies limited to 5,120 bytes total)\n" +
-                    "  \u2022 Required for EMR/Spark cluster functionality\n" +
-                    "  \u2022 Reusable across multiple users\n" +
-                    "\n" +
-                    "To apply these policies:\n" +
-                    "  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)\n" +
-                    "  2. Create IAM group (e.g., \"EasyDBLabUsers\")\n" +
-                    "  3. Create three managed policies:\n" +
-                    "     - Policies \u2192 Create Policy \u2192 JSON tab\n" +
-                    "     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR\n" +
-                    "  4. Attach policies to your group\n" +
-                    "  5. Add your IAM user to the group\n" +
-                    "\n" +
-                    "ALTERNATIVE (single user): Attach as inline policies to your user\n" +
-                    "  WARNING: May hit 5,120 byte limit with all three policies\n" +
-                    "\n" +
-                    "========================================\n"
         }
     }
 
@@ -4550,7 +4495,9 @@ sealed interface Event {
 
         /**
          * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
-         * recognised: bad credentials or missing permissions. Carries the provider's detail and the remedy.
+         * recognised: bad credentials, missing permissions, or an unreachable provider. Carries the provider's
+         * detail, the remedy and, for a service answer, the [response] facts (service, error code, HTTP status,
+         * request id).
          */
         @Serializable
         @SerialName("Command.ProviderError")
@@ -4559,6 +4506,7 @@ sealed interface Event {
             val kind: ProviderErrorKind,
             val detail: String,
             val remedy: String,
+            val response: ProviderResponse? = null,
         ) : Command {
             override fun toDisplayString(): String {
                 val headline =
@@ -4567,7 +4515,13 @@ sealed interface Event {
                         ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
                         ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
                     }
-                return "$headline\n$detail\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
+                val facts =
+                    response
+                        ?.summary()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { "\n($it)" }
+                        .orEmpty()
+                return "$headline\n$detail$facts\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
             }
 
             override fun isError(): Boolean = true
@@ -5273,9 +5227,20 @@ sealed interface Event {
         @Serializable
         @SerialName("Ami.DeleteFailed")
         data class DeleteFailed(
+            val amiId: String,
+            val failedStep: String,
+            val remainingSnapshotIds: List<String>,
             val error: String,
         ) : Ami {
-            override fun toDisplayString(): String = "  ✗ Error deleting: $error"
+            override fun toDisplayString(): String {
+                val kept =
+                    if (remainingSnapshotIds.isEmpty()) {
+                        ""
+                    } else {
+                        "\n    Snapshots left: ${remainingSnapshotIds.joinToString(", ")}"
+                    }
+                return "  ✗ Error deleting $amiId (failed to $failedStep): $error$kept"
+            }
         }
 
         @Serializable
@@ -6162,30 +6127,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Setup.AwsPermissionError")
-        data class AwsPermissionError(
-            val operation: String,
-            val error: String,
-        ) : Setup {
-            override fun toDisplayString(): String =
-                """
-                |
-                |========================================
-                |AWS PERMISSION ERROR
-                |========================================
-                |
-                |Operation: $operation
-                |Error: $error
-                |
-                |To fix this issue, add the following IAM policies to your AWS user.
-                |You need to create THREE separate inline policies:
-                |
-                """.trimMargin()
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
         @SerialName("Setup.AwsPermissionPolicyDisplay")
         data class AwsPermissionPolicyDisplay(
             val index: Int,
@@ -6205,7 +6146,9 @@ sealed interface Event {
 
         @Serializable
         @SerialName("Setup.AwsPermissionPolicyFooter")
-        data object AwsPermissionPolicyFooter : Setup {
+        data class AwsPermissionPolicyFooter(
+            val policyNames: List<String>,
+        ) : Setup {
             override fun toDisplayString(): String =
                 """
                 |========================================
@@ -6218,9 +6161,9 @@ sealed interface Event {
                 |To apply these policies:
                 |  1. Go to AWS IAM Console (https://console.aws.amazon.com/iam/)
                 |  2. Create IAM group (e.g., "EasyDBLabUsers")
-                |  3. Create three managed policies:
+                |  3. Create ${policyNames.size} managed policies:
                 |     - Policies → Create Policy → JSON tab
-                |     - Paste policy content and name: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR
+                |     - Paste policy content and name: ${policyNames.joinToString(", ")}
                 |  4. Attach policies to your group
                 |  5. Add your IAM user to the group
                 |

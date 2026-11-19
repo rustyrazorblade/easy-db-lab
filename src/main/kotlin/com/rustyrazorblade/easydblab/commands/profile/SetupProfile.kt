@@ -103,7 +103,7 @@ class SetupProfile : PicoBaseCommand() {
         showWelcomeMessage()
 
         // Retry loop for credential collection and validation
-        val (credentials, regionObj) = collectAndValidateCredentials(existingConfig)
+        val (credentials, region) = collectAndValidateCredentials(existingConfig)
 
         val userConfig = createInitialUserConfig(credentials, existingConfig)
         userConfigProvider.saveUserConfig(userConfig)
@@ -111,7 +111,7 @@ class SetupProfile : PicoBaseCommand() {
 
         collectAndSaveOptionalInfo(existingConfig, userConfig)
 
-        ensureAwsResources(userConfig, credentials, regionObj)
+        ensureAwsResources(userConfig, credentials, region)
 
         showSuccessMessage()
     }
@@ -129,11 +129,11 @@ class SetupProfile : PicoBaseCommand() {
             // retry asks for the profile again instead of trying the same one.
             val credentials = collectCoreCredentials(if (attempt == 1) existingConfig else existingConfig - "awsProfile")
             AWSClientFactory.requireValidRegion(credentials.region)
-            val regionObj = credentials.region
+            val region = credentials.region
 
             try {
-                validateAwsCredentials(credentials, regionObj)
-                return credentials to regionObj
+                validateAwsCredentials(credentials, region)
+                return credentials to region
             } catch (e: SetupProfileException) {
                 if (attempt >= MAX_CREDENTIAL_RETRIES) {
                     throw e
@@ -215,12 +215,12 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun validateAwsCredentials(
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
         try {
-            val identity = createAccountIdentity(credentials, regionObj)
+            val identity = createAccountIdentity(credentials, region)
             identity.checkPermissions()
 
             eventBus.emit(Event.Setup.CredentialsValidSuccess)
@@ -237,12 +237,12 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun createAccountIdentity(
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ): AccountIdentity =
         if (credentials.awsProfile.isNotEmpty()) {
-            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, regionObj)
+            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, region)
         } else {
-            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, regionObj)
+            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, region)
         }
 
     /**
@@ -428,9 +428,9 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureAwsResources(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
-        ensureKeyPair(userConfig, credentials, regionObj)
+        ensureKeyPair(userConfig, credentials, region)
         ensureIamRoles(userConfig)
         ensureS3Bucket(userConfig)
         ensurePackerVpc()
@@ -443,14 +443,14 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureKeyPair(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
         if (userConfig.keyName.isBlank()) {
             eventBus.emit(Event.Setup.GeneratingKeyPair)
             val keyName =
                 keyPairService.generate(
                     context.profileDir,
-                    regionObj,
+                    region,
                     credentials.awsProfile,
                     credentials.awsAccessKey,
                     credentials.awsSecret,

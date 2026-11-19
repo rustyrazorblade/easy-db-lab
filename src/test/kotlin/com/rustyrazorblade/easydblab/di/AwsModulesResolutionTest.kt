@@ -3,8 +3,12 @@ package com.rustyrazorblade.easydblab.di
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
@@ -27,6 +31,7 @@ import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.mock
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.iam.IamClient
@@ -34,6 +39,7 @@ import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.model.StsException
 
 /**
  * The two production AWS modules wired together. Koin resolves bindings lazily and `getAll()`
@@ -101,10 +107,35 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the reporter built from every registered handler resolves`() {
-        val reporter = CommandFailureReporter(get(), getKoin().getAll())
+    fun `the reporter built from every registered handler reports an expired AWS token as a credentials error`() {
+        val bus = get<EventBus>()
+        val events = mutableListOf<Event>()
+        bus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
 
-        assertThat(reporter).isNotNull
+                override fun close() = Unit
+            },
+        )
+        val expired =
+            StsException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("ExpiredToken")
+                        .errorMessage("The security token included in the request is expired")
+                        .build(),
+                ).build()
+
+        CommandFailureReporter(bus, getKoin().getAll()).report(expired)
+
+        val error = events.single() as Event.Command.ProviderError
+        assertThat(error.provider).isEqualTo("AWS")
+        assertThat(error.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
     }
 
     @Test

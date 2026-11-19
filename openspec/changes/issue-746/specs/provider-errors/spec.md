@@ -2,7 +2,7 @@
 
 ### Requirement: Provider failures are reported with a remedy
 
-When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials`, `permission-denied` or `unavailable`), the provider's detail message and a remedy. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` exactly as today. In both cases the exit code SHALL be non-zero.
+When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials`, `permission-denied` or `unavailable`), the provider's detail message and a remedy, and, when the provider answered, the service, error code, HTTP status and request id of that answer, which the user also sees. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` exactly as today. In both cases the exit code SHALL be non-zero.
 
 #### Scenario: Expired credentials
 
@@ -37,11 +37,17 @@ When a command fails, the system SHALL ask every registered provider error handl
 - **WHEN** the command fails
 - **THEN** the user sees a credentials message
 
+#### Scenario: Expired or missing `sso_session` token
+
+- **GIVEN** a profile that uses an `sso_session`, whose cached token expired and cannot be refreshed, or that was never logged in
+- **WHEN** the SDK's SSO token provider fails ("Token is expired" or "Unable to load SSO token")
+- **THEN** the user sees a credentials message with the `aws sso login` remedy
+
 #### Scenario: Docker is not running
 
-- **GIVEN** a command that fails because the Docker daemon cannot be reached (a refused or broken socket, or a missing unix socket file), possibly inside the project's `DockerException`
+- **GIVEN** a command that fails because the Docker daemon cannot be reached (a refused or broken socket, or a missing unix socket file), with `DOCKER_HOST` unset, set to a TCP host, or set to a unix socket such as colima's
 - **WHEN** the command fails
-- **THEN** `Event.Command.ProviderError` is emitted with kind `unavailable`, provider Docker, and a remedy to check that Docker is running
+- **THEN** `Event.Command.ProviderError` is emitted with kind `unavailable`, provider Docker, a detail that names the Docker endpoint, and a remedy to check that Docker is running
 - **AND** the exit code is non-zero
 
 #### Scenario: Docker answers with an error
@@ -82,10 +88,22 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 #### Scenario: Already-explained failures print one error block
 
-- **GIVEN** a site that already emits a detailed failure event, such as the profile credential check or the key-pair permission path
+- **GIVEN** a site that adds detail to a provider failure, such as the AWS setup credential check or the key-pair permission path, both of which list the lab IAM policies
 - **WHEN** that site fails
-- **THEN** the user sees that site's detailed message once
+- **THEN** it emits the provider error once, as `Event.Command.ProviderError`, followed by its policy listing
 - **AND** no second provider or execution-error block follows it
+
+#### Scenario: Cleanup failure after a failed command
+
+- **GIVEN** a command that fails, and whose resource cleanup then also fails
+- **WHEN** the command exits
+- **THEN** only the command's failure is reported; the cleanup failure goes to the log
+
+#### Scenario: Denied OpenSearch domain lookup
+
+- **GIVEN** `opensearch status` whose domain lookup is denied, or fails on credentials
+- **WHEN** the command fails
+- **THEN** the failure is reported as a provider error with its remedy (the OpenSearch lab policy for a denial), not as an unreachable domain with cached state
 
 ### Requirement: The entry point holds no provider error handling
 

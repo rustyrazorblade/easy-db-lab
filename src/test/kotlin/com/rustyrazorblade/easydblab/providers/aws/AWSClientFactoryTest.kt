@@ -5,14 +5,21 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
- * Region validation that profile setup relies on: a blank region is rejected before any client is
- * built, exactly as when the caller held an SDK `Region`. Typos are not detected, by decision.
+ * Region validation that profile setup relies on: a blank or misspelt region is rejected before any
+ * client is built, and every region the SDK knows is accepted.
  */
 class AWSClientFactoryTest {
     @Test
     fun `a blank region is rejected`() {
         assertThatThrownBy { AWSClientFactory.requireValidRegion("") }
             .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `a misspelt region is rejected and named`() {
+        assertThatThrownBy { AWSClientFactory.requireValidRegion("us-wset-2") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("us-wset-2")
     }
 
     @Test

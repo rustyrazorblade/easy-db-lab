@@ -149,7 +149,7 @@ class EMRSparkService(
                     getJobStatus(clusterId, stepId).getOrThrow().also { status ->
                         // Log less frequently to reduce noise (every 60 seconds at default 5s interval)
                         if (++pollCount % Constants.EMR.LOG_INTERVAL_POLLS == 0) {
-                            eventBus.emit(Event.Emr.SparkJobStateUpdate(status.state.toString()))
+                            eventBus.emit(Event.Emr.SparkJobStateUpdate(status.state.name))
                         }
                     }
                 }

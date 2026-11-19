@@ -141,13 +141,15 @@ AWS SDK types stay inside `providers/aws` and `services/aws`, and `compactorleas
 
 ## Provider Errors
 
-`kernel/ProviderErrorHandler` returns an `ErrorDescription` (provider, kind, detail, remedy) for an exception it owns, or null. `AwsErrorHandler` classifies by SDK class and error code, and checks the code before the HTTP status because STS, IAM and S3 answer 403 for bad credentials:
+`kernel/ProviderErrorHandler` returns an `ErrorDescription` (provider, kind, detail, remedy, and the answer's `ProviderResponse`: service, error code, HTTP status, request id) for an exception it owns, or null. `AwsErrorHandler` classifies by SDK class and error code, and checks the code before the HTTP status because STS, IAM and S3 answer 403 for bad credentials:
 
-- **Credentials:** `ExpiredToken`, `InvalidClientTokenId`, `SignatureDoesNotMatch` and the other codes in `Constants.AWS.ErrorCodes.CREDENTIALS`, an expired SSO session (`sso.auth.ExpiredTokenException`, by type), and an `SdkClientException` that an SDK credentials provider raised itself (its first frame past the SDK exception builder is in `software.amazon.awssdk.auth.credentials`) with a message starting with one of `Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES`. The SDK gives a missing chain no subtype or code, so where it was raised is what tells it from a wrapped S3 or network error that quotes the same words. The remedy is `easy-db-lab profile setup`, then, conditionally on the user having the AWS CLI, `aws sso login` (add `--profile` and the profile name for a non-default profile; the handler has no profile to name) and `aws sts get-caller-identity`; the AWS CLI is never assumed. The provider check is pinned by tests that build the exceptions from real SDK providers; the expired-SSO case is recognised by `sso.auth.ExpiredTokenException`'s type.
+- **Credentials:** `ExpiredToken`, `InvalidClientTokenId`, `SignatureDoesNotMatch` and the other codes in `Constants.AWS.ErrorCodes.CREDENTIALS`, an expired SSO session (`sso.auth.ExpiredTokenException`, by type), and an `SdkClientException` that an SDK credentials provider raised itself (its first frame past the SDK exception builder is in `software.amazon.awssdk.auth.credentials`, or in `services.ssooidc` / `services.sso` for an `sso_session` profile's "Token is expired" and "Unable to load SSO token") with a message starting with one of `Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES`. The SDK gives a missing chain no subtype or code, so where it was raised is what tells it from a wrapped S3 or network error that quotes the same words. The remedy is `easy-db-lab profile setup`, then, conditionally on the user having the AWS CLI, `aws sso login` (add `--profile` and the profile name for a non-default profile; the handler has no profile to name) and `aws sts get-caller-identity`; the AWS CLI is never assumed. The provider check is pinned by tests that build the exceptions from real SDK providers; the expired-SSO case is recognised by `sso.auth.ExpiredTokenException`'s type.
 - **Permission denied:** `AccessDenied`, `AccessDeniedException`, `UnauthorizedOperation`, or any other 403 except clock skew. The remedy names the lab policy for the exception's service (`AWSPolicy.UserIAM` constants) and `easy-db-lab show-iam-policies <policy>`, worded "if this is missing permissions on your AWS user" and noting what else can also deny the request (a bucket policy, SCP or KMS key policy for S3; an SCP or permissions boundary for any other service), because a 403 does not prove the cause. An STS denial names no policy: its only call, `GetCallerIdentity`, needs no IAM permission, so the remedy points at an SCP, permissions boundary or session policy.
 - A network `SdkClientException` is not claimed and stays an ordinary execution error.
 
-A handler claims an exception by its type alone and takes no dependencies, so it works before a profile exists. `services/CommandFailureReporter` walks the cause chain across every registered handler (`getAll()` in Koin) and emits `Event.Command.ProviderError`; a site that already printed a detailed message rethrows `CommandFailedException(message, cause)` so the user sees one block.
+A handler claims an exception by its type alone and takes no dependencies, so it works before a profile exists. `services/CommandFailureReporter` walks the cause chain across every registered handler (`getAll()` in Koin) and emits `Event.Command.ProviderError`; a site that adds detail (the AWS setup credential check, the key-pair permission path) emits the same event itself with `ErrorDescription.toEvent()`, then its policy listing, and rethrows `CommandFailedException(message, cause)` so the user sees one block.
+
+**Docker.** docker-java's transport wraps a socket failure in a bare `RuntimeException(IOException)` that names no path (for a missing default socket it is just "No such file or directory"). `DefaultDockerClient` is the seam: every call, including the pull's `awaitCompletion`, runs in `dockerTransport`, which turns that shape into the project `DockerException`, naming the endpoint (`DOCKER_HOST` or the default socket). `DockerErrorHandler` claims a connection failure below a Docker exception, or one whose message names the configured endpoint: for a unix `DOCKER_HOST` (colima, for example) the socket path, for TCP the host and port.
 
 ## SSH Provider
 
@@ -194,19 +196,19 @@ function for the same reason).
   transport's config also carries `ConnectTimeout 30` (`Constants.Ssh.CONNECT_TIMEOUT_SECONDS`),
   because keepalives start only after auth, and a connect that never completes (a dropped SYN, or a
   session that passes no data) would otherwise hang ssh at the banner exchange.
-  Each `ProxyCommand` runs through `edl-ssm-proxy` (`ssm/SsmProxyWrapper`, the packaged
-  `ssm/edl-ssm-proxy.sh` written into the profile dir): the AWS CLI does not pass a termination on
+  Each `ProxyCommand` runs through `edl-ssm-proxy` (`aws/ssm/SsmProxyWrapper`, the packaged
+  resource `ssm/edl-ssm-proxy.sh` written into the profile dir): the AWS CLI does not pass a termination on
   to `session-manager-plugin`, and a stuck plugin ignores its stdin closing, so the wrapper ends the
   whole tree when ssh closes stdin, exits, is killed, or sends SIGHUP.
 - **The in-process MINA client** cannot run a `ProxyCommand`. `DefaultSSHConnectionProvider`
   dials `route.endpoint(host)`: the public IP under `direct`, or under `ssm` a loopback port
   forwarded by an `AWS-StartPortForwardingSession` process (one per instance per JVM).
-- Both paths build their command lines with `ssm/SsmSessionCommandBuilder`, so region and
+- Both paths build their command lines with `aws/ssm/SsmSessionCommand`, so region and
   credentials cannot drift. Static keys reach the AWS CLI through the profile's
   `AWSCredentialsManager` file (`AWS_SHARED_CREDENTIALS_FILE`), never as environment variables
   written into `sshConfig`, and with `AWS_CONFIG_FILE=/dev/null`, so the operator's
   `~/.aws/config` cannot replace them.
-- A forward that fails to start throws `ssm/SsmForwardNotReadyException`, which is unchecked, so
+- A forward that fails to start throws `aws/ssm/SsmForwardNotReadyException`, which is unchecked, so
   the SSH operations retry treats it as a `RuntimeException`. `createSshConnectionRetryConfig`
   lists it, which covers the window before a fresh node's SSM agent registers.
 - **Retrying SSH needs the checked decorators** (see "Checked Exceptions Need The Checked
@@ -216,7 +218,7 @@ function for the same reason).
   and fail fast on any other `IOException`.
 - Forward processes, including the `session-manager-plugin` child, are stopped by
   `SsmSshRoute.close()` and its JVM shutdown hook, from the moment they are spawned. Every stop
-  also calls TerminateSession (`ssm/SsmSessionTerminator`, the SDK `SsmClient` from `AwsClientsModule`)
+  also calls TerminateSession (`aws/ssm/SsmSessionTerminator`, the SDK `SsmClient` from `AwsClientsModule`)
   for the session ID the CLI printed, because killing the processes leaves the session open in
   Session Manager for 20 minutes. Nothing calls
   `SSHConnectionProvider.stop()` in production today; if something starts to, it closes the route
@@ -233,7 +235,7 @@ function for the same reason).
 - `SSHConnectionCache` connects under a per-host lock, so connections to different hosts open in
   parallel and two requests for one host share one connection. Never connect inside
   `ConcurrentHashMap.compute`: it blocks every host whose key shares the bin.
-- `ssm/SdkSsmSessionTerminator` builds its `SsmClient` lazily: the first forward's start begins a
+- `aws/ssm/SdkSsmSessionTerminator` builds its `SsmClient` lazily: the first forward's start begins a
   daemon warm-up (client build and credential resolution) that overlaps the forward's start, and
   TerminateSession waits for it within its deadline. Nothing is built at Koin resolution. A failed
   preparation is not kept: the next call prepares again (client and credentials), shared by

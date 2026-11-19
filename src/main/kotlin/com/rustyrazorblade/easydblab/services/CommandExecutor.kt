@@ -132,30 +132,45 @@ class DefaultCommandExecutor(
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
+        // Pessimistic until the commands return: a throw out of them leaves it non-zero.
+        var exitCode = Constants.ExitCodes.ERROR
         try {
-            val exitCode = executeWithLifecycle(command)
-
-            // Process scheduled commands (each with full lifecycle)
-            // Stop on first failure
-            while (scheduledQueue.get().isNotEmpty()) {
-                val commandFactory = scheduledQueue.get().removeFirst()
-                val scheduledCommand = commandFactory()
-                val scheduledExitCode = executeWithLifecycle(scheduledCommand)
-                if (scheduledExitCode != 0) {
-                    // Clear remaining scheduled commands on failure
-                    scheduledQueue.get().clear()
-                    return scheduledExitCode
-                }
-            }
-
+            exitCode = runCommands(command)
             return exitCode
         } finally {
-            // Clean up resources in non-interactive mode (CLI commands)
-            // In interactive mode (REPL/Server), resources stay open for reuse
-            if (!context.isInteractive) {
-                log.debug { "Non-interactive mode: cleaning up resources" }
-                resourceManager.closeAll()
+            closeResources(commandSucceeded = exitCode == 0)
+        }
+    }
+
+    /** Runs [command] and then each command it scheduled, stopping at the first failure. */
+    private fun runCommands(command: PicoCommand): Int {
+        val exitCode = executeWithLifecycle(command)
+        while (scheduledQueue.get().isNotEmpty()) {
+            val scheduledCommand = scheduledQueue.get().removeFirst()()
+            val scheduledExitCode = executeWithLifecycle(scheduledCommand)
+            if (scheduledExitCode != 0) {
+                // Clear remaining scheduled commands on failure
+                scheduledQueue.get().clear()
+                return scheduledExitCode
             }
+        }
+        return exitCode
+    }
+
+    /**
+     * Closes the command's resources in non-interactive mode (CLI commands); in interactive mode
+     * (REPL/Server) they stay open for reuse.
+     *
+     * A failure to close is reported only when the commands succeeded, and then it fails the run.
+     * After a failure the user already saw its one report, so a close failure is only logged: a
+     * second report would bury the first. A JVM [Error] still propagates either way.
+     */
+    private fun closeResources(commandSucceeded: Boolean) {
+        if (context.isInteractive) return
+        log.debug { "Non-interactive mode: cleaning up resources" }
+        runCatchingException { resourceManager.closeAll() }.onFailure { e ->
+            if (commandSucceeded) throw e
+            log.warn(e) { "Closing resources failed after a failed command; the command's failure was reported" }
         }
     }
 

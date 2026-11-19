@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
@@ -132,9 +134,13 @@ class OpenSearchService(
     private val iamRoles: IamRoles,
     private val accountIdentity: AccountIdentity,
     private val eventBus: EventBus = EventBus(),
+    private val errorHandler: ProviderErrorHandler,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        /** Failures [lookupDomain] leaves to the command failure reporter instead of reporting as unavailable. */
+        private val PROPAGATED_KINDS = setOf(ProviderErrorKind.CREDENTIALS, ProviderErrorKind.PERMISSION_DENIED)
     }
 
     /**
@@ -242,11 +248,13 @@ class OpenSearchService(
 
     /**
      * Looks a domain up and reports the outcome as a value: found, not found, or unavailable when
-     * AWS could not answer (a network failure, a throttle that outlasted the retry, a denial).
+     * AWS could not answer (a network failure, a throttle that outlasted the retry).
      *
      * The outcome is a value, so callers outside the AWS adapter need no SDK exception type. The
      * catch sits outside the retry on purpose: translating an error inside a retried call would hide
-     * it from the retry's predicate. Any failure that is not an AWS SDK failure propagates.
+     * it from the retry's predicate. A credentials or permission failure propagates, so the command
+     * failure reporter shows it with its remedy (the EasyDBLabOpenSearch policy for a denial); so
+     * does any failure that is not an AWS SDK failure.
      *
      * @param domainName The domain name
      * @return What AWS reported for [domainName]
@@ -257,6 +265,7 @@ class OpenSearchService(
         } catch (_: ResourceNotFoundException) {
             DomainLookup.NotFound
         } catch (e: SdkException) {
+            if (errorHandler.describe(e)?.kind in PROPAGATED_KINDS) throw e
             log.warn(e) { "Failed to describe OpenSearch domain $domainName" }
             DomainLookup.Unavailable(e.message ?: e::class.simpleName.orEmpty())
         }

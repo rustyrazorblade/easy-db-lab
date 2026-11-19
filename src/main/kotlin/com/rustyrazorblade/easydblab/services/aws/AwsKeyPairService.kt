@@ -1,13 +1,16 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.AwsKeyName
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.services.toEvent
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest
@@ -26,9 +29,10 @@ private val log = KotlinLogging.logger {}
  * Creates the EC2 key pair that gives the operator SSH access to the cluster's instances, and
  * saves its private key into the profile directory.
  *
- * Lives in `services/aws` so profile setup and `User` need no EC2 types: the caller passes the
- * client its [com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory] built. A permission failure
- * is classified by the same [errorHandler] that reports every other command failure.
+ * Lives in `services/aws` so profile setup and `User` need no EC2 types: profile setup passes the
+ * region and credentials it collected, and this service builds the EC2 client for them with its
+ * [AWSClientFactory] and closes it. A permission failure is classified by the same [errorHandler]
+ * that reports every other command failure.
  */
 class AwsKeyPairService(
     private val eventBus: EventBus,
@@ -37,6 +41,9 @@ class AwsKeyPairService(
 ) {
     private companion object {
         const val OWNER_ONLY = "rw-------"
+
+        /** No account is known while the profile is being set up, so the policies keep their placeholder. */
+        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
     }
 
     /**
@@ -85,8 +92,8 @@ class AwsKeyPairService(
                     .tags(
                         Tag
                             .builder()
-                            .key("easy_cass_lab")
-                            .value("1")
+                            .key(Constants.Vpc.TAG_KEY)
+                            .value(Constants.Vpc.TAG_VALUE)
                             .build(),
                     ).build()
             val request =
@@ -98,12 +105,13 @@ class AwsKeyPairService(
 
             val response = ec2Client.createKeyPair(request)
 
-            writeOwnerOnly(File(profileDir, "secret.pem"), response.keyMaterial())
+            writeOwnerOnly(File(profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE), response.keyMaterial())
 
             return keyName
         } catch (e: Ec2Exception) {
-            if (errorHandler.describe(e)?.kind == ProviderErrorKind.PERMISSION_DENIED) {
-                emitPermissionError(e)
+            val description = errorHandler.describe(e)
+            if (description?.kind == ProviderErrorKind.PERMISSION_DENIED) {
+                emitPermissionError(description)
                 log.error(e) { "EC2 denied CreateKeyPair" }
                 throw CommandFailedException("EC2 denied CreateKeyPair: ${e.message}", e)
             }
@@ -125,11 +133,16 @@ class AwsKeyPairService(
         Files.writeString(path, content)
     }
 
-    private fun emitPermissionError(exception: Ec2Exception) {
-        eventBus.emit(Event.Setup.AwsPermissionError("EC2 CreateKeyPair", exception.message.orEmpty()))
-        AWSPolicy.UserIAM.loadAll("ACCOUNT_ID").forEachIndexed { index, policy ->
+    /**
+     * Reports the denial as the provider error the command failure reporter would emit, with its
+     * remedy naming the EC2 policy, then lists every lab policy for a user setting up a profile.
+     */
+    private fun emitPermissionError(description: ErrorDescription) {
+        eventBus.emit(description.toEvent())
+        val policies = AWSPolicy.UserIAM.loadAll(ACCOUNT_ID_PLACEHOLDER)
+        policies.forEachIndexed { index, policy ->
             eventBus.emit(Event.Setup.AwsPermissionPolicyDisplay(index, policy.name, policy.body))
         }
-        eventBus.emit(Event.Setup.AwsPermissionPolicyFooter)
+        eventBus.emit(Event.Setup.AwsPermissionPolicyFooter(policies.map { it.name }))
     }
 }

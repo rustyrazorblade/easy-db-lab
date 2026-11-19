@@ -392,9 +392,31 @@ internal class AMIServiceTest {
 
         val deletion = amiService.deleteWithSnapshots(ami)
 
-        assertThat(deletion).isEqualTo(AMIService.AmiDeletion.Failed("UnauthorizedOperation"))
+        assertThat(deletion)
+            .isEqualTo(AMIService.AmiDeletion.Failed("ami-2", "deregister ami-2", listOf("snap-2"), "UnauthorizedOperation"))
 
         verify(mockEc2Client, never()).deleteSnapshot(any<DeleteSnapshotRequest>())
+    }
+
+    @Test
+    fun `deleteWithSnapshots stops at the first snapshot AWS refuses and names the snapshots left`() {
+        val ami = cassandraAMI("ami-2", "amd64", "20240102", listOf("snap-2", "snap-3"))
+        whenever(mockEc2Client.deleteSnapshot(any<DeleteSnapshotRequest>()))
+            .thenThrow(
+                Ec2Exception
+                    .builder()
+                    .statusCode(400)
+                    .message("InvalidSnapshot.InUse")
+                    .build(),
+            )
+
+        val deletion = amiService.deleteWithSnapshots(ami)
+
+        assertThat(deletion)
+            .isEqualTo(
+                AMIService.AmiDeletion.Failed("ami-2", "delete snapshot snap-2", listOf("snap-2", "snap-3"), "InvalidSnapshot.InUse"),
+            )
+        verify(mockEc2Client, times(1)).deleteSnapshot(any<DeleteSnapshotRequest>())
     }
 
     @Test

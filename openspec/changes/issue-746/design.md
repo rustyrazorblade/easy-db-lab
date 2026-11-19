@@ -38,7 +38,8 @@ Paths below are under `src/main/kotlin/com/rustyrazorblade/easydblab/`.
 ```kotlin
 fun interface ProviderErrorHandler { fun describe(error: Throwable): ErrorDescription? }
 @Serializable enum class ProviderErrorKind { @SerialName("credentials") CREDENTIALS, @SerialName("permission-denied") PERMISSION_DENIED, @SerialName("unavailable") UNAVAILABLE }
-data class ErrorDescription(val provider: String, val kind: ProviderErrorKind, val detail: String, val remedy: String)
+data class ErrorDescription(val provider: String, val kind: ProviderErrorKind, val detail: String, val remedy: String, val response: ProviderResponse? = null)
+@Serializable data class ProviderResponse(val service: String? = null, val errorCode: String? = null, val statusCode: Int? = null, val requestId: String? = null)
 ```
 
 - `kernel` depends on nothing in the project, so no cycle is possible.
@@ -52,7 +53,8 @@ data class ErrorDescription(val provider: String, val kind: ProviderErrorKind, v
 ### D3. One event: `Event.Command.ProviderError(provider, kind, detail, remedy)`
 
 - `isError() = true`.  It lives in the `Command` domain next to `ExecutionError`.
-- `toDisplayString()` prints a headline from kind and provider, then the detail, the remedy and the "check logs/info.log" line.
+- It carries the description's `response` (service, error code, HTTP status, request id), which the provider's detail message leaves out.
+- `toDisplayString()` prints a headline from kind and provider, then the detail, the response facts that are known, the remedy and the "check logs/info.log" line.
 - An exception no handler claims still emits `ExecutionError`, unchanged.
 
 *Rejected:* two events (`CredentialsRejected`, `PermissionDenied`).  Every new kind would need a new event type.
@@ -65,7 +67,7 @@ Two sites already print a detailed message:
 
 (The original third site, `CompactorService.withEcsAccess`, was removed on main with the Fargate compactor.)
 
-Each keeps its event, then rethrows as `CommandFailedException(message, cause)`.  `CommandFailedException` gains a `cause` parameter.  `CommandFailureReporter` treats it as already reported: the cause chain stops there.
+Each emits the handler's `ProviderError` (`ErrorDescription.toEvent()`), then its lab policy listing (`AwsSetup.RequiredPolicies` for a setup credentials failure; none for an STS denial, which no lab policy fixes), then rethrows as `CommandFailedException(message, cause)`.  `CommandFailedException` gains a `cause` parameter.  `CommandFailureReporter` treats it as already reported: the cause chain stops there.
 
 *Rejected:*
 - Removing their events: this loses the IAM policy dump.
@@ -143,13 +145,13 @@ The policy comes from the exception class.  The four policy names become constan
 | Site | Routing |
 |---|---|
 | `Main.kt` | Delete every catch and handler (`:40-160`). `main` starts Koin, runs the Redis check, and calls `parser.eval`. |
-| `OpenSearchStatus` | `OpenSearchService.lookupDomain(name)` returns `DomainLookup.Found`, `NotFound` (`ResourceNotFoundException`) or `Unavailable(reason)` (any other `SdkException`), caught *outside* `withAwsRetry`. `describeDomain` stays for its other callers. |
+| `OpenSearchStatus` | `OpenSearchService.lookupDomain(name)` returns `DomainLookup.Found`, `NotFound` (`ResourceNotFoundException`) or `Unavailable(reason)` (any other `SdkException`), caught *outside* `withAwsRetry`. A credentials or permission failure propagates to the reporter, so a denial shows the OpenSearch policy remedy. `describeDomain` stays for its other callers. |
 | `SparkService`/`SparkStatus` | `SparkJobState` (D8) |
 | `SetupProfile` | `String` region and `requireValidRegion` (D7); `AwsKeyPairService` |
 | `User.kt` | `services/aws/AwsKeyPairService(clientFactory, eventBus).generate(user, profileDir)` holds today's code. `getRequiredIAMPolicies` is removed; `ShowIamPolicies` and `SetupProfile` call `AWSPolicy.UserIAM.loadAll` directly. |
 | `Packer` | D6 |
 | SSM | Move `providers/ssm` to `providers/aws/ssm` (6 files); fold `ssmModule` into `AwsClientsModule`. |
-| `PruneAMIs` | `AMIService.deleteWithSnapshots(ami)` returns `AmiDeletion.Deleted` or `Failed(reason)`, catching `SdkException` outside each call's retry; the command emits `Event.Ami.DeleteFailed(reason)`. |
+| `PruneAMIs` | `AMIService.deleteWithSnapshots(ami)` returns `AmiDeletion.Deleted` or `Failed(amiId, failedStep, remainingSnapshotIds, reason)`, catching `SdkException` outside each call's retry and logging it; the command emits `Event.Ami.DeleteFailed` with the same fields. |
 | `ShowIamPolicies` | The command's own `SdkException` catch and `IamPoliciesCredentialError` are removed: the failure propagates and `CommandFailureReporter` reports it once as a provider error with its remedy. |
 | `DataBucketTeardown` | Pure move to `services/aws` (S3-only); the binding moves to `AwsServicesModule`. |
 | `EMRProvisioningService` | Pure move to `services/aws` (EMR-only, reads the bootstrap stderr from S3); the binding moves to `AwsServicesModule`. |

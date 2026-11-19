@@ -5,16 +5,22 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
@@ -29,6 +35,7 @@ import software.amazon.awssdk.services.opensearch.model.DomainStatus
 import software.amazon.awssdk.services.opensearch.model.EBSOptions
 import software.amazon.awssdk.services.opensearch.model.ListDomainNamesRequest
 import software.amazon.awssdk.services.opensearch.model.ListDomainNamesResponse
+import software.amazon.awssdk.services.opensearch.model.OpenSearchException
 import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundException
 import software.amazon.awssdk.services.opensearch.model.ServiceSoftwareOptions
 import software.amazon.awssdk.services.opensearch.model.VPCDerivedInfo
@@ -61,7 +68,7 @@ internal class OpenSearchServiceTest {
                 override fun close() = Unit
             },
         )
-        openSearchService = OpenSearchService(mockOpenSearchClient, mockIamRoles, mockAccountIdentity, eventBus)
+        openSearchService = OpenSearchService(mockOpenSearchClient, mockIamRoles, mockAccountIdentity, eventBus, AwsErrorHandler())
     }
 
     @Test
@@ -107,6 +114,49 @@ internal class OpenSearchServiceTest {
 
         assertThat(openSearchService.lookupDomain("lab-os"))
             .isEqualTo(DomainLookup.Unavailable("Unable to execute HTTP request"))
+    }
+
+    @Test
+    fun `lookupDomain lets a denial propagate, and the reporter shows it with the OpenSearch policy remedy`() {
+        val denial =
+            OpenSearchException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .serviceName("OpenSearch")
+                        .errorCode("AccessDeniedException")
+                        .errorMessage("User is not authorized to perform: es:DescribeDomain")
+                        .build(),
+                ).build()
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>())).thenThrow(denial)
+
+        val failure = catchThrowable { openSearchService.lookupDomain("lab-os") }
+        assertThat(failure).isSameAs(denial)
+
+        CommandFailureReporter(eventBus, listOf(AwsErrorHandler())).report(failure)
+        val error = capturedEvents.map { it.event }.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(error.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(error.remedy).contains(AWSPolicy.UserIAM.OPENSEARCH_POLICY)
+    }
+
+    @Test
+    fun `lookupDomain lets a credentials failure propagate instead of reporting the domain unavailable`() {
+        val expired =
+            OpenSearchException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("ExpiredTokenException")
+                        .errorMessage("The security token included in the request is expired")
+                        .build(),
+                ).build()
+        whenever(mockOpenSearchClient.describeDomain(any<DescribeDomainRequest>())).thenThrow(expired)
+
+        assertThatThrownBy { openSearchService.lookupDomain("lab-os") }.isSameAs(expired)
     }
 
     @Test

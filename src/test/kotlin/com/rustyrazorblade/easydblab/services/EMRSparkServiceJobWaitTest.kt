@@ -1,6 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
@@ -15,9 +19,12 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.emr.model.DescribeStepRequest
 import software.amazon.awssdk.services.emr.model.DescribeStepResponse
+import software.amazon.awssdk.services.emr.model.ListStepsRequest
+import software.amazon.awssdk.services.emr.model.ListStepsResponse
 import software.amazon.awssdk.services.emr.model.Step
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStatus
+import software.amazon.awssdk.services.emr.model.StepSummary
 import java.time.Duration
 
 /**
@@ -77,6 +84,58 @@ class EMRSparkServiceJobWaitTest {
 
         assertThat(result.exceptionOrNull()).isInstanceOf(AwsServiceException::class.java)
         verify(emrClient, times(1)).describeStep(any<DescribeStepRequest>())
+    }
+
+    @Test
+    fun `a step with no state is UNKNOWN, and the wait reports it as UNKNOWN, never null`() {
+        val stateless =
+            DescribeStepResponse
+                .builder()
+                .step(Step.builder().status(StepStatus.builder().build()).build())
+                .build()
+        var looks = 0
+        doAnswer {
+            if (++looks <= Constants.EMR.LOG_INTERVAL_POLLS) stateless else step(StepState.COMPLETED)
+        }.whenever(emrClient).describeStep(any<DescribeStepRequest>())
+        val updates = mutableListOf<String>()
+        val eventBus = EventBus()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    (envelope.event as? Event.Emr.SparkJobStateUpdate)?.let { updates.add(it.state) }
+                }
+
+                override fun close() = Unit
+            },
+        )
+        val service = EMRSparkService(emrClient, mock(), mock(), mock(), eventBus, pollInterval = Duration.ZERO)
+
+        assertThat(service.getJobStatus("j-1", "s-1").getOrThrow().state).isEqualTo(SparkJobState.UNKNOWN)
+        looks = 0
+        assertThat(service.waitForJobCompletion("j-1", "s-1").getOrThrow().state).isEqualTo(SparkJobState.COMPLETED)
+
+        assertThat(updates).containsExactly("UNKNOWN")
+    }
+
+    @Test
+    fun `a listed step in a state this SDK does not know is UNKNOWN`() {
+        whenever(emrClient.listSteps(any<ListStepsRequest>()))
+            .thenReturn(
+                ListStepsResponse
+                    .builder()
+                    .steps(
+                        StepSummary
+                            .builder()
+                            .id("s-1")
+                            .name("job")
+                            .status(StepStatus.builder().state("SOME_NEW_STATE").build())
+                            .build(),
+                    ).build(),
+            )
+
+        val jobs = service().listJobs("j-1", limit = 10).getOrThrow()
+
+        assertThat(jobs.map { it.state }).containsExactly(SparkJobState.UNKNOWN)
     }
 
     @Test

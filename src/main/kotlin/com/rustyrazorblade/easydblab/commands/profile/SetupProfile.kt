@@ -124,13 +124,18 @@ class SetupProfile : PicoBaseCommand() {
     private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, String> {
         var attempt = 0
         var regionRejected = false
+        var credentialsRejected = false
+        // Every attempt counts, a rejected region included, so setup asks at most
+        // MAX_CREDENTIAL_RETRIES times.
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
-            // A saved AWS profile is used on the first attempt only. When it failed validation, the
-            // retry asks for the profile again instead of trying the same one. A rejected region is
-            // asked for again the same way.
-            val retryConfig = if (attempt == 1) existingConfig else existingConfig - "awsProfile"
-            val credentials = collectCoreCredentials(if (regionRejected) retryConfig - "region" else retryConfig)
+            // A saved AWS profile is used until a credential check fails with it; the retry then
+            // asks for the profile again instead of trying the same one. A rejected region is
+            // asked for again the same way, and leaves the saved profile in use.
+            var retryConfig = existingConfig
+            if (credentialsRejected) retryConfig = retryConfig - "awsProfile"
+            if (regionRejected) retryConfig = retryConfig - "region"
+            val credentials = collectCoreCredentials(retryConfig)
             val region = credentials.region
             if (!acceptRegion(region, lastAttempt = attempt >= MAX_CREDENTIAL_RETRIES)) {
                 // Stays set: a later credentials retry must not read the rejected saved region again.
@@ -145,6 +150,7 @@ class SetupProfile : PicoBaseCommand() {
                 if (attempt >= MAX_CREDENTIAL_RETRIES) {
                     throw e
                 }
+                credentialsRejected = true
                 eventBus.emit(Event.Setup.CredentialValidationRetry(attempt, MAX_CREDENTIAL_RETRIES))
                 // Loop continues - will ask for profile/credentials again
             }

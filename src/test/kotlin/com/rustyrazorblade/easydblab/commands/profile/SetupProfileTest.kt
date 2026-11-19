@@ -548,8 +548,8 @@ class SetupProfileTest : BaseKoinTest() {
         }
 
         @Test
-        fun `a saved unknown region is asked for again, not reused`() {
-            testPrompter = TestPrompter(mapOf("AWS Profile" to "my-profile", "IAM policies" to "N"))
+        fun `a saved unknown region is asked for again, not reused, and the saved profile is kept`() {
+            testPrompter = TestPrompter(mapOf("IAM policies" to "N"))
             testPrompter.addSequentialResponses("AWS region", "eu-west-1")
             setupTestModule()
             whenever(mockUserConfigProvider.loadExistingConfig())
@@ -557,16 +557,22 @@ class SetupProfileTest : BaseKoinTest() {
                     mapOf(
                         "email" to "user@test.com",
                         "region" to "mars-north-1",
+                        "awsProfile" to "saved-profile",
                         "keyName" to "test-key",
-                        "s3Bucket" to "test-bucket",
+                        // Empty, so the profile is not fully set up and setup runs the credential loop.
+                        "s3Bucket" to "",
                     ),
                 )
 
             SetupProfile().execute()
 
+            val profile = argumentCaptor<String>()
             val region = argumentCaptor<String>()
-            verify(mockAwsClientFactory).createAccountIdentityWithProfile(any(), region.capture())
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(profile.capture(), region.capture())
             assertThat(region.allValues).containsExactly("eu-west-1")
+            // Only the region failed, so the saved profile is still the one used and is not asked for.
+            assertThat(profile.allValues).containsExactly("saved-profile")
+            assertThat(testPrompter.wasPromptedFor("AWS Profile")).isFalse()
         }
 
         @Test

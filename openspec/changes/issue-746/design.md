@@ -87,7 +87,7 @@ Once `User.kt` loses `getRequiredIAMPolicies` and its key-pair code, `configurat
 
 - `AWSClientFactory` takes `region: String` and calls `Region.of` internally.
 - `Region.of` only rejects a blank string, so it never caught a typo.  The five-lens review (L4) asked for a real check, and `AWSClientFactory.isKnownRegion(region)` checks the name against `Region.regions()`.
-- Profile setup checks the region inside its credential retry loop, before any AWS call.  An unknown region emits `Event.Setup.UnknownRegion` and the next attempt asks for the region again, including when the unknown region was the saved value.  When the last attempt still gives an unknown region, setup fails with `SetupProfileException`.
+- Profile setup checks the region inside its credential retry loop, before any AWS call.  An unknown region emits `Event.Setup.UnknownRegion` and the next attempt asks for the region again, including when the unknown region was the saved value.  A rejected region counts as an attempt but keeps a saved AWS profile in use; only a failed credential check asks for the profile again.  When the last attempt still gives an unknown region, setup fails with `SetupProfileException`.
 - `Region.regions()` is compiled into the SDK release.  A region AWS opens after that release is refused until the SDK is upgraded.  That trade is accepted: a typo that fails at the first AWS call is worse.
 
 ### D8. `SparkJobState`

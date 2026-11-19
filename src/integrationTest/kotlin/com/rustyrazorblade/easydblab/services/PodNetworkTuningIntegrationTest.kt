@@ -114,6 +114,11 @@ class PodNetworkTuningIntegrationTest {
     }
 
     @Test
+    fun `the probe reports the policy's values from the real API server`() {
+        assertThat(probe.probe()).isEqualTo(ProbeResult.Admitted(sysctls))
+    }
+
+    @Test
     fun `a host network pod is not changed`() {
         assertThat(admittedSysctls(pod("host-network") { editSpec().withHostNetwork(true).endSpec() })).isEmpty()
     }

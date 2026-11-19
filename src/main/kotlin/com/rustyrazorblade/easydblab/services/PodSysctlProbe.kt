@@ -38,8 +38,7 @@ fun interface PodSysctlProbe {
  * [Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE].
  *
  * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
- * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable], so one transient
- * failure does not end the wait.
+ * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable] (see [resultOf]).
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
@@ -48,10 +47,7 @@ class Fabric8PodSysctlProbe(
         try {
             ProbeResult.Admitted(sysctlsOf(admit(probePod())))
         } catch (e: KubernetesClientException) {
-            when (e.code) {
-                0 -> ProbeResult.Unreachable(e.messageOrString())
-                else -> ProbeResult.Refused(e.status?.message ?: e.messageOrString())
-            }
+            resultOf(e)
         }
 
     /** [pod] as the API server would create it, after every admission plugin and policy; nothing is created. */
@@ -79,6 +75,16 @@ class Fabric8PodSysctlProbe(
             .build()
 
     companion object {
+        /**
+         * An answer with an HTTP status is the API server refusing the pod. With none (fabric8 sets
+         * the code to -1 and no status when the request never got an answer) the server was not reached.
+         */
+        fun resultOf(e: KubernetesClientException): ProbeResult =
+            when {
+                e.status == null && e.code <= 0 -> ProbeResult.Unreachable(e.messageOrString())
+                else -> ProbeResult.Refused(e.status?.message ?: e.messageOrString())
+            }
+
         /** [pod]'s `spec.securityContext.sysctls`, name to value. */
         fun sysctlsOf(pod: Pod): Map<String, String> =
             pod.spec

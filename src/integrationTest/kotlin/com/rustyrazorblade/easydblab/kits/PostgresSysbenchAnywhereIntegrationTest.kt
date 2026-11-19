@@ -11,7 +11,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
@@ -270,7 +269,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
         val unresolved = mutableListOf<String>()
         val state = stateManager.load()
         val rendered =
-            TemplateService(stateManager, mock<User>()).renderKitTemplate(
+            TemplateService(stateManager).renderKitTemplate(
                 templateContent = kitResource(kitName, template),
                 vars = TemplateVariables.from(state = state, kitName = kitName, storageSize = STORAGE_SIZE),
                 extraVars = variables,

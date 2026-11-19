@@ -10,12 +10,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DefaultK8sService
 import com.rustyrazorblade.easydblab.services.DefaultStressJobService
-import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -32,7 +30,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
@@ -97,7 +94,6 @@ class CassandraPodsAnywhereIntegrationTest {
                 "cassandra-pods",
                 TemplateService(
                     ClusterStateManager(File(Files.createTempDirectory("cassandra-pods-anywhere").toFile(), "state.json")),
-                    mock<User>(),
                 ),
                 kitStorageClass = LOCAL_PATH_CLASS,
                 roleSelectors = RoleSelectors.ANYWHERE,
@@ -203,8 +199,7 @@ class CassandraPodsAnywhereIntegrationTest {
             k8sService = DefaultK8sService(provider, EventBus()),
             clusterStateManager = stateManager,
             eventBus = EventBus(),
-            templateService = TemplateService(stateManager, mock<User>()),
-            ecrPullSecrets = mock<ImagePullSecretService>().also { whenever(it.ensureFor(any(), any())).thenReturn("") },
+            templateService = TemplateService(stateManager),
             podReadyPollInterval = Duration.ofSeconds(POD_POLL_SECONDS),
         )
     }

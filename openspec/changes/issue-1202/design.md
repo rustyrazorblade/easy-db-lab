@@ -153,7 +153,7 @@ Also checked once: a host-network pod (the OTel collector) has no injected `sysc
 - [`failurePolicy: Fail` blocks every pod creation if the policy's CEL errors] → the K3s integration test creates pods through the real policy; `up` proves it with D5.
 - [A namespace that enforces Pod Security `baseline` or `restricted` rejects the unsafe sysctls] → no namespace in the cluster sets Pod Security labels today; the kit checks above would show one.
 - [Pods created before the policy (CoreDNS, metrics-server at K3s start) are untuned] → they are not under test.  The policy is applied before the observability stack and before any kit.
-- [A cluster brought up by an older CLI has no kubelet allowlist; kit pods there fail `SysctlForbidden`] → clusters are ephemeral; such a cluster needs a new `up`.  The failure names the sysctl.
+- [A cluster brought up by an older CLI has no kubelet allowlist; kit pods there fail `SysctlForbidden`] → clusters are ephemeral; such a cluster is destroyed and brought up again (`down`, then `up`).  A second `up` on the live cluster rewrites the drop-ins, but the start scripts only `systemctl start` a K3s that is already running, so the new flags take effect on a fresh cluster only.  The failure names the sysctl.
 - [The policy also touches system and operator pods] → they get the same values a tuned production host gives every process; owner's decision R2.
 
 ## Resolved (owner decisions, 2026-11-19)

@@ -53,7 +53,7 @@ class PodNetworkTuningIntegrationTest {
 
     @AfterAll
     fun stop() {
-        client.close()
+        if (::client.isInitialized) client.close()
         container.stop()
     }
 
@@ -125,8 +125,7 @@ class PodNetworkTuningIntegrationTest {
 
     @Test
     fun `a real pod starts and its network namespace runs the tuned values`() {
-        val keys =
-            listOf("net.core.somaxconn", "net.ipv4.tcp_max_syn_backlog", "net.ipv4.tcp_slow_start_after_idle", "net.ipv4.tcp_tw_reuse")
+        val keys = sysctls.keys
         val command = keys.joinToString("; ") { "echo $it=$(cat /proc/sys/${it.replace('.', '/')})" }
         val reader =
             pod("reads-sysctls") {
@@ -148,7 +147,16 @@ class PodNetworkTuningIntegrationTest {
             .isEqualTo("Succeeded")
 
         val log = pods.withName("reads-sysctls").log
-        val read = log.lines().filter { "=" in it }.associate { it.substringBefore("=") to it.substringAfter("=") }
-        assertThat(read).isEqualTo(keys.associateWith { sysctls.getValue(it) })
+        // /proc separates the fields of a multi-word value with tabs; the file and the policy use spaces.
+        val read =
+            log.lines().filter { "=" in it }.associate {
+                it.substringBefore("=") to
+                    it
+                        .substringAfter("=")
+                        .trim()
+                        .split(Regex("\\s+"))
+                        .joinToString(" ")
+            }
+        assertThat(read).isEqualTo(sysctls)
     }
 }

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
 import java.io.IOException
 
@@ -45,35 +46,48 @@ fun interface PodSysctlProbe {
  *
  * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
  * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable] (see [resultOf]).
- * So is a client that could not be made or a transport failure below fabric8, so every failure goes
- * through the same retry, deadline and typed event in [PodNetworkTuning].
+ * So is a client that could not be made, so a workspace with no usable kubeconfig goes through the
+ * same retry, deadline and typed event in [PodNetworkTuning]. fabric8 wraps a transport failure
+ * below it in a [KubernetesClientException] with no status, which [resultOf] already maps.
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
 ) : PodSysctlProbe {
-    override fun probe(): ProbeResult =
-        try {
-            ProbeResult.Admitted(sysctlsOf(admit(probePod())))
-        } catch (e: KubernetesClientException) {
-            resultOf(e)
-        } catch (e: IOException) {
-            // No client: the kubeconfig could not be read, or the tunnel failed below fabric8.
-            ProbeResult.Unreachable(e.reason())
-        } catch (e: IllegalStateException) {
-            // No client: the workspace has no kubeconfig, or it did not parse.
-            ProbeResult.Unreachable(e.reason())
+    /**
+     * Only a failure to make the client (the workspace has no kubeconfig, or it could not be read or
+     * parsed) is an unreachable cluster here; a defect in the request itself still throws.
+     */
+    override fun probe(): ProbeResult {
+        val client =
+            try {
+                clientProvider.createClient()
+            } catch (e: IOException) {
+                return ProbeResult.Unreachable(e.reason())
+            } catch (e: IllegalStateException) {
+                return ProbeResult.Unreachable(e.reason())
+            }
+        return client.use {
+            try {
+                ProbeResult.Admitted(sysctlsOf(admit(it, probePod())))
+            } catch (e: KubernetesClientException) {
+                resultOf(e)
+            }
         }
+    }
 
     /** [pod] as the API server would create it, after every admission plugin and policy; nothing is created. */
-    fun admit(pod: Pod): Pod =
-        clientProvider.createClient().use { client ->
-            client
-                .pods()
-                .inNamespace(Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE)
-                .resource(pod)
-                .dryRun()
-                .create()
-        }
+    fun admit(pod: Pod): Pod = clientProvider.createClient().use { admit(it, pod) }
+
+    private fun admit(
+        client: KubernetesClient,
+        pod: Pod,
+    ): Pod =
+        client
+            .pods()
+            .inNamespace(Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE)
+            .resource(pod)
+            .dryRun()
+            .create()
 
     private fun probePod() =
         PodBuilder()

@@ -4,17 +4,15 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
-import com.rustyrazorblade.easydblab.services.K8sManifestOperations
 import com.rustyrazorblade.easydblab.services.K8sStorageOperations
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.ProbeResult
-import io.fabric8.kubernetes.api.model.HasMetadata
+import com.rustyrazorblade.easydblab.services.RecordingManifests
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
-import java.nio.file.Path
 import java.time.Duration
 
 /**
@@ -33,7 +31,7 @@ class UpPostStepsTest {
         val eventBus = EventBus()
         val untuned =
             PodNetworkTuning(
-                AcceptingManifests(),
+                RecordingManifests(),
                 { ProbeResult.Admitted(emptyMap()) },
                 eventBus,
                 mapOf("net.core.somaxconn" to "65535"),
@@ -44,21 +42,5 @@ class UpPostStepsTest {
 
         assertThatThrownBy { steps.run(control, localTelemetry = true) }.isInstanceOf(CommandFailedException::class.java)
         verifyNoInteractions(storage, observability, annotator)
-    }
-
-    /** Accepts every resource; the probe, not the apply, is what fails here. */
-    private class AcceptingManifests : K8sManifestOperations {
-        override fun applyResource(resource: HasMetadata): Result<Unit> = Result.success(Unit)
-
-        override fun applyManifests(manifestPath: Path): Result<Unit> = error("not used")
-
-        override fun applyManifestFromResources(resourcePath: String): Result<Unit> = error("not used")
-
-        override fun applyYaml(yamlContent: String): Result<Unit> = error("not used")
-
-        override fun labelNode(
-            nodeName: String,
-            labels: Map<String, String>,
-        ): Result<Unit> = error("not used")
     }
 }

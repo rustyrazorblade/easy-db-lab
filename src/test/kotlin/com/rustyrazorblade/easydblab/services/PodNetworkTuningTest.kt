@@ -6,13 +6,11 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
-import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.MutatingAdmissionPolicy
 import io.fabric8.kubernetes.api.model.admissionregistration.v1beta1.MutatingAdmissionPolicyBinding
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
-import java.nio.file.Path
 import java.time.Duration
 
 /**
@@ -21,7 +19,7 @@ import java.time.Duration
  */
 class PodNetworkTuningTest {
     private val sysctls = mapOf("net.core.somaxconn" to "65535", "net.ipv4.tcp_keepalive_time" to "60")
-    private val manifests = FakeManifests()
+    private val manifests = RecordingManifests()
     private val events = mutableListOf<Event>()
     private val eventBus =
         EventBus().apply {
@@ -129,25 +127,5 @@ class PodNetworkTuningTest {
         assertThat(events).containsExactly(
             Event.Platform.PodSysctlPolicyNotApplied(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, "no kind MutatingAdmissionPolicy"),
         )
-    }
-
-    /** Records each applied resource, or fails every apply with [failure]. */
-    private class FakeManifests : K8sManifestOperations {
-        val applied = mutableListOf<HasMetadata>()
-        var failure: Exception? = null
-
-        override fun applyResource(resource: HasMetadata): Result<Unit> =
-            failure?.let { Result.failure(it) } ?: Result.success(Unit).also { applied += resource }
-
-        override fun applyManifests(manifestPath: Path): Result<Unit> = error("not used")
-
-        override fun applyManifestFromResources(resourcePath: String): Result<Unit> = error("not used")
-
-        override fun applyYaml(yamlContent: String): Result<Unit> = error("not used")
-
-        override fun labelNode(
-            nodeName: String,
-            labels: Map<String, String>,
-        ): Result<Unit> = error("not used")
     }
 }

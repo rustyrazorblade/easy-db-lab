@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventContext
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
@@ -21,8 +22,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * The attempt runs on a thread of its own so a timeout or an ended instance can abandon it; the
  * attempt thread is interrupted and carries the caller's command name, so its events keep it.
  * An interrupt of the caller (the control node failed, or `up` is stopping) is never retried: it
- * interrupts the attempt, waits up to [abandonGrace] for it to stop, and is rethrown, so an attempt
- * does not outlive its pipeline. An attempt whose instance ended is stopped the same way.
+ * interrupts the attempt, waits up to [abandonGrace] for it to stop, and is rethrown. An attempt
+ * whose instance ended is stopped the same way. One still running after the grace is logged as a
+ * warning and left behind: the step ends regardless.
  *
  * A timed-out attempt is interrupted, then waited for up to [abandonGrace], so the next attempt
  * never runs beside it on the same instance. One that does not stop in time fails the step with
@@ -156,19 +158,23 @@ class StepRunner(
             } catch (_: ExecutionException) {
                 finished(outcome, worker)
             } catch (e: InterruptedException) {
-                stop(worker)
+                stopOrWarn(worker)
                 throw e
             }
         }
 
-        /**
-         * Interrupts [worker] and waits up to the grace for it to stop, so nothing the attempt does
-         * outlives the step that ran it. Whether it stopped is the caller's concern: an
-         * interrupted or ended step stops regardless.
-         */
+        /** Interrupts [worker] and waits up to the grace for it to stop; true when it stopped. */
         private fun stop(worker: Thread): Boolean {
             worker.interrupt()
             return worker.join(abandonGrace)
+        }
+
+        /**
+         * Stops [worker] for a step that is ending regardless (interrupted, or its instance ended),
+         * and warns when the attempt is still running after the grace, since nothing waits on it.
+         */
+        private fun stopOrWarn(worker: Thread) {
+            if (!stop(worker)) log.warn { "Attempt ${worker.name} did not stop within ${describe(abandonGrace)} and is still running" }
         }
 
         /** Interrupts a timed-out [worker] and waits up to the grace for it to stop. */
@@ -191,7 +197,7 @@ class StepRunner(
             return when {
                 outcome.isDone && !outcome.isCompletedExceptionally -> AttemptResult.Done(outcome.resultNow())
                 ended != null -> {
-                    stop(worker)
+                    stopOrWarn(worker)
                     AttemptResult.Ended(ended)
                 }
                 else -> outcome.exceptionNow().let { AttemptResult.Error(it.message ?: it::class.java.simpleName) }
@@ -236,6 +242,7 @@ class StepRunner(
 
     private companion object {
         const val MILLIS_PER_SECOND = 1000L
+        private val log = KotlinLogging.logger {}
 
         fun describe(timeout: Duration): String =
             if (timeout.toMillis() < MILLIS_PER_SECOND) "${timeout.toMillis()}ms" else "${timeout.toSeconds()}s"

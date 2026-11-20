@@ -75,9 +75,16 @@ be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md
 
 Kits publish client ports through NodePort Services, reachable on any node's private IP.
 
+The cluster's security group decides who can reach them. It allows TCP 22 from your public IP (or
+from anywhere with `init --open`), and all TCP, UDP and ICMP only from the cluster's own VPC CIDR.
+No NodePort is open to the internet. Anything inside the VPC can connect to every NodePort, as can
+your machine through the SOCKS tunnel or, on a Tailscale cluster, any tailnet device your ACL lets
+use the control node's subnet route. A kit port has only the authentication its database
+provides; the table says where there is none.
+
 | Port | Kit | Service |
 |------|-----|---------|
-| 30816 | cqlite-flight | Arrow Flight gRPC (NodePort → 8815, node-local: each db node's IP reaches that node's own pod) |
+| 30816 | cqlite-flight | Arrow Flight gRPC (NodePort → 8815, node-local: each db node's IP reaches that node's own pod). **No authentication**: anyone who can reach it can read that node's SSTables |
 | 31211 | memcached | memcached client port (NodePort → 11211) |
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
 | 30942 | ferrosa | CQL (NodePort → 9042, first pod) |

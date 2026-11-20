@@ -146,7 +146,8 @@ test_a_queries_file_is_staged_in_the_configmap() {
 }
 
 # Kubernetes rejects a ConfigMap over 1 MiB; the queries share it with driver.py, so a file that
-# fits alone can still be too large. It fails before any ConfigMap or pod, naming the flag.
+# fits alone can still be too large. The kit library refuses it before any ConfigMap or pod, and
+# the error names the flag.
 test_a_queries_file_over_the_configmap_limit_fails_before_any_pod() {
   start_test "queries file too large"
   local driver_bytes EDL_CONFIGMAP_MAX_BYTES
@@ -155,8 +156,8 @@ test_a_queries_file_over_the_configmap_limit_fails_before_any_pod() {
   driver_bytes=$(wc -c < "${WORK}/kit/driver.py")
   head -c $((EDL_CONFIGMAP_MAX_BYTES - driver_bytes + 1)) /dev/zero | tr '\0' 'x' > "${WORK}/big.txt"
   run_script TRINO_LOADTEST_QUERIES_FILE="${WORK}/big.txt" && fail "exited 0"
-  grep -Fq -- "--queries-file ${WORK}/big.txt is too large" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
-  grep -Fq "over the ${EDL_CONFIGMAP_MAX_BYTES}-byte limit" "${WORK}/out.txt" || fail "message does not name the limit: $(cat "${WORK}/out.txt")"
+  grep -Fq -- "the file given by --queries-file is too large" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  grep -Fq "more than the limit of ${EDL_CONFIGMAP_MAX_BYTES} bytes" "${WORK}/out.txt" || fail "message does not name the limit: $(cat "${WORK}/out.txt")"
   [ ! -e "${STUB_STATE}/configmap.1" ] || fail "created a ConfigMap: $(cat "${STUB_STATE}/configmap.1")"
   [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
 
@@ -202,6 +203,22 @@ test_a_target_url_without_a_numeric_port_runs_no_pod() {
     run_script TARGET_HTTP_URL="${url}" && fail "exited 0"
     grep -Fq "has no numeric port" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
     [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+  done
+}
+
+# The host and port are split at a ':', which misreads an IPv6 literal or a URL with user info, so
+# both fail with a message that says which form it is, before any pod.
+test_a_target_url_the_split_would_misread_runs_no_pod() {
+  local url want
+  for url in "http://[fd00::9]:8080|IPv6 literal" "https://[::1]:8443|IPv6 literal" \
+    "http://admin@10.0.0.9:8080|user info" "http://admin:secret@10.0.0.9:8080|user info"; do
+    want="${url#*|}"
+    url="${url%%|*}"
+    start_test "target url: ${url}"
+    run_script TARGET_HTTP_URL="${url}" && fail "exited 0"
+    grep -Fq "${want}" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+    [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+    [ ! -e "${STUB_STATE}/curl.count" ] || fail "reached the target: $(cat "${STUB_STATE}/curl.count") curl calls"
   done
 }
 
@@ -392,6 +409,7 @@ test_a_failed_driver_fails_the_run
 test_no_app_node_runs_no_pod
 test_no_target_runs_no_pod
 test_a_target_url_without_a_numeric_port_runs_no_pod
+test_a_target_url_the_split_would_misread_runs_no_pod
 test_start_leaves_the_configmap_for_stop
 test_the_trino_client_is_pinned
 test_the_driver_image_is_pinned_by_digest

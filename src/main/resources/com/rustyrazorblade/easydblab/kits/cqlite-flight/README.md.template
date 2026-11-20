@@ -21,7 +21,10 @@ namespace:
   the node-IP-addressing model the connector needs from Sidecar-based topology
   discovery. (With the default `Cluster` policy, kube-proxy would send a request to
   any node's pod and a read would silently return another node's data.)
-  The NodePort is unauthenticated and reachable on every db node's private IP.
+  The NodePort has no authentication. The cluster security group allows it only from
+  the cluster's VPC CIDR (it is not open to the internet), so anything in the VPC, the
+  SOCKS tunnel, or a tailnet device allowed the control node's subnet route can read
+  the served SSTables through it.
 - **Least privilege** — both containers run with `allowPrivilegeEscalation: false`,
   `capabilities: drop: [ALL]` and `readOnlyRootFilesystem: true`; `/tmp` is a
   pod-local `emptyDir`.

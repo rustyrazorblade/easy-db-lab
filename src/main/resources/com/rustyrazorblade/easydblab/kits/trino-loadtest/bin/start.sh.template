@@ -25,6 +25,12 @@ ROLE="run"
   edl_fail "TARGET_HTTP_URL is not set. Install with --target pointing at a running trino kit that exposes an http endpoint."
 TRINO_LOADTEST_HOST_PORT="${TARGET_HTTP_URL#http://}"
 TRINO_LOADTEST_HOST_PORT="${TRINO_LOADTEST_HOST_PORT#https://}"
+# The host and port are split at the first and last ':', which only holds for <host>:<port>. Refuse
+# the two forms that split would misread, rather than run the driver against the wrong address.
+[[ "${TRINO_LOADTEST_HOST_PORT}" != \[* ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has an IPv6 literal host, which trino-loadtest does not support; the trino kit's http endpoint must be http://<ipv4-or-hostname>:<port>."
+[[ "${TRINO_LOADTEST_HOST_PORT}" != *@* ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) carries user info (user@ or user:password@), which trino-loadtest does not support; the trino kit's http endpoint must be http://<host>:<port>."
 TRINO_LOADTEST_HOST="${TRINO_LOADTEST_HOST_PORT%%:*}"
 TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
 # With no ":<port>", the expansion above returns the whole host, so check the port is a number.
@@ -58,13 +64,8 @@ CONFIGMAP_FILES=("driver.py=${KIT_DIR}/driver.py")
 if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
   [ -f "${TRINO_LOADTEST_QUERIES_FILE}" ] && [ -r "${TRINO_LOADTEST_QUERIES_FILE}" ] ||
     edl_fail "--queries-file ${TRINO_LOADTEST_QUERIES_FILE} is not a readable file."
-  # The queries ride in the driver's ConfigMap with driver.py, and Kubernetes rejects a ConfigMap
-  # over 1 MiB. edl_create_configmap enforces the kit library's cap (EDL_CONFIGMAP_MAX_BYTES, under
-  # 1 MiB to leave room for the YAML around the data), but only after the catalog preflight and
-  # with a message that names no flag; this check runs first and names it.
-  CONFIGMAP_BYTES=$(($(wc -c < "${KIT_DIR}/driver.py") + $(wc -c < "${TRINO_LOADTEST_QUERIES_FILE}")))
-  [ "${CONFIGMAP_BYTES}" -le "${EDL_CONFIGMAP_MAX_BYTES}" ] ||
-    edl_fail "--queries-file ${TRINO_LOADTEST_QUERIES_FILE} is too large: with driver.py it is ${CONFIGMAP_BYTES} bytes, over the ${EDL_CONFIGMAP_MAX_BYTES}-byte limit for one ConfigMap (Kubernetes caps it at 1 MiB). Use fewer or shorter queries."
+  # The queries ride in the driver's ConfigMap with driver.py; edl_create_configmap enforces the
+  # size cap, before any pod, and its error names --queries-file (see the call below).
   CONFIGMAP_FILES+=("queries.txt=${TRINO_LOADTEST_QUERIES_FILE}")
   ARGV+=(--queries-file /driver/queries.txt)
 fi
@@ -79,7 +80,12 @@ tl_require_cqlite_catalog "${TARGET_HTTP_URL%/}" "${TRINO_LOADTEST_USER}"
 POD="$(edl_resource_name "${ROLE}")"
 # The ConfigMap stays until stop, which deletes it with the pod by label. Deleting it when this
 # script exits, as on Ctrl-C, would leave a pod that is still Pending waiting for its volume forever.
-edl_create_configmap "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+# The over-limit error names --queries-file only when one was given; driver.py alone always fits.
+if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
+  edl_create_configmap --flag --queries-file "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+else
+  edl_create_configmap "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+fi
 
 echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
 kubectl run "${POD}" \

@@ -161,8 +161,9 @@ against coordinator-side and Flight-side latency on one dashboard.
 
 ## Risks / caveats
 
-- **PyPI at every start**: app nodes must reach `pypi.org` and
-  `files.pythonhosted.org`. The pinned version keeps runs comparable, but it
+- **PyPI at every start**: the driver pod runs `pip install trino==0.340.0` from
+  PyPI each time it starts, so app nodes need outbound internet access to `pypi.org`
+  and `files.pythonhosted.org`. The pinned version keeps runs comparable, but it
   does not help when PyPI is unreachable: the pod's install fails and so does
   `start`.
 - **Cold-start tax**: each pod runs `pip install --quiet trino==<pinned>` before the

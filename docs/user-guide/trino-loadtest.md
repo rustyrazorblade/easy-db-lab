@@ -39,8 +39,9 @@ database:
 - A [Trino](install-trino.md) kit is installed and running, with its
   [`cqlite` catalog](install-trino.md#the-cqlite-catalog-offline-sstable-reads) wired.
 - The target keyspace/table has flushed SSTables to read
-- App nodes can reach PyPI (`pypi.org` and `files.pythonhosted.org`). The driver pod runs
-  `pip install trino==<pinned version>` every time it starts, so a run fails if PyPI is unreachable.
+- App nodes have outbound internet access to PyPI (`pypi.org` and `files.pythonhosted.org`). The
+  driver pod runs `pip install trino==0.340.0` every time it starts, so a run fails if PyPI is
+  unreachable.
   The pod logs `installing trino client <version> from PyPI...` first, so the install time shows
   in the streamed log instead of looking like a hang.
 

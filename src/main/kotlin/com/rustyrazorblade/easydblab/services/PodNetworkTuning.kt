@@ -9,6 +9,12 @@ import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.bringup.pollUntil
 import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Puts the pod network sysctls in effect for every later pod, once per `up` (pod-network-tuning,
@@ -17,7 +23,8 @@ import java.time.Duration
  * It applies the cluster-wide admission policy, then asks the API server for a dry-run pod until
  * that pod carries every injected value. The API server loads a new policy asynchronously, so the
  * first pods after the apply can still be untuned; waiting here means no kit pod ever is. Past
- * [readyTimeout] `up` fails, naming the keys the pod still lacks.
+ * [readyTimeout] `up` fails, naming the keys the pod still lacks. Each probe gets only the time left,
+ * so a probe that never answers cannot stretch the wait past [readyTimeout].
  *
  * @param sysctls the keys and values every pod-network pod gets, from [PodNetworkSysctls]
  */
@@ -43,19 +50,59 @@ class PodNetworkTuning(
                 throw CommandFailedException("The pod network sysctl policy could not be applied: $reason", failure)
             }
         }
-        val polled =
+        val last = pollProbe().getOrElse { probeFailed(it) }
+        val missing = missing(last)
+        if (missing.isNotEmpty()) notInEffect(missing, reasonOf(last))
+        eventBus.emit(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
+    }
+
+    /**
+     * Probes until a pod carries every value or [readyTimeout] has passed, and returns the last
+     * result; a failure is what a probe threw. An interrupt propagates.
+     */
+    private fun pollProbe(): Result<ProbeResult> {
+        val deadline = Instant.now().plus(readyTimeout)
+        val probes = Executors.newVirtualThreadPerTaskExecutor()
+        // A probe cut off at the deadline adds nothing, so the last answer the server gave stands.
+        var answered: ProbeResult? = null
+        return try {
             runCatchingInterruptibly {
                 pollUntil<ProbeResult>(
                     "pod-sysctl-policy",
                     pollInterval,
                     readyTimeout,
                     done = { missing(it).isEmpty() },
-                ) { probe.probe() }
+                ) {
+                    probeBefore(probes, deadline)?.also { answered = it }
+                        ?: answered
+                        ?: ProbeResult.Unreachable("the API server gave no answer before the ${readyTimeout.seconds}s deadline")
+                }
             }
-        val last = polled.getOrElse { probeFailed(it) }
-        val missing = missing(last)
-        if (missing.isNotEmpty()) notInEffect(missing, reasonOf(last))
-        eventBus.emit(Event.Platform.PodSysctlPolicyReady(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, sysctls))
+        } finally {
+            // shutdownNow, not close: close would wait for a probe that never answers.
+            probes.shutdownNow()
+        }
+    }
+
+    /**
+     * One probe, given only the time left before [deadline], so a probe that never answers (a silent
+     * tunnel, an API server that accepts but does not reply) cannot hold `up` past [readyTimeout]: it
+     * is interrupted and the result is null. What the probe throws is rethrown as it is.
+     */
+    private fun probeBefore(
+        probes: ExecutorService,
+        deadline: Instant,
+    ): ProbeResult? {
+        val answer = probes.submit<ProbeResult> { probe.probe() }
+        val left = Duration.between(Instant.now(), deadline).toNanos().coerceAtLeast(0L)
+        return try {
+            answer.get(left, TimeUnit.NANOSECONDS)
+        } catch (_: TimeoutException) {
+            answer.cancel(true)
+            null
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        }
     }
 
     /** Reports that a new pod still lacks [missing], and why when no pod was admitted, then fails `up`. */

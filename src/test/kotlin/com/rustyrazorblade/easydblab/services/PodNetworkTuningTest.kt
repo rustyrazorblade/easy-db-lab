@@ -12,6 +12,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
 
 /**
  * Tests for [PodNetworkTuning]: the policy is applied, the wait ends only when a dry-run pod carries
@@ -143,6 +144,20 @@ class PodNetworkTuningTest {
         assertThat(events).containsExactly(
             Event.Platform.PodSysctlProbeFailed(Constants.NodeTuning.POD_SYSCTL_POLICY_NAME, "unexpected response body"),
         )
+    }
+
+    @Test
+    fun `a probe that never answers is cut off at the deadline, so up waits no longer than it reports`() {
+        val neverAnswers = CountDownLatch(1)
+        val probe = PodSysctlProbe { neverAnswers.await().let { ProbeResult.Admitted(sysctls) } }
+        val started = System.nanoTime()
+
+        assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3))
+        val event = events.single() as Event.Platform.PodSysctlPolicyNotInEffect
+        assertThat(event.missingKeys).containsExactlyElementsOf(sysctls.keys)
+        assertThat(event.reason).contains("no answer before the 1s deadline")
     }
 
     @Test

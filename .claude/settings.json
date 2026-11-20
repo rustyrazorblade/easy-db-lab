@@ -21,7 +21,8 @@
       "Bash(kubectl logs *)",
       "Bash(docker info *)",
       "Bash(aws ec2 describe-security-groups *)",
-      "Bash(openspec --version)"
+      "Bash(openspec --version)",
+      "Bash(gh pr merge:*)"
     ]
   },
   "enabledPlugins": {

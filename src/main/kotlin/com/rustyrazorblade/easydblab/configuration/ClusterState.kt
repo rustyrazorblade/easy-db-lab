@@ -179,8 +179,8 @@ data class SavedSignal(
 data class InitConfig(
     val cassandraInstances: Int = 3,
     val stressInstances: Int = 0,
-    val instanceType: String = "i4i.xlarge",
-    val stressInstanceType: String = "c6id.2xlarge",
+    val instanceType: String = Constants.InstanceTypes.DB,
+    val stressInstanceType: String = Constants.InstanceTypes.APP,
     val azs: List<String> = listOf(),
     val ami: String = "",
     val region: String = "us-west-2",
@@ -192,21 +192,21 @@ data class InitConfig(
     val ebsOptimized: Boolean = false,
     val open: Boolean = false,
     val controlInstances: Int = 1,
-    val controlInstanceType: String = "m5d.xlarge",
+    val controlInstanceType: String = Constants.InstanceTypes.CONTROL,
     val tags: Map<String, String> = mapOf(),
     val dbArch: String = "AMD64",
     val appArch: String = "AMD64",
     val controlArch: String = "AMD64",
     val sparkEnabled: Boolean = false,
-    val sparkMasterInstanceType: String = "m5.xlarge",
-    val sparkWorkerInstanceType: String = "m5.xlarge",
+    val sparkMasterInstanceType: String = Constants.InstanceTypes.SPARK,
+    val sparkWorkerInstanceType: String = Constants.InstanceTypes.SPARK,
     val sparkWorkerCount: Int = 3,
     val sparkReleaseLabel: String = Constants.EMR.DEFAULT_RELEASE_LABEL,
     val opensearchEnabled: Boolean = false,
-    val opensearchInstanceType: String = "t3.small.search",
-    val opensearchInstanceCount: Int = 1,
-    val opensearchVersion: String = "2.11",
-    val opensearchEbsSize: Int = 100,
+    val opensearchInstanceType: String = Constants.OpenSearch.DEFAULT_INSTANCE_TYPE,
+    val opensearchInstanceCount: Int = Constants.OpenSearch.DEFAULT_INSTANCE_COUNT,
+    val opensearchVersion: String = Constants.OpenSearch.DEFAULT_VERSION,
+    val opensearchEbsSize: Int = Constants.OpenSearch.DEFAULT_EBS_SIZE_GB,
     val cidr: String? = null,
     val cni: CniMode = CniMode.Cilium,
     // Life-of-cluster telemetry redirect target. Null means local mode (the unchanged default):
@@ -324,9 +324,9 @@ data class ClusterState(
     var tailscaleDeviceId: String? = null,
     // Counter for stress job naming and port assignment
     var stressJobCounter: Int = 0,
-    // Whether Tailscale was active on the local machine at init time.
-    // When true, all cluster connections bypass the SOCKS proxy and use private IPs directly.
-    var tailscaleActive: Boolean = false,
+    // How this machine reaches the cluster, recorded by `init`: only Socks uses the SOCKS tunnel.
+    // ClusterStateManager.load() reads a state from before this field from its old tailscaleActive.
+    var networkMode: NetworkMode = NetworkMode.Socks,
     // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
     var runningKits: Set<String> = emptySet(),
     // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
@@ -336,12 +336,6 @@ data class ClusterState(
      * Returns true when the db nodes are provisioned with Cassandra hosts.
      */
     fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty()
-
-    /**
-     * Returns true when Tailscale was configured at init time and cluster connections bypass the SOCKS proxy.
-     * Reads the stored [tailscaleActive] field from state.json.
-     */
-    fun isTailscaleEnabled(): Boolean = tailscaleActive
 
     /**
      * Update hosts

@@ -42,6 +42,12 @@ class ClusterStateManager(
      * missing field is read as [CniMode.Flannel] rather than filled from the constructor default
      * ([CniMode.Cilium]), which would render Cilium scrape jobs on a Flannel cluster.
      *
+     * A state from before [ClusterState.networkMode] records `tailscaleActive` instead: `true` reads
+     * as [NetworkMode.Tailscale], and `false` or no field as [NetworkMode.Socks]. When `networkMode` is
+     * present, a `tailscaleActive` beside it is ignored. Loading writes nothing; the next [save] writes
+     * `networkMode` and no `tailscaleActive`, which the class no longer has.
+     *
+     * @throws IllegalStateException if `networkMode` is not a known mode, naming the value and the known ones
      * @throws Exception if file doesn't exist or can't be parsed
      */
     fun load(): ClusterState {
@@ -50,6 +56,7 @@ class ClusterStateManager(
         if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
             initConfig.put(CNI_FIELD, CniMode.Flannel.name)
         }
+        if (tree is ObjectNode) migrateNetworkMode(tree)
         val state = mapper.treeToValue(tree, ClusterState::class.java)
         // The name flows raw into config files, Loki index file names, S3 keys and labels; a
         // hand-edited or pre-rule state must not reach any of them.
@@ -114,8 +121,32 @@ class ClusterStateManager(
         save(state)
     }
 
+    /**
+     * Rewrites [tree] so it holds a known `networkMode` and no `tailscaleActive`: an absent mode is
+     * taken from the old boolean, and an unknown one fails the load.
+     */
+    private fun migrateNetworkMode(tree: ObjectNode) {
+        val legacyTailscale = tree.remove(LEGACY_TAILSCALE_FIELD)?.asBoolean(false) ?: false
+        val recorded = tree.get(NETWORK_MODE_FIELD)
+        if (recorded == null || recorded.isNull) {
+            val mode = if (legacyTailscale) NetworkMode.Tailscale else NetworkMode.Socks
+            tree.put(NETWORK_MODE_FIELD, mode.id)
+            return
+        }
+        val id = recorded.asText()
+        checkNotNull(NetworkMode.fromId(id)) {
+            "Unknown $NETWORK_MODE_FIELD '$id' in $CLUSTER_STATE: the known values are ${NetworkMode.knownIds}"
+        }
+    }
+
     private companion object {
         /** The [InitConfig] field that records the cluster's CNI. */
         const val CNI_FIELD = "cni"
+
+        /** The [ClusterState] field that records the network mode. */
+        const val NETWORK_MODE_FIELD = "networkMode"
+
+        /** The boolean that recorded Tailscale before [NETWORK_MODE_FIELD]; read only from old states. */
+        const val LEGACY_TAILSCALE_FIELD = "tailscaleActive"
     }
 }

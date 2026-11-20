@@ -299,6 +299,6 @@ class SetupInstanceTest : BaseKoinTest() {
         const val OVERLAP_WAIT_SECONDS = 5L
 
         /** A db node's setup, with the database instance type the state's init config defaults to. */
-        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
+        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i7i.xlarge bash setup_instance.sh"
     }
 }

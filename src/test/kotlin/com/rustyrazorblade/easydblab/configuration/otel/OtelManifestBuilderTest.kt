@@ -836,7 +836,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `local mode ConfigMap exports to the in-cluster backend services`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
 
-        assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "endpoint"))
+        assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "http", "endpoint"))
             .isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
         assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "endpoint"))
             .isEqualTo("http://loki.default.svc.cluster.local:3100/otlp")
@@ -1000,7 +1000,8 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
 
         for (yaml in listOf(local, redirected)) {
-            assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+            assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "http", "headers", "X-Scope-OrgID"))
+                .isEqualTo("\${env:TENANT}")
             assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
         }
     }

@@ -38,6 +38,34 @@ The agent uses automatic instrumentation only - there is no custom manual instru
 
 The following instrumentation applies to cluster nodes (Cassandra, stress, Spark) and is separate from the CLI tool:
 
+### Backend Outages: Queues and Retries
+
+Each node's collector holds what it cannot deliver while Mimir, Loki or Tempo is down or restarting, and sends it when the backend is back. The queues are in memory. Nothing is written to disk, so a collector that restarts during an outage loses what it held.
+
+| Exporter | Backend | Queue | Retry |
+|----------|---------|-------|-------|
+| `prometheus_remote_write` | Mimir | `remote_write_queue`, 20000 batches | every 5s, no time limit |
+| `otlp_http/logs` | Loki | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
+| `otlp_grpc/tempo` | Tempo | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
+
+The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep a 20000-batch in-memory `sending_queue` and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart. Fluent Bit, which sends each node's systemd journal to its node's collector, retries without a limit (`retry_limit: no_limits`) and holds the chunks in memory. Its retries back off to at most 30 seconds apart (`scheduler.cap: 30`; the default is 2000), so a chunk is sent soon after the collector is back.
+
+Unlimited retry also slows a collector's shutdown during an outage. A stopping collector tries to send what it holds before it exits, and with no time limit it keeps trying until it is killed. During a backend outage, a cluster collector pod takes its full termination grace period to stop: 30 seconds, the Kubernetes default, which the DaemonSet does not change. So a kit start or stop, which rolls the DaemonSet, waits about 30 seconds per node longer while Mimir, Loki or Tempo is down. The stress-job sidecar collector waits the same 30 seconds when its node's collector is down, and the EMR collector waits systemd's default stop timeout of 90 seconds when the control node's collector is down. What the collector still held when it was killed is lost, as for any restart during an outage.
+
+The OpenTelemetry Java agents (Cassandra on each db node, cassandra-easy-stress, Spark) are the exception. Their SDK (agent 2.31.1) allows at most 5 attempts with a 1 to 5 second backoff, about 8 seconds in all, and has no setting for more. A collector restart that keeps its OTLP port closed longer than that loses the metrics and logs those JVMs send during it, including Cassandra's `system.log` and `debug.log` lines. A backend outage does not: the collector queues it.
+
+Notes on `prometheus_remote_write` in collector 0.161.0:
+
+- Its queue is `remote_write_queue`; it has no `sending_queue`.
+- It retries inside each push, and the top-level `timeout` bounds the whole push, retries included. The default of 5s dropped every batch while Mimir was down, so the config sets `timeout: 0` and bounds each request with `http.timeout: 30s` instead.
+- It copies only `initial_interval`, `randomization_factor` and `multiplier` into its backoff. `max_interval` has no effect, so the config sets a fixed `initial_interval: 5s` and no `max_interval`.
+- It retries 5xx responses and connection errors. Any other 4xx (including 429) is a rejected batch and is not retried.
+- `endpoint`, `tls` and `headers` sit under `http:`. Once `http` is set, the deprecated top-level fields are ignored.
+
+How long an outage loses nothing depends on the backend: metrics for an hour (Mimir's `out_of_order_time_window: 1h`) while the collector sends under about 5,600 data points a second (see [Mimir](../user-guide/mimir.md)), logs for 30 minutes (Loki's out-of-order window), and traces for as long as the queue holds. The Pyroscope Java agent retries uploads without limit (`-Dpyroscope.ingest.max.tries=-1`) and holds 360 snapshots, about an hour (`-Dpyroscope.push.queue.capacity=360`); see [Profiling](../user-guide/profiling.md) for the eBPF agent.
+
+`otelcol_exporter_queue_size` (by `exporter`) in Mimir shows a backlog; `otelcol_exporter_send_failed_metric_points_total`, `..._log_records_total` and `..._spans_total` count what was dropped. These reach Mimir through the `prometheus_remote_write` queue too, so during a Mimir outage they cannot be queried; they fill in once Mimir is back. During the outage, the collector's log shows each retry.
+
 ### Node Role Labeling
 
 The OTel Collector (0.161.0) on cluster nodes sets the `node_role` resource attribute of host metrics and host log files from the node's host name: `db<N>` is `db`, `app<N>` is `app`, and `control<N>` is `control` (`transform/node_role_from_host`). A `node_role` that is already set is kept. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
@@ -232,7 +260,7 @@ Key details:
 
 ### YACE CloudWatch Scrape
 
-YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag. For EC2 instances, EBS volumes and OpenSearch domains it also requires the cluster's own `ClusterId` tag, so each cluster reports only its own resources. The S3 job finds every bucket tagged `easy_cass_lab=1`, because the account bucket is shared by every cluster.
+YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag (resources also carry `easy_db_lab=1`, which YACE does not read yet). For EC2 instances, EBS volumes and OpenSearch domains it also requires the cluster's own `ClusterId` tag, so each cluster reports only its own resources. The S3 job finds every bucket tagged `easy_cass_lab=1`, because the account bucket is shared by every cluster.
 
 YACE scrapes metrics for:
 - **S3** — bucket request/byte counts

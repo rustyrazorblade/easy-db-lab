@@ -11,6 +11,21 @@ object Constants {
         const val SSH_KEY_MOUNT = "/secret.pem"
     }
 
+    /** Default EC2 and EMR instance types. All x86, because the nodes boot the account's AMIs, which are amd64 only. */
+    object InstanceTypes {
+        /** Database node: 4 vCPU, 32 GiB, local NVMe. */
+        const val DB = "i7i.xlarge"
+
+        /** Application (stress) node: 8 vCPU, 16 GiB, local NVMe. */
+        const val APP = "c8id.2xlarge"
+
+        /** Control node: 4 vCPU, 16 GiB, local NVMe. */
+        const val CONTROL = "m8id.xlarge"
+
+        /** Spark (EMR) master and worker nodes. */
+        const val SPARK = "m7i.xlarge"
+    }
+
     // Server types
     object Servers {
         const val DATABASE = "cassandra"
@@ -402,8 +417,9 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
-        // The account ID token in the IAM policy templates. AWSPolicy replaces it with the real
-        // account; setup paths that have no working credentials show the policies with it kept.
+        // What the shown IAM policies read where the account goes when no account is known: setup
+        // paths with no working credentials pass it to AWSPolicy.UserIAM.loadAll in place of the
+        // real account, which fills the templates' `__ACCOUNT_ID__` placeholder with it.
         const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
 
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
@@ -423,6 +439,9 @@ object Constants {
         // EC2 error code for instance ids it does not know yet; right after RunInstances this is
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
+
+        // EC2 error code for a key pair name it does not know in the region.
+        const val EC2_KEY_PAIR_NOT_FOUND = "InvalidKeyPair.NotFound"
 
         // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
         // the retry policy must name it: it is a shortage, not a transient server error.
@@ -559,6 +578,18 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /** Account bucket tag key: the easy-db-lab profile that created the bucket */
+        const val PROFILE_TAG_KEY = "Profile"
+
+        /** Account bucket tag key: the email of the profile that created the bucket */
+        const val OWNER_TAG_KEY = "Owner"
+
+        /** Data bucket tag key: the id of the cluster the bucket belongs to */
+        const val CLUSTER_ID_TAG_KEY = "cluster_id"
+
+        /** Data bucket tag key: the name of the cluster the bucket belongs to */
+        const val CLUSTER_NAME_TAG_KEY = "cluster_name"
     }
 
     /**
@@ -1046,7 +1077,7 @@ object Constants {
     // OpenSearch configuration
     object OpenSearch {
         const val DEFAULT_VERSION = "2.11"
-        const val DEFAULT_INSTANCE_TYPE = "t3.small.search"
+        const val DEFAULT_INSTANCE_TYPE = "r8g.xlarge.search"
         const val DEFAULT_INSTANCE_COUNT = 1
         const val DEFAULT_EBS_SIZE_GB = 100
         const val POLL_INTERVAL_MS = 30_000L // 30 seconds - domains take 10-30 min to create
@@ -1203,6 +1234,44 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+
+        /**
+         * `pyroscope.ingest.max.tries`: a negative value retries an upload without limit, so a
+         * Pyroscope outage or restart does not drop profiles (issue 991). The default, 8 tries
+         * with 1s-30s backoff, gave up within about two minutes.
+         */
+        const val INGEST_MAX_TRIES = -1
+
+        /**
+         * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
+         * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
+         * full the agent drops the oldest. The default is 8, about 80 seconds. The queue is in the
+         * profiled JVM's heap: measured on a Cassandra stress JVM, a queued snapshot holds about
+         * 0.17 MB, so a full queue there is about 62 MB, inside the owner's 256 MB budget. The size
+         * depends on the workload; a synthetic load with many stacks measured 5 to 15 MB a snapshot,
+         * so other JVMs (kits, Spark, the sidecar) can hold far more during a long outage.
+         */
+        const val PUSH_QUEUE_CAPACITY = 360
+
+        /**
+         * What the agent profiles and how it sends it, the same for every JVM the tool attaches it
+         * to: JFR format, CPU samples, an allocation sample every 512 KB and locks held 10ms or more.
+         * `edl_pyroscope_opts` in `edl-kit-lib.sh` repeats them, and `TemplateVariablesTest` checks it.
+         */
+        val PROFILER_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+
+        /** [INGEST_MAX_TRIES] and [PUSH_QUEUE_CAPACITY] as JVM flags, for every JVM the tool attaches the agent to. */
+        val OUTAGE_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.ingest.max.tries=$INGEST_MAX_TRIES",
+                "-Dpyroscope.push.queue.capacity=$PUSH_QUEUE_CAPACITY",
+            )
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.
@@ -1215,6 +1284,9 @@ object Constants {
     // 30 s count only on its first passing check (dskit ring/lifecycler.go:271-277). Measured from
     // container start: 48 s on a fresh data directory, 47 s on a restart over existing data. The
     // Pyroscope 1.x liveness probe (30 s delay, then 3 x 15 s) killed it during that window.
+    // config.yaml now sets both waits to 0s, because each one is also a wait at shutdown, during
+    // which Pyroscope refuses every push with an answer the Java agent does not retry (issue 991).
+    // With them off, /ready passed 18 s after container start; the budget below is kept as is.
     object PyroscopeProbes {
         /** How often the startup probe polls /ready while the server comes up. */
         const val STARTUP_PERIOD_SECONDS = 5
@@ -1653,8 +1725,9 @@ object Constants {
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
-         * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         * tool wrappers in `bin/`, the tunnel script and `env.sh`. The CLI writes only [ENV_NETWORK_MODE],
+         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses
+         * JSON. A file from an earlier release holds [ENV_TAILSCALE_ACTIVE] in place of the mode.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -1664,7 +1737,12 @@ object Constants {
          */
         const val ENV_LOCK_FILE = ".socks5-proxy.env.lock"
 
-        /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
+        /**
+         * The env file key an earlier release wrote to say whether the cluster reaches its nodes over
+         * Tailscale (`true`/`false`). It is read only from such a file, never written: `true` reads as
+         * the `tailscale` network mode and `false` as `socks`, until the next mode write replaces it
+         * with [ENV_NETWORK_MODE].
+         */
         const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
 
         /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
@@ -1675,6 +1753,22 @@ object Constants {
          * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
          */
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * The env file key that holds the cluster's network mode, `socks`, `tailscale` or `direct`,
+         * copied from `networkMode` in `state.json` (the wire ids of `configuration.NetworkMode`). The
+         * tool wrappers route through the tunnel only in `socks` mode, and refuse a value they do not know.
+         */
+        const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
+
+        /**
+         * The wire id of the direct network mode, for the one place that cannot name
+         * `configuration.NetworkMode`: the `Proxy.TunnelNotNeeded` event text.
+         */
+        const val NETWORK_MODE_DIRECT = "direct"
+
+        /** The wire id of the Tailscale network mode, for the same reason as [NETWORK_MODE_DIRECT]. */
+        const val NETWORK_MODE_TAILSCALE = "tailscale"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script
@@ -1996,14 +2090,32 @@ object Constants {
         /** Default VPC CIDR block */
         const val DEFAULT_CIDR = "10.0.0.0/16"
 
-        /** Tag key used to identify easy-db-lab resources */
-        const val TAG_KEY = "easy_cass_lab"
+        /**
+         * Tag key that marks a resource as easy-db-lab's.  Every resource easy-db-lab creates
+         * carries it, alongside [LEGACY_TAG_KEY].  Nothing reads it yet: infrastructure created
+         * before it existed carries only the legacy key.
+         */
+        const val TAG_KEY = "easy_db_lab"
 
-        /** Tag value used to identify easy-db-lab resources */
+        /**
+         * The marker tag key from the project's old name.  Still written on every resource, and
+         * the only key read: IAM conditions, YACE discovery, the `down --all` VPC search, the
+         * ownership checks and the data-bucket search all look for it, because older
+         * infrastructure carries no other.
+         */
+        const val LEGACY_TAG_KEY = "easy_cass_lab"
+
+        /** Tag value of both marker keys */
         const val TAG_VALUE = "1"
+
+        /** The marker tags written on every resource easy-db-lab creates: the new key and the legacy key. */
+        val MARKER_TAGS: Map<String, String> = mapOf(LEGACY_TAG_KEY to TAG_VALUE, TAG_KEY to TAG_VALUE)
 
         /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
         const val CLUSTER_ID_TAG_KEY = "ClusterId"
+
+        /** The EC2 `Name` tag key, which the console shows as the resource name and the find-or-create lookups match on */
+        const val NAME_TAG_KEY = "Name"
 
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"

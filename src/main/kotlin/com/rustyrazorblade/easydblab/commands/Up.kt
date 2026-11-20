@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -48,6 +49,7 @@ import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
+import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.CapacityPlan
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
@@ -109,6 +111,7 @@ class Up(
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val accountBucketSetup: AccountBucketSetup by inject()
+    private val keyPairService: AwsKeyPairService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val vpcService: VpcService by inject()
     private val awsInfrastructureService: AwsInfrastructureService by inject()
@@ -174,6 +177,8 @@ class Up(
         provisioningPreflight.verify(workingState, initConfig)
 
         accountBucketSetup.prepare(workingState)
+        // A key pair from before the easy_db_lab marker existed gains it here; the instances launch with it.
+        keyPairService.ensureMarkerTags(userConfig)
         documentService.rebuildIndex(workingState)
         finish(bringUp(initConfig))
     }
@@ -191,7 +196,8 @@ class Up(
 
         val (vpcId, resolvedCidr) = resolveVpc(initConfig)
         val vpcInfra = setupVpcNetworking(initConfig, vpcId, resolvedCidr)
-        val baseTags = mapOf("easy_cass_lab" to "1", Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId) + initConfig.tags
+        // The user tags first, so none of them can replace a marker tag or the cluster id.
+        val baseTags = initConfig.tags + Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to workingState.clusterId)
 
         val existingHosts = existingInstances.mapValues { (_, instances) -> instances.map { it.toClusterHost() } }
         val instanceConfig = buildInstanceConfig(initConfig, vpcInfra.securityGroupId, vpcInfra.subnetIds, baseTags, existingInstances)
@@ -250,16 +256,18 @@ class Up(
         )
 
     /**
-     * The operator's route into the cluster: the SOCKS tunnel unless the cluster uses Tailscale,
-     * then Tailscale and its route check. Under `--no-setup` a Tailscale cluster gets neither, as
-     * the VPN is started with node setup.
+     * The operator's route into the cluster, by the cluster's network mode: the SOCKS tunnel in
+     * `socks` mode; Tailscale and its route check in `tailscale` mode; nothing in `direct` mode,
+     * where this machine reaches the cluster as it is. Under `--no-setup` a Tailscale cluster gets
+     * no route either, as the VPN is started with node setup.
      */
     private fun operatorRoute(launched: CompletableFuture<Unit>): UpOperatorRoute {
         val connect: (ClusterHost) -> Unit =
-            when {
-                !workingState.isTailscaleEnabled() -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
-                noSetup -> { _ -> }
-                else ->
+            when (workingState.networkMode) {
+                NetworkMode.Socks -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
+                NetworkMode.Direct -> { _ -> }
+                NetworkMode.Tailscale if noSetup -> { _ -> }
+                NetworkMode.Tailscale ->
                     TailnetRoute(
                         userConfig,
                         eventBus,
@@ -405,7 +413,7 @@ class Up(
                 val vpcTags = vpcService.getVpcTags(existingVpcId)
                 if (vpcTags[Constants.Vpc.BUCKET_TAG_KEY] == null) {
                     log.info { "Backfilling '${Constants.Vpc.BUCKET_TAG_KEY}' tag on VPC $existingVpcId" }
-                    vpcService.addTagsToVpc(existingVpcId, mapOf(Constants.Vpc.BUCKET_TAG_KEY to bucket))
+                    vpcService.addTags(listOf(existingVpcId), mapOf(Constants.Vpc.BUCKET_TAG_KEY to bucket))
                 }
             }
 
@@ -416,14 +424,15 @@ class Up(
         // Create new VPC
         eventBus.emit(Event.Provision.VpcCreating(initConfig.name))
         val vpcTags =
+            // User tags go first, so a --tag naming a marker, the cluster id or the bucket cannot override them.
             buildMap {
-                put(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                putAll(initConfig.tags)
+                putAll(Constants.Vpc.MARKER_TAGS)
                 put(Constants.Vpc.CLUSTER_ID_TAG_KEY, workingState.clusterId)
                 put(
                     Constants.Vpc.BUCKET_TAG_KEY,
                     requireNotNull(workingState.s3Bucket) { "S3 bucket must be configured before VPC creation" },
                 )
-                putAll(initConfig.tags)
             }
 
         val vpcId = vpcService.createVpc(initConfig.name, resolvedCidr, vpcTags)

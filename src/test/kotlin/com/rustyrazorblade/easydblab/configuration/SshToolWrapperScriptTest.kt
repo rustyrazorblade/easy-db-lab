@@ -34,7 +34,7 @@ internal class SshToolWrapperScriptTest {
         Constants.ToolWrappers.SSH_TOOLS.forEach { stub(it) }
         // A recorded SOCKS tunnel, which the Kubernetes tools would route through and these must not.
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(PORT, ProcessHandle.current().pid())
         }
     }

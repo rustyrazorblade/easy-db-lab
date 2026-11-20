@@ -95,7 +95,7 @@ data class VpcRestoreResult(
  *
  * Coordinates VpcService and ClusterBackupService to provide
  * unified backup/restore operations. A VPC restore also regenerates `sshConfig` and `env.sh` for
- * this machine, the tool wrappers and the Tailscale flag, so the restored workspace works without
+ * this machine, the tool wrappers and the network mode, so the restored workspace works without
  * `up`. `sshConfig` is never backed up: it names the SSH key and the SSH transport of the machine
  * that wrote it, which are the profile's of the machine that restores.
  */
@@ -129,7 +129,7 @@ class DefaultBackupRestoreService(
             val clusterId =
                 vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY]
                     ?: error("VPC $vpcId is missing the ClusterId tag. This VPC was not created by easy-db-lab.")
-            val clusterName = vpcTags["Name"] ?: "recovered-cluster"
+            val clusterName = vpcTags[Constants.Vpc.NAME_TAG_KEY] ?: "recovered-cluster"
             val s3Bucket =
                 vpcTags[Constants.Vpc.BUCKET_TAG_KEY]
                     ?: error("VPC $vpcId has no '${Constants.Vpc.BUCKET_TAG_KEY}' tag — cannot restore without S3 bucket.")
@@ -179,7 +179,7 @@ class DefaultBackupRestoreService(
                 }
 
             // A restored workspace is used as it is, without `up`, so it needs the sshConfig, env.sh,
-            // tool wrappers and Tailscale flag that `up` would have written.
+            // tool wrappers and network mode that `up` would have written.
             clusterConfigurationService.writeSshAndEnvironmentFiles(Path.of(workingDirectory), restoredState, user)
 
             VpcRestoreResult(restoredState, result)

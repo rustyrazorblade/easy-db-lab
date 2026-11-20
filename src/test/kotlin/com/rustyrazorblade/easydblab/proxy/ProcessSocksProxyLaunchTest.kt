@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -286,19 +287,19 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
     @Test
     fun `a verified start records its port and its script PID in the proxy env file and keeps the Tailscale flag`() {
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
 
         service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
             .ensureRunning(testHost)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, FAKE_PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(41234, FAKE_PID)))
     }
 
     @Test
     fun `a script that exits before its port is recorded fails the start and leaves nothing recorded`() {
         // The script reads the env file when its ssh exits: an ssh that dies between the probe and the
         // record finds no port, so the script exits instead of restarting, and the recorded tunnel is dead.
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
         val exitsAtRecord: Process =
             mock {
                 on { isAlive } doAnswer { envFile.read().tunnel == null }
@@ -312,7 +313,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             }
 
         assertThat(failure).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("exited right after it was verified")
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
     }
@@ -321,7 +322,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
     fun `a tunnel whose ssh dies before the record while its script still runs fails the start and is stopped`() {
         // The script is alive at the check, but its ssh died after the probe and before the record:
         // the script will exit when it reads the env file, so the recorded tunnel would be dead.
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
         // The ssh the script started last, still its descendant; it must not outlive the script.
         val ssh = mock<ProcessHandle>()
         val scriptStaysUp: Process =
@@ -340,7 +341,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         assertThat(
             failure,
         ).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("stopped carrying traffic right after it was verified")
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         verify(scriptStaysUp).destroyForcibly()
@@ -352,14 +353,14 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         writeStateFile(pid = -1, port = 52000)
         val envFile =
             ProxyEnvFile(tempDir).apply {
-                recordTailscale(active = false)
+                recordNetworkMode(NetworkMode.Socks)
                 recordTunnel(52000, ProcessHandle.current().pid())
             }
 
         assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
             .isInstanceOf(IllegalStateException::class.java)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
     }
 
     @Test

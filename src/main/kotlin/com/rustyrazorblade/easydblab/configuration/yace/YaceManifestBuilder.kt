@@ -16,7 +16,8 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
  * EMR, S3, EBS, EC2, and OpenSearch namespaces. OTel Collector scrapes YACE's
  * Prometheus endpoint, forwarding metrics to Mimir.
  *
- * Uses tag-based auto-discovery (`easy_cass_lab=1`) to find AWS resources.
+ * Uses tag-based auto-discovery on the legacy marker tag ([Constants.Vpc.LEGACY_TAG_KEY]), which
+ * every easy-db-lab resource carries, old or new, to find AWS resources.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -56,7 +57,13 @@ class YaceManifestBuilder(
                     .fromResource(
                         YaceManifestBuilder::class.java,
                         "yace-config.yaml",
-                    ).substitute(),
+                    ).substitute(
+                        mapOf(
+                            "LEGACY_TAG_KEY" to Constants.Vpc.LEGACY_TAG_KEY,
+                            "TAG_VALUE" to Constants.Vpc.TAG_VALUE,
+                            "CLUSTER_ID_TAG_KEY" to Constants.Vpc.CLUSTER_ID_TAG_KEY,
+                        ),
+                    ),
             ).build()
 
     /**

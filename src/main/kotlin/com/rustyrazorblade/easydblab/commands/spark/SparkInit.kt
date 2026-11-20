@@ -25,7 +25,7 @@ import picocli.CommandLine.Option
  *
  * Usage:
  * - `spark init` - Create EMR cluster with default settings
- * - `spark init --master.instance.type m5.2xlarge` - Custom master instance type
+ * - `spark init --master.instance.type m7i.2xlarge` - Custom master instance type
  * - `spark init --worker.instance.count 5` - Custom worker count
  */
 @RequireProfileSetup
@@ -45,13 +45,13 @@ class SparkInit : PicoBaseCommand() {
         names = ["--master.instance.type"],
         description = ["Master instance type"],
     )
-    var masterInstanceType: String = "m5.xlarge"
+    var masterInstanceType: String = Constants.InstanceTypes.SPARK
 
     @Option(
         names = ["--worker.instance.type"],
         description = ["Worker instance type"],
     )
-    var workerInstanceType: String = "m5.xlarge"
+    var workerInstanceType: String = Constants.InstanceTypes.SPARK
 
     @Option(
         names = ["--worker.instance.count"],
@@ -87,10 +87,7 @@ class SparkInit : PicoBaseCommand() {
             }
 
         val tags =
-            mapOf(
-                "easy_cass_lab" to "1",
-                Constants.Vpc.CLUSTER_ID_TAG_KEY to state.clusterId,
-            )
+            Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to state.clusterId)
 
         val initConfig =
             requireNotNull(state.initConfig) { "Cluster must be initialized before running spark init" }

@@ -10,17 +10,15 @@ import com.rustyrazorblade.easydblab.Constants
  * it creates are the only evidence left, so a VPC without them is kept.
  */
 object VpcOwnership {
-    private const val NAME_TAG = "Name"
-
     /**
      * True when [vpcTags] carry the easy-db-lab marker tag and either a non-blank ClusterId, which
      * `up` sets with it on every cluster VPC, or the packer VPC's name, which is how the packer
      * VPC (it has no cluster) is told apart.
      */
     fun createdByEasyDbLab(vpcTags: Map<String, String>): Boolean =
-        vpcTags[Constants.Vpc.TAG_KEY] == Constants.Vpc.TAG_VALUE &&
+        vpcTags[Constants.Vpc.LEGACY_TAG_KEY] == Constants.Vpc.TAG_VALUE &&
             (
                 !vpcTags[Constants.Vpc.CLUSTER_ID_TAG_KEY].isNullOrBlank() ||
-                    vpcTags[NAME_TAG] == Constants.Vpc.PACKER_VPC_NAME
+                    vpcTags[Constants.Vpc.NAME_TAG_KEY] == Constants.Vpc.PACKER_VPC_NAME
             )
 }

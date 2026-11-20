@@ -69,7 +69,7 @@ internal class ToolWrapperScriptTest {
 
     @Test
     fun `on a Tailscale cluster the real binary gets the environment unchanged`() {
-        ProxyEnvFile(workspace).recordTailscale(active = true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Tailscale)
         val inherited = mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128", "OPERATOR_VAR" to "kept")
 
         val direct = run("${realBin.absolutePath}/kubectl get ns", env = inherited)
@@ -79,6 +79,158 @@ internal class ToolWrapperScriptTest {
         assertThat(wrapped.environment().withoutKubeconfig()).isEqualTo(direct.environment())
         assertThat(wrapped.environment()).contains("NO_PROXY=*", "http_proxy=http://corporate:3128", "OPERATOR_VAR=kept")
         assertThat(wrapped.kubeconfig()).isEqualTo(workspaceKubeconfig())
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `in direct mode every tool runs with no tunnel recorded and no proxy variable added or cleared`(tool: String) {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
+        val inherited = mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128", "OPERATOR_VAR" to "kept")
+
+        val direct = run("${realBin.absolutePath}/$tool probe", env = inherited)
+        val wrapped = run("$tool probe", env = inherited)
+
+        assertThat(wrapped.exitCode).withFailMessage(wrapped.toString()).isZero()
+        assertThat(wrapped.environment().withoutKubeconfig()).isEqualTo(direct.environment())
+        assertThat(wrapped.proxyVariables()).isEqualTo(NONE + mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128"))
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `in direct mode a recorded tunnel is not used`(tool: String) {
+        socksCluster(port = 41234)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
+
+        val result = run("$tool probe")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.proxyVariables()).isEqualTo(NONE)
+        assertThat(result.stdout).doesNotContain("41234")
+    }
+
+    @Test
+    fun `in direct mode the Kubernetes tools get the workspace kubeconfig and curl keeps the inherited one`() {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
+        val inherited = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG)
+
+        val kubectl = run("kubectl get ns", env = inherited)
+        val curl = run("curl http://10.0.1.5:3000/", env = inherited)
+
+        assertThat(kubectl.kubeconfig()).isEqualTo(workspaceKubeconfig())
+        assertThat(curl.kubeconfig()).isEqualTo(INHERITED_KUBECONFIG)
+    }
+
+    @Test
+    fun `in direct mode a missing workspace kubeconfig still fails for the Kubernetes tools`() {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspaceKubeconfig())
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `an inherited EDL_NETWORK_MODE does not stand in for the env file and the wrapper asks for socks start`(tool: String) {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
+
+        val result = run("$tool probe", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `an inherited EDL_NETWORK_MODE with no env file at all also asks for socks start`() {
+        val result = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stderr).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `an inherited EDL_NETWORK_MODE does not turn off the env file's direct mode or the tunnel`() {
+        socksCluster(port = 41234)
+
+        val tunnelled = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+        ProxyEnvFile(workspace).apply {
+            removeTunnel()
+            recordNetworkMode(NetworkMode.Direct)
+        }
+        val direct = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "other"))
+
+        assertThat(tunnelled.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
+        assertThat(direct.exitCode).withFailMessage(direct.toString()).isZero()
+        assertThat(direct.proxyVariables()).isEqualTo(NONE)
+    }
+
+    @Test
+    fun `with socks recorded after direct the recorded tunnel is used`() {
+        socksCluster(port = 41234)
+        ProxyEnvFile(workspace).apply {
+            recordNetworkMode(NetworkMode.Direct)
+            recordNetworkMode(NetworkMode.Socks)
+        }
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.proxyVariables()).isEqualTo(EXPECTED.getValue("kubectl"))
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `an earlier release's file with EDL_TAILSCALE_ACTIVE=true reads as tailscale and uses no tunnel`(tool: String) {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText(
+            "EDL_TAILSCALE_ACTIVE=true\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=${ProcessHandle.current().pid()}\n",
+        )
+
+        val result = run("$tool probe")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.proxyVariables()).isEqualTo(NONE)
+    }
+
+    @Test
+    fun `an earlier release's file with EDL_TAILSCALE_ACTIVE=false reads as socks and uses the recorded tunnel`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText(
+            "EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=${ProcessHandle.current().pid()}\n",
+        )
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.proxyVariables()).isEqualTo(EXPECTED.getValue("kubectl"))
+    }
+
+    @Test
+    fun `EDL_NETWORK_MODE wins over an EDL_TAILSCALE_ACTIVE left in the same file`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText(
+            "EDL_NETWORK_MODE=socks\nEDL_TAILSCALE_ACTIVE=true\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=${ProcessHandle.current().pid()}\n",
+        )
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.proxyVariables()).isEqualTo(EXPECTED.getValue("kubectl"))
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `an unknown network mode fails with exit 1, names the mode and does not run the real binary`(tool: String) {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText(
+            "EDL_NETWORK_MODE=vpn\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=${ProcessHandle.current().pid()}\n",
+        )
+
+        val result = run("$tool probe")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr)
+            .contains("unknown network mode 'vpn'")
+            .contains("${workspace.canonicalPath}/${Constants.Proxy.ENV_FILE}")
+            .contains("easy-db-lab socks start")
     }
 
     @ParameterizedTest(name = "{0} under {1}")
@@ -122,7 +274,7 @@ internal class ToolWrapperScriptTest {
 
     @Test
     fun `a missing workspace kubeconfig also fails on a Tailscale cluster`() {
-        ProxyEnvFile(workspace).recordTailscale(active = true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Tailscale)
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
 
         val result = run("kubectl get ns")
@@ -146,7 +298,7 @@ internal class ToolWrapperScriptTest {
 
     @Test
     fun `on a Tailscale cluster the Kubernetes tools get the workspace kubeconfig and curl keeps the inherited one`() {
-        ProxyEnvFile(workspace).recordTailscale(active = true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Tailscale)
         val inherited = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG, "HTTPS_PROXY" to "http://corporate:3128")
 
         val kubectl = run("kubectl get ns", env = inherited)
@@ -172,7 +324,7 @@ internal class ToolWrapperScriptTest {
 
     @Test
     fun `with no port recorded the wrapper fails and names the workspace and socks start`() {
-        ProxyEnvFile(workspace).recordTailscale(active = false)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
 
         val result = run("kubectl get ns")
 
@@ -193,7 +345,7 @@ internal class ToolWrapperScriptTest {
     @MethodSource("tools")
     fun `a recorded tunnel whose script has exited fails with the socks start message and does not use the port`(tool: String) {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, exitedPid())
         }
 
@@ -257,7 +409,7 @@ internal class ToolWrapperScriptTest {
         socksCluster(port = 41234)
         val other = workspace("other")
         ProxyEnvFile(other).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(45678, ProcessHandle.current().pid())
         }
 
@@ -285,7 +437,7 @@ internal class ToolWrapperScriptTest {
         socksCluster(port = 41234)
         val decoy = workspace("decoy")
         ProxyEnvFile(decoy).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(45678, ProcessHandle.current().pid())
         }
 
@@ -367,7 +519,7 @@ internal class ToolWrapperScriptTest {
 
     @Test
     fun `an inherited port does not stand in for a missing one`() {
-        ProxyEnvFile(workspace).recordTailscale(active = false)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
 
         val result = run("kubectl get ns", env = mapOf("EDL_SOCKS_PORT" to "41234"))
 
@@ -389,7 +541,7 @@ internal class ToolWrapperScriptTest {
 
     private fun socksCluster(port: Int) {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(port, ProcessHandle.current().pid())
         }
     }

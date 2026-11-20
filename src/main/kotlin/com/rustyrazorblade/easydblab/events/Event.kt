@@ -4813,12 +4813,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Teardown.FindingTaggedVpcs")
-        data object FindingTaggedVpcs : Teardown {
-            override fun toDisplayString(): String = "Finding all VPCs tagged with easy_cass_lab..."
-        }
-
-        @Serializable
         @SerialName("Teardown.NoTaggedVpcsFound")
         data object NoTaggedVpcsFound : Teardown {
             override fun toDisplayString(): String = "No tagged VPCs found to tear down"
@@ -6728,12 +6722,24 @@ sealed interface Event {
                 """.trimMargin()
         }
 
-        /** The cluster reaches its nodes over Tailscale, so no tunnel was started. */
+        /**
+         * The cluster's network mode needs no tunnel, so none was started. [networkMode] is the mode's
+         * wire id, `tailscale` or `direct`; each has its own text. Any other id (`socks` needs a tunnel,
+         * so it never comes here) gets a text that names the mode and claims nothing about it.
+         */
         @Serializable
         @SerialName("Proxy.TunnelNotNeeded")
-        data object TunnelNotNeeded : Proxy {
+        data class TunnelNotNeeded(
+            val networkMode: String,
+        ) : Proxy {
             override fun toDisplayString(): String =
-                "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                when (networkMode) {
+                    Constants.Proxy.NETWORK_MODE_DIRECT ->
+                        "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
+                    Constants.Proxy.NETWORK_MODE_TAILSCALE ->
+                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                    else -> "No SOCKS5 tunnel was started for this cluster's network mode '$networkMode'."
+                }
         }
 
         /** No tunnel could be started because the workspace has no running cluster. */

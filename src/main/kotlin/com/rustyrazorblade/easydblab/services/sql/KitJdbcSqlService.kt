@@ -56,7 +56,7 @@ class KitJdbcSqlService(
 
             val socksPort = System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()
             if (socksPort == null) {
-                // Tailscale active or no proxy: connect directly to the private IP, unchanged.
+                // No tunnel in this network mode, or no proxy: connect directly to the private IP, unchanged.
                 log.debug { "Connecting to ${endpoint.name} at $url" }
                 connectAndRun(url, props, sql)
             } else {

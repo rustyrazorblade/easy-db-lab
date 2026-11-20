@@ -20,7 +20,7 @@ class OpenSearchInitMixin {
 
     @Option(
         names = ["--opensearch.instance.type"],
-        description = ["OpenSearch instance type (e.g., t3.small.search, r5.large.search)"],
+        description = ["OpenSearch instance type (e.g., r8g.xlarge.search, m8g.large.search)"],
     )
     var instanceType: String = Constants.OpenSearch.DEFAULT_INSTANCE_TYPE
 

@@ -22,7 +22,7 @@ data:
       # Every cluster runs its own YACE and labels what it finds with its own cluster, so the
       # per-cluster jobs (EBS, EC2, OpenSearch) find only resources tagged with this cluster's
       # ClusterId; `up` tags instances, their volumes and the OpenSearch domain with it. The S3 job
-      # stays on easy_cass_lab=1: the account bucket is shared and carries no ClusterId.
+      # stays on the legacy marker tag alone: the account bucket is shared and carries no ClusterId.
       jobs:
         - type: AWS/S3
           regions:

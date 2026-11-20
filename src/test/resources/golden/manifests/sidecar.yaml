@@ -167,7 +167,8 @@ spec:
           value: "-Dsidecar.config=file:///conf/sidecar.yaml -javaagent:/usr/local/pyroscope/pyroscope.jar\
             \ -Dpyroscope.application.name=cassandra-sidecar -Dpyroscope.server.address=http://10.0.0.1:4040\
             \ -Dpyroscope.labels=hostname=$(NODE_NAME),cluster=test-1 -Dpyroscope.tenant.id=tenant\
-            \ -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+            \ -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k\
+            \ -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
         - name: "OTEL_EXPORTER_OTLP_ENDPOINT"
           value: "http://localhost:4317"
         - name: "OTEL_SERVICE_NAME"

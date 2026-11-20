@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -371,6 +374,25 @@ class InitTest : BaseKoinTest() {
             assertThat(scheduled.filterIsInstance<Up>().single().quiet).isEqualTo(quiet)
         }
 
+        @ParameterizedTest(name = "credentials {0}, --no-tailscale {1} -> {2}")
+        @CsvSource("true, false, Tailscale", "true, true, Socks", "false, false, Socks")
+        fun `init records tailscale only when the profile has Tailscale credentials and --no-tailscale is not given`(
+            credentials: Boolean,
+            noTailscale: Boolean,
+            expected: NetworkMode,
+        ) {
+            getKoin().get<User>().apply {
+                tailscaleClientId = if (credentials) "ts-client-id" else ""
+                tailscaleClientSecret = if (credentials) "ts-client-secret" else ""
+            }
+            val command = Init()
+            command.clean = true
+            command.noTailscale = noTailscale
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { networkMode == expected })
+        }
+
         @Test
         fun `execute stores explicit cidr in state`() {
             val command = Init()
@@ -506,7 +528,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 2
@@ -523,7 +545,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a control instance type without instance store fails, naming the node type and instance type`() {
-            withStore("i4i.xlarge", "c6id.2xlarge")
+            withStore("i7i.xlarge", "c8id.2xlarge")
             val command = Init()
             command.clean = true
 
@@ -537,7 +559,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a db instance type without instance store fails without an ebs type and passes with one`() {
-            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val noEbs = Init()
             noEbs.clean = true
             noEbs.instanceType = "c5.2xlarge"
@@ -560,7 +582,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails even with no app nodes`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 0
@@ -575,7 +597,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `the default db, control and app instance types pass`() {
-            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", "c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 1

@@ -125,7 +125,7 @@ Checks:
 - C1 is the state named `C1`, `C1_ACPI` or `C1-*`; failing that, the first state not named `POLL` (`HALT` on older x86 kernels, `WFI` on arm64, where there is no `POLL`).
 - The instance type comes from the cluster state (`EDL_INSTANCE_TYPE`, kept in `/etc/default/edl-node-tuning`), not from IMDS; the line says `unknown instance type` when there is none.  A skip never fails setup, and `verify` checks the governor and C-states only where they are exposed.
 
-On EC2 these are exposed only on instance sizes with processor state control (whole-socket and `.metal` sizes of some Intel families).  The defaults (`i4i.xlarge`, `c6id.2xlarge`, `m5d.xlarge`) and every Graviton type except `.metal` (which exposes idle states only) expose neither, so the common case is the logged skip.
+On EC2 these are exposed only on instance sizes with processor state control (whole-socket and `.metal` sizes of some Intel families).  The defaults (`i7i.xlarge`, `c8id.2xlarge`, `m8id.xlarge`) and every Graviton type except `.metal` (which exposes idle states only) expose neither, so the common case is the logged skip.
 
 ### D10. IRQ: `irqbalance` and RPS/RFS
 

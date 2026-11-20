@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
@@ -21,6 +23,7 @@ import software.amazon.awssdk.services.emr.EmrClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
+import java.io.File
 
 /**
  * Koin module for the bindings of every `services/aws` class, plus the cloud-neutral interfaces
@@ -157,7 +160,15 @@ val awsServicesModule =
         }
 
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
-        factory { AwsKeyPairService(get(), get(), get<AwsErrorHandler>()) }
+        factory {
+            AwsKeyPairService(
+                get(),
+                get(),
+                get<AwsErrorHandler>(),
+                File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE),
+            )
+        }
+        factory { ProfileResourceMarkers(get(), get()) }
 
         factory { BucketRegion(get()) }
         factory {

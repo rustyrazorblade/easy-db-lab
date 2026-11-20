@@ -70,7 +70,7 @@ With embedded etcd, K3s takes a snapshot at 00:00 and 12:00 (cron `0 */12 * * *`
 
 These snapshots are K3s's internal recovery files for an ephemeral cluster's control plane.  They are not owner data.  Owner data (test results, metrics, logs, traces, profiles, annotations, backups and exports) never goes into etcd or into this directory, so this retention deletes no owner data.  The design says so here, and the docs say so.
 
-Disk: five snapshots, each about the size of the etcd database (tens to a few hundred MB at 80 nodes, 8 GiB at most by D4), on the control node's data disk (150 GB NVMe on the default m5d.xlarge).  Retention keeps the total bounded, so the snapshots cannot fill the disk.
+Disk: five snapshots, each about the size of the etcd database (tens to a few hundred MB at 80 nodes, 8 GiB at most by D4), on the control node's data disk (237 GB NVMe on the default m8id.xlarge).  Retention keeps the total bounded, so the snapshots cannot fill the disk.
 
 Alternatives considered:
 - `etcd-disable-snapshots`: removes K3s's only recovery point for the control plane.  Not done: disabling a feature is not the answer.

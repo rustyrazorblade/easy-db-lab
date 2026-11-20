@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doAnswer
@@ -231,9 +232,9 @@ class AwsInfrastructureServiceTest {
         fun `a VPC with only part of the easy-db-lab tags is kept`() {
             val partial =
                 listOf(
-                    mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+                    mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE),
                     mapOf("ClusterId" to "cluster-a"),
-                    mapOf(Constants.Vpc.TAG_KEY to "0", "ClusterId" to "cluster-a"),
+                    mapOf(Constants.Vpc.LEGACY_TAG_KEY to "0", "ClusterId" to "cluster-a"),
                 )
             whenever(vpcService.findEasyDbLabResourcesInVpc(vpcId)).thenReturn(ClusterVpcResources())
 
@@ -250,7 +251,7 @@ class AwsInfrastructureServiceTest {
         @Test
         fun `a dry run on a VPC easy-db-lab tagged previews the whole VPC and deletes nothing`() {
             whenever(vpcService.getVpcTags(vpcId))
-                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+                .thenReturn(mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
             setupEmptyResourcesFor(vpcId)
 
             val previewed = service.teardownVpcByTags(vpcId, dryRun = true).resourcesDeleted.single()
@@ -263,7 +264,7 @@ class AwsInfrastructureServiceTest {
         @Test
         fun `a VPC easy-db-lab tagged is torn down whole, VPC included`() {
             whenever(vpcService.getVpcTags(vpcId))
-                .thenReturn(mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
+                .thenReturn(mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, "ClusterId" to "cluster-a"))
             setupEmptyResourcesFor(vpcId)
             whenever(vpcService.findInstancesInVpc(vpcId)).thenReturn(listOf("i-1"))
 
@@ -820,6 +821,20 @@ class AwsInfrastructureServiceTest {
 
     @Nested
     inner class TeardownAllTagged {
+        /** VPCs from before the new marker carry only the legacy one, so `down --all` searches on it. */
+        @Test
+        fun `a VPC found by the legacy marker alone is previewed for teardown`() {
+            whenever(vpcService.findVpcsByTag(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)).thenReturn(listOf("vpc-old"))
+            whenever(vpcService.findVpcsByTag(eq(Constants.Vpc.TAG_KEY), any())).thenReturn(emptyList())
+            whenever(vpcService.getVpcName("vpc-old")).thenReturn("old-cluster")
+            setupEmptyResourcesFor("vpc-old")
+
+            val result = service.teardownAllTagged(dryRun = true)
+
+            assertThat(result.resourcesDeleted.map { it.vpcId }).containsExactly("vpc-old")
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
         @Test
         fun `should return success when no VPCs found`() {
             whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(emptyList())
@@ -1032,6 +1047,25 @@ class AwsInfrastructureServiceTest {
             verify(vpcService).findOrCreateSubnet(eq(vpcId), any(), any(), any(), eq("us-east-1b"))
             assertThat(infrastructure.subnetIds).containsExactly("subnet-1")
         }
+
+        @Test
+        fun `a reused VPC and the resources found in it are given both marker tags`() {
+            whenever(vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)).thenReturn("vpc-packer")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), anyOrNull())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn("sg-1")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any())).thenReturn(IngressAuthorization.ADDED)
+
+            service.ensurePackerInfrastructure(22, "203.0.113.10/32")
+
+            val ids = argumentCaptor<List<String>>()
+            val tags = argumentCaptor<Map<String, String>>()
+            verify(vpcService).addTags(ids.capture(), tags.capture())
+            assertThat(ids.firstValue).containsExactlyInAnyOrder("vpc-packer", "igw-1", "subnet-1", "sg-1")
+            assertThat(tags.firstValue).containsExactlyInAnyOrderEntriesOf(
+                mapOf(Constants.Vpc.LEGACY_TAG_KEY to Constants.Vpc.TAG_VALUE, Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+            )
+        }
     }
 
     @Nested
@@ -1086,6 +1120,18 @@ class AwsInfrastructureServiceTest {
         }
 
         @Test
+        fun `the subnets carry both marker tags and the cluster id`() {
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            val tags = argumentCaptor<Map<String, String>>()
+            verify(vpcService).findOrCreateSubnet(any(), any(), any(), tags.capture(), any())
+            assertThat(tags.firstValue)
+                .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
+                .containsEntry(Constants.Vpc.CLUSTER_ID_TAG_KEY, "id-1")
+        }
+
+        @Test
         fun `security group allows ICMP of every type from within the VPC`() {
             service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
 
@@ -1117,7 +1163,7 @@ class AwsInfrastructureServiceTest {
         fun stubExistingPackerVpc() {
             whenever(vpcService.findVpcByName(any())).thenReturn("vpc-packer")
             whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
-            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), anyOrNull())).thenReturn("subnet-1")
             whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(packerSgId)
         }
 

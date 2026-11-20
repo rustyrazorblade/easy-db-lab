@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -21,6 +22,8 @@ import okio.buffer
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -74,12 +77,12 @@ class ObservabilityHttpTest {
 
     private val http = DefaultObservabilityHttp(factory, socks, stateManager)
 
-    private fun state(tailscale: Boolean = false) =
+    private fun state(mode: NetworkMode = NetworkMode.Socks) =
         ClusterState(
             name = "lab",
             initConfig = InitConfig(tenant = "acme"),
             hosts = mapOf(ServerType.Control to listOf(control)),
-        ).also { it.tailscaleActive = tailscale }
+        ).also { it.networkMode = mode }
 
     @Test
     fun `a GET reaches the service on the control node with the cluster's tenant`() {
@@ -107,15 +110,23 @@ class ObservabilityHttpTest {
     }
 
     @Test
-    fun `the SOCKS tunnel is opened unless Tailscale reaches the private address`() {
-        whenever(stateManager.load()).thenReturn(state(tailscale = false))
-        http.get(3100, "/ready")
-        verify(socks).ensureRunning(control)
+    fun `a SOCKS cluster opens the tunnel`() {
+        whenever(stateManager.load()).thenReturn(state(NetworkMode.Socks))
 
-        val direct = mock<SocksProxyService>()
-        whenever(stateManager.load()).thenReturn(state(tailscale = true))
-        DefaultObservabilityHttp(factory, direct, stateManager).get(3100, "/ready")
-        verify(direct, never()).ensureRunning(any())
+        http.get(3100, "/ready")
+
+        verify(socks).ensureRunning(control)
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = NetworkMode::class, names = ["Tailscale", "Direct"])
+    fun `a mode that reaches the private address opens no tunnel`(mode: NetworkMode) {
+        whenever(stateManager.load()).thenReturn(state(mode))
+
+        http.get(3100, "/ready")
+
+        verify(socks, never()).ensureRunning(any())
+        assertThat(requests.single().url.toString()).isEqualTo("http://10.0.1.5:3100/ready")
     }
 
     @Test

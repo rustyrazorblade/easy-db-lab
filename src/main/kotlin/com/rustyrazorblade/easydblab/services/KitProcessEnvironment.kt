@@ -13,7 +13,7 @@ import java.io.File
  * code runs:
  * - `<workspace>/bin` first on `PATH`, with the tool wrappers written there before the process
  *   starts, so `kubectl`, `helm`, `curl` and the other wrapped tools go through the SOCKS tunnel
- *   (or straight to the nodes on a Tailscale cluster), indirect calls included;
+ *   (or straight to the nodes in the tailscale and direct network modes), indirect calls included;
  * - `KUBECONFIG` set to the absolute path of the workspace kubeconfig, used as it is. Shell steps run
  *   from the kit directory, where the relative `kubeconfig` from [TemplateVariables] points at
  *   nothing;

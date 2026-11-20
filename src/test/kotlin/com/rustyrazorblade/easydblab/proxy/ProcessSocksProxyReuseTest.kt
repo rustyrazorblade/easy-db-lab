@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -113,13 +114,13 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
     @Test
     fun `a recorded tunnel that passes the end-to-end probe is reused and its port recorded`() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
-        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordNetworkMode(NetworkMode.Socks) }
 
         val state = service(probe = PortProbe(STOP_PORT), tunnelProcesses = seeing(recordedScript())).ensureRunning(testHost)
 
         assertThat(state.reused).isTrue()
         assertThat(state.localPort).isEqualTo(STOP_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(STOP_PORT, livePid)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(STOP_PORT, livePid)))
     }
 
     @Test
@@ -144,7 +145,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         assertThat(dynamicForwardPorts(launched)).containsExactly(NEW_PORT)
         assertThat(state.reused).isFalse()
         assertThat(state.localPort).isEqualTo(NEW_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(NEW_PORT, livePid)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(NEW_PORT, livePid)))
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(NEW_PORT)
         assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE))
     }

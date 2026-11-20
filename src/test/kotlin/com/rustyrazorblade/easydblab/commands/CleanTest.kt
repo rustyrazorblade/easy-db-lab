@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
@@ -137,7 +138,7 @@ class CleanTest : BaseKoinTest() {
 
     @Test
     fun `clean deletes the proxy env file`() {
-        val envFile = ProxyEnvFile(context.workingDirectory).apply { recordTailscale(active = false) }
+        val envFile = ProxyEnvFile(context.workingDirectory).apply { recordNetworkMode(NetworkMode.Socks) }
 
         get<Clean>().execute()
 

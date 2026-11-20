@@ -95,8 +95,8 @@ class DefaultCqlSessionService(
         val contactPoints = cassandraHosts.map { it.privateIp }
 
         val session =
-            if (clusterState.isTailscaleEnabled()) {
-                log.info { "Creating new CqlSession via direct connection (Tailscale active)" }
+            if (!clusterState.networkMode.needsTunnel) {
+                log.info { "Creating new CqlSession via direct connection (network mode ${clusterState.networkMode.id})" }
                 sessionFactory.createDirectSession(contactPoints, datacenter)
             } else {
                 val proxyPort = socksProxyService.getLocalPort()

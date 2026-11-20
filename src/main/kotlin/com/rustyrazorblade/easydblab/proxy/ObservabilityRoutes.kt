@@ -38,7 +38,7 @@ fun interface ObservabilityRoutes {
 }
 
 /**
- * [ObservabilityRoutes] from the workspace's proxy env file: Tailscale goes direct, otherwise the
+ * [ObservabilityRoutes] from the workspace's proxy env file: a network mode with no tunnel goes direct, otherwise the
  * tunnel recorded as `EDL_SOCKS_PORT` / `EDL_SOCKS_PID`, while that PID is still the tunnel script
  * for that port and the workspace's `sshConfig`.  It reads no JSON.
  *
@@ -52,7 +52,7 @@ class RecordedTunnelRoutes(
     private val control: TunnelProcessControl,
 ) : ObservabilityRoutes {
     override fun current(state: ClusterState): RouteLookup {
-        if (state.isTailscaleEnabled()) return RouteLookup.Usable(ObservabilityRoute.Direct)
+        if (!state.networkMode.needsTunnel) return RouteLookup.Usable(ObservabilityRoute.Direct)
         val tunnel = envFile.read().tunnel ?: return RouteLookup.Unavailable(NO_TUNNEL)
         return when (control.status(tunnel.pid, tunnel.port, sshConfig)) {
             RecordedTunnelStatus.RUNNING -> RouteLookup.Usable(ObservabilityRoute.Socks(tunnel.port))

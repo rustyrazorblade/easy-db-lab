@@ -1669,8 +1669,9 @@ object Constants {
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
-         * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         * tool wrappers in `bin/`, the tunnel script and `env.sh`. The CLI writes only [ENV_NETWORK_MODE],
+         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses
+         * JSON. A file from an earlier release holds [ENV_TAILSCALE_ACTIVE] in place of the mode.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -1680,7 +1681,12 @@ object Constants {
          */
         const val ENV_LOCK_FILE = ".socks5-proxy.env.lock"
 
-        /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
+        /**
+         * The env file key an earlier release wrote to say whether the cluster reaches its nodes over
+         * Tailscale (`true`/`false`). It is read only from such a file, never written: `true` reads as
+         * the `tailscale` network mode and `false` as `socks`, until the next mode write replaces it
+         * with [ENV_NETWORK_MODE].
+         */
         const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
 
         /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
@@ -1691,6 +1697,22 @@ object Constants {
          * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
          */
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * The env file key that holds the cluster's network mode, `socks`, `tailscale` or `direct`,
+         * copied from `networkMode` in `state.json` (the wire ids of `configuration.NetworkMode`). The
+         * tool wrappers route through the tunnel only in `socks` mode, and refuse a value they do not know.
+         */
+        const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
+
+        /**
+         * The wire id of the direct network mode, for the one place that cannot name
+         * `configuration.NetworkMode`: the `Proxy.TunnelNotNeeded` event text.
+         */
+        const val NETWORK_MODE_DIRECT = "direct"
+
+        /** The wire id of the Tailscale network mode, for the same reason as [NETWORK_MODE_DIRECT]. */
+        const val NETWORK_MODE_TAILSCALE = "tailscale"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

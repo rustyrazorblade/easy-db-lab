@@ -33,7 +33,7 @@ interface HttpClientFactory : AutoCloseable {
  * `socksProxyHost` property — that would route every socket in the JVM (including the AWS SDK)
  * through the tunnel. Scoping the proxy to this client keeps AWS and other traffic direct.
  *
- * When no proxy is running (Tailscale active, or before the proxy starts), the selector returns
+ * When no proxy is running (a network mode that needs no tunnel, or before the proxy starts), the selector returns
  * `NO_PROXY` and these clients connect directly.
  */
 class ProxiedHttpClientFactory : HttpClientFactory {

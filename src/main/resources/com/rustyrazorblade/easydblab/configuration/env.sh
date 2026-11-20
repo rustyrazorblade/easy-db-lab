@@ -155,25 +155,49 @@ _socks5_port() {
   )
 }
 
-# "true" when the cluster is reached over Tailscale, as the CLI recorded it.
-_edl_tailscale_active() {
+# The cluster's network mode as the CLI recorded it, resolved as the tool wrappers resolve it:
+# EDL_NETWORK_MODE, else "tailscale" when an earlier release's file holds EDL_TAILSCALE_ACTIVE=true,
+# else "socks". Only the env file decides; values inherited from the shell are ignored.
+_edl_network_mode() {
   (
-    unset EDL_TAILSCALE_ACTIVE
+    unset EDL_NETWORK_MODE EDL_TAILSCALE_ACTIVE
     if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
       . "$CLUSTER_DIR/.socks5-proxy.env"
     fi
-    printf '%s\n' "${EDL_TAILSCALE_ACTIVE:-}"
+    if [ -n "${EDL_NETWORK_MODE+set}" ]; then
+      printf '%s\n' "$EDL_NETWORK_MODE"
+    elif [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
+      printf '%s\n' tailscale
+    else
+      printf '%s\n' socks
+    fi
   )
 }
 
+# The wrappers' message for a network mode they do not know; $1 is the mode, $2 the tool.
+_edl_unknown_network_mode() {
+  echo "easy-db-lab: unknown network mode '$1' in $CLUSTER_DIR/.socks5-proxy.env, so $2 cannot reach the cluster." >&2
+  echo "easy-db-lab: run 'easy-db-lab socks start' in $CLUSTER_DIR to record the mode again." >&2
+}
+
 # Runs any command with its traffic routed through the SOCKS5 tunnel, for tools that have no wrapper.
-# On a Tailscale cluster the command runs directly.
+# In tailscale or direct network mode the command runs directly with the proxy variables it inherited,
+# and no tunnel is needed or used, as in the wrappers.
 # Usage: with-proxy curl http://10.0.1.50:8080/api
 with-proxy() {
-  if [ "$(_edl_tailscale_active)" = true ]; then
-    "$@"
-    return
-  fi
+  local mode
+  mode=$(_edl_network_mode)
+  case $mode in
+    tailscale | direct)
+      "$@"
+      return
+      ;;
+    socks) ;;
+    *)
+      _edl_unknown_network_mode "$mode" "${1:-with-proxy}"
+      return 1
+      ;;
+  esac
   local port
   port=$(_socks5_port)
   if [ -z "$port" ]; then
@@ -192,10 +216,23 @@ with-proxy() {
 
 # Shows the tunnel the CLI recorded, and whether anything listens on its port.
 socks5-status() {
-  if [ "$(_edl_tailscale_active)" = true ]; then
-    echo "This cluster uses Tailscale: no SOCKS5 tunnel is needed."
-    return 0
-  fi
+  local mode
+  mode=$(_edl_network_mode)
+  case $mode in
+    tailscale)
+      echo "This cluster uses Tailscale: no SOCKS5 tunnel is needed."
+      return 0
+      ;;
+    direct)
+      echo "This workspace uses direct network mode: the cluster is reached with no SOCKS5 tunnel."
+      return 0
+      ;;
+    socks) ;;
+    *)
+      _edl_unknown_network_mode "$mode" socks5-status
+      return 1
+      ;;
+  esac
   local port
   port=$(_socks5_port)
   if [ -z "$port" ]; then

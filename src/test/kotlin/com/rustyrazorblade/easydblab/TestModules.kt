@@ -23,14 +23,17 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
@@ -122,6 +125,10 @@ object TestModules {
 
             // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
             single { ToolWrapperInstaller() }
+
+            // Real: the wrappers, then the network mode, in the test workspace.
+            single { EnvScriptWriter(DirectSshRoute(22)) }
+            single { WorkspaceShellTools(get(), get()) }
 
             // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test

@@ -22,7 +22,7 @@ private val log = KotlinLogging.logger {}
  * HTTPS proxy for this client only. The global `socksProxyHost` is intentionally not set, so only
  * cluster traffic tunnels, and AWS and other traffic stay direct.
  *
- * When Tailscale is active, the proxy is not started (no port published) and the client connects
+ * When the network mode needs no tunnel, the proxy is not started (no port published) and the client connects
  * directly to the private IP without any proxy.
  */
 class K8sClientProvider(

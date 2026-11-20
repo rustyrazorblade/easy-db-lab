@@ -29,7 +29,7 @@ interface KubernetesClientFactory {
  *
  * The proxy port is read from the [Constants.Proxy.PORT_PROPERTY] system property (set by
  * [com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService] when the proxy starts).
- * When the property is absent (Tailscale active, no proxy started), the client connects directly.
+ * When the property is absent (a network mode that needs no tunnel, no proxy started), the client connects directly.
  *
  * The SOCKS proxy is configured explicitly via `Config.httpsProxy`. We rely on this rather than the
  * global `socksProxyHost` precisely so that only K8s traffic uses the tunnel — AWS and other traffic

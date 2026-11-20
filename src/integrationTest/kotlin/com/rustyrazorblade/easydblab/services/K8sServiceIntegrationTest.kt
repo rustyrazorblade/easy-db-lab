@@ -718,8 +718,10 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(41)
-    fun `no builder should set resource limits or requests`() {
-        val allResources = collectAllResources()
+    fun `no builder other than Tempo should set resource limits or requests`() {
+        // Tempo is the one exception (issue 1002): it sets GOMEMLIMIT from its memory limit, and
+        // without one it was the first pod the kernel killed. TempoManifestBuilderTest covers it.
+        val allResources = collectAllResources().filterNot { it.metadata?.name == Constants.K8s.TEMPO_APP_LABEL }
         val violations = mutableListOf<String>()
 
         for (resource in allResources) {

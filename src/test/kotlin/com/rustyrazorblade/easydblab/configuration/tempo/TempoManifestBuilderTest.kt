@@ -10,6 +10,8 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.ResourceRequirements
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -128,9 +130,51 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config(), "overrides", "defaults", "ingestion", "max_traces_per_user")).isEqualTo("0")
     }
 
+    private fun memory(): ResourceRequirements =
+        builder
+            .buildDeployment()
+            .spec.template.spec.containers
+            .single()
+            .resources
+
+    private fun bytes(quantity: Quantity?): Long = Quantity.getAmountInBytes(quantity).toLong()
+
+    /** A pod with no limit is BestEffort: the kernel kills it first and Go never learns its budget. */
     @Test
-    fun `no live-trace byte limit stalls pushes`() {
-        assertThat(scalarAt(config(), "live_store", "max_live_traces_bytes")).isEqualTo("0")
+    fun `Tempo has a memory limit and requests no more than it`() {
+        val resources = memory()
+        val limit = bytes(resources.limits["memory"])
+        val request = bytes(resources.requests["memory"])
+
+        assertThat(limit).isEqualTo(Quantity.getAmountInBytes(Quantity(TempoManifestBuilder.MEMORY_LIMIT)).toLong())
+        assertThat(request).isPositive().isLessThanOrEqualTo(limit)
+        assertThat(resources.limits).doesNotContainKey("cpu")
+        assertThat(resources.requests).doesNotContainKey("cpu")
+    }
+
+    /** Tempo sets GOMEMLIMIT from its cgroup limit, so the Go collector works to stay under it. */
+    @Test
+    fun `Tempo sets its Go memory limit from the container limit, below it`() {
+        val yaml = config()
+        val ratio = scalarAt(yaml, "memory", "automemlimit_ratio")?.toDoubleOrNull()
+
+        assertThat(scalarAt(yaml, "memory", "automemlimit_enabled")).isEqualTo("true")
+        assertThat(ratio).isNotNull().isGreaterThan(0.5).isLessThan(1.0)
+    }
+
+    /**
+     * The live-trace size bound is Tempo's only ingest flow control: past it a push waits for live
+     * traces to drain to the WAL instead of growing the heap. At the bound, the process's peak RSS on
+     * a real cluster was about ten times the live-trace bytes (blocks being built, decoded pushes).
+     */
+    @Test
+    fun `live traces are bounded far below the memory limit`() {
+        val liveBytes = scalarAt(config(), "live_store", "max_live_traces_bytes")?.toLongOrNull() ?: 0L
+        val limit = bytes(memory().limits["memory"])
+        val measuredPeakToLiveBytes = 10
+
+        assertThat(liveBytes).isPositive()
+        assertThat(liveBytes * measuredPeakToLiveBytes).isLessThanOrEqualTo(limit)
     }
 
     @Test

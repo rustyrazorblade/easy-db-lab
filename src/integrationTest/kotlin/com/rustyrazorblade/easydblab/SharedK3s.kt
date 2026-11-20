@@ -3,13 +3,16 @@ package com.rustyrazorblade.easydblab
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
+import io.fabric8.kubernetes.client.readiness.Readiness
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Single, JVM-wide K3s cluster shared by the Kubernetes integration tests that can live in a
@@ -49,9 +52,49 @@ object SharedK3s {
 
     private const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
 
+    private const val NODE_SCHEDULABLE_TIMEOUT_SECONDS = 120L
+
     private val container: K3sContainer by lazy {
-        newContainer(BUSYBOX_IMAGE, WEB_SERVER_IMAGE).apply { start() }
+        newContainer(BUSYBOX_IMAGE, WEB_SERVER_IMAGE).apply {
+            start()
+            awaitSchedulable(this)
+        }
     }
+
+    /**
+     * Waits until every node of [container] is Ready and has no NoSchedule or NoExecute taint.
+     *
+     * The container's wait strategy returns on K3s's "Node controller sync successful" log line, and
+     * the node can still carry the `node.kubernetes.io/not-ready` or
+     * `node.cloudprovider.kubernetes.io/uninitialized` taint then. A DaemonSet created in that window
+     * is reported with `desiredNumberScheduled` 0 and its generation observed, which is a complete
+     * rollout, so a test that waits on it right away saw it succeed with no pod at all.
+     */
+    fun awaitSchedulable(container: K3sContainer) {
+        KubernetesClientBuilder().withConfig(Config.fromKubeconfig(container.kubeConfigYaml)).build().use { client ->
+            try {
+                client
+                    .nodes()
+                    .informOnCondition { nodes -> nodes.isNotEmpty() && nodes.all(::isSchedulable) }
+                    .get(NODE_SCHEDULABLE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                throw AssertionError(
+                    "the K3s node was not Ready and untainted after ${NODE_SCHEDULABLE_TIMEOUT_SECONDS}s\n" +
+                        client.nodes().list().items.joinToString("\n") {
+                            "node ${it.metadata.name}: taints=${it.spec?.taints.orEmpty().map { t -> "${t.key}:${t.effect}" }}"
+                        } + "\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
+                    e,
+                )
+            }
+        }
+    }
+
+    private fun isSchedulable(node: Node): Boolean =
+        Readiness.isNodeReady(node) &&
+            node.spec
+                ?.taints
+                .orEmpty()
+                .none { it.effect == "NoSchedule" || it.effect == "NoExecute" }
 
     /**
      * A new, unstarted K3s container configured to run in Docker (privileged, the host cgroup

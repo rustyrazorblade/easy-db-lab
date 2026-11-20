@@ -348,6 +348,14 @@ sum by (cluster, exporter) (rate(otelcol_exporter_send_failed_spans_total[5m]))
 
 Tempo cuts a block at most every minute, so a trace is in S3 under `tempo/<tenant>/` within about two minutes of arriving; before that Tempo serves it from its live store. At `down`, the collector is stopped first, and `down` then waits until Tempo holds no live trace and has uploaded every block.
 
+When the collector offers spans faster than Tempo can write them, Tempo holds pushes back (its live traces are capped at 500 MB) instead of growing until it is killed. The collector logs `Exporting failed. Will retry the request after interval.` for `otlp_grpc/tempo`, and the backlog shows in its queue:
+
+```promql
+max by (cluster, host_name) (otelcol_exporter_queue_size{exporter="otlp_grpc/tempo"})
+```
+
+Tempo's time spent holding pushes is `tempo_live_store_back_pressure_seconds_total{reason="waiting_for_live_traces"}`.
+
 ### High Latency
 
 Traces are batched before export (default 1 second delay). This is normal and reduces overhead.

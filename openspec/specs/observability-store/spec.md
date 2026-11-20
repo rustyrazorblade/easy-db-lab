@@ -230,6 +230,24 @@ The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state
 - **WHEN** the Pyroscope pod is restarted
 - **THEN** profiles written before the restart are still returned by queries
 
+### Requirement: Tempo's memory is bounded without dropping spans
+
+Tempo SHALL bound its memory with its own settings, so an ingest rate faster than it can write traces to its WAL slows the senders instead of getting Tempo OOM-killed:
+
+- The live store SHALL bound the bytes of live traces (`live_store.max_live_traces_bytes`). Past the bound, a push SHALL wait for live traces to drain. Neither a discard nor a refusal SHALL be configured: the sender retries a push whose deadline ends.
+- Tempo SHALL set its Go memory limit from its container's memory limit (`memory.automemlimit_enabled`).
+- The Tempo container SHALL have a memory request and a memory limit sized for the default control node. It is the only control-node workload with one.
+- Nothing SHALL be added that refuses or drops spans under load. No `memory_limiter` processor, no ingestion limit that discards spans, and no retention SHALL be added.
+
+#### Scenario: Overload does not kill Tempo
+- **WHEN** senders offer spans faster than Tempo can write them to its WAL, for minutes
+- **THEN** Tempo's resident memory stays below its container limit and the pod does not restart
+- **AND** `tempo_discarded_spans_total` does not increase
+
+#### Scenario: Sustained heavy load stays queryable
+- **WHEN** a heavy trace load that Tempo can sustain runs for 30 minutes
+- **THEN** Tempo does not restart and traces from the whole window are returned by a search
+
 ### Requirement: Every series and every log line carries its cluster
 
 Every metric series and every log line SHALL carry `cluster=<name>-<id>`.  Loki SHALL index `cluster`, `host.name`, `node_role` and `source` as labels.  Readers the tool runs (`logs query`, `spark logs`, the EMR step log lookup and `metrics stream`) SHALL scope their queries to the current cluster by default.  `logs query -q` SHALL pass raw LogQL through unchanged.

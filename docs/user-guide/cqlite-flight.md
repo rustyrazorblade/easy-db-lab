@@ -68,6 +68,7 @@ cannot read a database that runs in Kubernetes pods with its own volumes.
 | `--data-root` | `/mnt` | Host path under which per-disk data dirs live; an init container scans it and warns on multi-disk layouts. It must exist: a missing one fails the pod at start |
 | `--data-gid` | `999` | Host GID that owns the data directory; added as a pod `supplementalGroup`. The init container fails the pod at start, naming `--data-gid`, when the data directory, a keyspace dir or a table dir is not readable with it |
 | `--otel-endpoint` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint for metrics/traces (defaults to the OTel collector on the pod's node) |
+| `--rollout-timeout` | `180` | Seconds `start` waits for the DaemonSet to roll out on every db node. The first start on a node pulls the image; raise this when the pull is slow |
 
 ## Multi-disk nodes
 
@@ -81,6 +82,17 @@ warns when it finds more than one, naming the dirs that are not served,
 and it warns that it cannot verify the layout when the root holds no data dir, or holds a
 single one that is not the served dir. Read it with
 `kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix`.
+
+```admonish warning title="Check the detect-multidisk log before you trust row counts"
+A multi-disk layout does not fail `start`: the pods roll out and queries succeed, with rows
+missing. Before you trust a row count, a result set or a throughput figure from a node with
+more than one data disk, read every pod's `detect-multidisk` log and confirm each one says `OK`:
+
+    kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
+
+A `WARNING` line on any node means its results are partial.
+```
+
 When the rollout fails, `start` prints this note with a hint naming `--data-dir`, `--data-root`
 and `--data-gid`; a healthy start does not print it.
 Every lab run to date uses single-disk nodes.

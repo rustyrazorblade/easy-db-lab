@@ -16,10 +16,13 @@ kubectl create configmap cqlite-flight-detect-multidisk --namespace default \
 
 kubectl apply -f "${MANIFEST}"
 
-echo "Waiting for cqlite-flight DaemonSet rollout on db nodes..."
-if ! kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=180s; then
+echo "Waiting up to __ROLLOUT_TIMEOUT_SECONDS__s (--rollout-timeout) for the cqlite-flight DaemonSet rollout on db nodes..."
+if ! kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=__ROLLOUT_TIMEOUT_SECONDS__s; then
   cat >&2 <<'HINT'
-cqlite-flight did not roll out. --data-dir (__CASSANDRA_DATA_DIR__) and --data-root
+cqlite-flight did not roll out within __ROLLOUT_TIMEOUT_SECONDS__s. The first start on a node pulls
+ghcr.io/pmcfadin/cqlite-flight:__TAG__. If kubectl describe pod shows a pod still pulling it
+(ContainerCreating, "Pulling image"), the pull is slow, not broken: run start again with a larger
+--rollout-timeout. Otherwise, --data-dir (__CASSANDRA_DATA_DIR__) and --data-root
 (__CASSANDRA_DATA_ROOT__) must both exist on every db node; a missing one fails the pod with
 "hostPath type check failed". The pod reads the data dir through --data-gid (__CASSANDRA_DATA_GID__),
 which must be the GID that owns it. See: kubectl describe pod -l app.kubernetes.io/name=cqlite-flight

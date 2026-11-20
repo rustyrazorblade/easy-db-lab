@@ -57,6 +57,7 @@ installed into a Grafana folder named after the kit on `start`.
 | `--data-root` | `CASSANDRA_DATA_ROOT` | `/mnt` | Host path under which per-disk data dirs live; the `detect-multidisk` init container scans it read-only and warns on more than one candidate (#2114). |
 | `--data-gid` | `CASSANDRA_DATA_GID` | `999` | Host GID that owns the Cassandra data dir; added as a pod `supplementalGroup`. The init container fails the pod at start when the data dir is not readable with it. |
 | `--otel-endpoint` | `OTEL_ENDPOINT` | `http://$(HOST_IP):4317` | OTLP gRPC endpoint (defaults to the collector on the pod's node). |
+| `--rollout-timeout` | `ROLLOUT_TIMEOUT_SECONDS` | `180` | Seconds `start` waits for the DaemonSet to roll out. The first start on a node pulls the image; raise this when the pull is slow. |
 
 ## Multi-disk nodes: single-data-dir limitation (#2114)
 
@@ -84,6 +85,10 @@ Read it per node:
 ```bash
 kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
 ```
+
+**Read this log before you trust row counts on a multi-disk node.** A multi-disk
+layout does not fail `start`; the pods roll out and queries succeed with rows
+missing. Only an `OK` from every pod means the results are complete.
 
 It prints one of three results:
 
@@ -223,7 +228,7 @@ gh workflow run flight-image.yml --repo pmcfadin/cqlite \
 # 2. Roll the DaemonSet onto the rebuilt image (imagePullPolicy is Always,
 #    so a restart re-pulls the moving tag)
 kubectl rollout restart daemonset/cqlite-flight
-kubectl rollout status daemonset/cqlite-flight --timeout=180s
+kubectl rollout status daemonset/cqlite-flight --timeout=180s   # raise it when the image pull is slow
 ```
 
 `dev` never touches `latest` or any `vX.Y*` tag; release images stay on the

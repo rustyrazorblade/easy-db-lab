@@ -184,3 +184,8 @@ against coordinator-side and Flight-side latency on one dashboard.
   qps/latency/errors: it does not itself watch Trino coordinator/worker CPU or
   queueing, so a saturated coordinator shows up here only as rising latency —
   correlate with the `trino` kit's own dashboard for the full picture.
+- **Partial results on multi-disk db nodes**: cqlite-flight serves one data
+  directory per node, so rows on a node's other data disks are missing and no
+  query fails. Before you trust row counts or `rows_s`, check that every
+  cqlite-flight pod's `detect-multidisk` init container logged `OK`:
+  `kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix`.

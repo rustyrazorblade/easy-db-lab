@@ -43,3 +43,8 @@ args:
     description: "OTLP gRPC endpoint for metrics/traces (default: the OTel collector on the pod's node, at the downward-API host IP)"
     type: string
     default: "http://$(HOST_IP):4317"
+  - flag: --rollout-timeout
+    variable: ROLLOUT_TIMEOUT_SECONDS
+    description: "Seconds start waits for the DaemonSet to roll out on every db node. The first start on a node pulls the image, which on a slow registry can take longer than the default"
+    type: int
+    default: "180"

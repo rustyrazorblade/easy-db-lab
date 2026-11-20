@@ -135,6 +135,44 @@ test_unset_optional_args_are_omitted() {
   if run_call | grep -Eq -- '--ks|--tbl|--snapshot-check|--queries-file|null'; then fail "passed an unset arg: $(run_call)"; fi
 }
 
+test_a_queries_file_is_staged_in_the_configmap() {
+  start_test "queries file staged"
+  printf 'SELECT 1\n' > "${WORK}/queries.txt"
+  run_script TRINO_LOADTEST_QUERIES_FILE="${WORK}/queries.txt" ||
+    { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep -Fq "# from-file queries.txt=${WORK}/queries.txt" "${STUB_STATE}/configmap.1" ||
+    fail "queries file not staged: $(cat "${STUB_STATE}/configmap.1" 2>/dev/null)"
+  run_call | grep -Fq -- "--queries-file /driver/queries.txt" || fail "driver not given the file: $(run_call)"
+}
+
+# Kubernetes rejects a ConfigMap over 1 MiB; the queries share it with driver.py, so a file that
+# fits alone can still be too large. It fails before any ConfigMap or pod, naming the flag.
+test_a_queries_file_over_the_configmap_limit_fails_before_any_pod() {
+  start_test "queries file too large"
+  local driver_bytes EDL_CONFIGMAP_MAX_BYTES
+  EDL_CONFIGMAP_MAX_BYTES="$(sed -n 's/^EDL_CONFIGMAP_MAX_BYTES=\([0-9]*\)$/\1/p' "${LIB}")"
+  [ -n "${EDL_CONFIGMAP_MAX_BYTES}" ] || { fail "no EDL_CONFIGMAP_MAX_BYTES in ${LIB}"; return; }
+  driver_bytes=$(wc -c < "${WORK}/kit/driver.py")
+  head -c $((EDL_CONFIGMAP_MAX_BYTES - driver_bytes + 1)) /dev/zero | tr '\0' 'x' > "${WORK}/big.txt"
+  run_script TRINO_LOADTEST_QUERIES_FILE="${WORK}/big.txt" && fail "exited 0"
+  grep -Fq -- "--queries-file ${WORK}/big.txt is too large" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  grep -Fq "over the ${EDL_CONFIGMAP_MAX_BYTES}-byte limit" "${WORK}/out.txt" || fail "message does not name the limit: $(cat "${WORK}/out.txt")"
+  [ ! -e "${STUB_STATE}/configmap.1" ] || fail "created a ConfigMap: $(cat "${STUB_STATE}/configmap.1")"
+  [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+
+  start_test "queries file exactly at the limit"
+  head -c $((EDL_CONFIGMAP_MAX_BYTES - driver_bytes)) /dev/zero | tr '\0' 'x' > "${WORK}/big.txt"
+  run_script TRINO_LOADTEST_QUERIES_FILE="${WORK}/big.txt" ||
+    fail "a file at the limit was rejected: $(cat "${WORK}/out.txt")"
+}
+
+test_a_missing_queries_file_fails_before_any_pod() {
+  start_test "queries file missing"
+  run_script TRINO_LOADTEST_QUERIES_FILE="${WORK}/no-such-file.txt" && fail "exited 0"
+  grep -Fq "is not a readable file" "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"
+}
+
 test_a_failed_driver_fails_the_run() {
   start_test "non-zero exit"
   printf '%s\n' "Running|||" "Failed|||3" > "${STUB_STATE}/state.default"
@@ -347,6 +385,9 @@ test_the_driver_pod_is_labelled_and_pinned_to_an_app_node
 test_the_driver_configmap_carries_the_role_labels
 test_driver_flags_are_passed_as_separate_arguments
 test_unset_optional_args_are_omitted
+test_a_queries_file_is_staged_in_the_configmap
+test_a_queries_file_over_the_configmap_limit_fails_before_any_pod
+test_a_missing_queries_file_fails_before_any_pod
 test_a_failed_driver_fails_the_run
 test_no_app_node_runs_no_pod
 test_no_target_runs_no_pod

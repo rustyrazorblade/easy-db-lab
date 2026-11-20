@@ -25,6 +25,12 @@ database:
   recent data.
 - **Eventually stale.** Results reflect whatever SSTables existed on disk during the run,
   changed by compaction and new flushes over time — not a single consistent view.
+- **One data disk per node.** cqlite-flight serves one data directory. On a node with more
+  than one data disk, rows on the other disks are missing and no query fails. Before you
+  trust row counts or rows/s, check that every cqlite-flight pod's `detect-multidisk` init
+  container logged `OK`:
+  `kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix`
+  (see [Multi-disk nodes](cqlite-flight.md#multi-disk-nodes)).
 ```
 
 ## Prerequisites

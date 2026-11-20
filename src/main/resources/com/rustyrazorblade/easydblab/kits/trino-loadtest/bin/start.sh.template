@@ -56,6 +56,15 @@ ARGV=(--host "${TRINO_LOADTEST_HOST}" --port "${TRINO_LOADTEST_PORT}" --user "${
 ! is_set "${TRINO_LOADTEST_TABLE:-}" || ARGV+=(--tbl "${TRINO_LOADTEST_TABLE}")
 CONFIGMAP_FILES=("driver.py=${KIT_DIR}/driver.py")
 if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
+  [ -f "${TRINO_LOADTEST_QUERIES_FILE}" ] && [ -r "${TRINO_LOADTEST_QUERIES_FILE}" ] ||
+    edl_fail "--queries-file ${TRINO_LOADTEST_QUERIES_FILE} is not a readable file."
+  # The queries ride in the driver's ConfigMap with driver.py, and Kubernetes rejects a ConfigMap
+  # over 1 MiB. edl_create_configmap enforces the kit library's cap (EDL_CONFIGMAP_MAX_BYTES, under
+  # 1 MiB to leave room for the YAML around the data), but only after the catalog preflight and
+  # with a message that names no flag; this check runs first and names it.
+  CONFIGMAP_BYTES=$(($(wc -c < "${KIT_DIR}/driver.py") + $(wc -c < "${TRINO_LOADTEST_QUERIES_FILE}")))
+  [ "${CONFIGMAP_BYTES}" -le "${EDL_CONFIGMAP_MAX_BYTES}" ] ||
+    edl_fail "--queries-file ${TRINO_LOADTEST_QUERIES_FILE} is too large: with driver.py it is ${CONFIGMAP_BYTES} bytes, over the ${EDL_CONFIGMAP_MAX_BYTES}-byte limit for one ConfigMap (Kubernetes caps it at 1 MiB). Use fewer or shorter queries."
   CONFIGMAP_FILES+=("queries.txt=${TRINO_LOADTEST_QUERIES_FILE}")
   ARGV+=(--queries-file /driver/queries.txt)
 fi

@@ -37,6 +37,7 @@ class Clean :
                 "environment.sh",
                 "setup_instance.sh",
                 "state.json",
+                Constants.ClusterStateFile.LOCK_FILE,
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,

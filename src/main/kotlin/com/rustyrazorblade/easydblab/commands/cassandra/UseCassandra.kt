@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -103,15 +104,20 @@ class UseCassandra : PicoBaseCommand() {
         val report = installer.execute(plan, reportPresent = false)
         // A node that installed the version keeps the install and its record, even when another
         // node failed and no node is switched: a retry then downloads only where it failed.
-        report.recordInto(state)
+        // Only this command's records go to the state on disk, so a change another command saved
+        // while the nodes installed is kept.
         if (report.failed.isNotEmpty()) {
-            clusterStateManager.save(state)
+            clusterStateManager.update(state) { report.recordInto(it) }
             notActivated(spec.name, report.failed.map { it.host.alias })
         }
 
         val activated = installer.activate(report.ready)
-        recordActive(state, spec, activated.filterIsInstance<HostOutcome.Ready>(), allActivated = activated.all { it is HostOutcome.Ready })
-        clusterStateManager.save(state)
+        val ready = activated.filterIsInstance<HostOutcome.Ready>()
+        val allActivated = activated.all { it is HostOutcome.Ready }
+        clusterStateManager.update(state) {
+            report.recordInto(it)
+            recordActive(it, spec, ready, allActivated)
+        }
 
         // A node that switched runs the new version's conf directory, so it gets the patch even when
         // another node failed to switch; a node that did not switch keeps its old version and config.

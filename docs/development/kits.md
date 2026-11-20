@@ -6,7 +6,12 @@ through lifecycle phases, metrics collection, hooks, and Grafana dashboard provi
 ## What is a Kit?
 
 A kit is a self-contained package of configuration and scripts that installs, starts, stops,
-and optionally backs up a piece of software on the cluster. Examples: ClickHouse, Presto, OpenSearch.
+and optionally backs up a piece of software on the cluster. Examples: ClickHouse, Presto, OpenSearch,
+and the built-in `cqlite-flight` and `trino-loadtest` kits, which form an offline SSTable
+read path (an Arrow Flight data plane and a read-load driver — documented for users in
+[`docs/user-guide/cqlite-flight.md`](../user-guide/cqlite-flight.md)). Its `cqlite` Trino
+catalog will be a catalog of the trino kit (`kits/trino/catalogs/cqlite.properties.template`),
+not a standalone kit; it is not shipped until `pmcfadin/cqlite#2869` delivers the plugin.
 
 Each kit lives under `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/`.
 
@@ -787,7 +792,7 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_resource_name <role>` | Prints `${KIT_NAME}-<role>-$(date +%s)`, a unique pod or ConfigMap name |
 | `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (type=app); this cluster has none` when no node is labelled `type=app` |
 | `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector: {type: app}`, and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
-| `edl_create_configmap <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all |
+| `edl_create_configmap [--flag <flag>] <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all. With `--flag`, the over-limit error names that kit flag as the file to shrink |
 | `edl_active_pods <role>` | Prints this instance's pods of that role that have not ended |
 | `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run |
 | `edl_follow_pod_logs <pod> <handler>` | Streams the pod's log, calling the handler function with each line, and resumes a cut stream while the pod runs |

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#
+# Deletes this instance's driver pods and ConfigMaps by the easydblab/kit label. The workload is
+# read-only; there is no target-side data to clean up.
+set -euo pipefail
+
+echo "Stopping trino-loadtest pods for kit ${KIT_NAME}..."
+kubectl --kubeconfig="${KUBECONFIG}" delete pods,configmaps -l "easydblab/kit=${KIT_NAME}" --ignore-not-found

@@ -46,7 +46,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a running SOCKS cluster gets its tunnel and the env file records socks`() {
-        stateManager.save(clusterState(NetworkMode.Socks))
+        stateManager.replace(clusterState(NetworkMode.Socks))
 
         preflight.ensureTunnel()
 
@@ -56,7 +56,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a Tailscale cluster starts no tunnel and the env file records tailscale`() {
-        stateManager.save(clusterState(NetworkMode.Tailscale))
+        stateManager.replace(clusterState(NetworkMode.Tailscale))
 
         preflight.ensureTunnel()
 
@@ -66,7 +66,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a direct cluster starts no tunnel and the env file records direct`() {
-        stateManager.save(clusterState(NetworkMode.Direct))
+        stateManager.replace(clusterState(NetworkMode.Direct))
 
         preflight.ensureTunnel()
 
@@ -78,7 +78,7 @@ internal class ProxyPreflightTest {
     @Test
     fun `a mode that needs no tunnel leaves a recorded tunnel recorded`() {
         envFile.recordTunnel(41234, 4242)
-        stateManager.save(clusterState(NetworkMode.Direct))
+        stateManager.replace(clusterState(NetworkMode.Direct))
 
         preflight.ensureTunnel()
 
@@ -87,7 +87,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a cluster that is not up starts no tunnel but still records the mode`() {
-        stateManager.save(clusterState(NetworkMode.Tailscale).apply { markInfrastructureDown() })
+        stateManager.replace(clusterState(NetworkMode.Tailscale).apply { markInfrastructureDown() })
 
         preflight.ensureTunnel()
 
@@ -102,7 +102,7 @@ internal class ProxyPreflightTest {
         val oldWrapper = oldWrapperScript()
         Constants.ToolWrappers.WRAPPED_TOOLS.forEach { File(bin, it).writeText(oldWrapper) }
         envFile.file.writeText("${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=true\n")
-        stateManager.save(clusterState(NetworkMode.Tailscale))
+        stateManager.replace(clusterState(NetworkMode.Tailscale))
 
         preflight.ensureTunnel()
 
@@ -116,7 +116,7 @@ internal class ProxyPreflightTest {
         File(workspace, "sshConfig").writeText("")
         File(workspace, "env.sh").writeText(oldEnvScript())
         envFile.file.writeText("${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=true\n")
-        stateManager.save(clusterState(NetworkMode.Tailscale))
+        stateManager.replace(clusterState(NetworkMode.Tailscale))
 
         preflight.ensureTunnel()
 
@@ -135,7 +135,7 @@ internal class ProxyPreflightTest {
             ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
         File(workspace, "env.sh").writeText("# kept\n")
         envFile.recordNetworkMode(NetworkMode.Direct)
-        stateManager.save(clusterState(NetworkMode.Direct))
+        stateManager.replace(clusterState(NetworkMode.Direct))
 
         routedPreflight.ensureTunnel()
 
@@ -149,7 +149,7 @@ internal class ProxyPreflightTest {
         val routedPreflight =
             ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
         envFile.recordNetworkMode(NetworkMode.Direct)
-        stateManager.save(clusterState(NetworkMode.Direct))
+        stateManager.replace(clusterState(NetworkMode.Direct))
 
         routedPreflight.ensureTunnel()
 
@@ -162,7 +162,7 @@ internal class ProxyPreflightTest {
         val route = CountingSshRoute()
         val routedPreflight =
             ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
-        stateManager.save(clusterState(NetworkMode.Direct))
+        stateManager.replace(clusterState(NetworkMode.Direct))
 
         routedPreflight.ensureTunnel()
 
@@ -191,7 +191,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `the tunnel it started or reused is recorded for the command, and clear removes it`() {
-        stateManager.save(clusterState(NetworkMode.Socks))
+        stateManager.replace(clusterState(NetworkMode.Socks))
         val started = SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH, reused = false)
         whenever(socksProxyService.ensureRunning(CONTROL)).thenReturn(started)
 
@@ -204,7 +204,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a Tailscale cluster records no tunnel for the command`() {
-        stateManager.save(clusterState(NetworkMode.Tailscale))
+        stateManager.replace(clusterState(NetworkMode.Tailscale))
 
         preflight.ensureTunnel()
 
@@ -213,7 +213,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a tunnel recorded on another thread is not this thread's`() {
-        stateManager.save(clusterState(NetworkMode.Socks))
+        stateManager.replace(clusterState(NetworkMode.Socks))
         whenever(socksProxyService.ensureRunning(CONTROL))
             .thenReturn(SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH))
         thread { preflight.ensureTunnel() }.join()

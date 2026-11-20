@@ -384,15 +384,7 @@ class Init : PicoBaseCommand() {
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
-        // Only set VPC ID if user explicitly provided one via --vpc
-        // Otherwise, VPC will be created during 'up'
-        val vpc = existingVpcId
-        if (vpc != null) {
-            eventBus.emit(Event.Setup.ExistingVpc(vpc))
-            clusterState.vpcId = vpc
-            clusterState.vpcSupplied = true
-            clusterStateManager.save(clusterState)
-        }
+        existingVpcId?.let { eventBus.emit(Event.Setup.ExistingVpc(it)) }
 
         extractResourceFiles()
 
@@ -506,8 +498,14 @@ class Init : PicoBaseCommand() {
                         controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
                 networkMode = if (userConfig.isTailscaleEnabled() && !noTailscale) NetworkMode.Tailscale else NetworkMode.Socks,
-            )
-        clusterStateManager.save(state)
+            ).apply {
+                // Only a VPC the user gave with --vpc is recorded here; otherwise up creates one.
+                existingVpcId?.let { vpc ->
+                    vpcId = vpc
+                    vpcSupplied = true
+                }
+            }
+        clusterStateManager.replace(state)
         return state
     }
 

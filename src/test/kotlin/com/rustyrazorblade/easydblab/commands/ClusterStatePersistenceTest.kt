@@ -36,7 +36,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
 
         val state = ClusterState(name = "test-cluster")
         state.s3Bucket = bucketName
-        manager.save(state)
+        manager.replace(state)
 
         // When
         val loadedState = manager.load()
@@ -55,12 +55,12 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
 
         val state = ClusterState(name = "test-cluster")
         state.s3Bucket = "original-bucket"
-        manager.save(state)
+        manager.replace(state)
 
         // When
         val loadedState = manager.load()
         loadedState.s3Bucket = "different-bucket"
-        manager.save(loadedState)
+        manager.replace(loadedState)
 
         // Then
         val reloadedState = manager.load()
@@ -76,7 +76,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
 
         val state = ClusterState(name = "test-cluster")
-        manager.save(state)
+        manager.replace(state)
 
         // When
         val loadedState = manager.load()
@@ -101,7 +101,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
                 name = "test",
                 region = "us-west-2",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // When - simulating bucket selection logic
         val loadedState = manager.load()
@@ -126,7 +126,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
                 name = "test",
                 region = "us-west-2",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // When - simulating bucket selection logic
         val loadedState = manager.load()
@@ -151,7 +151,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
                 name = "test",
                 region = "us-west-2",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // When - simulating bucket selection logic
         val loadedState = manager.load()
@@ -176,13 +176,13 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
                 name = "test",
                 region = "us-west-2",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // When - simulating Up command storing env bucket
         val loadedState = manager.load()
         // In the real Up command, this comes from System.getenv(Constants.Environment.S3_BUCKET)
         loadedState.s3Bucket = envBucket
-        manager.save(loadedState)
+        manager.replace(loadedState)
 
         // Then
         val finalState = manager.load()
@@ -205,12 +205,12 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
                 name = "test",
                 region = "us-west-2",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // When - modify other fields
         val loadedState = manager.load()
         loadedState.markInfrastructureUp()
-        manager.save(loadedState)
+        manager.replace(loadedState)
 
         // Then - s3Bucket should be preserved
         val finalState = manager.load()
@@ -227,7 +227,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
         val manager = ClusterStateManager(stateFile)
 
         val state = ClusterState(name = "test-cluster")
-        manager.save(state)
+        manager.replace(state)
 
         // When
         val loadedState1 = manager.load()
@@ -247,7 +247,7 @@ class ClusterStatePersistenceTest : BaseKoinTest() {
 
         val state = ClusterState(name = "test-cluster")
         state.s3Bucket = accountBucket
-        manager.save(state)
+        manager.replace(state)
 
         val loadedState = manager.load()
         assertThat(loadedState.s3Bucket).isEqualTo(accountBucket)

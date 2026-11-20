@@ -3,7 +3,7 @@
 kotlin = "2.4.10"
 
 # Logging
-logback = "1.5.32"
+logback = "1.6.5"
 kotlin-logging = "8.0.01"
 
 # Jackson

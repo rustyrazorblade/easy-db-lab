@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.reason
 import com.rustyrazorblade.easydblab.runCatchingInterruptibly
-import com.rustyrazorblade.easydblab.services.bringup.pollUntil
+import com.rustyrazorblade.easydblab.services.bringup.pollUntilDeadline
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ExecutionException
@@ -61,16 +61,17 @@ class PodNetworkTuning(
      * result; a failure is what a probe threw. An interrupt propagates.
      */
     private fun pollProbe(): Result<ProbeResult> {
+        // One deadline bounds both the poll and each probe, so the two cannot disagree on the time left.
         val deadline = Instant.now().plus(readyTimeout)
         val probes = Executors.newVirtualThreadPerTaskExecutor()
         // A probe cut off at the deadline adds nothing, so the last answer the server gave stands.
         var answered: ProbeResult? = null
         return try {
             runCatchingInterruptibly {
-                pollUntil<ProbeResult>(
+                pollUntilDeadline<ProbeResult>(
                     "pod-sysctl-policy",
                     pollInterval,
-                    readyTimeout,
+                    deadline,
                     done = { missing(it).isEmpty() },
                 ) {
                     probeBefore(probes, deadline)?.also { answered = it }
@@ -87,7 +88,7 @@ class PodNetworkTuning(
     /**
      * One probe, given only the time left before [deadline], so a probe that never answers (a silent
      * tunnel, an API server that accepts but does not reply) cannot hold `up` past [readyTimeout]: it
-     * is interrupted and the result is null. What the probe throws is rethrown as it is.
+     * is interrupted and the result is null. What the probe throws is rethrown (see [probeFailure]).
      */
     private fun probeBefore(
         probes: ExecutorService,
@@ -102,9 +103,20 @@ class PodNetworkTuning(
             answer.cancel(true)
             null
         } catch (e: ExecutionException) {
-            throw e.cause ?: e
+            throw probeFailure(e)
         }
     }
+
+    /**
+     * What a probe threw, to rethrow on the caller's thread. An interrupt on the probe's own thread is
+     * not the user stopping `up`, so it becomes a probe failure instead of an [InterruptedException].
+     */
+    private fun probeFailure(e: ExecutionException): Throwable =
+        when (val cause = e.cause) {
+            null -> e
+            is InterruptedException -> IllegalStateException("the probe was interrupted on its own thread", cause)
+            else -> cause
+        }
 
     /** Reports that a new pod still lacks [missing], and why when no pod was admitted, then fails `up`. */
     private fun notInEffect(

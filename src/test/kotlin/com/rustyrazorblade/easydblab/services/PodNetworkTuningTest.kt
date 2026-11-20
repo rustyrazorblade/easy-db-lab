@@ -163,13 +163,15 @@ class PodNetworkTuningTest {
     }
 
     @Test
-    fun `an interrupt during the wait stops up without a policy failure`() {
+    fun `an interrupt on the probe's own thread is a probe failure, not the user stopping up`() {
         val probe = PodSysctlProbe { throw InterruptedException("stopped") }
 
         try {
-            assertThatThrownBy { tuning(probe).apply() }.isInstanceOf(InterruptedException::class.java)
-            assertThat(Thread.currentThread().isInterrupted).isTrue()
-            assertThat(events).isEmpty()
+            assertThatThrownBy { tuning(probe).apply() }
+                .isInstanceOf(CommandFailedException::class.java)
+                .hasMessageContaining("interrupted on its own thread")
+            assertThat(Thread.currentThread().isInterrupted).isFalse()
+            assertThat(events.single()).isInstanceOf(Event.Platform.PodSysctlProbeFailed::class.java)
         } finally {
             Thread.interrupted()
         }

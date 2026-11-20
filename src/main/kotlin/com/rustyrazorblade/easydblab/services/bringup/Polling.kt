@@ -4,6 +4,7 @@ import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.CancellationException
 
 /**
@@ -22,8 +23,20 @@ fun <T> pollUntil(
     clock: Clock = Clock.systemUTC(),
     done: (T) -> Boolean,
     look: () -> T,
+): T = pollUntilDeadline(name, interval, clock.instant().plus(timeout), clock, done, look)
+
+/**
+ * [pollUntil] up to a [deadline] the caller already holds, so a caller that also bounds each read
+ * by the same deadline has one clock, not two.
+ */
+fun <T> pollUntilDeadline(
+    name: String,
+    interval: Duration,
+    deadline: Instant,
+    clock: Clock = Clock.systemUTC(),
+    done: (T) -> Boolean,
+    look: () -> T,
 ): T {
-    val deadline = clock.instant().plus(timeout)
     val config =
         RetryConfig
             .custom<T>()

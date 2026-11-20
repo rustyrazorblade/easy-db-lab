@@ -267,7 +267,7 @@ The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwo
   so a probe that never answers ends the wait at the deadline (the last real answer is reported). A cut-off probe is interrupted, which makes fabric8 drop its request and close the client's connection, so it does not linger for the 60s request timeout (`PodSysctlProbeDeadlineIntegrationTest`). It emits `Platform.PodSysctlPolicyReady`, or
   `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` / `PodSysctlProbeFailed` (a probe
   that threw, which the poll does not retry) and throws `CommandFailedException`; an interrupt,
-  during a probe or in the wait between probes, propagates and emits nothing. `Fabric8PodSysctlProbe.resultOf`
+  during a probe or in the wait between probes, propagates and emits nothing; an `InterruptedException` thrown on the probe's own thread is a probe failure. One deadline bounds the poll (`pollUntilDeadline`) and each probe. `Fabric8PodSysctlProbe.resultOf`
   calls a statusless client exception unreachable only when an `IOException` or a `TimeoutException` (not
   a Jackson parse failure) caused it; any other is a defect and throws.
 - `bringup/pollUntil` cuts each wait to the time left, so it never sleeps past its deadline, and turns

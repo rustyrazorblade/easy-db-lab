@@ -1215,6 +1215,18 @@ object Constants {
             const val RUN_AS_USER = 65532L
         }
 
+        /** The sysbench kit's pods. */
+        object Sysbench {
+            /**
+             * sysbench 1.0.20 from Debian with the MySQL and PostgreSQL drivers, for linux/amd64 and
+             * linux/arm64 (github.com/pingwinator/sysbench), pinned by its manifest-list digest. The
+             * earlier `severalnines/sysbench` is amd64 only and segfaults under emulation on arm64
+             * nodes. Kit scripts receive it as `SYSBENCH_IMAGE`.
+             */
+            const val IMAGE =
+                "docker.io/pingwinator/sysbench@sha256:2e228d83c09be6c95b629015cb375ce0e78a95b4f3d9e6dd6ee304ffb95ced5f"
+        }
+
         /** The `cassandra-pods` kit's CQL NodePort. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */

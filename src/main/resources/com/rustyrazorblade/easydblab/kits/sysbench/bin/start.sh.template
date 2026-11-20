@@ -8,7 +8,12 @@ KIT_DIR="$(dirname "${SCRIPT_DIR}")"
 # Persist the final sysbench summary so a run's numbers survive after stdout scrolls away.
 LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
 
-SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
+SYSBENCH_IMAGE="${SYSBENCH_IMAGE:?run this through easy-db-lab, which sets SYSBENCH_IMAGE}"
+# sysbench runs as a child of sh, never as the pod's PID 1. An amd64 sysbench emulated on an arm64
+# node that segfaulted as PID 1 left the container Running forever; as a child, sh exits with its
+# status (139 for a segfault), so the pod fails and the wait reads the exit code. The `exit` keeps
+# dash from exec-ing sysbench in its place as the last command.
+SYSBENCH=(sh -c 'sysbench "$@"; exit $?' sysbench)
 POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
 LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
 
@@ -39,7 +44,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --labels="${LABELS}" \
   --overrides="$(edl_pod_overrides)" \
   --override-type=strategic \
-  --command -- sysbench \
+  --command -- "${SYSBENCH[@]}" \
     ${DB_ARGS} \
     --threads="${THREADS}" \
     --time="${DURATION}" \

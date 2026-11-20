@@ -79,6 +79,8 @@ data class TemplateVariables(
             // and Kotlin (JavaAgent), pinned to the versions the AMI ships.
             "OTEL_AGENT_IMAGE" to JavaAgent.OTEL.image,
             "PYROSCOPE_AGENT_IMAGE" to JavaAgent.PYROSCOPE.image,
+            // The multi-arch sysbench image the sysbench kit's pods run.
+            "SYSBENCH_IMAGE" to Constants.Kit.Sysbench.IMAGE,
         ) +
             // Role selectors and pools: where each role's pods go and how many nodes it has.
             placement.toMap() +
@@ -123,6 +125,7 @@ data class TemplateVariables(
                 "OTEL_OTLP_GRPC_ENDPOINT",
                 "OTEL_AGENT_IMAGE",
                 "PYROSCOPE_AGENT_IMAGE",
+                "SYSBENCH_IMAGE",
                 "DB_NODE_SELECTOR",
                 "DB_AFFINITY",
                 "APP_NODE_SELECTOR",

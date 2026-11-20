@@ -6,6 +6,14 @@ but targets one you've already started, connecting over the MySQL or PostgreSQL 
 protocol. Benchmark pods run inside the Kubernetes cluster, and per-interval results are
 pushed to Mimir so you can watch throughput and latency live in Grafana.
 
+The pods run sysbench 1.0.20 with the MySQL and PostgreSQL drivers, from an image built for both
+amd64 and arm64 nodes and pinned by digest, so a run on Graviton or Apple Silicon nodes uses a
+native binary. When sysbench crashes, its pod ends with sysbench's exit code (139 for a
+segmentation fault), and `prepare`, `start` or `stop` reports that code at once.
+
+Results from this release are **not comparable** with results recorded before it: earlier
+releases ran sysbench 1.0.17 from an amd64-only image. Compare runs made on the same release.
+
 ## Prerequisites
 
 - Cluster is up (`easy-db-lab up`) and has an app node (`init --app.count 1` or more). Every

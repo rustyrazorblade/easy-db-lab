@@ -3,7 +3,12 @@ set -euo pipefail
 
 . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 
-SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
+SYSBENCH_IMAGE="${SYSBENCH_IMAGE:?run this through easy-db-lab, which sets SYSBENCH_IMAGE}"
+# sysbench runs as a child of sh, never as the pod's PID 1. An amd64 sysbench emulated on an arm64
+# node that segfaulted as PID 1 left the container Running forever; as a child, sh exits with its
+# status (139 for a segfault), so the pod fails and the wait reads the exit code. The `exit` keeps
+# dash from exec-ing sysbench in its place as the last command.
+SYSBENCH=(sh -c 'sysbench "$@"; exit $?' sysbench)
 POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 
 # Runs pod $1 with role $2 and image $3 on an app node, the command after `--` in the rest of the
@@ -67,11 +72,11 @@ fi
 echo "Cleaning up any existing sysbench data before prepare..."
 # shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
 run_to_completion "sysbench-cleanup-${KIT_NAME}-$(date +%s)" sysbench-cleanup "${SYSBENCH_IMAGE}" \
-  sysbench ${DB_ARGS} --tables="${TABLES}" "${WORKLOAD}" cleanup
+  "${SYSBENCH[@]}" ${DB_ARGS} --tables="${TABLES}" "${WORKLOAD}" cleanup
 
 echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
 # shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
 run_to_completion "${POD_NAME}" sysbench-prepare "${SYSBENCH_IMAGE}" \
-  sysbench ${DB_ARGS} --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
+  "${SYSBENCH[@]}" ${DB_ARGS} --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
 
 echo "Data preparation complete."

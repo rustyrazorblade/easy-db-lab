@@ -10,6 +10,12 @@ edl_require_app_node sysbench
 # stop has no args of its own, so default any prepare/start-only vars safely
 # to keep the script working under `set -u`. Defaults match the kit.yaml
 # prepare defaults so cleanup drops the standard set of sbtest tables.
+SYSBENCH_IMAGE="${SYSBENCH_IMAGE:?run this through easy-db-lab, which sets SYSBENCH_IMAGE}"
+# sysbench runs as a child of sh, never as the pod's PID 1. An amd64 sysbench emulated on an arm64
+# node that segfaulted as PID 1 left the container Running forever; as a child, sh exits with its
+# status (139 for a segfault), so the pod fails and the wait reads the exit code. The `exit` keeps
+# dash from exec-ing sysbench in its place as the last command.
+SYSBENCH=(sh -c 'sysbench "$@"; exit $?' sysbench)
 TABLES="${TABLES:-10}"
 WORKLOAD="${WORKLOAD:-oltp_read_write}"
 
@@ -38,12 +44,12 @@ echo "Running sysbench cleanup..."
 CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
 CLEANUP_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup"
 kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
-  --image="docker.io/severalnines/sysbench" \
+  --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
   --labels="${CLEANUP_LABELS}" \
   --overrides="$(edl_pod_overrides)" \
   --override-type=strategic \
-  --command -- sysbench \
+  --command -- "${SYSBENCH[@]}" \
     ${DB_ARGS} \
     --tables="${TABLES}" \
     "${WORKLOAD}" cleanup

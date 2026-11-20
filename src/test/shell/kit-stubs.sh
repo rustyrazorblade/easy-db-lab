@@ -34,6 +34,7 @@
 #
 #   kubectl.calls     every kubectl call, one per line
 #   overrides.<n>     the --overrides JSON of the n-th `kubectl run`
+#   run-args.<n>      the arguments of the n-th `kubectl run`, one per line
 #   configmap.<n>     the YAML the n-th `kubectl create -f -` received
 #   curl.<n>          the arguments of the n-th curl call, one per line
 #   since-times       the --since-time of each resumed `kubectl logs -f`
@@ -159,6 +160,7 @@ case "$1" in
   run)
     n=$(next run)
     for a in "$@"; do case "${a}" in --overrides=*) printf '%s\n' "${a#--overrides=}" > "${S}/overrides.${n}" ;; esac; done
+    printf '%s\n' "$@" > "${S}/run-args.${n}"
     exit "$(cat "${S}/run-exit" 2>/dev/null || echo 0)"
     ;;
   create)

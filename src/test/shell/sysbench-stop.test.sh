@@ -53,7 +53,7 @@ EOF
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" APP_NODE_LABELS=type=app APP_NODE_SELECTOR='{"type":"app"}' CONTROL_NODE_LABELS=type=control STUB_PHASE="$1" KIT_NAME=sb1 KUBECONFIG="${WORK}/kubeconfig" \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" SYSBENCH_IMAGE=test.example/sysbench@sha256:abc APP_NODE_LABELS=type=app APP_NODE_SELECTOR='{"type":"app"}' CONTROL_NODE_LABELS=type=control STUB_PHASE="$1" KIT_NAME=sb1 KUBECONFIG="${WORK}/kubeconfig" \
         TARGET_PG_HOST=10.0.0.9 TARGET_PG_PORT=5432 TARGET_PG_USER=u TARGET_PG_DATABASE=d \
         "${BASH}" "${WORK}/kit/bin/stop.sh"
   ) > "${WORK}/out.txt" 2>&1

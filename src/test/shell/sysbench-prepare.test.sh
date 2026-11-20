@@ -45,7 +45,7 @@ start_test() {
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 KIT_NAME=sysbench-tidb KUBECONFIG="${WORK}/kubeconfig" \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" SYSBENCH_IMAGE=test.example/sysbench@sha256:abc APP_NODE_LABELS=type=app APP_NODE_SELECTOR='{"type":"app"}' CONTROL_NODE_LABELS=type=control EDL_POLL_SECONDS=0 KIT_NAME=sysbench-tidb KUBECONFIG="${WORK}/kubeconfig" \
         TARGET_MYSQL_HOST=10.0.0.9 TARGET_MYSQL_PORT=4000 TARGET_MYSQL_USER=root TARGET_MYSQL_DATABASE=sbtest \
         WORKLOAD=oltp_read_write SCALE=10 TABLES=10 \
         "${BASH}" "${WORK}/kit/bin/prepare.sh"
@@ -88,7 +88,41 @@ test_no_app_node_fails_before_any_pod() {
   [ -z "$(run_calls)" ] || fail "created a pod: $(run_calls)"
 }
 
+# The sysbench pods run SYSBENCH_IMAGE, with sysbench a child of `sh -c`, never the container's
+# PID 1: an emulated sysbench that segfaulted as PID 1 left its pod Running until the wait timed out.
+test_sysbench_pods_run_the_image_under_sh() {
+  start_test "image and sh wrapper"
+  run_script || { fail "exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  local n args
+  for n in 2 3; do
+    args="$(cat "${STUB_STATE}/run-args.${n}")"
+    grep -Fqx -- "--image=test.example/sysbench@sha256:abc" <<< "${args}" || fail "pod ${n} does not run SYSBENCH_IMAGE: ${args}"
+    [ "$(sed -n '/^--$/,$p' <<< "${args}" | sed -n '2,5p' | tr '\n' ' ')" = "sh -c sysbench \"\$@\"; exit \$? sysbench " ] ||
+      fail "pod ${n} does not run sysbench under sh: ${args}"
+  done
+}
+
+# The wrapper the pods run, run by a real sh, with a sysbench that dies of SIGSEGV: the shell exits
+# with 139 at once, so the pod reports a failed exit code, and with 0 when sysbench succeeds. (That
+# sysbench is not PID 1 cannot be seen outside a container; the case above pins the wrapper's form.)
+test_the_sh_wrapper_exits_with_the_status_of_a_crashed_sysbench() {
+  start_test "wrapper exit status"
+  local bin="${WORK}/crash-bin" wrapper rc
+  mkdir -p "${bin}"
+  printf '#!/bin/sh\nkill -SEGV $$\n' > "${bin}/sysbench"
+  chmod +x "${bin}/sysbench"
+  wrapper="$(sed -n "s/^SYSBENCH=(sh -c '\(.*\)' sysbench)$/\1/p" "${WORK}/kit/bin/prepare.sh")"
+  [ -n "${wrapper}" ] || { fail "no SYSBENCH wrapper line in prepare.sh"; return; }
+  PATH="${bin}:${PATH}" /bin/sh -c "${wrapper}" sysbench --tables=1 oltp_read_write cleanup 2> /dev/null
+  rc=$?
+  [ "${rc}" -eq 139 ] || fail "exited ${rc}, not 139"
+  printf '#!/bin/sh\nexit 0\n' > "${bin}/sysbench"
+  PATH="${bin}:${PATH}" /bin/sh -c "${wrapper}" sysbench run || fail "a sysbench that exits 0 made the wrapper fail"
+}
+
 test_every_pod_is_pinned_and_a_quick_pod_does_not_wait
+test_sysbench_pods_run_the_image_under_sh
+test_the_sh_wrapper_exits_with_the_status_of_a_crashed_sysbench
 test_a_failed_pod_fails_prepare
 test_no_app_node_fails_before_any_pod
 

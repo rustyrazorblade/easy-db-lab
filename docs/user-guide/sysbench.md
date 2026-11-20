@@ -6,13 +6,21 @@ but targets one you've already started, connecting over the MySQL or PostgreSQL 
 protocol. Benchmark pods run inside the Kubernetes cluster, and per-interval results are
 pushed to Mimir so you can watch throughput and latency live in Grafana.
 
+The pods run sysbench 1.0.20 with the MySQL and PostgreSQL drivers, from an image built for both
+amd64 and arm64 nodes and pinned by digest, so a run on Graviton or Apple Silicon nodes uses a
+native binary. When sysbench crashes, its pod ends with sysbench's exit code (139 for a
+segmentation fault), and `prepare`, `start` or `stop` reports that code at once.
+
+Results from this release are **not comparable** with results recorded before it: earlier
+releases ran sysbench 1.0.17 from an amd64-only image. Compare runs made on the same release.
+
 ## Prerequisites
 
 - Cluster is up (`easy-db-lab up`) and has an app node (`init --app.count 1` or more). Every
-  sysbench pod (the run, prepare, createdb and cleanup pods) runs on an app node (`type=app`), so
-  it does not compete with the database it measures. With no app node, `prepare`, `start` and
-  `stop` fail before they create a pod, with `sysbench needs an app node (type=app); this cluster
-  has none`. A `stop` that fails this way leaves the kit marked as running.
+  sysbench pod (the run, prepare, createdb and cleanup pods) runs on an app node (`type=app`, or
+  the nodes `init --role-nodes app=...` maps), so it does not compete with the database it measures.
+  With no app node, `prepare`, `start` and `stop` fail before they create a pod, with
+  `sysbench needs an app node (type=app); this cluster has none`. A `stop` that fails this way leaves the kit marked as running.
 - A database kit with the `sql` capability is installed and running (e.g. [TiDB](tidb.md))
 - The target kit exposes a MySQL or PostgreSQL wire protocol endpoint — sysbench connects
   over the wire protocol, not JDBC

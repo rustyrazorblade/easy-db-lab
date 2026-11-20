@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver.TemplateSource
+import com.rustyrazorblade.easydblab.services.KitPlacementVariables
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import org.koin.core.component.inject
@@ -20,8 +21,9 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         kitName: String,
         storageSize: String,
         extraVars: Map<String, String> = emptyMap(),
+        placement: KitPlacementVariables = KitPlacementVariables.fromRecordedHosts(clusterState),
     ) {
-        val vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = storageSize)
+        val vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = storageSize, placement = placement)
         val outputDir = context.workspaceFile(kitName)
         val tempDir = context.workspaceFile(".tmp-$kitName-${UUID.randomUUID()}")
         tempDir.mkdirs()

@@ -503,6 +503,7 @@ tasks.register("testScripts") {
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
+        "testPyroscopeAgentPublished",
         "testKitShellLib",
         "testCassandraPodsStart",
         "testClickhouseBenchmarkReport",
@@ -601,11 +602,12 @@ tasks.register<Exec>("testBaseJdkInstall") {
     commandLine = listOf("bash", "packer/base/install/install_jdks.test.sh")
 }
 
-// Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the
-// cluster label from cluster-config, not the bare cluster name. kubectl and helm are stubbed.
+// Unit-test the presto and trino start, stop and catalog scripts: the Pyroscope labels on their
+// profiles (the cluster label from cluster-config), the init-container agent, and the coordinator
+// on its NodePort Service with no hostPort and no pod delete. kubectl and helm are stubbed.
 tasks.register<Exec>("testPyroscopeKitLabels") {
     group = "Verification"
-    description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
+    description = "Unit-test the presto and trino kit start, stop and catalog scripts"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
 }
@@ -805,6 +807,16 @@ tasks.register<Exec>("testCassandraResolveRef") {
     description = "Unit-test the build-cassandra-ref ref-resolution logic"
     workingDir = file(".")
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
+}
+
+// Unit-test the publish-pyroscope-agent job's "is this tag published?" decision: a published tag
+// is skipped, only a definite not-found is pushed, and any other inspect error fails the job.
+// `docker` is a stub on PATH; no Docker, no network.
+tasks.register<Exec>("testPyroscopeAgentPublished") {
+    group = "Verification"
+    description = "Unit-test the Pyroscope agent image publish check"
+    workingDir = file(".")
+    commandLine = listOf("bash", ".github/pyroscope-agent/image-published.test.sh")
 }
 
 // Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,
@@ -1169,18 +1181,12 @@ tasks.named("jibDockerBuild") {
 }
 
 // The cassandra-pods kit's JMX rules have one source, the file the AMI path also uses. Copy it
-// into the kit's resources at build time, and stamp the OpenTelemetry agent version from the
-// version catalog into the kit's init-container image tag, so the two cannot drift apart.
+// into the kit's resources at build time. Its agent image comes from __OTEL_AGENT_IMAGE__
+// (JavaAgent.OTEL), like every other kit's.
 tasks.named<ProcessResources>("processResources") {
     val kitResources = "com/rustyrazorblade/easydblab/kits/cassandra-pods"
     from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
         into(kitResources)
-    }
-    val agentVersion =
-        libs.versions.opentelemetry.agent
-            .get()
-    filesMatching("$kitResources/statefulset.yaml.template") {
-        filter { it.replace("@OTEL_AGENT_VERSION@", agentVersion) }
     }
 }
 

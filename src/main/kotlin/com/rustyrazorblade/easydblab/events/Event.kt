@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kernel.ProviderResponse
 import kotlinx.serialization.SerialName
@@ -6154,6 +6155,87 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `init` recorded [networks] (canonical CIDRs, in the order the kit configuration lists them)
+         * as the client networks the passwordless database kits trust, so the user can see who the
+         * kits will accept before a client outside them is refused.
+         */
+        @Serializable
+        @SerialName("Setup.ClientNetworksRecorded")
+        data class ClientNetworksRecorded(
+            val networks: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "The database kits will accept passwordless clients from: ${networks.joinToString(", ")}. " +
+                    "Add a network with --client-network <cidr>."
+        }
+
+        /** Where a client network `init` records came from. */
+        @Serializable
+        enum class ClientNetworkSource {
+            /** An `init --client-network` value. */
+            OPTION,
+
+            /** A pod CIDR a node of a brought cluster reports. */
+            NODES,
+        }
+
+        /**
+         * `init` recorded [network], a /1 to /7 prefix covering [addresses] addresses, as a client
+         * network from [source]: every one of them gets passwordless access to the database kits.
+         */
+        @Serializable
+        @SerialName("Setup.WideClientNetwork")
+        data class WideClientNetwork(
+            val network: String,
+            val addresses: Long,
+            val source: ClientNetworkSource,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                when (source) {
+                    ClientNetworkSource.OPTION ->
+                        "Warning: --client-network $network gives $addresses addresses passwordless access to the " +
+                            "database kits. Give a narrower network unless that is intended."
+                    ClientNetworkSource.NODES ->
+                        "Warning: a node reports pod CIDR $network, which gives $addresses addresses passwordless " +
+                            "access to the database kits. Check the cluster's pod CIDRs unless that is intended."
+                }
+        }
+
+        /**
+         * The cluster the user brought reports no IPv4 pod CIDR on any node (EKS VPC-CNI gives pods
+         * node-network addresses), so `init` recorded only the node addresses and any
+         * `--client-network` values, [networks]. A pod client outside them will be refused.
+         */
+        @Serializable
+        @SerialName("Setup.NoPodCidrClientNetworks")
+        data class NoPodCidrClientNetworks(
+            val networks: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Warning: the nodes report no pod CIDR, so only ${networks.joinToString(", ")} were recorded as " +
+                    "client networks. A database client in a pod with an address outside them will be refused. " +
+                    "If pods take addresses from the node network (EKS VPC-CNI), run init again with " +
+                    "--client-network <VPC CIDR>."
+        }
+
+        /**
+         * `init` recorded no client network for [environment], whose node and pod networks easy-db-lab
+         * did not build and does not know, because no `--client-network` was given. Kit variables, which
+         * include the client networks, fail to render until one is, rather than trust the AWS VPC default,
+         * which such a cluster may not use.
+         */
+        @Serializable
+        @SerialName("Setup.NoClientNetworksRecorded")
+        data class NoClientNetworksRecorded(
+            val environment: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Warning: no client networks were recorded, because easy-db-lab does not know the networks of " +
+                    "$environment. Kits will not install until you run init again with --client-network <cidr> " +
+                    "for the node network and the pod network."
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -6638,10 +6720,13 @@ sealed interface Event {
         data class RequirementNotMet(
             val kit: String,
             val nodeType: String,
+            /** The role's label selector that matched no node, `<any node>` when unconstrained. */
+            val selector: String,
         ) : Kit {
             override fun toDisplayString(): String =
-                "Error: cannot install '$kit': requires at least one $nodeType node, but none exist in this cluster. " +
-                    "Re-provision with --$nodeType-instances > 0."
+                "Error: cannot install '$kit': requires at least one $nodeType node, but no node matches " +
+                    "'$selector'. Check the node labels or the '$nodeType' mapping given to " +
+                    "init ${RoleSelectors.OPTION}, or re-provision with --$nodeType-instances > 0."
 
             override fun isError(): Boolean = true
         }
@@ -6664,6 +6749,54 @@ sealed interface Event {
                     "Run 'easy-db-lab $kit stop' before running '$phase' again."
 
             override fun isError(): Boolean = true
+        }
+
+        /**
+         * The `kit.yaml` of [target], the kit [kit]'s kit-ref arg names, does not parse, so no
+         * `TARGET_*` variable can be built from it. [file] is its path and [reason] the parse error.
+         * No step of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.TargetConfigInvalid")
+        data class TargetConfigInvalid(
+            val kit: String,
+            val target: String,
+            val file: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: [$kit] cannot read the kit.yaml of target '$target' ($file): $reason. " +
+                    "Fix that file, or install '$target' again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The [endpoint] of [target] (the kit [kit]'s kit-ref arg) cannot be reached from this
+         * machine, for [reason]. When [continued] is false, no step of [phase] ran. A `stop` or
+         * `uninstall` releases the kit whatever state its target is in, so it [continued] without
+         * that endpoint's `TARGET_*` variables.
+         */
+        @Serializable
+        @SerialName("Kit.TargetEndpointUnreachable")
+        data class TargetEndpointUnreachable(
+            val kit: String,
+            val target: String,
+            val phase: String,
+            val endpoint: String,
+            val reason: String,
+            val continued: Boolean,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                when (continued) {
+                    true ->
+                        "[$kit] $phase continues without the '$endpoint' endpoint of target '$target', " +
+                            "which this machine cannot reach: $reason"
+                    false ->
+                        "Error: [$kit] cannot reach the '$endpoint' endpoint of target '$target' from this machine: $reason"
+                }
+
+            override fun isError(): Boolean = !continued
         }
 
         /**

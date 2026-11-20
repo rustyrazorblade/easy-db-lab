@@ -89,8 +89,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         val state = stateWith(dbCount = 3, appCount = 2)
         val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
 
-        assertThat(vars.dbNodeCount).isEqualTo(3)
-        assertThat(vars.appNodeCount).isEqualTo(2)
+        assertThat(vars.toMap()).containsEntry("DB_NODE_COUNT", "3").containsEntry("APP_NODE_COUNT", "2")
     }
 
     @Test

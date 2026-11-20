@@ -49,7 +49,22 @@ class KitInstallCommandFactory(
             spec.add(argOptionSpec(arg, command))
         }
 
-        return CommandLine(spec)
+        val commandLine = CommandLine(spec)
+        // picocli calls each option's setter with its default when the user did not pass it, so
+        // argValues alone cannot tell a passed value from a startup default. The command asks the
+        // parse result instead, and re-resolves every default the user did not override.
+        // Built but never parsed (a caller filled argValues itself): everything set was passed.
+        command.userSuppliedVariables = {
+            when (val parseResult = commandLine.parseResult) {
+                null -> command.argValues.keys.toSet()
+                else ->
+                    config.args
+                        .filter { parseResult.hasMatchedOption(it.flag) }
+                        .map { it.variable }
+                        .toSet()
+            }
+        }
+        return commandLine
     }
 
     private fun forceOptionSpec(command: KitInstallCommand): OptionSpec =

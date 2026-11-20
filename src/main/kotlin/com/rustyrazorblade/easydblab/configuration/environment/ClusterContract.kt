@@ -38,6 +38,9 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * @property recordedDatacenter the datacenter name the database nodes are given, or null for an EC2
  *   state that records no region, whose datacenter is the AWS profile's region; read it through
  *   [datacenter], never directly.
+ * @property clientNetworkOrigin where the networks a passwordless database kit trusts come from: the
+ *   networks easy-db-lab built (EC2), or only what `init` recorded (anywhere else, where the node
+ *   network is not known before the cluster exists).
  */
 data class ClusterContract(
     val environment: Environment,
@@ -51,6 +54,7 @@ data class ClusterContract(
     val hosting: ObservabilityHosting,
     val namespace: String,
     val recordedDatacenter: String?,
+    val clientNetworkOrigin: ClientNetworkOrigin,
 ) {
     /**
      * The datacenter name: the recorded one, or for an EC2 state that records no region the AWS
@@ -79,6 +83,7 @@ data class ClusterContract(
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts, StoreCredentials.InstanceRole),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = state.initConfig?.region?.ifBlank { null },
+                        clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
                     )
                 is Environment.K3sDocker ->
                     ClusterContract(
@@ -94,6 +99,7 @@ data class ClusterContract(
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
+                        clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     )
                 is Environment.Kubeconfig ->
                     ClusterContract(
@@ -108,6 +114,7 @@ data class ClusterContract(
                         hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
                         namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
+                        clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     )
             }
         }

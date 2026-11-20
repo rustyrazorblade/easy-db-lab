@@ -28,15 +28,25 @@ spec:
       # for the kit's own neo4j-nodeport Service and crash-loop the pod. The official Helm chart
       # turns them off for the same reason.
       enableServiceLinks: false
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: type
-                    operator: In
-                    values:
-                      - db
+      nodeSelector: __DB_NODE_SELECTOR__
+      # The OpenTelemetry Java agent comes from a pinned image through an init container, not from
+      # a host path, so the pod runs on any node.
+      initContainers:
+        - name: otel-agent
+          image: "__OTEL_AGENT_IMAGE__"
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/javaagent.jar", "/agents/opentelemetry-javaagent.jar"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: java-agents
+              mountPath: /agents
       containers:
         - name: neo4j
           image: neo4j:__NEO4J_VERSION__-community
@@ -51,9 +61,9 @@ spec:
           env:
             - name: NEO4J_AUTH
               value: none
-            # The base AMI installs the OpenTelemetry Java agent; it is mounted from the host below.
+            # The agent the init container copied in.
             - name: NEO4J_server_jvm_additional
-              value: "-javaagent:/usr/local/otel/opentelemetry-javaagent.jar"
+              value: "-javaagent:/edl/agents/opentelemetry-javaagent.jar"
             - name: OTEL_SERVICE_NAME
               value: neo4j
             # The core collector Service on port 4318, its OTLP http/protobuf receiver and the
@@ -93,14 +103,12 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-            - name: otel-agent
-              mountPath: /usr/local/otel
+            - name: java-agents
+              mountPath: /edl/agents
               readOnly: true
       volumes:
-        - name: otel-agent
-          hostPath:
-            path: /usr/local/otel
-            type: Directory
+        - name: java-agents
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Run by hand by a maintainer, to publish the Pyroscope agent image from a branch before it
+  # reaches main. Only publish-pyroscope-agent runs on it.
+  workflow_dispatch:
   workflow_run:
     workflows: ["PR Checks"]
     types:
@@ -46,37 +49,41 @@ jobs:
 
       - name: Determine tags
         id: tags
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION=${GITHUB_REF#refs/tags/v}
-            echo "image_tag=$VERSION" >> $GITHUB_OUTPUT
-            echo "tags=v$VERSION" >> $GITHUB_OUTPUT
-            echo "first_tag=$VERSION" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
-            echo "image_tag=latest" >> $GITHUB_OUTPUT
-            echo "first_tag=latest" >> $GITHUB_OUTPUT
+            echo "image_tag=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tags=v$VERSION" >> "$GITHUB_OUTPUT"
+            echo "first_tag=$VERSION" >> "$GITHUB_OUTPUT"
+          elif [[ "$HEAD_BRANCH" == "main" ]]; then
+            echo "image_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "first_tag=latest" >> "$GITHUB_OUTPUT"
           else
-            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            BRANCH="$HEAD_BRANCH"
             TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-128)
-            echo "image_tag=$TAG" >> $GITHUB_OUTPUT
-            echo "first_tag=$TAG" >> $GITHUB_OUTPUT
+            echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "first_tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push container
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+          IMAGE_TAG: ${{ steps.tags.outputs.image_tag }}
         run: |
-          TAGS="${{ steps.tags.outputs.tags }}"
           ./gradlew jib --no-daemon \
-            -Djib.to.image.tag=${{ steps.tags.outputs.image_tag }} \
-            ${TAGS:+-Djib.to.tags=$TAGS}
+            -Djib.to.image.tag="$IMAGE_TAG" \
+            ${TAGS:+-Djib.to.tags="$TAGS"}
 
       - name: Test container
+        env:
+          FIRST_TAG: ${{ steps.tags.outputs.first_tag }}
         run: |
-          FIRST_TAG=${{ steps.tags.outputs.first_tag }}
-          docker pull ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG
-          docker run --rm ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG --help
+          docker pull "ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG"
+          docker run --rm "ghcr.io/rustyrazorblade/easy-db-lab:$FIRST_TAG" --help
 
       - name: Scan container image
         uses: anchore/scan-action@v7
@@ -84,3 +91,84 @@ jobs:
           image: ghcr.io/rustyrazorblade/easy-db-lab:${{ steps.tags.outputs.first_tag }}
           fail-build: false
           severity-cutoff: high
+
+  # The Pyroscope Java agent image kit and stress pods copy their agent jar from
+  # (Constants.Kit.Agents.PYROSCOPE_IMAGE). Its tag is the agent version and its content is fixed by
+  # the Dockerfile's checksum and pinned base images. It is published only from trusted refs (a tag
+  # push, PR Checks passing on a push to main, or a maintainer's manual dispatch of a branch; never
+  # a pull request's own run), and a version that is already published is never overwritten.
+  publish-pyroscope-agent:
+    runs-on: ubuntu-latest
+    # The push trigger fires only for v* tags (see on.push), so no branch push reaches this job;
+    # branches arrive only through workflow_run, which is limited to PR Checks on a push to main.
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository)
+    # One publish at a time, whatever triggered it: the tag is read from the Dockerfile after
+    # checkout, so the group cannot be keyed by it. A run that waits here then finds the tag a
+    # finished run published and skips it, instead of racing it between the inspect and the push.
+    # Never cancelled, so a run in the middle of a push always completes.
+    concurrency:
+      group: publish-pyroscope-agent
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          # image-published.sh matches this release's "ERROR: <image>: not found" wording. An
+          # upgrade that changes that wording makes the guard fail the job instead of pushing
+          # (the safe direction): update the match in image-published.sh along with this pin.
+          version: v0.38.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read the agent version
+        id: version
+        run: |
+          DOCKERFILE=docker/pyroscope-java-agent/Dockerfile
+          VERSION=$(sed -n 's/^ARG PYROSCOPE_VERSION=//p' "$DOCKERFILE")
+          SHA256=$(sed -n 's/^ARG PYROSCOPE_SHA256=//p' "$DOCKERFILE")
+          # An edited ARG line must stop the publish, never push to an empty tag or build an
+          # unverified jar.
+          [ -n "$VERSION" ] || { echo "No 'ARG PYROSCOPE_VERSION=<version>' line in $DOCKERFILE" >&2; exit 1; }
+          [ -n "$SHA256" ] || { echo "No 'ARG PYROSCOPE_SHA256=<sha256>' line in $DOCKERFILE" >&2; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Skip a version that is already published
+        id: published
+        # Skips only a tag that inspects, pushes only on the registry's "not found", and fails the
+        # job on any other inspect error (tested by ./gradlew testPyroscopeAgentPublished).
+        env:
+          IMAGE: ghcr.io/rustyrazorblade/pyroscope-java-agent:${{ steps.version.outputs.version }}
+        run: bash .github/pyroscope-agent/image-published.sh
+
+      - name: Build and push the multi-arch agent image
+        if: steps.published.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/pyroscope-java-agent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/rustyrazorblade/pyroscope-java-agent:${{ steps.version.outputs.version }}

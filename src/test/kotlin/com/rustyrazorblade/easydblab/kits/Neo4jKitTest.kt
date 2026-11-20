@@ -1,7 +1,10 @@
 package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
 import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.KitEndpoint
@@ -63,14 +66,7 @@ class Neo4jKitTest : BaseKoinTest() {
         val sts = statefulSet()
 
         assertThat(sts.spec.replicas).isEqualTo(1)
-        assertThat(
-            sts.spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution
-                .nodeSelectorTerms
-                .flatMap { it.matchExpressions },
-        ).anySatisfy { expr ->
-            assertThat(expr.key).isEqualTo("type")
-            assertThat(expr.values).containsExactly("db")
-        }
+        assertThat(sts.spec.template.spec.nodeSelector).containsExactlyEntriesOf(mapOf("type" to "db"))
         assertThat(env(neo4jContainer(), "NEO4J_AUTH").value).isEqualTo("none")
     }
 
@@ -143,17 +139,21 @@ class Neo4jKitTest : BaseKoinTest() {
     @Nested
     inner class Metrics {
         @Test
-        fun `the Java agent is mounted from the host and loaded by the JVM`() {
+        fun `the Java agent is copied by an init container into an emptyDir and loaded by the JVM`() {
             val container = neo4jContainer()
-            val otelVolume =
-                statefulSet()
-                    .spec.template.spec.volumes
-                    .single { it.hostPath?.path == "/usr/local/otel" }
-            val mount = container.volumeMounts.single { it.name == otelVolume.name }
+            val spec = statefulSet().spec.template.spec
+            val init = spec.initContainers.single()
+            val agentVolume = spec.volumes.single { it.name == init.volumeMounts.single().name }
+            val mount = container.volumeMounts.single { it.name == agentVolume.name }
 
+            assertThat(init.image).isEqualTo(JavaAgent.OTEL.image)
+            assertThat(init.securityContext.runAsNonRoot).isTrue()
+            assertThat(init.command.last()).isEqualTo("${init.volumeMounts.single().mountPath}/${JavaAgent.OTEL.fileName}")
+            assertThat(agentVolume.emptyDir).isNotNull()
+            assertThat(spec.volumes.mapNotNull { it.hostPath }).isEmpty()
+            assertThat(mount.mountPath).isEqualTo(Constants.Kit.AGENTS_MOUNT)
             assertThat(mount.readOnly).isTrue()
-            assertThat(env(container, "NEO4J_server_jvm_additional").value)
-                .contains("-javaagent:${mount.mountPath}/opentelemetry-javaagent.jar")
+            assertThat(env(container, "NEO4J_server_jvm_additional").value).isEqualTo(JavaAgentDelivery.flag(JavaAgent.OTEL))
         }
 
         @Test

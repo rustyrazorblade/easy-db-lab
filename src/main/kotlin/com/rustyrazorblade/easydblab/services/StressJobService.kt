@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.stress.StressCluster
 import com.rustyrazorblade.easydblab.configuration.stress.StressJobManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.stress.StressSidecarConfig
@@ -12,6 +13,7 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
+import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
@@ -22,7 +24,7 @@ import java.time.Duration
  * @property jobName Unique name for the job
  * @property image Container image for cassandra-easy-stress
  * @property args Arguments to pass to cassandra-easy-stress
- * @property contactPoints Cassandra contact points
+ * @property target the Cassandra the job drives: contact point, native port and local datacenter
  * @property tags User-provided tags for OTel resource attributes
  * @property promPort Prometheus metrics port for the stress process
  */
@@ -30,7 +32,7 @@ data class StressJobConfig(
     val jobName: String,
     val image: String,
     val args: List<String>,
-    val contactPoints: String,
+    val target: StressTarget,
     val tags: Map<String, String> = emptyMap(),
     val promPort: Int = Constants.Stress.PROMETHEUS_PORT,
 )
@@ -242,7 +244,7 @@ class DefaultStressJobService(
 
             log.info { "Running stress command: ${args.joinToString(" ")}" }
 
-            val job = StressJobManifestBuilder.buildCommandJob(jobName, image, args)
+            val job = buildCommandJob(jobName, image, args)
 
             k8sService
                 .createJob(Constants.Stress.NAMESPACE, job)
@@ -296,5 +298,5 @@ class DefaultStressJobService(
         jobName: String,
         image: String,
         args: List<String>,
-    ): Job = StressJobManifestBuilder.buildCommandJob(jobName, image, args)
+    ): Job = StressJobManifestBuilder.buildCommandJob(jobName, image, args, RoleSelectors.from(clusterStateManager.load()).app)
 }

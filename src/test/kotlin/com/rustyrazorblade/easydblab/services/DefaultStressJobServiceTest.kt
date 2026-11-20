@@ -7,14 +7,18 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -28,6 +32,8 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Duration
+
+private val VM_TARGET = StressTarget("10.0.1.6", Constants.Stress.DEFAULT_CASSANDRA_PORT, "us-west-2")
 
 /**
  * Tests for DefaultStressJobService Job building.
@@ -101,7 +107,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-ecr",
                     image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -122,7 +128,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -132,7 +138,8 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(containers[0].name).isEqualTo("stress")
 
         val initContainers = job.spec.template.spec.initContainers
-        assertThat(initContainers).hasSize(1)
+        // The sidecar runs first, so it is up before the JVM starts; then one copier per agent.
+        assertThat(initContainers).hasSize(1 + JavaAgent.entries.size)
         assertThat(initContainers[0].name).isEqualTo("otel-sidecar")
         assertThat(initContainers[0].restartPolicy).isEqualTo("Always")
     }
@@ -144,7 +151,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6,10.0.1.7",
+                    target = StressTarget("cassandra.lab.svc", 31942, "east"),
                     args = listOf("run", "KeyValue", "-d", "1h"),
                 ),
             )
@@ -156,8 +163,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(stress.args).containsExactly("run", "KeyValue", "-d", "1h")
 
         val envMap = stress.env.associate { it.name to it.value }
-        assertThat(envMap["CASSANDRA_CONTACT_POINTS"]).isEqualTo("10.0.1.6,10.0.1.7")
-        assertThat(envMap["CASSANDRA_PORT"]).isEqualTo(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+        assertThat(envMap["CASSANDRA_CONTACT_POINTS"]).isEqualTo("cassandra.lab.svc")
+        assertThat(envMap["CASSANDRA_PORT"]).isEqualTo("31942")
+        assertThat(envMap["CASSANDRA_EASY_STRESS_DEFAULT_DC"]).isEqualTo("east")
     }
 
     @Test
@@ -167,7 +175,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -211,7 +219,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -237,7 +245,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-ecr",
                     image = ecrImage,
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -250,21 +258,87 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJob should use correct nodeSelector matching ServerType`() {
-        val job =
-            service.buildJob(
-                StressJobConfig(
-                    jobName = "stress-test-123",
-                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
-                    args = listOf("run", "KeyValue"),
-                ),
-            )
+    fun `the stress pods run on the pod network on nodes matching the app role's selector`() {
+        val run =
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec
+        val command =
+            service
+                .buildCommandJob("cmd-1", "img:1", listOf("list"))
+                .spec.template.spec
 
-        val nodeSelector = job.spec.template.spec.nodeSelector
-        assertThat(nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
-        assertThat(job.spec.template.spec.hostNetwork).isTrue()
-        assertThat(job.spec.template.spec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
+        for (spec in listOf(run, command)) {
+            assertThat(spec.hostNetwork == true).describedAs("hostNetwork").isFalse()
+            assertThat(spec.dnsPolicy).isNotEqualTo("ClusterFirstWithHostNet")
+            assertThat(spec.nodeSelector).isEqualTo(RoleSelectors.OWNED_NODES.app.labels)
+        }
+    }
+
+    @Test
+    fun `a mapped app role places the stress pods by its selector, and an unmapped one constrains nothing`() {
+        val clusterStateManager: ClusterStateManager = getKoin().get()
+        val base = clusterStateManager.load()
+        val mapped = RoleSelectors.ANYWHERE.withMappings(RoleSelectors.parse(listOf("app=pool=clients")))
+
+        whenever(clusterStateManager.load()).thenReturn(base.copy(roleSelectors = mapped))
+        assertThat(
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec.nodeSelector,
+        ).isEqualTo(mapOf("pool" to "clients"))
+
+        whenever(clusterStateManager.load()).thenReturn(base.copy(roleSelectors = RoleSelectors.ANYWHERE))
+        assertThat(
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec.nodeSelector,
+        ).isNullOrEmpty()
+        assertThat(
+            service
+                .buildCommandJob("cmd-1", "img:1", listOf("list"))
+                .spec.template.spec.nodeSelector,
+        ).isNullOrEmpty()
+    }
+
+    @Test
+    fun `no stress pod mounts a host path`() {
+        val run =
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec
+        val command =
+            service
+                .buildCommandJob("cmd-1", "img:1", listOf("list"))
+                .spec.template.spec
+
+        assertThat((run.volumes + command.volumes.orEmpty()).mapNotNull { it.hostPath }).isEmpty()
+    }
+
+    @Test
+    fun `every agent path in the stress JVM options is a file an init container copies into the mounted volume`() {
+        val spec =
+            service
+                .buildJob(stressJobConfig())
+                .spec.template.spec
+        val stress = spec.containers.single { it.name == "stress" }
+        val options = stress.env.single { it.name == "JDK_JAVA_OPTIONS" }.value
+        val agentPaths = Regex("-javaagent:(\\S+)").findAll(options).map { it.groupValues[1] }.toList()
+
+        assertThat(agentPaths).hasSize(JavaAgent.entries.size)
+        for (path in agentPaths) {
+            val mount = stress.volumeMounts.single { path.startsWith(it.mountPath + "/") }
+            val volume = spec.volumes.single { it.name == mount.name }
+            assertThat(mount.readOnly).isTrue()
+            assertThat(volume.emptyDir).describedAs(path).isNotNull()
+            val copyTargets =
+                spec.initContainers.flatMap { init ->
+                    init.volumeMounts.filter { it.name == volume.name }.map { init.command.last() to it.mountPath }
+                }
+            assertThat(copyTargets).describedAs(path).anySatisfy { (target, initMountPath) ->
+                assertThat(target).isEqualTo(initMountPath + path.removePrefix(mount.mountPath))
+            }
+        }
     }
 
     @Test
@@ -274,7 +348,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -310,7 +384,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `a stress run and a command job carry different role labels on the job and its pods`() {
         val run =
             service.buildJob(
-                StressJobConfig(jobName = "stress-1", image = "img", contactPoints = "10.0.1.6", args = listOf("run", "KeyValue")),
+                StressJobConfig(jobName = "stress-1", image = "img", target = VM_TARGET, args = listOf("run", "KeyValue")),
             )
         val command = service.buildCommandJob(jobName = "cmd-1", image = "img", args = listOf("list"))
 
@@ -329,7 +403,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     tags = mapOf("env" to "production", "team" to "platform"),
                 ),
@@ -365,7 +439,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "keyvalue-1",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     promPort = 9501,
                 ),
@@ -385,7 +459,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "keyvalue-1",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                     promPort = 9502,
                 ),
@@ -407,49 +481,10 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 args = listOf("list"),
             )
 
-        assertThat(job.spec.template.spec.nodeSelector["type"]).isEqualTo(ServerType.Stress.serverType)
-        assertThat(job.spec.template.spec.hostNetwork).isTrue()
-        assertThat(job.spec.template.spec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
+        assertThat(job.spec.template.spec.nodeSelector).isEqualTo(RoleSelectors.OWNED_NODES.app.labels)
+        assertThat(job.spec.template.spec.hostNetwork == true).describedAs("hostNetwork").isFalse()
         assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(300)
         assertThat(job.spec.backoffLimit).isEqualTo(0)
-    }
-
-    @Test
-    fun `buildJob should include pyroscope hostPath volume`() {
-        val job =
-            service.buildJob(
-                StressJobConfig(
-                    jobName = "stress-test-123",
-                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
-                    args = listOf("run", "KeyValue"),
-                ),
-            )
-
-        val volumes = job.spec.template.spec.volumes
-        val pyroscopeVolume = volumes.first { it.name == "pyroscope-agent" }
-        assertThat(pyroscopeVolume.hostPath.path).isEqualTo("/usr/local/pyroscope")
-        assertThat(pyroscopeVolume.hostPath.type).isEqualTo("Directory")
-    }
-
-    @Test
-    fun `buildJob should mount pyroscope volume in stress container as read-only`() {
-        val job =
-            service.buildJob(
-                StressJobConfig(
-                    jobName = "stress-test-123",
-                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
-                    args = listOf("run", "KeyValue"),
-                ),
-            )
-
-        val stress =
-            job.spec.template.spec.containers
-                .first { it.name == "stress" }
-        val pyroscopeMount = stress.volumeMounts.first { it.name == "pyroscope-agent" }
-        assertThat(pyroscopeMount.mountPath).isEqualTo("/usr/local/pyroscope")
-        assertThat(pyroscopeMount.readOnly).isTrue()
     }
 
     @Test
@@ -459,7 +494,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 StressJobConfig(
                     jobName = "stress-test-123",
                     image = "ghcr.io/apache/cassandra-easy-stress:latest",
-                    contactPoints = "10.0.1.6",
+                    target = VM_TARGET,
                     args = listOf("run", "KeyValue"),
                 ),
             )
@@ -469,7 +504,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 .first { it.name == "stress" }
         val javaToolOptions = stress.env.first { it.name == "JDK_JAVA_OPTIONS" }.value
 
-        assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
+        assertThat(javaToolOptions).contains(JavaAgentDelivery.flag(JavaAgent.PYROSCOPE))
         assertThat(javaToolOptions).contains("-Dpyroscope.application.name=cassandra-easy-stress")
         assertThat(javaToolOptions).contains("-Dpyroscope.server.address=http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(javaToolOptions).contains("-Dpyroscope.format=jfr")
@@ -496,10 +531,10 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     fun `buildJob should load the OTel agent alongside Pyroscope`() {
         val javaToolOptions = javaToolOptionsOf(stressJobConfig())
 
-        assertThat(javaToolOptions).contains("-javaagent:/usr/local/otel/opentelemetry-javaagent.jar")
+        assertThat(javaToolOptions).contains(JavaAgentDelivery.flag(JavaAgent.OTEL))
         assertThat(javaToolOptions).contains("-Dotel.service.name=cassandra-easy-stress")
         // Two agents in one JVM: adding OTel must not cost the profiling already there.
-        assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
+        assertThat(javaToolOptions).contains(JavaAgentDelivery.flag(JavaAgent.PYROSCOPE))
     }
 
     @Test
@@ -555,28 +590,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         // The sidecar scrapes only cassandra-easy-stress's own counters, so the agent's JVM metrics
         // are the only view of whether the load generator itself is the bottleneck.
         assertThat(javaToolOptions).doesNotContain("-Dotel.metrics.exporter=none")
-    }
-
-    @Test
-    fun `buildJob should mount the OTel agent from the host, read-only`() {
-        // The jar is installed by the base AMI at /usr/local/otel and reaches the pod exactly as
-        // the Pyroscope jar does. The job's nodeSelector pins it to a type=app node, where that
-        // path exists.
-        val spec =
-            service
-                .buildJob(stressJobConfig())
-                .spec.template.spec
-        val mount =
-            spec.containers
-                .first { it.name == "stress" }
-                .volumeMounts
-                .first { it.name == "otel-agent" }
-        val volume = spec.volumes.first { it.name == "otel-agent" }
-
-        assertThat(mount.mountPath).isEqualTo("/usr/local/otel")
-        assertThat(mount.readOnly).isTrue()
-        assertThat(volume.hostPath.path).isEqualTo("/usr/local/otel")
-        assertThat(volume.hostPath.type).isEqualTo("Directory")
     }
 
     @Test
@@ -637,7 +650,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         StressJobConfig(
             jobName = "stress-test-123",
             image = "ghcr.io/apache/cassandra-easy-stress:latest",
-            contactPoints = "10.0.1.6",
+            target = VM_TARGET,
             args = listOf("run", "KeyValue"),
             tags = tags,
         )
@@ -669,7 +682,7 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         StressJobConfig(
             jobName = "stress-wait",
             image = "ghcr.io/apache/cassandra-easy-stress:latest",
-            contactPoints = "10.0.1.6",
+            target = VM_TARGET,
             args = listOf("run", "KeyValue"),
         )
 

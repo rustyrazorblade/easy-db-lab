@@ -2,7 +2,7 @@
 
 The `install trino` command scaffolds a Trino deployment using the Trino Helm chart. It generates scripts and a `values.yaml` in a local `trino/` directory. Once installed, use `easy-db-lab trino start` and `easy-db-lab trino stop` to manage it.
 
-Trino is stateless — it does not use persistent volumes. Queries run in-memory on app (`type=app`) nodes.
+Trino is stateless — it does not use persistent volumes. Queries run in-memory on the app role's nodes.
 
 ## Prerequisites
 
@@ -75,14 +75,16 @@ easy-db-lab clickhouse start
 
 ## Node Placement
 
-Trino workers are scheduled on `type=app` nodes using `nodeSelector: type: app`.
+The coordinator and workers run on the app role's nodes: `type=app` on the nodes easy-db-lab builds, or the nodes `init --role-nodes app=...` maps (any node with `app=`). See [Role node selectors](../reference/commands.md#role-node-selectors).
 
 ## Connecting
 
-After `easy-db-lab trino start` completes, the Trino coordinator is accessible within the cluster. Connect using the SOCKS5 proxy or a port-forward:
+The coordinator runs in the Kubernetes pod network; earlier releases bound it to the node's port 8080 (`hostPort`). Query timings from this release are **not comparable** with results recorded before it; compare runs made on the same release.
+
+After `easy-db-lab trino start` completes, the Trino coordinator is published on the NodePort Service `trino-nodeport`, port 30881 on any node's private IP. Reach it at `jdbc:trino://<node-ip>:30881` through the workspace SOCKS5 tunnel: the tunnel listens on `127.0.0.1` at the `EDL_SOCKS_PORT` recorded in the workspace's `.socks5-proxy.env`, and the client carries it in its own proxy setting, the JDBC connection property `socksProxy=127.0.0.1:<port>` or the Trino CLI's `--socks-proxy 127.0.0.1:<port>`. Or port-forward the Service:
 
 ```bash
-kubectl port-forward svc/trino 8080:8080
+kubectl port-forward svc/trino-nodeport 8080:8080
 ```
 
 Then connect with any Trino-compatible client at `jdbc:trino://localhost:8080`.

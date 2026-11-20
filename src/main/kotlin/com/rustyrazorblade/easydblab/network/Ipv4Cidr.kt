@@ -26,6 +26,10 @@ value class Ipv4Cidr private constructor(
     val networkBits: Long
         get() = address.split('.').fold(0L) { acc, octet -> (acc shl BITS_PER_OCTET) or octet.toLong() }
 
+    /** How many addresses this CIDR covers: 2 to the power of its host bits, 1 for a /32. */
+    val addressCount: Long
+        get() = 1L shl (MAX_PREFIX - prefixLength)
+
     /** Whether this CIDR shares any address with [other]: exactly when one contains the other's network. */
     fun overlaps(other: Ipv4Cidr): Boolean {
         val mask = networkMask(minOf(prefixLength, other.prefixLength))

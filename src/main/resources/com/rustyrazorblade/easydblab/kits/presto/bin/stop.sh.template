@@ -8,4 +8,6 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 echo "Stopping Presto..."
 edl_scale_to_zero presto-coordinator presto-worker
 
+kubectl delete service presto-nodeport --namespace default --ignore-not-found
+
 echo "Presto stopped."

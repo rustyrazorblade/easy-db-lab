@@ -220,67 +220,74 @@ class ClusterContractTest {
         fun environmentsWithoutAws(): List<Environment> = listOf(Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
 
         @JvmStatic
-        fun table(): List<Arguments> =
-            listOf(
-                Arguments.of(
-                    Environment.Ec2K3s,
-                    ClusterContract(
-                        environment = Environment.Ec2K3s,
-                        hasProvisioner = true,
-                        localDataDirectory = null,
-                        toolingForm = ToolingForm.Ssh,
-                        nodeAccessForm = NodeAccessForm.Ssh,
-                        storeKind = StoreKind.ObjectStore,
-                        networkMode = NetworkMode.Tunnel,
-                        nodeCapabilities = NodeCapabilities.AWS,
-                        hosting = ObservabilityHosting.AWS,
-                        namespace = "default",
-                        recordedDatacenter = "us-east-1",
-                    ),
+        fun table(): List<Arguments> = listOf(ec2K3sRow(), k3sDockerRow(), kubeconfigRow())
+
+        private fun ec2K3sRow(): Arguments =
+            Arguments.of(
+                Environment.Ec2K3s,
+                ClusterContract(
+                    environment = Environment.Ec2K3s,
+                    hasProvisioner = true,
+                    localDataDirectory = null,
+                    toolingForm = ToolingForm.Ssh,
+                    nodeAccessForm = NodeAccessForm.Ssh,
+                    storeKind = StoreKind.ObjectStore,
+                    networkMode = NetworkMode.Tunnel,
+                    nodeCapabilities = NodeCapabilities.AWS,
+                    hosting = ObservabilityHosting.AWS,
+                    namespace = "default",
+                    recordedDatacenter = "us-east-1",
+                    clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
                 ),
-                Arguments.of(
-                    Environment.K3sDocker("/d"),
-                    ClusterContract(
-                        environment = Environment.K3sDocker("/d"),
-                        hasProvisioner = false,
-                        localDataDirectory = "/d",
-                        toolingForm = ToolingForm.Local,
-                        nodeAccessForm = NodeAccessForm.ContainerExec,
-                        storeKind = StoreKind.ObjectStore,
-                        networkMode = NetworkMode.Direct,
-                        nodeCapabilities = NodeCapabilities.LOCAL_DOCKER,
-                        hosting =
-                            ObservabilityHosting(
-                                Placement.CONTROL_NODE,
-                                BackendStorage.HostPath,
-                                StoreCredentials.NotProvided,
-                                ServicePublishing.ClusterIp,
-                            ),
-                        namespace = "default",
-                        recordedDatacenter = "dc1",
-                    ),
+            )
+
+        private fun k3sDockerRow(): Arguments =
+            Arguments.of(
+                Environment.K3sDocker("/d"),
+                ClusterContract(
+                    environment = Environment.K3sDocker("/d"),
+                    hasProvisioner = false,
+                    localDataDirectory = "/d",
+                    toolingForm = ToolingForm.Local,
+                    nodeAccessForm = NodeAccessForm.ContainerExec,
+                    storeKind = StoreKind.ObjectStore,
+                    networkMode = NetworkMode.Direct,
+                    nodeCapabilities = NodeCapabilities.LOCAL_DOCKER,
+                    hosting =
+                        ObservabilityHosting(
+                            Placement.CONTROL_NODE,
+                            BackendStorage.HostPath,
+                            StoreCredentials.NotProvided,
+                            ServicePublishing.ClusterIp,
+                        ),
+                    namespace = "default",
+                    recordedDatacenter = "dc1",
+                    clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                 ),
-                Arguments.of(
-                    Environment.Kubeconfig("/k"),
-                    ClusterContract(
-                        environment = Environment.Kubeconfig("/k"),
-                        hasProvisioner = false,
-                        localDataDirectory = null,
-                        toolingForm = ToolingForm.Local,
-                        nodeAccessForm = NodeAccessForm.None,
-                        storeKind = StoreKind.ObjectStore,
-                        networkMode = NetworkMode.Direct,
-                        nodeCapabilities = NodeCapabilities.NONE,
-                        hosting =
-                            ObservabilityHosting(
-                                Placement.ANY_NODE,
-                                BackendStorage.HostPath,
-                                StoreCredentials.NotProvided,
-                                ServicePublishing.ClusterIp,
-                            ),
-                        namespace = "easy-db-lab",
-                        recordedDatacenter = "dc1",
-                    ),
+            )
+
+        private fun kubeconfigRow(): Arguments =
+            Arguments.of(
+                Environment.Kubeconfig("/k"),
+                ClusterContract(
+                    environment = Environment.Kubeconfig("/k"),
+                    hasProvisioner = false,
+                    localDataDirectory = null,
+                    toolingForm = ToolingForm.Local,
+                    nodeAccessForm = NodeAccessForm.None,
+                    storeKind = StoreKind.ObjectStore,
+                    networkMode = NetworkMode.Direct,
+                    nodeCapabilities = NodeCapabilities.NONE,
+                    hosting =
+                        ObservabilityHosting(
+                            Placement.ANY_NODE,
+                            BackendStorage.HostPath,
+                            StoreCredentials.NotProvided,
+                            ServicePublishing.ClusterIp,
+                        ),
+                    namespace = "easy-db-lab",
+                    recordedDatacenter = "dc1",
+                    clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                 ),
             )
     }

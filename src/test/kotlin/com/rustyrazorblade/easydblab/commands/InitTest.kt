@@ -2,11 +2,14 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.NodeSelector
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -14,17 +17,27 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
+import io.fabric8.kubernetes.api.model.Node
+import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.api.model.NodeList
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation
+import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -37,12 +50,36 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Path
+
+/** The API of a cluster the user brings, as `init --kubeconfig` (#1082) gives it. */
+private val BROUGHT_API = KubeApi(Path.of("/brought/kubeconfig"), "brought")
+
+/** The brought cluster's one node: pod CIDR `10.244.0.0/24`, InternalIP `192.168.1.5`. */
+private val BROUGHT_NODE =
+    NodeBuilder()
+        .withNewSpec()
+        .withPodCIDRs("10.244.0.0/24")
+        .endSpec()
+        .withNewStatus()
+        .addNewAddress()
+        .withType("InternalIP")
+        .withAddress("192.168.1.5")
+        .endAddress()
+        .addNewAddress()
+        .withType("Hostname")
+        .withAddress("node0")
+        .endAddress()
+        .endStatus()
+        .build()
 
 class InitTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -66,6 +103,19 @@ class InitTest : BaseKoinTest() {
                         }
                     }
                 }
+                // The real probe, over a client that reports one node as the scenario's cluster does.
+                single {
+                    ClientNetworkProbe(
+                        object : KubernetesClientFactory {
+                            override fun createClient(api: KubeApi): KubernetesClient {
+                                probedApis += api
+                                val nodes = mock<NonNamespaceOperation<Node, NodeList, Resource<Node>>>()
+                                whenever(nodes.list()).thenReturn(NodeList().apply { items = broughtNodes })
+                                return mock<KubernetesClient> { on { nodes() } doReturn nodes }
+                            }
+                        },
+                    )
+                }
             },
         )
 
@@ -74,6 +124,12 @@ class InitTest : BaseKoinTest() {
 
     /** When set, the exit code every nested command reports instead of running. */
     private var nestedFailure: Int? = null
+
+    /** The APIs the probe was asked to reach. */
+    private val probedApis = mutableListOf<KubeApi>()
+
+    /** The nodes the brought cluster reports. */
+    private var broughtNodes = listOf(BROUGHT_NODE)
 
     @BeforeEach
     fun setupMocks() {
@@ -760,6 +816,313 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager).save(
                 argThat { initConfig?.cni == CniMode.Flannel },
             )
+        }
+    }
+
+    @Nested
+    inner class RoleNodeOptions {
+        @Test
+        fun `without --role-nodes each role keeps the owned nodes' type label`() {
+            Init().apply { clean = true }.execute()
+
+            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES })
+        }
+
+        @Test
+        fun `--role-nodes maps the roles it names and records them`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=pool=databases", "--role-nodes", "app=pool=clients")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    val selectors = RoleSelectors.from(this)
+                    selectors.db.labels == mapOf("pool" to "databases") &&
+                        selectors.app.labels == mapOf("pool" to "clients") &&
+                        selectors.control == RoleSelectors.OWNED_NODES.control
+                },
+            )
+        }
+
+        @Test
+        fun `on a cluster the user brings, every role starts unconstrained`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
+        }
+
+        @Test
+        fun `on a cluster the user brings, --role-nodes constrains only the role it maps`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=pool=databases")
+            command.clean = true
+            command.broughtCluster = BROUGHT_API
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    RoleSelectors.from(this) == RoleSelectors.ANYWHERE.copy(db = NodeSelector(mapOf("pool" to "databases")))
+                },
+            )
+        }
+
+        @Test
+        fun `--role-nodes with an empty selector unmaps that role`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "app=")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES.copy(app = NodeSelector.NONE) },
+            )
+        }
+
+        @Test
+        fun `a malformed --role-nodes fails before anything is saved, naming the value and the form`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--role-nodes", "db=bad")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("db=bad")
+                .hasMessageContaining("<role>=<key=value>")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+    }
+
+    @Nested
+    inner class ClientNetworkOptions {
+        @Test
+        fun `--client-network adds networks the database kits accept clients from`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--cidr",
+                "172.16.0.0/16",
+                "--client-network",
+                "192.168.0.0/16",
+                "--client-network",
+                "203.0.113.7",
+            )
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat {
+                    ClientNetworks.from(this).cidrs.map { it.value } ==
+                        listOf("172.16.0.0/16", Constants.K3s.CLUSTER_CIDR, "192.168.0.0/16", "203.0.113.7/32")
+                },
+            )
+        }
+
+        /**
+         * Off AWS no VPC is known: `init` probes the cluster the user brings, through the API it
+         * is given, and records the nodes' pod CIDRs and InternalIPs with the extra networks.
+         */
+        @Test
+        fun `on a cluster the user brings, init records the probed networks and the extra ones`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.broughtCluster = BROUGHT_API
+            command.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            val state = saved.lastValue
+            assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32", "192.168.0.0/16")
+            assertThat(probedApis).containsExactly(BROUGHT_API)
+            assertThat(TemplateVariables.from(state, kitName = "postgres", storageSize = "10Gi").toMap()["CLIENT_NETWORKS_HBA_JSON"])
+                .isEqualTo(
+                    "[\"host all all 10.244.0.0/24 trust\",\"host all all 192.168.1.5/32 trust\"," +
+                        "\"host all all 192.168.0.0/16 trust\"]",
+                )
+        }
+
+        /**
+         * `clientNetworks == null` reads as the owned VPC and cluster CIDR (`ClientNetworks.from`), so a
+         * brought cluster gets its own networks only because `init` records them, flags or not.
+         */
+        @Test
+        fun `on a cluster the user brings, with no --client-network, init records the probed networks alone`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            val state = saved.lastValue
+            assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32")
+            assertThat(ClientNetworks.from(state).cidrs.map { it.value }).containsExactly("10.244.0.0/24", "192.168.1.5/32")
+            assertThat(state.roleSelectors).isEqualTo(RoleSelectors.ANYWHERE)
+        }
+
+        @Test
+        fun `on the nodes init builds, no cluster is probed`() {
+            Init().apply { clean = true }.execute()
+
+            assertThat(probedApis).isEmpty()
+            verify(mockClusterStateManager).save(argThat { clientNetworks == null })
+        }
+
+        @Test
+        fun `a malformed --client-network fails before anything is saved, naming the value`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.1/8")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("10.0.0.1/8")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init reports the client networks it recorded, which the database kits trust`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cidr", "172.16.0.0/16", "--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).contains(
+                "The database kits will accept passwordless clients from: 172.16.0.0/16, " +
+                    "${Constants.K3s.CLUSTER_CIDR}, 192.168.0.0/16",
+            )
+        }
+
+        /**
+         * EKS VPC-CNI gives pods node-network addresses and its nodes report no pod CIDR, so the
+         * probe records only node /32s. `init` still succeeds, and warns which option admits the pods.
+         */
+        @Test
+        fun `on a cluster whose nodes report no pod CIDR, init records the node addresses and warns`() {
+            broughtNodes =
+                listOf(
+                    NodeBuilder(BROUGHT_NODE)
+                        .editSpec()
+                        .withPodCIDRs()
+                        .withPodCIDR(null)
+                        .endSpec()
+                        .build(),
+                )
+
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            val saved = argumentCaptor<ClusterState>()
+            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            assertThat(saved.lastValue.clientNetworks).containsExactly("192.168.1.5/32")
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains(Event.Setup.NoPodCidrClientNetworks(listOf("192.168.1.5/32")).toDisplayString())
+        }
+
+        @Test
+        fun `on a cluster whose nodes report a pod CIDR, init does not warn about pod clients`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("no pod CIDR")
+        }
+
+        /** A probed pod CIDR is trusted passwordless like a --client-network, so a very wide one is warned about too. */
+        @Test
+        fun `a very wide pod CIDR a brought node reports is recorded with a warning naming it`() {
+            broughtNodes =
+                listOf(
+                    NodeBuilder(BROUGHT_NODE)
+                        .editSpec()
+                        .withPodCIDRs("8.0.0.0/6")
+                        .endSpec()
+                        .build(),
+                )
+
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { clientNetworks.orEmpty().contains("8.0.0.0/6") })
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains("Warning: a node reports pod CIDR 8.0.0.0/6, which gives 67108864 addresses passwordless access")
+                .doesNotContain("pod CIDR 192.168.1.5/32")
+        }
+
+        @Test
+        fun `a very wide network given as --client-network on a brought cluster is warned about once, as the option`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/7")
+            command.clean = true
+            command.broughtCluster = BROUGHT_API
+            command.execute()
+
+            val output = outputHandler.messages.joinToString("\n")
+            assertThat(output).contains("Warning: --client-network 10.0.0.0/7 gives").doesNotContain("pod CIDR 10.0.0.0/7")
+        }
+
+        @Test
+        fun `on a cluster the user brings, init reports the probed networks it recorded`() {
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains("The database kits will accept passwordless clients from: 10.244.0.0/24, 192.168.1.5/32")
+        }
+
+        /** A /1 to /7 network is almost every address, so it is recorded with a warning naming it. */
+        @Test
+        fun `a very wide --client-network is recorded with a warning naming it`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/7", "--client-network", "192.168.0.0/16")
+            command.clean = true
+            command.execute()
+
+            val output = outputHandler.messages.joinToString("\n")
+            assertThat(output)
+                .contains("Warning: --client-network 10.0.0.0/7 gives 33554432 addresses passwordless access")
+                .doesNotContain("--client-network 192.168.0.0/16 gives")
+            verify(mockClusterStateManager).save(argThat { extraClientNetworks.contains("10.0.0.0/7") })
+        }
+
+        @Test
+        fun `a slash 8 --client-network is recorded without a warning`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/8")
+            command.clean = true
+            command.execute()
+
+            assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("passwordless access")
+        }
+
+        /** Every client network gets passwordless trust, so `/0` would open the kits to every address. */
+        @Test
+        fun `a --client-network of slash 0 fails before anything is saved, naming the value`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "192.168.0.0/16", "--client-network", "0.0.0.0/0")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("0.0.0.0/0")
+                .hasMessageContaining("--client-network")
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

@@ -18,11 +18,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
-import java.time.Duration
 
 /**
  * [CapabilityProbeService] when the API server answers in ways a real K3s cannot be made to: a
- * forbidden namespace read, a namespace whose default ServiceAccount never appears, a webhook that
+ * forbidden namespace read, a namespace no ServiceAccount controller serves, a forbidden ServiceAccount create, a webhook that
  * does not support dry run, and an unrelated rejection of one capability Pod. The Fabric8 mock server
  * answers those requests from expectations and serves everything else from its CRUD store, so the
  * probe runs its real client calls; [CapabilityProbeIntegrationTest] covers real admission.
@@ -47,8 +46,7 @@ class CapabilityProbeFailureIntegrationTest {
 
     private val api = KubeApi(Path.of("unused-kubeconfig"), "unused-context")
 
-    private fun probe(namespaceReadyTimeout: Duration = Duration.ofSeconds(Constants.Capabilities.NAMESPACE_READY_TIMEOUT_SECONDS)) =
-        CapabilityProbeService(clientFactory, namespaceReadyTimeout)
+    private fun probe() = CapabilityProbeService(clientFactory)
 
     private fun status(
         code: Int,
@@ -135,29 +133,58 @@ class CapabilityProbeFailureIntegrationTest {
     }
 
     @Test
-    fun `a created namespace whose default ServiceAccount never appears fails the probe within the timeout`() {
-        assertThatThrownBy { probe(Duration.ofSeconds(1)).probe(api, NAMESPACE) }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("'$NAMESPACE'")
-            .hasMessageContaining("the default ServiceAccount did not appear within 1 s")
+    fun `a created namespace that no ServiceAccount controller serves gets its default ServiceAccount from the probe and is probed`() {
+        answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
+
+        val result = probe().probe(api, NAMESPACE)
+
+        assertThat(result.capabilities.present())
+            .containsExactly(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
+        server.createClient().use { client ->
+            assertThat(
+                client
+                    .serviceAccounts()
+                    .inNamespace(NAMESPACE)
+                    .withName("default")
+                    .get(),
+            ).isNotNull()
+        }
     }
 
     @Test
-    fun `a forbidden ServiceAccount wait fails the probe with the server message`() {
+    fun `an existing namespace with no default ServiceAccount gets one from the probe`() {
+        createNamespace()
+        answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
+
+        probe().probe(api, NAMESPACE)
+
+        server.createClient().use { client ->
+            assertThat(
+                client
+                    .serviceAccounts()
+                    .inNamespace(NAMESPACE)
+                    .withName("default")
+                    .get(),
+            ).isNotNull()
+        }
+    }
+
+    @Test
+    fun `a forbidden ServiceAccount create fails the probe with the server message`() {
         server
             .expect()
-            .get()
-            .withPath("/api/v1/namespaces/$NAMESPACE/serviceaccounts?fieldSelector=metadata.name%3Ddefault")
+            .post()
+            .withPath("/api/v1/namespaces/$NAMESPACE/serviceaccounts")
             .andReturn(
                 Constants.HttpStatus.FORBIDDEN,
-                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "serviceaccounts is forbidden: user cannot list"),
+                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "serviceaccounts is forbidden: user cannot create"),
             ).always()
 
         assertThatThrownBy { probe().probe(api, NAMESPACE) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
-            .hasMessageContaining("the default ServiceAccount did not appear")
-            .hasMessageContaining("user cannot list")
+            .hasMessageContaining("creating the default ServiceAccount")
+            .hasMessageContaining("user cannot create")
             .hasMessageContaining("cluster-admin")
     }
 

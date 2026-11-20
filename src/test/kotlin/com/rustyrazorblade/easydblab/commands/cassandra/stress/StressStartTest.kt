@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -12,6 +13,8 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.StartedStressJob
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.stress.StressTarget
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -24,6 +27,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+
+private val REGION = InfrastructureState(vpcId = "vpc-test", region = "us-west-2")
 
 /**
  * Test suite for StressStart command.
@@ -64,6 +69,8 @@ class StressStartTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
+                factory { StressTargetResolver() }
+
                 single {
                     mock<StressJobService>().also {
                         mockStressJobService = it
@@ -99,6 +106,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts = mutableMapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testCassandraHost)),
             ),
         )
@@ -115,25 +123,43 @@ class StressStartTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute should fail when no Cassandra nodes exist`() {
-        // Given - cluster state with control node but no Cassandra nodes
-        val stateWithControlOnly =
+    fun `a stress job starts on a cluster with no control host`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                hosts =
-                    mutableMapOf(
-                        ServerType.Control to listOf(testControlHost),
-                    ),
-            )
+                infrastructure = REGION,
+                hosts = mutableMapOf(ServerType.Cassandra to listOf(testCassandraHost)),
+            ),
+        )
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any())).thenReturn(Result.success(StartedStressJob("kv-1", "app0")))
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithControlOnly)
+        StressStart().apply { stressArgs = listOf("KeyValue") }.execute()
 
-        val command = StressStart()
+        verify(mockStressJobService).startJob(
+            config =
+                argThat { config ->
+                    config.target == StressTarget("10.0.1.6", Constants.Stress.DEFAULT_CASSANDRA_PORT, "us-west-2") &&
+                        config.args.containsAll(listOf("--host", "10.0.1.6"))
+                },
+        )
+    }
 
-        // When/Then
-        assertThatThrownBy { command.execute() }
+    @Test
+    fun `execute fails naming both targets when there is neither a Cassandra kit nor db hosts`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                infrastructure = REGION,
+                hosts = mutableMapOf(ServerType.Control to listOf(testControlHost)),
+            ),
+        )
+
+        assertThatThrownBy { StressStart().apply { stressArgs = listOf("KeyValue") }.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("No Cassandra nodes found")
+            .hasMessageContaining("cassandra-pods")
+            .hasMessageContaining("db hosts")
+        verify(mockStressJobService, never()).startJob(any())
     }
 
     @Test
@@ -142,6 +168,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -166,6 +193,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -204,6 +232,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -301,6 +330,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -340,6 +370,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -368,6 +399,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),
@@ -395,6 +427,7 @@ class StressStartTest : BaseKoinTest() {
         val stateWithNodes =
             ClusterState(
                 name = "test-cluster",
+                infrastructure = REGION,
                 hosts =
                     mutableMapOf(
                         ServerType.Control to listOf(testControlHost),

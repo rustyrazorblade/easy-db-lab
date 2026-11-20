@@ -11,12 +11,15 @@ import com.rustyrazorblade.easydblab.commands.mixins.OpenSearchInitMixin
 import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.CapabilityOverrides
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.NodeOrigin
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -26,10 +29,12 @@ import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
+import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
+import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
@@ -100,6 +105,7 @@ class Init :
 
     // Only init --local resolves it: the nodes are containers, so they run the Docker daemon's architecture.
     private val dockerClientProvider: DockerClientProvider by inject()
+    private val clientNetworkProbe: ClientNetworkProbe by inject()
 
     companion object {
         private const val DEFAULT_CASSANDRA_INSTANCE_COUNT = 3
@@ -289,6 +295,25 @@ class Init :
         split = ",",
     )
     var nodeLabels: Map<String, String> = mutableMapOf()
+
+    @Option(
+        names = [RoleSelectors.OPTION],
+        description = [
+            "Nodes one role's pods run on (format: <role>=<key=value>[,<key=value>...], role db, app or " +
+                "control; can be repeated, once per role). Replaces that role's default node selector; " +
+                "a role not given keeps the environment's.",
+        ],
+    )
+    var roleNodes: List<String> = mutableListOf()
+
+    @Option(
+        names = [ClientNetworks.OPTION],
+        description = [
+            "A network the database kits accept passwordless clients from, as an IPv4 CIDR or address " +
+                "(can be repeated). Added to the VPC CIDR and the K3s cluster CIDR.",
+        ],
+    )
+    var clientNetworks: List<String> = mutableListOf()
 
     @Option(
         names = ["--kit-storage-class"],
@@ -515,16 +540,34 @@ class Init :
             .normalize()
             .toString()
 
+    /**
+     * The API of a cluster the user brings, or null when `init` builds the nodes (AWS). The
+     * `init --kubeconfig` option (#1082) sets it; until then only tests do.
+     */
+    @get:JsonIgnore
+    internal var broughtCluster: KubeApi? = null
+
+    /**
+     * Where this workspace's nodes come from, which decides the role selectors `--role-nodes`
+     * applies to: [NodeOrigin.OWNED] for the AWS nodes `init` builds and labels, and
+     * [NodeOrigin.BROUGHT] for a [broughtCluster], where every role runs on any node until it is mapped.
+     */
+    private val nodeOrigin: NodeOrigin
+        get() = if (broughtCluster == null) NodeOrigin.OWNED else NodeOrigin.BROUGHT
+
     override fun execute() {
         refuseOptionsThatNeedOtherOptions()
         validateParameters()
-        // Parsed before anything is cleaned or written, so a bad override leaves the directory as it was.
+        // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
+        val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
+        // Probed before anything is cleaned or written too: a cluster that reports no network leaves the directory as it was.
+        val clients = InitClientNetworks.resolve(clientNetworks, broughtCluster) { clientNetworkProbe }
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
-        val clusterState = buildClusterState(capabilities)
+        val clusterState = clients.applyTo(buildClusterState(capabilities).copy(roleSelectors = roleSelectors))
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
@@ -541,6 +584,7 @@ class Init :
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
+        clients.report(clusterState, eventBus)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'

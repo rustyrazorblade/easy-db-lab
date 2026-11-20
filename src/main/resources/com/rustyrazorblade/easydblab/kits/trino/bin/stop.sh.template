@@ -8,4 +8,6 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 echo "Stopping Trino..."
 edl_scale_to_zero trino-coordinator trino-worker
 
+kubectl delete service trino-nodeport --namespace default --ignore-not-found
+
 echo "Trino stopped."

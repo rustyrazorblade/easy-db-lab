@@ -47,22 +47,16 @@ spec:
     name: __KIT_NAME__-catalog
     major: __PG_MAJOR_VERSION__
   primaryUpdateStrategy: unsupervised
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: type
-                operator: In
-                values:
-                  - db
+  # {"nodeSelector":{...}}, or {} when the db role is unconstrained (an empty nodeSelector makes
+  # CNPG restart the instance on every reconcile).
+  affinity: __DB_AFFINITY__
   storage:
     storageClass: __KIT_STORAGE_CLASS__
     size: __STORAGE_SIZE__
   postgresql:
     shared_preload_libraries: __SHARED_PRELOAD_LIBRARIES__
-    pg_hba:
-      - host all all 10.0.0.0/8 trust
+    # One trust line per client network of the environment (ClientNetworks).
+    pg_hba: __CLIENT_NETWORKS_HBA_JSON__
   bootstrap:
     initdb:
       database: postgres

@@ -292,11 +292,17 @@ class NodeBringUpTest {
     fun `no more SSH sessions than the limit are open at once across every pipeline`() {
         val h = harness(dbs = 20, apps = 4)
         h.settings = h.settings.copy(sshSessions = 3)
-        h.steps.sshHoldMs = 2
+        // No session ends until 3 are open, so the limit is reached however the threads are scheduled.
+        h.steps.holdSsh.set(true)
 
-        val result = h.run()
+        val result = h.runInBackground()
+        h.waitFor("the SSH limit filled") { h.steps.sshInFlight >= 3 }
+        Thread.sleep(SETTLE_MS)
+        assertThat(h.steps.sshInFlight).isEqualTo(3)
+        assertThat(h.steps.sshPeak).isEqualTo(3)
+        h.steps.holdSsh.set(false)
 
-        assertThat(result.nodes.values).hasSize(24).allMatch { it is NodeEnd.Ready }
+        assertThat(result.get(10, TimeUnit.SECONDS).nodes.values).hasSize(24).allMatch { it is NodeEnd.Ready }
         assertThat(h.steps.sshPeak).isEqualTo(3)
     }
 

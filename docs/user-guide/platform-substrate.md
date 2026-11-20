@@ -194,14 +194,13 @@ Place templates in `~/.easy-db-lab/profiles/<profile>/kits/<name>/` to make them
 
 ## Port Exposure Model
 
-Kits use **standard pod networking** (not `hostNetwork`). Client and metrics ports are surfaced on each EC2 instance's network interface in one of two ways:
+Kits use **standard pod networking** (not `hostNetwork`). Client and metrics ports are surfaced on every node through a NodePort Service:
 
-- **NodePort services** — stateful db kits (ClickHouse, TiDB) expose their ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
-- **hostPort patches** — helm-based app kits (Presto, Trino) patch `hostPort` mappings onto the coordinator pod at start time, keeping the native port (e.g. `8080 → 8080`).
+- **NodePort services** — every kit (ClickHouse, TiDB, Presto, Trino and the rest) exposes its ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
 
 ### Why ports must reach the host
 
-The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. Built-in kits are scraped by pod discovery: each collector scrapes the kit pods on its own node directly, on the pod IP and container metrics port, so a metrics port does not need to reach the host for the collector (see [Kit Observability](#kit-observability)). The NodePorts and hostPorts that still expose metrics ports are there for manual inspection (`curl <node-ip>:<port>/metrics`). Client ports do need to reach the host, and a NodePort-range port can never collide with a database listening on its native port on the host.
+The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host processes and kit metrics endpoints, and so host JVMs such as Cassandra can push OTLP to it at `localhost:4318`. Built-in kits are scraped by pod discovery: each collector scrapes the kit pods on its own node directly, on the pod IP and container metrics port, so a metrics port does not need to reach the host for the collector (see [Kit Observability](#kit-observability)). The NodePorts that still expose metrics ports are there for manual inspection (`curl <node-ip>:<port>/metrics`). Client ports do need to reach the host, and a NodePort-range port can never collide with a database listening on its native port on the host.
 
 ### Port Assignments
 
@@ -217,9 +216,9 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host
 | TiDB | Prometheus (tikv) | 20180 | — | pod SD (per-store) |
 | TiDB | Prometheus (pd) | 2379 | 32379 | pod SD (per-pod); NodePort also exposed |
 | TiDB | Prometheus (tiflash) | 8234 | 32234 | pod SD (per-pod); NodePort also exposed |
-| Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
-| Presto | Prometheus | 9090 | 9090 | pod SD; hostPort also exposed |
-| Trino | HTTP (coordinator) | 8080 | 8080 | hostPort |
+| Presto | HTTP (coordinator) | 8080 | 30882 | NodePort |
+| Presto | Prometheus | 9090 | — | pod SD |
+| Trino | HTTP (coordinator) | 8080 | 30881 | NodePort |
 
 When adding a new kit, choose ports that do not conflict with any host process or existing kit in the table above. Each kit's ports are declared in its `kit.yaml` (`metrics` and `endpoints` sections).
 

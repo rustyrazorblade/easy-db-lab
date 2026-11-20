@@ -3,13 +3,15 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
-import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.ExtensionResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitPlacementVariables
 import com.rustyrazorblade.easydblab.services.KitType
+import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -34,6 +36,7 @@ class KitInstallCommand(
     private val source: InstallTemplateResolver.TemplateSource,
 ) : BaseInstallCommand() {
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
+    private val roleNodes: RoleNodes by inject()
 
     internal val argValues: MutableMap<String, String> = mutableMapOf()
     internal var force: Boolean = false
@@ -44,6 +47,13 @@ class KitInstallCommand(
      * does not invoke the ISetter for default values in the programmatic API.
      */
     internal val resolvedDefaults: MutableMap<String, String> = mutableMapOf()
+
+    /**
+     * The variables of the args the user passed on the command line. Set by
+     * [KitInstallCommandFactory] from picocli's parse result; when nothing parsed the command line,
+     * every value already in [argValues] counts as passed.
+     */
+    internal var userSuppliedVariables: () -> Set<String> = { argValues.keys.toSet() }
 
     /** Non-zero when [execute] refused the install after reporting why through an error event. */
     private var exitCode: Int = 0
@@ -71,11 +81,13 @@ class KitInstallCommand(
     }
 
     override fun execute() {
-        if (requiredNodePoolIsMissing()) {
+        val placement = roleNodes.placement(RoleSelectors.from(clusterState))
+        if (requiredNodePoolIsMissing(placement)) {
             exitCode = Constants.ExitCodes.ERROR
             return
         }
 
+        resolveDefaultsAgainst(placement)
         applyArgDefaults()
 
         validateKitRefTarget()
@@ -104,6 +116,7 @@ class KitInstallCommand(
             kitName = instanceName,
             storageSize = storageSize,
             extraVars = extensionVars + argValues.toMap(),
+            placement = placement,
         )
 
         if (config.install.isNotEmpty()) {
@@ -111,7 +124,7 @@ class KitInstallCommand(
             val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables
-                    .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
+                    .from(state = clusterState, kitName = instanceName, storageSize = storageSize, placement = placement)
                     .toMap() + argValues
 
             // A failed step is reported by the step executor as a typed event; the install then
@@ -138,18 +151,41 @@ class KitInstallCommand(
     }
 
     /**
-     * Fails fast when the cluster has no node in the pool the kit's `type` declares: reports
-     * [Event.Kit.RequirementNotMet] and returns true. A kit with no `type` needs no pool.
+     * Resolves every `${VAR}` default again against [placement]. The factory resolved them for the
+     * help text when the CLI started, from the hosts state.json records; here `${DB_NODE_COUNT}` is
+     * the nodes the db selector matches. A variable with no live value is kept as written.
+     *
+     * picocli has already written the startup default of every arg the user did not pass into
+     * [argValues], so a re-resolved default replaces any value that is not [userSuppliedVariables].
      */
-    private fun requiredNodePoolIsMissing(): Boolean {
+    private fun resolveDefaultsAgainst(placement: KitPlacementVariables) {
+        val passed = userSuppliedVariables()
+        val liveVars = TemplateVariables.from(clusterState, kitName = "", storageSize = "", placement = placement).toMap()
+        for (arg in config.args.filter { Constants.Kit.SHELL_VAR_PATTERN.containsMatchIn(it.default) }) {
+            resolvedDefaults[arg.variable] =
+                arg.default.replace(Constants.Kit.SHELL_VAR_PATTERN) { m -> liveVars[m.groupValues[1]] ?: m.value }
+        }
+        for ((variable, default) in resolvedDefaults) {
+            if (variable !in passed) argValues[variable] = default
+        }
+    }
+
+    /**
+     * Fails fast when no Kubernetes node is in the pool the kit's `type` declares ([placement],
+     * counted by [RoleNodes] from the role's selector): reports [Event.Kit.RequirementNotMet] and
+     * returns true. A kit with no `type` needs no pool.
+     */
+    private fun requiredNodePoolIsMissing(placement: KitPlacementVariables): Boolean {
         val kitType = config.type ?: return false
-        val serverType =
+        val (poolSize, selector) =
             when (kitType) {
-                KitType.DB -> ServerType.Cassandra
-                KitType.APP -> ServerType.Stress
+                KitType.DB -> placement.dbNodeCount to placement.selectors.db
+                KitType.APP -> placement.appNodeCount to placement.selectors.app
             }
-        if (clusterState.getHosts(serverType).isNotEmpty()) return false
-        eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        if (poolSize > 0) return false
+        eventBus.emit(
+            Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase(), selector = selector.describe()),
+        )
         return true
     }
 

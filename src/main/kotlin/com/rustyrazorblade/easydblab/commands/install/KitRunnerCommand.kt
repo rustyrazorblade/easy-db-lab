@@ -3,8 +3,10 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
@@ -18,7 +20,10 @@ import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
+import com.rustyrazorblade.easydblab.services.TargetEndpointUnreachableException
+import com.rustyrazorblade.easydblab.services.TargetKitConfigException
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -62,6 +67,7 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
+    private val roleNodes: RoleNodes by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
     private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
@@ -151,8 +157,12 @@ class KitRunnerCommand(
         val storageSize = resolvedArgs["STORAGE_SIZE"] ?: argDefaults["STORAGE_SIZE"] ?: ""
         val base =
             TemplateVariables
-                .from(state = clusterState, kitName = kitName, storageSize = storageSize)
-                .toMap()
+                .from(
+                    state = clusterState,
+                    kitName = kitName,
+                    storageSize = storageSize,
+                    placement = roleNodes.placement(RoleSelectors.from(clusterState)),
+                ).toMap()
         // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
         // to clickhouse/kubeconfig which doesn't exist. Typed steps interpolate ${KUBECONFIG} from
         // these variables too, so they carry the absolute workspace kubeconfig; KitProcessEnvironment
@@ -166,10 +176,29 @@ class KitRunnerCommand(
             config
                 ?.kitRefArg
                 ?.let { resolvedArgs[it.variable]?.takeIf { v -> v.isNotBlank() } }
-                ?.let { kitEndpointResolver.resolveTargetVars(File(workspace, it), clusterState) }
+                ?.let(::resolveTargetVars)
                 .orEmpty()
         return env + ("BACKUP_NAME" to name) + targetVars
     }
+
+    /**
+     * The TARGET_* variables of the kit-ref [target]. A target kit.yaml that does not parse fails
+     * every phase. An endpoint this machine cannot reach fails every phase but `stop` and
+     * `uninstall`, which release this kit whatever state its target is in (a port-forwarded target
+     * stopped first no longer has its Service), and so run without that endpoint's variables.
+     */
+    private fun resolveTargetVars(target: String): Map<String, String> =
+        try {
+            kitEndpointResolver.resolveTargetVars(File(workspace, target), clusterState)
+        } catch (e: TargetKitConfigException) {
+            eventBus.emit(Event.Kit.TargetConfigInvalid(kitName, e.target, e.file.path, e.reason))
+            throw CommandFailedException(e.message.orEmpty(), e)
+        } catch (e: TargetEndpointUnreachableException) {
+            val continues = phaseName in PHASES_THAT_REMOVE_THE_WORKLOAD
+            eventBus.emit(Event.Kit.TargetEndpointUnreachable(kitName, e.target, phaseName, e.endpoint, e.reason, continues))
+            if (!continues) throw CommandFailedException(e.message.orEmpty(), e)
+            emptyMap()
+        }
 
     /**
      * Reads the resolved kit arg values persisted by [BaseInstallCommand.renderAndWrite] at

@@ -64,6 +64,7 @@ import com.rustyrazorblade.easydblab.services.cassandraversions.DefaultVersionSo
 import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
 import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -99,6 +100,8 @@ val servicesModule =
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
         factory { KitStorageResolver(get(), get()) }
+        // Run by `init` on a cluster the user brings; the nodes easy-db-lab builds need no probe.
+        factory { ClientNetworkProbe(get()) }
         // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
         // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
         // so an `init` inside the REPL or the server switches it for the next command. The SSH form's
@@ -163,6 +166,7 @@ val servicesModule =
                 K8sReadOperations::class,
             ),
         )
+        factoryOf(::RoleNodes)
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
         // One classpath scan per process: the set of dashboard files cannot change at runtime.
@@ -202,7 +206,7 @@ val servicesModule =
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
-        singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
+        factory<KitEndpointResolver> { DefaultKitEndpointResolver(get()) }
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
         factory { TenantDirectory(get()) }
@@ -252,6 +256,7 @@ val servicesModule =
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         single<StressJobService> { DefaultStressJobService(get(), get(), get(), get()) }
+        factory { StressTargetResolver() }
         // Explicit single (not singleOf) so the maxConcurrency constructor default applies
         // instead of Koin trying to resolve an Int binding.
         single { HostOperationsService(get()) }

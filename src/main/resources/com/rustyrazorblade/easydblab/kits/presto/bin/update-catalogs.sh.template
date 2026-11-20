@@ -14,8 +14,9 @@ PRESTO_CHART_VERSION="0.4.0"
 edl_collect_catalogs presto "${SCRIPT_DIR}/../catalogs" "$(cd "${SCRIPT_DIR}/../.." && pwd)"
 edl_helm_upgrade_with_catalogs presto prestodb/presto "${PRESTO_CHART_VERSION}" "${SCRIPT_DIR}/../values.yaml" catalog
 
-# The coordinator uses hostPort 8080 and 9090. On a single app node a rolling update deadlocks:
-# the new pod cannot bind the ports while the old pod holds them, so replace the pod instead.
-edl_replace_hostport_pod 'app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator' presto-coordinator
+# A catalog lives in a ConfigMap the coordinator reads only at startup, so restart it to load the
+# change. The pod declares no hostPort, so the rolling restart brings the new pod up beside the old.
+kubectl rollout restart deployment/presto-coordinator --namespace default
+kubectl rollout status deployment/presto-coordinator --namespace default --timeout=180s
 
 echo "Presto catalog update complete."

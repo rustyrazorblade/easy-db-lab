@@ -1,13 +1,17 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
@@ -16,6 +20,23 @@ import java.io.File
  * phase scripts and typed steps get from KitProcessEnvironment.
  */
 class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
+    @Test
+    fun `kit processes get each role's pool from the Kubernetes API and its selector as labels`() {
+        whenever(mockK8sService.nodesMatching(eq(mapOf("type" to "db")))).thenReturn(Result.success(listOf("a", "b", "c")))
+        whenever(mockK8sService.nodesMatching(eq(mapOf("type" to "app")))).thenReturn(Result.success(listOf("d", "e")))
+        writeKitYaml("placed", "name: placed")
+        val outputFile = File(workingDir, "placement.txt")
+        writeScript(
+            "placed",
+            "start",
+            """echo "${'$'}DB_NODE_COUNT ${'$'}APP_NODE_COUNT ${'$'}DB_NODE_LABELS ${'$'}APP_NODE_LABELS ${'$'}CONTROL_NODE_LABELS" > "${outputFile.absolutePath}"""",
+        )
+
+        command("placed", "start").call()
+
+        assertThat(outputFile.readText().trim()).isEqualTo("3 2 type=db type=app type=control")
+    }
+
     @Test
     fun `kit with kit-ref arg and valid target injects TARGET_JDBC_URL into script env`() {
         // Write target kit.yaml with JDBC endpoint
@@ -85,6 +106,98 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
 
         assertThat(exitCode).isEqualTo(0)
         assertThat(outputFile.readText().trim()).isEmpty()
+    }
+
+    private fun benchKitTargeting(target: String) {
+        writeKitYaml(
+            "bench",
+            """
+            name: bench
+            args:
+              - flag: --target
+                variable: TARGET
+                type: kit-ref
+            """.trimIndent(),
+        )
+        writeResolvedArgs("bench", mapOf("TARGET" to target))
+    }
+
+    /** A target whose HTTP endpoint runs on the app role, which the fixture cluster has no node of. */
+    private fun unreachableHttpTarget() {
+        writeKitYaml(
+            "webdb",
+            """
+            name: webdb
+            endpoints:
+              - name: HTTP
+                node-type: app
+                port: 30123
+                type: http
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `a target kit yaml that does not parse fails the phase before it runs, naming the target and the parse problem`() {
+        File(File(workingDir, "broken").also { it.mkdirs() }, Constants.Kit.CONFIG_FILE).writeText("name: [unclosed")
+        benchKitTargeting("broken")
+        val ran = File(workingDir, "ran.txt")
+        writeScript("bench", "start", """touch "${ran.absolutePath}"""")
+
+        val events =
+            captureEvents { assertThatThrownBy { command("bench", "start").call() }.isInstanceOf(CommandFailedException::class.java) }
+
+        val invalid = events.filterIsInstance<Event.Kit.TargetConfigInvalid>().single()
+        assertThat(invalid.kit).isEqualTo("bench")
+        assertThat(invalid.target).isEqualTo("broken")
+        assertThat(invalid.file).isEqualTo(File(File(workingDir, "broken"), Constants.Kit.CONFIG_FILE).path)
+        assertThat(invalid.reason).isNotBlank()
+        assertThat(invalid.isError()).isTrue()
+        // The user sees this one line and no stack trace: the parser's message can span lines.
+        assertThat(invalid.toDisplayString()).doesNotContain("\n")
+        assertThat(ran).doesNotExist()
+    }
+
+    @Test
+    fun `a target HTTP endpoint this machine cannot reach fails start before it runs, naming the endpoint and why`() {
+        unreachableHttpTarget()
+        benchKitTargeting("webdb")
+        val ran = File(workingDir, "ran.txt")
+        writeScript("bench", "start", """touch "${ran.absolutePath}"""")
+
+        val events =
+            captureEvents { assertThatThrownBy { command("bench", "start").call() }.isInstanceOf(CommandFailedException::class.java) }
+
+        val unreachable = events.filterIsInstance<Event.Kit.TargetEndpointUnreachable>().single()
+        assertThat(unreachable).isEqualTo(
+            Event.Kit.TargetEndpointUnreachable(
+                kit = "bench",
+                target = "webdb",
+                phase = "start",
+                endpoint = "HTTP",
+                reason = "No app node in cluster state runs NodePort 30123. Please ensure the environment is running.",
+                continued = false,
+            ),
+        )
+        assertThat(unreachable.isError()).isTrue()
+        assertThat(unreachable.toDisplayString()).contains("cannot reach the 'HTTP' endpoint of target 'webdb'")
+        assertThat(ran).doesNotExist()
+    }
+
+    @Test
+    fun `stop runs without a target endpoint this machine cannot reach, and says so`() {
+        unreachableHttpTarget()
+        benchKitTargeting("webdb")
+        val ran = File(workingDir, "ran.txt")
+        writeScript("bench", "stop", """echo "url=${'$'}{TARGET_HTTP_URL:-}" > "${ran.absolutePath}"""")
+
+        val events = captureEvents { assertThat(command("bench", "stop").call()).isEqualTo(0) }
+
+        val unreachable = events.filterIsInstance<Event.Kit.TargetEndpointUnreachable>().single()
+        assertThat(unreachable.continued).isTrue()
+        assertThat(unreachable.isError()).isFalse()
+        assertThat(unreachable.toDisplayString()).contains("stop continues without the 'HTTP' endpoint of target 'webdb'")
+        assertThat(ran.readText().trim()).isEqualTo("url=")
     }
 
     // -------------------------------------------------------------------------

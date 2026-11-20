@@ -4,12 +4,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.ImagePullFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -20,8 +20,9 @@ import picocli.CommandLine.Parameters
  * Start a cassandra-easy-stress job on Kubernetes.
  *
  * This command creates a K8s Job that runs the cassandra-easy-stress container
- * to stress test a Cassandra cluster. The job runs on stress nodes and connects
- * to Cassandra nodes in the cluster.
+ * to stress test Cassandra. The job runs on nodes matching the app role's selector and
+ * connects to the running cassandra-pods kit, else the VM db hosts ([StressTargetResolver]).
+ * No control host is needed.
  *
  * Everything after `--` is passed directly to cassandra-easy-stress, whose own flags (`-d`,
  * `--threads`) are not options of this command. Without the `--`, picocli rejects them.
@@ -41,6 +42,7 @@ import picocli.CommandLine.Parameters
 class StressStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val stressJobService: StressJobService by inject()
+    private val stressTargetResolver: StressTargetResolver by inject()
 
     @Option(
         names = ["--name", "-n"],
@@ -67,13 +69,9 @@ class StressStart : PicoBaseCommand() {
     var stressArgs: List<String> = emptyList()
 
     override fun execute() {
-        val cassandraHosts = clusterState.hosts[ServerType.Cassandra]
-        if (cassandraHosts.isNullOrEmpty()) {
-            error("No Cassandra nodes found. Please ensure the environment is running.")
-        }
-
-        val contactPoints = cassandraHosts.first().privateIp
-        log.info { "Cassandra contact point: $contactPoints" }
+        val target = stressTargetResolver.resolve(clusterState, context.workingDirectory)
+        val contactPoints = target.contactPoint
+        log.info { "Cassandra contact point: $contactPoints:${target.port}, datacenter ${target.datacenter}" }
 
         // Increment counter for port and auto-naming
         val counter = clusterStateManager.incrementStressJobCounter()
@@ -101,7 +99,7 @@ class StressStart : PicoBaseCommand() {
                             jobName = fullJobName,
                             image = image,
                             args = args,
-                            contactPoints = contactPoints,
+                            target = target,
                             tags = parsedTags,
                             promPort = promPort,
                         ),

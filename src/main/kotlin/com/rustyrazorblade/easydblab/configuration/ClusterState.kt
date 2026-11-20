@@ -406,6 +406,17 @@ data class ClusterState(
     // The effective capability set `init` recorded (declared or probed, plus overrides). Null in a
     // state written before capabilities were recorded, which reads as AWS (NodeCapabilities.from).
     var capabilities: Set<NodeCapability>? = null,
+    // Where each role's pods run. Null in a state written before it was recorded, or by an
+    // environment easy-db-lab builds, which reads as one type=<role> label per node (RoleSelectors.from).
+    var roleSelectors: RoleSelectors? = null,
+    // The networks database kits accept clients from, as CIDR strings. Null in a state written
+    // before it was recorded, or by an environment easy-db-lab builds, which reads as the VPC CIDR
+    // and the K3s cluster CIDR (ClientNetworks.from).
+    var clientNetworks: List<String>? = null,
+    // The networks the user added with `init --client-network`, as CIDR strings. On the nodes
+    // easy-db-lab builds they follow the VPC CIDR and the cluster CIDR (ClientNetworks.from); on
+    // a cluster the user brings, the probe has already put them in clientNetworks.
+    var extraClientNetworks: List<String> = emptyList(),
     // How the CLI reaches cluster Services; a state that records none predates the field and reads as Socks
     var exposure: Exposure = Exposure.Socks,
     // The execution environment `init` recorded; a state that records none predates the field and reads as EC2 + K3s

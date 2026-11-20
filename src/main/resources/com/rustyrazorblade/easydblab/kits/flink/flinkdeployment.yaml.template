@@ -21,8 +21,7 @@ spec:
   # podTemplate applies to BOTH JobManager and TaskManager pods unless overridden per role.
   podTemplate:
     spec:
-      nodeSelector:
-        type: app
+      nodeSelector: __APP_NODE_SELECTOR__
       # Spread Flink pods across app nodes where capacity allows. The metrics port is a container
       # port only (no host port): pod discovery scrapes each pod's IP, so a JobManager and a
       # TaskManager can share one app node.

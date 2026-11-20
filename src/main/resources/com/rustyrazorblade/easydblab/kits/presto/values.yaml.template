@@ -2,12 +2,10 @@ server:
   workers: __WORKERS__
 
 coordinator:
-  nodeSelector:
-    type: app
+  nodeSelector: __APP_NODE_SELECTOR__
 
 worker:
-  nodeSelector:
-    type: app
+  nodeSelector: __APP_NODE_SELECTOR__
   replicas: __WORKERS__
 
 metrics:

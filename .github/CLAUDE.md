@@ -34,3 +34,18 @@ The image-assembly files live in `.github/cassandra-image/`:
 User-facing usage and consumption are documented in
 `docs/development/building-cassandra-refs.md`; the design rationale lives in the
 `cassandra-branch-publish` OpenSpec change.
+
+## Publishing the Pyroscope Java Agent Image
+
+The `publish-pyroscope-agent` job in `publish-container.yml` builds
+`docker/pyroscope-java-agent/` and pushes it to
+`ghcr.io/rustyrazorblade/pyroscope-java-agent:<version>`. It never overwrites a
+published tag. `.github/pyroscope-agent/image-published.sh` makes that decision:
+- a tag that inspects is skipped;
+- only the registry's `not found` leads to a push;
+- any other inspect error fails the job.
+
+It is unit-tested with a stubbed `docker` by `image-published.test.sh` (`./gradlew testPyroscopeAgentPublished`, part of `testScripts`).
+
+Step outputs and event values reach `run:` scripts only through `env:`, never
+as `${{ }}` inside the script.

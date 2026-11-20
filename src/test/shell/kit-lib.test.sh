@@ -32,14 +32,24 @@ start_test() {
   current_test="$1"
   tests_run=$((tests_run + 1))
   reset_kit_stub_state
+  unset ROLE_VARS
 }
 
-# Runs shell code $1 after sourcing the library, under set -euo pipefail. Sets rc, and out and err
-# to what it printed.
+# The role variables of an AWS cluster, as easy-db-lab sets them for every kit process. A case
+# overrides them by setting ROLE_VARS before run_lib, e.g. to the empty values of an unconstrained
+# cluster.
+AWS_ROLE_VARS=(APP_NODE_LABELS=type=app 'APP_NODE_SELECTOR={"type":"app"}' CONTROL_NODE_LABELS=type=control)
+UNCONSTRAINED_ROLE_VARS=(APP_NODE_LABELS= 'APP_NODE_SELECTOR={}' CONTROL_NODE_LABELS=)
+
+# Runs shell code $1 after sourcing the library, under set -euo pipefail, with the role variables
+# of ROLE_VARS (the AWS ones when unset). Sets rc, and out and err to what it printed.
 run_lib() {
+  local roles=("${AWS_ROLE_VARS[@]}")
+  [ -z "${ROLE_VARS+x}" ] || roles=("${ROLE_VARS[@]}")
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" KIT_NAME=bench-ch KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
+      env PATH="${WORK}/stubs:${PATH}" KIT_NAME=bench-ch KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
+        "${roles[@]}" \
         EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 "${BASH}" -c "set -euo pipefail; . \"\${EDL_KIT_LIB}\"; $1"
   ) > "${WORK}/out" 2> "${WORK}/err"
   rc=$?
@@ -95,6 +105,87 @@ test_overrides_reject_names_that_are_not_dns_names() {
   [ "${rc}" -ne 0 ] || fail "accepted a bad container name"
   run_lib "edl_pod_overrides edl-q-1 'edl' run"
   [ "${rc}" -ne 0 ] || fail "accepted a relative mount path"
+}
+
+test_a_mapped_app_role_is_checked_by_its_own_selector() {
+  start_test "mapped app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients 'APP_NODE_SELECTOR={"pool":"clients"}' CONTROL_NODE_LABELS=)
+  run_lib 'edl_require_app_node sysbench'
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no matching node"
+  [ "${err}" = "sysbench needs an app node (pool=clients); this cluster has none" ] || fail "message: ${err}"
+  grep -Fqx 'get nodes -l pool=clients -o name' <<< "$(calls)" || fail "did not read the mapped nodes: $(calls)"
+}
+
+test_an_unconstrained_app_role_accepts_any_node() {
+  start_test "unconstrained app role, one node"
+  ROLE_VARS=("${UNCONSTRAINED_ROLE_VARS[@]}")
+  echo "node/k3d-0" > "${STUB_STATE}/all-nodes"
+  run_lib 'edl_require_app_node sysbench'
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}: ${err}"
+  grep -Fqx 'get nodes -o name' <<< "$(calls)" || fail "did not list every node: $(calls)"
+  if grep -q -- ' -l ' <<< "$(calls)"; then fail "passed a label selector: $(calls)"; fi
+}
+
+test_an_unconstrained_app_role_on_an_empty_cluster_says_any_node() {
+  start_test "unconstrained app role, no node"
+  ROLE_VARS=("${UNCONSTRAINED_ROLE_VARS[@]}")
+  run_lib 'edl_require_app_node sysbench'
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no node"
+  [ "${err}" = "sysbench needs an app node (any node); this cluster has none" ] || fail "message: ${err}"
+}
+
+test_overrides_with_an_unconstrained_app_role_have_an_empty_node_selector() {
+  start_test "overrides, unconstrained app role"
+  ROLE_VARS=("${UNCONSTRAINED_ROLE_VARS[@]}")
+  run_lib 'edl_pod_overrides; edl_pod_overrides edl-q-1 /edl run'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  local line
+  while read -r line; do
+    [ "$(jq -c '.spec.nodeSelector' <<< "${line}")" = '{}' ] || fail "nodeSelector not empty: ${line}"
+  done <<< "${out}"
+  [ "$(wc -l <<< "${out}" | tr -d ' ')" = 2 ] || fail "not two overrides: ${out}"
+}
+
+test_overrides_with_no_app_selector_set_are_unconstrained() {
+  start_test "overrides, APP_NODE_SELECTOR unset"
+  ROLE_VARS=(CONTROL_NODE_LABELS=)
+  run_lib 'unset APP_NODE_SELECTOR; edl_pod_overrides'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc} under set -u: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{}' ] || fail "nodeSelector not empty: ${out}"
+}
+
+test_overrides_use_a_mapped_app_selector() {
+  start_test "overrides, mapped app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients 'APP_NODE_SELECTOR={"pool":"clients"}')
+  run_lib 'edl_pod_overrides'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{"pool":"clients"}' ] || fail "wrong nodeSelector: ${out}"
+}
+
+
+test_a_multi_label_app_role_is_checked_by_every_label() {
+  start_test "multi-label app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients,zone=a 'APP_NODE_SELECTOR={"pool":"clients","zone":"a"}' CONTROL_NODE_LABELS=)
+  run_lib 'edl_require_app_node sysbench'
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no matching node"
+  [ "${err}" = "sysbench needs an app node (pool=clients,zone=a); this cluster has none" ] || fail "message: ${err}"
+  grep -Fqx 'get nodes -l pool=clients,zone=a -o name' <<< "$(calls)" || fail "did not read the mapped nodes: $(calls)"
+}
+
+test_overrides_use_every_label_of_a_multi_label_app_selector() {
+  start_test "overrides, multi-label app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients,zone=a 'APP_NODE_SELECTOR={"pool":"clients","zone":"a"}')
+  run_lib 'edl_pod_overrides edl-q-1 /edl run'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{"pool":"clients","zone":"a"}' ] || fail "wrong nodeSelector: ${out}"
+}
+
+test_overrides_with_an_empty_app_selector_string_are_unconstrained() {
+  start_test "overrides, APP_NODE_SELECTOR empty"
+  ROLE_VARS=(APP_NODE_LABELS= APP_NODE_SELECTOR= CONTROL_NODE_LABELS=)
+  run_lib 'edl_pod_overrides'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{}' ] || fail "nodeSelector not empty: ${out}"
 }
 
 test_resource_names_end_in_a_timestamp_and_labels_name_kit_and_role() {
@@ -325,6 +416,38 @@ test_every_push_goes_to_the_control_nodes_core_pod() {
     fail "did not select the core pod by the control node: $(calls)"
 }
 
+test_the_control_node_is_found_by_the_control_selector() {
+  start_test "control node by selector"
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fq -- 'get nodes --request-timeout=5s -l type=control -o' <<< "$(calls)" ||
+    fail "did not look the control node up by CONTROL_NODE_LABELS: $(calls)"
+  if grep -q 'control-plane' <<< "$(calls)"; then fail "named the control-plane label: $(calls)"; fi
+}
+
+# With no control selector the push picks the first Running core pod by name, the same on every
+# push, so one gauge stays one series.
+test_with_no_control_selector_the_first_running_core_pod_by_name_receives_the_push() {
+  start_test "no control selector"
+  ROLE_VARS=("${UNCONSTRAINED_ROLE_VARS[@]}")
+  printf '%s\n' "otel-collector-zz n2" "otel-collector-aa n1 2026-11-14T00:00:00Z" "otel-collector-mm n3" > "${STUB_STATE}/core-pods"
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-mm:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+    fail "not sent to the first Running core pod by name: $(cat "${STUB_STATE}/curl.1" 2>/dev/null) ${err}"
+  if grep -q '^get nodes' <<< "$(calls)"; then fail "looked up a control node with no control selector: $(calls)"; fi
+}
+
+test_a_control_selector_matching_no_node_falls_back_to_the_first_core_pod() {
+  start_test "control selector matches no node"
+  printf '' > "${STUB_STATE}/control-nodes"
+  printf '%s\n' "otel-collector-b n2" "otel-collector-a n1" > "${STUB_STATE}/core-pods"
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-a:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+    fail "did not fall back to the first core pod by name: $(cat "${STUB_STATE}/curl.1" 2>/dev/null) ${err}"
+}
+
 test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl() {
   start_test "no core pod on the control node"
   echo "otel-collector-d0 db0" > "${STUB_STATE}/core-pods"
@@ -342,9 +465,8 @@ test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl() {
 test_a_push_against_a_hung_api_server_is_bounded_and_only_warns() {
   start_test "hung API server"
   echo nodes > "${STUB_STATE}/api-hang"
-  local started=${SECONDS}
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
-  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ ! -e "${STUB_STATE}/api-hung" ] || fail "the push waited on the hung API server: $(cat "${STUB_STATE}/api-hung")"
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
   [ "${err}" = "warning: could not push sysbench gauges: could not find the control node; the dashboard will not show this run" ] ||
@@ -355,9 +477,8 @@ test_a_push_against_a_hung_api_server_is_bounded_and_only_warns() {
 test_a_push_whose_core_pod_lookup_hangs_is_bounded_and_only_warns() {
   start_test "hung core pod lookup"
   echo pods > "${STUB_STATE}/api-hang"
-  local started=${SECONDS}
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
-  [ $((SECONDS - started)) -lt 3 ] || fail "the push waited on the hung API server"
+  [ ! -e "${STUB_STATE}/api-hung" ] || fail "the push waited on the hung API server: $(cat "${STUB_STATE}/api-hung")"
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
   [ "${err}" = "warning: could not push sysbench gauges: could not list the otel-collector pods on control node control0; the dashboard will not show this run" ] ||
@@ -477,31 +598,42 @@ test_a_push_leaves_the_callers_traps_as_they_were() {
   [ -z "${out}" ] || fail "left a trap set: ${out}"
 }
 
-test_pyroscope_patch_rejects_a_port_that_is_not_a_number() {
-  start_test "pyroscope patch with a bad port"
-  local bad
-  for bad in 8080x "" -1; do
-    : > "${STUB_STATE}/kubectl.calls"
-    run_lib "edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080 \"${bad}\""
-    [ "${rc}" -ne 0 ] || fail "port '${bad}' exited 0"
-    [ "${err}" = "edl_patch_pyroscope: '${bad}' is not a port number" ] || fail "message for '${bad}': ${err}"
-    grep -q "patch" <<< "$(calls)" && fail "patched with port '${bad}': $(calls)"
-  done
+test_pyroscope_patch_takes_exactly_five_arguments() {
+  start_test "pyroscope patch with a port argument"
+  : > "${STUB_STATE}/kubectl.calls"
+  run_lib "PYROSCOPE_AGENT_IMAGE=agent:1 edl_patch_pyroscope presto-coordinator coordinator presto lab-1 coordinator 8080"
+  [ "${rc}" -ne 0 ] || fail "a sixth argument exited 0"
+  [ "${err}" = "edl_patch_pyroscope: expected 5 arguments, got 6" ] || fail "message: ${err}"
+  grep -q "patch" <<< "$(calls)" && fail "patched with a port argument: $(calls)"
 }
 
-test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options() {
+test_pyroscope_patch_needs_the_agent_image() {
+  start_test "pyroscope patch without an agent image"
+  : > "${STUB_STATE}/kubectl.calls"
+  run_lib "PYROSCOPE_URL=http://p:4040 TENANT=t edl_patch_pyroscope trino-worker trino-worker trino lab-1 worker"
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no PYROSCOPE_AGENT_IMAGE"
+  grep -qF "PYROSCOPE_AGENT_IMAGE" <<< "${err}" || fail "message does not name PYROSCOPE_AGENT_IMAGE: ${err}"
+  grep -q "patch" <<< "$(calls)" && fail "patched without an agent image: $(calls)"
+}
+
+test_pyroscope_patch_declares_no_port_and_escapes_the_agent_options() {
   start_test "pyroscope patch body"
-  run_lib "PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator 8080 9090"
+  run_lib "PYROSCOPE_AGENT_IMAGE=agent:1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator"
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
   local patch
   patch="$(sed -n "s/^patch deployment trino-coordinator --namespace default --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
   [ -n "${patch}" ] || { fail "no patch call: $(calls)"; return; }
-  [ "$(jq -c "[.spec.template.spec.containers[0].ports[] | [.containerPort, .hostPort]]" <<< "${patch}")" = "[[8080,8080],[9090,9090]]" ] ||
-    fail "ports: $(jq -c "..containers[0].ports" <<< "${patch}")"
+  [ "$(jq -c ".spec.template.spec.containers[0] | has(\"ports\")" <<< "${patch}")" = "false" ] ||
+    fail "the patch declares ports: $(jq -c ".spec.template.spec.containers[0].ports" <<< "${patch}")"
   jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.tenant.id=a\"b " ||
     fail "the tenant was not carried through escaping: ${patch}"
   jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-Dpyroscope.labels=cluster=lab-1,component=coordinator" ||
     fail "labels: ${patch}"
+  jq -r ".spec.template.spec.containers[0].env[0].value" <<< "${patch}" | grep -qF -- "-javaagent:/edl/agents/pyroscope.jar " ||
+    fail "agent path: ${patch}"
+  [ "$(jq -c ".spec.template.spec.initContainers[0] | [.image, .command[-1]]" <<< "${patch}")" = '["agent:1","/agents/pyroscope.jar"]' ] ||
+    fail "init container: ${patch}"
+  grep -q -e hostPath -e /usr/local/pyroscope <<< "${patch}" && fail "the agent comes from a host path: ${patch}"
 }
 
 test_the_cluster_label_fails_when_cluster_config_has_none() {
@@ -543,6 +675,15 @@ test_an_app_node_passes
 test_overrides_without_a_configmap_pin_to_app_nodes
 test_overrides_with_a_configmap_mount_it_in_the_container
 test_overrides_reject_names_that_are_not_dns_names
+test_a_mapped_app_role_is_checked_by_its_own_selector
+test_an_unconstrained_app_role_accepts_any_node
+test_an_unconstrained_app_role_on_an_empty_cluster_says_any_node
+test_overrides_with_an_unconstrained_app_role_have_an_empty_node_selector
+test_overrides_with_no_app_selector_set_are_unconstrained
+test_overrides_use_a_mapped_app_selector
+test_a_multi_label_app_role_is_checked_by_every_label
+test_overrides_use_every_label_of_a_multi_label_app_selector
+test_overrides_with_an_empty_app_selector_string_are_unconstrained
 test_resource_names_end_in_a_timestamp_and_labels_name_kit_and_role
 test_configmap_missing_file_calls_no_create
 test_configmap_empty_file_fails
@@ -562,6 +703,9 @@ test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit
 test_a_failed_push_returns_0
 test_a_push_whose_proxy_never_serves_returns_0_without_curl
 test_every_push_goes_to_the_control_nodes_core_pod
+test_the_control_node_is_found_by_the_control_selector
+test_with_no_control_selector_the_first_running_core_pod_by_name_receives_the_push
+test_a_control_selector_matching_no_node_falls_back_to_the_first_core_pod
 test_a_push_with_no_core_pod_on_the_control_node_warns_without_curl
 test_a_push_against_a_hung_api_server_is_bounded_and_only_warns
 test_a_push_whose_core_pod_lookup_hangs_is_bounded_and_only_warns
@@ -575,8 +719,9 @@ test_a_push_with_only_a_terminating_core_pod_warns_without_curl
 test_a_push_leaves_the_callers_traps_as_they_were
 test_sourcing_changes_no_option_and_defines_only_edl_names
 test_a_script_run_outside_easy_db_lab_says_so
-test_pyroscope_patch_rejects_a_port_that_is_not_a_number
-test_pyroscope_patch_gives_each_port_a_hostport_and_escapes_the_agent_options
+test_pyroscope_patch_takes_exactly_five_arguments
+test_pyroscope_patch_needs_the_agent_image
+test_pyroscope_patch_declares_no_port_and_escapes_the_agent_options
 test_the_cluster_label_fails_when_cluster_config_has_none
 
 echo "kit-lib (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"

@@ -5,7 +5,7 @@ MBeans and has no metrics endpoint: transaction, page cache, Bolt, query and sto
 Enterprise-only. The only metrics available are the JVM, HTTP-server and log metrics the
 OpenTelemetry Java agent and the node collector produce, listed below.
 
-The agent (`/usr/local/otel/opentelemetry-javaagent.jar`, mounted from the host) is attached to the
+The agent (`/edl/agents/opentelemetry-javaagent.jar`, copied in by an init container) is attached to the
 Neo4j JVM and pushes OTLP to the collector on the pod's own node. `OTEL_SERVICE_NAME=neo4j` makes
 every series arrive with `job="neo4j"` and `service_name="neo4j"`. Every series also carries
 `cluster`, `host_name` (the db node, e.g. `db0`), and `instance` / `service_instance_id` (a UUID

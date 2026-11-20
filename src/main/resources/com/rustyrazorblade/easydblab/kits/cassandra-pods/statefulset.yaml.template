@@ -23,8 +23,7 @@ spec:
         easydblab/kit: cassandra-pods
     spec:
       terminationGracePeriodSeconds: 120
-      nodeSelector:
-        type: db
+      nodeSelector: __DB_NODE_SELECTOR__
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -33,15 +32,23 @@ spec:
                 matchLabels:
                   app: cassandra-pods
       # The OpenTelemetry Java agent comes from a pinned, multi-arch image, not from a host path,
-      # so this works on any node. The image tag is stamped from the build's agent version.
+      # so this works on any node. The image is the one Kotlin uses (JavaAgent.OTEL).
       initContainers:
         - name: otel-agent
-          image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:@OTEL_AGENT_VERSION@
+          image: "__OTEL_AGENT_IMAGE__"
           imagePullPolicy: IfNotPresent
-          command: ["cp", "/javaagent.jar", "/otel-agent/opentelemetry-javaagent.jar"]
+          command: ["cp", "/javaagent.jar", "/agents/opentelemetry-javaagent.jar"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
-            - name: otel-agent
-              mountPath: /otel-agent
+            - name: java-agents
+              mountPath: /agents
       containers:
         - name: cassandra
           # start resolves --image (or cassandra:<--version>) and writes the resolved manifest.
@@ -119,7 +126,7 @@ spec:
             # nodetool does not load the agent.
             - name: JVM_EXTRA_OPTS
               value: >-
-                -javaagent:/otel-agent/opentelemetry-javaagent.jar
+                -javaagent:/edl/agents/opentelemetry-javaagent.jar
                 -Dotel.jmx.config=/etc/edl-jmx/cassandra-jmx-rules.yaml
                 -Dotel.jmx.discovery.delay=5000
                 -Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true
@@ -169,14 +176,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/cassandra
-            - name: otel-agent
-              mountPath: /otel-agent
+            - name: java-agents
+              mountPath: /edl/agents
               readOnly: true
             - name: jmx-rules
               mountPath: /etc/edl-jmx
               readOnly: true
       volumes:
-        - name: otel-agent
+        - name: java-agents
           emptyDir: {}
         - name: jmx-rules
           configMap:

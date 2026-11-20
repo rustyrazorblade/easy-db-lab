@@ -4,15 +4,14 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
- * [StressCluster.from] reads the facts a stress Job is built from out of the cluster state, and
- * refuses a state that cannot say where the Job runs.
+ * [StressCluster.from] reads the facts a stress Job is built from out of the cluster state.
  */
 class StressClusterTest {
     private val controlHost =
@@ -31,16 +30,16 @@ class StressClusterTest {
     )
 
     @Test
-    fun `reads the region and the cluster label`() {
+    fun `reads the cluster label, the tenant and the app role selector`() {
         val cluster = StressCluster.from(state())
 
         assertThat(cluster)
             .isEqualTo(
                 StressCluster(
-                    region = "eu-west-1",
                     clusterName = "lab-abc",
                     tenant = "default",
                     telemetryRedirect = null,
+                    appSelector = RoleSelectors.OWNED_NODES.app,
                 ),
             )
     }
@@ -53,11 +52,5 @@ class StressClusterTest {
 
         assertThat(cluster.tenant).isEqualTo("acme")
         assertThat(cluster.telemetryRedirect).isEqualTo(redirect)
-    }
-
-    @Test
-    fun `fails naming the fix when the state has no infrastructure`() {
-        assertThatThrownBy { StressCluster.from(state(infrastructure = null)) }
-            .hasMessage("Infrastructure state missing region. Re-provision the cluster to fix this.")
     }
 }

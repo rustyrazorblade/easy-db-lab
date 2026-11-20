@@ -162,6 +162,8 @@ determined fails at `init`, before any instance is created.
 | `--kit-storage-size` | Default size of a kit claim, a positive Kubernetes quantity such as `500Gi`; a kit's `--storage-size` overrides it | `10Ti` on local volumes, `100Gi` on a kit StorageClass |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
+| `--role-nodes` | Nodes one role's pods run on, as `<role>=<key=value>[,<key=value>...]` with role `db`, `app` or `control`; repeatable, once per role. Replaces that role's default node selector, `type=<role>` on the nodes easy-db-lab builds. `<role>=` (no labels) lets that role's pods run on any node. A malformed mapping fails `init` before anything is written. See [Role node selectors](#role-node-selectors) | (`type=<role>`) |
+| `--client-network` | A network database kits accept passwordless clients from, as an IPv4 CIDR or address (a bare address means `/32`); repeatable. Added after the VPC CIDR and the K3s cluster CIDR (`10.224.0.0/12`). A malformed value, one with host bits set, or a `/0` (every address would get passwordless access) fails `init` before anything is written; a `/1` to `/7` is recorded with a warning. `init` lists every network the kits will accept. On a cluster whose nodes report no pod CIDR (EKS VPC-CNI, where pods take node-network addresses) only the node addresses are found, and `init` warns: give the VPC CIDR here so pod clients are accepted. On a cluster easy-db-lab did not build, the probe also trusts every node's InternalIP as a `/32`, including nodes in no role, because NodePort traffic can be SNATed from any node. In a local workspace (`--local`) these values are the only client networks: give the Docker network and the pod network, or kits will not install | - |
 | `--up` | Auto-provision after init | false |
 | `--quiet`, `-q` | With `--up`: run `up --quiet`. Refused without `--up` | false |
 | `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
@@ -174,7 +176,7 @@ determined fails at `init`, before any instance is created.
 none needs to exist. It records the counts and observability options you give (`--db.count`,
 `--app.count`, `--tenant`, `--tag`, `--node-label`, `--capability`), Flannel, the Docker daemon's CPU
 architecture for every node group (from `docker info`, not the JVM's, which differs under
-Rosetta, so `init --local` needs Docker running: when Docker does not answer it fails and names the error, and writes nothing), and no region. The cluster's API and Services are reached from
+Rosetta, so `init --local` needs Docker running: when Docker does not answer it fails and names the error, and writes nothing), and no region. It records only the `--client-network` values as client networks (the Docker and pod networks are not known before the cluster exists); with none, `init` warns and kits will not install until you run `init` again with them. The cluster's API and Services are reached from
 this machine with no SOCKS tunnel: `init` writes `EDL_NETWORK_MODE=direct` to the workspace's
 `.socks5-proxy.env`, every command writes it again before it runs, and `socks start` reports that
 no tunnel is needed.
@@ -216,6 +218,18 @@ Absent capabilities:
 
 The set is published as the `capabilities` key of the `cluster-config` ConfigMap, kit processes
 get `EDL_NODE_SSH` from `node-ssh`, and `status` lists every capability.
+
+#### Role node selectors
+
+Each role (`db`, `app`, `control`) has a node selector that decides where its kit and stress pods
+run. On the nodes easy-db-lab builds it is `type=<role>`, the label `up` gives each node.
+`--role-nodes` replaces one role's selector, for example `--role-nodes app=pool=bench`, and
+`--role-nodes app=` removes it, so that role's pods run on any node. A label may have an empty
+value, as Kubernetes allows: `--role-nodes db=dedicated=` selects nodes whose `dedicated` label is
+empty. Kits receive the selectors as
+`DB_NODE_LABELS`, `APP_NODE_LABELS` and `CONTROL_NODE_LABELS` (label selectors, empty when
+unconstrained) and in templates as `__DB_NODE_SELECTOR__` and `__APP_NODE_SELECTOR__` (JSON maps,
+`{}` when unconstrained). `init` records them in `state.json`.
 
 ### setup-instances
 
@@ -829,6 +843,8 @@ easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
 ```
 
 **Aliases:** `run`
+
+The stress pod runs in the Kubernetes pod network on the app role's nodes. Earlier releases ran it with `hostNetwork`, on the node's own network stack. The pod network adds the CNI datapath (and on a NodePort target, the Service hop) to every request, so throughput and latency from this release are **not comparable** with stress results recorded before the change. Compare runs made on the same release.
 
 `--image` runs a custom stress image. An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) pulls through the kubelet ECR credential provider that every node runs, with the node's instance role. easy-db-lab creates no image pull secret. If the image cannot be pulled, `stress start` fails at once and names the pod, the image and the registry's message.
 

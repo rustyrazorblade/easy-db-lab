@@ -29,14 +29,6 @@ spec:
           labels:
             app.kubernetes.io/instance: clickhouse
         spec:
-          affinity:
-            nodeAffinity:
-              # Run Keeper on db nodes co-located with ClickHouse so the quorum
-              # is on the same machines as the data it coordinates.
-              requiredDuringSchedulingIgnoredDuringExecution:
-                nodeSelectorTerms:
-                  - matchExpressions:
-                      - key: type
-                        operator: In
-                        values:
-                          - db
+          # Run Keeper on db nodes co-located with ClickHouse so the quorum is on the same
+          # machines as the data it coordinates.
+          nodeSelector: __DB_NODE_SELECTOR__

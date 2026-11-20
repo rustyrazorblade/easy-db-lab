@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
@@ -16,14 +18,21 @@ import java.io.File
  *
  * `KIT_STORAGE_CLASS` and `KIT_STORAGE_SIZE` come from the environment's [KitStorage]: a kit's claims
  * name the class, and a kit's size arg defaults to `${KIT_STORAGE_SIZE}`.
+ *
+ * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `DB_AFFINITY`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
+ * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
+ * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
+ *
+ * `CLIENT_NETWORKS_JSON` (a JSON list of CIDRs) and `CLIENT_NETWORKS_HBA_JSON` (one `pg_hba` trust
+ * line per CIDR) come from [clientNetworks].
  */
 data class TemplateVariables(
     val clusterName: String,
     val bucketName: String,
     val accountBucket: String,
     val region: String,
-    val dbNodeCount: Int,
-    val appNodeCount: Int,
+    val placement: KitPlacementVariables,
+    val clientNetworks: ClientNetworks,
     val controlHostPublic: String,
     val controlHostPrivate: String,
     val kitStorageClass: String,
@@ -45,8 +54,6 @@ data class TemplateVariables(
             "BUCKET_NAME" to bucketName,
             "ACCOUNT_BUCKET" to accountBucket,
             "REGION" to region,
-            "DB_NODE_COUNT" to dbNodeCount.toString(),
-            "APP_NODE_COUNT" to appNodeCount.toString(),
             "CONTROL_HOST" to controlHostPublic,
             "CONTROL_HOST_PUBLIC" to controlHostPublic,
             "CONTROL_HOST_PRIVATE" to controlHostPrivate,
@@ -68,7 +75,20 @@ data class TemplateVariables(
             "OTEL_COLLECTOR_HOST" to OtelEndpoints.serviceHost(),
             "OTEL_OTLP_HTTP_ENDPOINT" to OtelEndpoints.otlpHttpEndpoint(),
             "OTEL_OTLP_GRPC_ENDPOINT" to OtelEndpoints.otlpGrpcEndpoint(),
-        )
+            // The Java agent images init containers copy agents from: one source for kit templates
+            // and Kotlin (JavaAgent), pinned to the versions the AMI ships.
+            "OTEL_AGENT_IMAGE" to JavaAgent.OTEL.image,
+            "PYROSCOPE_AGENT_IMAGE" to JavaAgent.PYROSCOPE.image,
+            // The multi-arch sysbench image the sysbench kit's pods run.
+            "SYSBENCH_IMAGE" to Constants.Kit.Sysbench.IMAGE,
+        ) +
+            // Role selectors and pools: where each role's pods go and how many nodes it has.
+            placement.toMap() +
+            // The networks a passwordless database kit accepts clients from.
+            mapOf(
+                "CLIENT_NETWORKS_JSON" to clientNetworks.toJson(),
+                "CLIENT_NETWORKS_HBA_JSON" to clientNetworks.toHbaJson(),
+            )
 
     companion object {
         /**
@@ -103,6 +123,17 @@ data class TemplateVariables(
                 "OTEL_COLLECTOR_HOST",
                 "OTEL_OTLP_HTTP_ENDPOINT",
                 "OTEL_OTLP_GRPC_ENDPOINT",
+                "OTEL_AGENT_IMAGE",
+                "PYROSCOPE_AGENT_IMAGE",
+                "SYSBENCH_IMAGE",
+                "DB_NODE_SELECTOR",
+                "DB_AFFINITY",
+                "APP_NODE_SELECTOR",
+                "DB_NODE_LABELS",
+                "APP_NODE_LABELS",
+                "CONTROL_NODE_LABELS",
+                "CLIENT_NETWORKS_JSON",
+                "CLIENT_NETWORKS_HBA_JSON",
                 "BACKUP_NAME",
             )
 
@@ -118,6 +149,7 @@ data class TemplateVariables(
             state: ClusterState,
             kitName: String,
             storageSize: String,
+            placement: KitPlacementVariables = KitPlacementVariables.fromRecordedHosts(state),
         ): TemplateVariables {
             val controlHost = state.getControlHost()
             val dbNodes = state.hosts[ServerType.Cassandra] ?: emptyList()
@@ -129,8 +161,8 @@ data class TemplateVariables(
                 bucketName = state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
                 accountBucket = state.s3Bucket.orEmpty(),
                 region = region,
-                dbNodeCount = dbNodes.size,
-                appNodeCount = appNodes.size,
+                placement = placement,
+                clientNetworks = ClientNetworks.from(state),
                 controlHostPublic = controlHost?.publicIp.orEmpty(),
                 controlHostPrivate = controlHost?.privateIp.orEmpty(),
                 // No kit name, no kit: a blank class rather than the class of a kit named "".

@@ -116,6 +116,8 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 | 30988 | postgres-postgis | metrics (NodePort → 9187) |
 | 30434 | postgres-timescaledb | PostgreSQL (NodePort → 5432) |
 | 30989 | postgres-timescaledb | metrics (NodePort → 9187) |
+| 30882 | presto | coordinator HTTP: UI, REST and JDBC (NodePort → 8080) |
+| 30881 | trino | coordinator HTTP: UI, REST and JDBC (NodePort → 8080) |
 
 Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
 so any combination of kits can run at once.

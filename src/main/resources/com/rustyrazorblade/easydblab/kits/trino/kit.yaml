@@ -15,21 +15,18 @@ runtime:
   type: helm
   release: trino
   namespace: default
-# The chart's coordinator Service is named for the release and serves HTTP on 8080.
+# The coordinator's HTTP port is published on the kit's NodePort Service (nodeport-service.yaml,
+# applied by bin/start.sh), which each endpoint resolves to by its NodePort.
 endpoints:
   - name: "Trino UI"
     node-type: app
-    port: 8080
+    port: 30881
     type: http
-    service: trino
-    service-port: 8080
   - name: "JDBC"
     node-type: app
-    port: 8080
+    port: 30881
     type: jdbc
     scheme: trino
-    service: trino
-    service-port: 8080
 args:
   - flag: --version
     variable: VERSION

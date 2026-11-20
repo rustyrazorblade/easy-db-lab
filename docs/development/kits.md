@@ -352,6 +352,9 @@ All scripts and shell steps receive the following environment variables:
 | `APP_NODE_COUNT` | Number of app/stress nodes |
 | `DB_NODE_IPS` | Comma-separated private IPs of database nodes |
 | `APP_NODE_IPS` | Comma-separated private IPs of app nodes |
+| `DB_NODE_LABELS`, `APP_NODE_LABELS`, `CONTROL_NODE_LABELS` | The role's node label selector (`type=db` on the nodes easy-db-lab builds, the `init --role-nodes` mapping, or empty when the role runs on any node). Pass it to `kubectl get nodes -l` only when it is not empty |
+| `DB_NODE_SELECTOR`, `APP_NODE_SELECTOR` | The same selector as a JSON map for a pod's `nodeSelector` (`{"type":"db"}`, or `{}` when unconstrained). Templates take `__DB_NODE_SELECTOR__` / `__APP_NODE_SELECTOR__` |
+| `DB_AFFINITY` | A CNPG `Cluster` `affinity` for the db role: `{"nodeSelector":{...}}`, or `{}` when unconstrained. CNPG restarts an instance on every reconcile when the Cluster names an empty `nodeSelector`, so the postgres kit uses `affinity: __DB_AFFINITY__` instead of `__DB_NODE_SELECTOR__` |
 | `BUCKET_NAME` | S3 data bucket name |
 | `ACCOUNT_BUCKET` | S3 account-level bucket name |
 | `REGION` | AWS region |
@@ -504,28 +507,41 @@ will collide on the hostPort if two land on the same node. Prefer a `pod-selecto
 spread them with `podAntiAffinity` and keep replicas below the node count.
 
 ### `java-agent` — OpenTelemetry Java Agent
-For JVM kits. The OTel Java agent JAR at `/usr/local/otel/opentelemetry-javaagent.jar`
-is attached to the JVM process.
+For JVM kits. The OTel Java agent is attached to the JVM process.
 ```yaml
 metrics:
   - type: java-agent
     service-name: myworkload
 ```
 
-The agent pushes OTLP to the collector on the pod's own node; nothing in the collector config
-changes. Mount `/usr/local/otel` from the host read-only, load the jar through the workload's
-JVM options, and set `OTEL_SERVICE_NAME` (it becomes `job`), `HOST_IP` from `status.hostIP`, and
-`OTEL_EXPORTER_OTLP_ENDPOINT=http://$(HOST_IP):4318`. See `kits/neo4j/statefulset.yaml.template`.
+The agent pushes OTLP to the core collector's Service; nothing in the collector config changes.
+Set `OTEL_SERVICE_NAME` (it becomes `job`) and `OTEL_EXPORTER_OTLP_ENDPOINT=__OTEL_OTLP_HTTP_ENDPOINT__`.
 
-### Delivering the agent without the AMI: an init container
+### Delivering an agent: an init container
 
-The `/usr/local/otel` host path exists only on the AMI. A kit that must run on any environment
-copies the agent in with an init container instead: the init container runs the pinned, multi-arch
-`ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:<agent version>` image,
-copies `/javaagent.jar` into an `emptyDir`, and the main container mounts that volume and loads the
-jar through its JVM options. The tag must equal `libs.versions.opentelemetry-agent`; the build
-stamps it (see how `build.gradle.kts` fills `@OTEL_AGENT_VERSION@` in the `cassandra-pods`
-StatefulSet template). See `kits/cassandra-pods/statefulset.yaml.template`.
+Never mount an agent from a host path: `/usr/local/otel` and `/usr/local/pyroscope` exist only on
+the AMI, so a kit that mounts them runs nowhere else (`BuiltinKitHostDependencyTest` fails on one).
+Copy the agent in with an init container instead: it runs the agent's pinned, multi-arch image
+(`__OTEL_AGENT_IMAGE__`, whose `/javaagent.jar` is the OTel agent, or `__PYROSCOPE_AGENT_IMAGE__`,
+whose `/pyroscope.jar` is the Pyroscope agent; Kotlin names them in `JavaAgent`), copies the jar into
+an `emptyDir` as a non-root user, and the main container mounts that volume read-only and loads the
+jar through its JVM options. Kotlin-built pods (stress Jobs) use `JavaAgentDelivery`, which adds the
+volume, one init container per agent and the mount. See `kits/cassandra-pods/statefulset.yaml.template`
+and `kits/neo4j/statefulset.yaml.template`.
+
+Both images must be in their registry before a pod can load the agent.
+`JavaAgentImagesPublishedIntegrationTest` asks the registry for each `JavaAgent` image and fails
+for any image it does not have. The Pyroscope image is built from `docker/pyroscope-java-agent/` by
+the `publish-pyroscope-agent` job of `publish-container.yml`. That job runs on a tag push, after PR
+Checks pass on main, or by manual dispatch, so a branch that changes the agent version can publish
+the image before it merges. When you bump `Constants.PyroscopeJavaAgent.VERSION`, dispatch the
+workflow on that branch.
+
+An agent upgrade changes `PYROSCOPE_VERSION` and `PYROSCOPE_SHA256` in the Dockerfile together,
+and `Constants.PyroscopeJavaAgent.VERSION` to match. The build checks the downloaded jar against
+the SHA-256, so a version without its new checksum fails. A published tag never changes: the job
+skips a version that is already in the registry. To fix a published image, bump the version
+instead of pushing to its tag again.
 
 **Reserved NodePorts:** 30942 is the `cassandra-pods` CQL port. Pick a port no other kit uses
 (`BuiltinKitNodePortTest` fails on a duplicate).
@@ -771,17 +787,20 @@ Every kit running on the cluster is automatically profiled at the system level b
 Alloy eBPF DaemonSet — no per-kit setup required. This covers all processes including
 non-JVM ones like ClickHouse.
 
-**JVM kits get deeper profiling** via the Pyroscope Java agent
-(`/usr/local/pyroscope/pyroscope.jar`, pre-installed on every node by packer). This enables
-method-level CPU, allocation, and lock contention profiles — much richer than eBPF.
+**JVM kits get deeper profiling** via the Pyroscope Java agent, copied into the pod from
+`PYROSCOPE_AGENT_IMAGE` by an init container (see [Delivering an agent](#delivering-an-agent-an-init-container)).
+This enables method-level CPU, allocation, and lock contention profiles — much richer than eBPF.
 
 ### Wiring up the Java agent for a K8s kit
 
-The agent JAR lives on the host at `/usr/local/pyroscope`. Call `edl_patch_pyroscope` from the
-[shared shell library](#shared-shell-library) in the `start` phase, once per JVM deployment, before
-the rollout wait. It mounts the JAR into the container with a `hostPath` volume and sets
-`JAVA_TOOL_OPTIONS` from `edl_pyroscope_opts`, which also makes the agent retry uploads without a
-limit and hold an hour of snapshots, so a Pyroscope restart loses no profile.
+Call `edl_patch_pyroscope` from the [shared shell library](#shared-shell-library) in the `start`
+phase, once per JVM deployment, before the rollout wait. It adds an init container that copies
+`/pyroscope.jar` from `${PYROSCOPE_AGENT_IMAGE}` into an `emptyDir`, mounts that volume read-only
+at `/edl/agents` in the JVM container, and sets `JAVA_TOOL_OPTIONS` from `edl_pyroscope_opts`,
+which also makes the agent retry uploads without a limit and hold an hour of snapshots, so a
+Pyroscope restart loses no profile. The agent never comes from a host path, so the pods run on any
+node, and the patch declares no `hostPort`: clients reach a coordinator through the kit's NodePort
+Service.
 The agent ships to `PYROSCOPE_URL`, the Pyroscope Service by its cluster DNS name or, on a redirect
 cluster, the external stack; never point it at `CONTROL_HOST_PRIVATE`, as no backend listens on a node
 address (`BuiltinKitCollectorEndpointTest` fails on one).
@@ -790,13 +809,13 @@ address (`BuiltinKitCollectorEndpointTest` fails on one).
 . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 CLUSTER_LABEL="$(edl_cluster_label)"
 
-# <deployment> <container> <app> <cluster-label> <component> [<port>...]
+# <deployment> <container> <app> <cluster-label> <component>
 edl_patch_pyroscope <deployment-name> <container-name> <kit> "${CLUSTER_LABEL}" coordinator
 ```
 
 The `presto` and `trino` kits' `start.sh` are the reference. If a container builds its JVM
-command line itself, put `$(edl_pyroscope_opts <kit>)` in it instead of writing the agent options by
-hand.
+command line itself, put `$(edl_pyroscope_opts <kit>)` in it and give it the same init container
+and `/edl/agents` mount, instead of writing the agent options by hand.
 
 Pass `coordinator`, `worker`, and so on as the `<component>` argument to tell apart the JVM
 processes of one kit; the helper adds it to the profile labels. Profiles appear in Grafana's Pyroscope
@@ -827,7 +846,7 @@ set -euo pipefail
 ```
 
 Sourcing it changes no `set` option, trap or working directory, and defines only `edl_` functions
-and `EDL_` variables. The functions read `KIT_NAME`, `KUBECONFIG` and `CONTROL_HOST_PRIVATE` from
+and `EDL_` variables. The functions read `KIT_NAME`, `KUBECONFIG`, `APP_NODE_LABELS`, `APP_NODE_SELECTOR` and `CONTROL_NODE_LABELS` from
 the environment. A function that fails prints why to stderr and exits the script.
 
 | Function | What it does |
@@ -835,8 +854,8 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_fail <message>` | Prints the message to stderr and exits 1 |
 | `edl_labels <role>` | Prints `easydblab/kit=${KIT_NAME},easydblab/role=<role>` |
 | `edl_resource_name <role>` | Prints `${KIT_NAME}-<role>-$(date +%s)`, a unique pod or ConfigMap name |
-| `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (type=app); this cluster has none` when no node is labelled `type=app` |
-| `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector: {type: app}`, and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
+| `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (<APP_NODE_LABELS>); this cluster has none` when no node matches `APP_NODE_LABELS`, or, when it is empty (an app role that runs anywhere), when the cluster has no node |
+| `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector` set to `APP_NODE_SELECTOR` (`{}` when unconstrained), and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
 | `edl_create_configmap <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all |
 | `edl_active_pods <role>` | Prints this instance's pods of that role that have not ended |
 | `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run |
@@ -845,9 +864,8 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_push_gauges <service> <name> <value>...` | Pushes OTLP gauges labelled `kit=${KIT_NAME}` to the collector; a non-numeric value is sent as 0; a failed push never fails the script and prints one warning per script |
 | `edl_collect_catalogs <product> <catalogs-dir> <workload-root> [<infra-db>...]` | Collects the catalogs for a coordinator-and-workers helm kit into `EDL_CATALOG_CONTENT`: each infrastructure database whose properties file names its endpoint, each running kit that has a catalog file, and each custom `--from` workload with a `<product>-catalog.properties` |
 | `edl_helm_upgrade_with_catalogs <release> <chart> <version> <values-file> <catalog-key>` | `helm upgrade --install` at the pinned version, with the collected catalogs under the chart value `<catalog-key>`; it does not wait for the rollout |
-| `edl_replace_hostport_pod <label-selector> <deployment>` | Deletes the coordinator pod and waits for the rollout: a rolling update deadlocks on a single app node, because the new pod cannot bind the old pod's hostPort |
 | `edl_cluster_label` | Prints the cluster label (`<name>-<id>`) from the `cluster-config` ConfigMap; fails when it is empty |
-| `edl_patch_pyroscope <deployment> <container> <app> <cluster-label> <component> [<port>...]` | Patches a deployment to load the Pyroscope agent with the cluster and component profile labels, and gives each listed container port a hostPort of the same number |
+| `edl_patch_pyroscope <deployment> <container> <app> <cluster-label> <component>` | Patches a deployment to load the Pyroscope agent with the cluster and component profile labels. It declares no port: a coordinator is published on its kit's NodePort Service. The agent comes from an init container that copies it from `PYROSCOPE_AGENT_IMAGE` into an `emptyDir` mounted read-only at `/edl/agents`, never a host path |
 | `edl_scale_to_zero <deployment>...` and `edl_helm_uninstall <release>` | The `stop` and `uninstall` steps of a helm kit |
 
 Every wait fails with `pod <name> was deleted` when the pod is gone, for example after a `stop` in
@@ -932,8 +950,19 @@ The variables injected depend on what endpoints the target kit declares:
 `https` and `cql` endpoints inject nothing. Every `*_USER` variable comes from the target's `sql`
 capability `user`, and is empty when the target declares no `sql` capability.
 
-If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
-variables are injected and no error is raised (fail-safe).
+Every address except `TARGET_HTTP_URL` is one the kit's pods dial in the cluster: the
+endpoint's Service DNS name and Service port when a file of the target declares the Service,
+else the first recorded node of its role on the NodePort. `TARGET_HTTP_URL` is curled from your
+machine, so it is the address the CLI reaches the Service at: the node's private address on the
+NodePort on an AWS cluster (the workspace `curl` wrapper routes it through the tunnel), or a
+`127.0.0.1` port-forward to the Service on a local or brought cluster, open until the phase ends.
+
+If the target kit directory does not exist, no `TARGET_*` variables are injected. A target
+`kit.yaml` that does not parse fails the phase before it runs, naming the target, the file and
+the parse error (`Kit.TargetConfigInvalid`). An HTTP endpoint the CLI cannot reach (no node of
+its role recorded, or a Service it cannot port-forward) fails the phase the same way
+(`Kit.TargetEndpointUnreachable`); `stop` and `uninstall` report it and run without that
+endpoint's variable, so a kit can always be released.
 
 ### Wiring a TARGET_* endpoint into an application pod
 
@@ -1117,6 +1146,40 @@ endpoints:
 ```
 
 `KitEndpointServiceTest` checks that every packaged kit's endpoints resolve this way.
+
+## Placing pods: the role variables
+
+A kit never names a node label. Where a role's pods run comes from the role selectors `init`
+records: `type=db`, `type=app` and `type=control` on the nodes easy-db-lab builds, the
+`init --role-nodes <role>=<key=value>[,...]` mapping, or no constraint at all (a cluster easy-db-lab
+did not build, where every role runs on any node until it is mapped).
+
+`--role-nodes` takes one `key=value` selector set per role: repeat the option once for each role
+you map (`--role-nodes db=pool=db --role-nodes app=pool=app`). The comma-separated pairs of a
+value are one set, and a node must carry every label in it. Giving a role twice is refused, and
+`<role>=` with nothing after it leaves that role unconstrained.
+
+- In a manifest template, put `nodeSelector: __DB_NODE_SELECTOR__` (or `__APP_NODE_SELECTOR__`) on
+  the pod spec. It renders a JSON map, `{}` when the role is unconstrained. Never use
+  `nodeAffinity` on `type`.
+- In a script, use `APP_NODE_LABELS` (and `DB_NODE_LABELS`, `CONTROL_NODE_LABELS`) for
+  `kubectl get nodes -l`, and only when it is not empty; `edl_require_app_node` and
+  `edl_pod_overrides` already do this.
+
+`KitRolePlacementTest` renders every kit with mapped, owned and unconstrained selectors, and
+`BuiltinKitHostDependencyTest` fails on a literal `type=app` or `type: db`.
+
+## Client networks
+
+A passwordless database (ClickHouse's `default` user, Postgres's `pg_hba` trust lines) accepts
+clients only from the environment's networks: the VPC CIDR and the K3s cluster CIDR
+(`Constants.K3s.CLUSTER_CIDR`, passed to K3s as `--cluster-cidr`) on the nodes easy-db-lab builds,
+each node's pod CIDR and InternalIP on a cluster it did not build (every node's InternalIP, in a
+role or not, since NodePort traffic can be SNATed from any node), plus every
+`init --client-network <cidr>`. A local workspace (`init --local`) has only its `--client-network`
+values; with none recorded, kit variables fail, naming the option, rather than trust the VPC default. Templates take `__CLIENT_NETWORKS_JSON__` (a JSON list of CIDRs)
+and `__CLIENT_NETWORKS_HBA_JSON__` (one `host all all <cidr> trust` line each). Never hard-code
+`10.0.0.0/8`.
 
 ## Adding a New Kit
 

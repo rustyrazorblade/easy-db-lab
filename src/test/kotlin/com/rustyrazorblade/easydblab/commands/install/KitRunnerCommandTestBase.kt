@@ -24,8 +24,10 @@ import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.access.DirectServiceAccess
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -50,6 +52,9 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val mockMetricsRegistryService: MetricsRegistryService = mock()
     protected val mockKitHookExecutor: KitHookExecutor = mock()
     protected val mockKubeService: K8sService = mock()
+
+    /** Backs [RoleNodes] only, so the role-pool lookup never shows up on [mockKubeService], which the workload probe uses. */
+    protected val mockK8sService: K8sService = mock()
 
     /** The tenant listing reads this store; a test that drives a store failure replaces it before running the command. */
     protected var objectStore: ObjectStore = InMemoryObjectStore()
@@ -95,7 +100,8 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
-                single<KitEndpointResolver> { DefaultKitEndpointResolver() }
+                single<KitEndpointResolver> { DefaultKitEndpointResolver(DirectServiceAccess(mockClusterStateManager::load)) }
+                single { RoleNodes(mockK8sService) }
                 single { KitProcessEnvironment(ToolWrapperInstaller(), get()) }
                 single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },
@@ -104,6 +110,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
+        whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("node0")))
         whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.register(any(), any())).thenReturn(Result.success(Unit))

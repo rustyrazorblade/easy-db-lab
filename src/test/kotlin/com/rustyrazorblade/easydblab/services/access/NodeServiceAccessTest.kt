@@ -41,6 +41,15 @@ class NodeServiceAccessTest {
     }
 
     @Test
+    fun `a target with no known Service is named by its NodePort when no node of its role is recorded`() {
+        val noService = ServiceTarget("default", "", 30123, ServerType.Stress, 30123)
+
+        assertThatThrownBy { DirectServiceAccess { empty }.open(noService) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("No app node in cluster state runs NodePort 30123. Please ensure the environment is running.")
+    }
+
+    @Test
     fun `a looked-up SOCKS route is used as it is, never starting a tunnel`() {
         val access = RouteServiceAccess(state, ObservabilityRoute.Socks(24000))
 

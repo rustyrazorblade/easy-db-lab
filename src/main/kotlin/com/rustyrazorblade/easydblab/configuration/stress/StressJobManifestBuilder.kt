@@ -2,41 +2,44 @@ package com.rustyrazorblade.easydblab.configuration.stress
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.NodeSelector
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
 import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
+import io.fabric8.kubernetes.api.model.PodSpec
+import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 
 /**
- * The cluster facts a stress Job's environment and agents are built from: which region and tenant
- * the cluster is, and where profiles go. The agents reach the collector and Pyroscope by their
- * Services, never by a node address. Read once from the cluster
- * state by [from], so [StressJobManifestBuilder] never touches the state itself.
+ * The cluster facts a stress Job's environment and agents are built from: which cluster and tenant
+ * it is, where profiles go, and which nodes the app role runs on. The agents reach the collector
+ * and Pyroscope by their Services, never by a node address. Read once from the cluster state by
+ * [from], so [StressJobManifestBuilder] never touches the state itself.
  */
 data class StressCluster(
-    val region: String,
     val clusterName: String,
     val tenant: String,
     val telemetryRedirect: TelemetryRedirect?,
+    val appSelector: NodeSelector,
 ) {
     companion object {
-        /** Reads the facts from [state]; fails when it holds no region. */
+        /** Reads the facts from [state]. */
         fun from(state: ClusterState): StressCluster =
             StressCluster(
-                region =
-                    state.infrastructure?.region
-                        ?: error("Infrastructure state missing region. Re-provision the cluster to fix this."),
                 clusterName = state.clusterLabelName(),
                 tenant = state.tenant(),
                 telemetryRedirect = state.initConfig?.telemetryRedirect,
+                appSelector = RoleSelectors.from(state).app,
             )
     }
 }
@@ -51,17 +54,11 @@ data class StressCluster(
 object StressJobManifestBuilder {
     private const val TTL_STRESS_JOB_SECONDS = 86400
     private const val TTL_COMMAND_JOB_SECONDS = 300
-    private const val PYROSCOPE_VOLUME_NAME = "pyroscope-agent"
-    private const val PYROSCOPE_HOST_PATH = "/usr/local/pyroscope"
-    private const val PYROSCOPE_MOUNT_PATH = "/usr/local/pyroscope"
+    private const val STRESS_CONTAINER = "stress"
 
-    // The OTel Java agent, reaching the pod the same way the Pyroscope agent does: a hostPath
-    // mount of where the base AMI installs it. The job's nodeSelector pins it to a `type=app`
-    // node, and the base image puts the jar there, so the path resolves on every node this job
-    // can land on.
-    private const val OTEL_AGENT_VOLUME_NAME = "otel-agent"
-    private const val OTEL_AGENT_HOST_PATH = "/usr/local/otel"
-    private const val OTEL_AGENT_MOUNT_PATH = "/usr/local/otel"
+    // Both agents reach the stress JVM from init containers (JavaAgentDelivery), never a host
+    // path, so a stress pod runs on any node of any cluster.
+    private val STRESS_AGENTS = listOf(JavaAgent.PYROSCOPE, JavaAgent.OTEL)
 
     /** Builds the stress Job for [config] on [cluster], with the OTel sidecar. */
     fun buildStressJob(
@@ -78,7 +75,8 @@ object StressJobManifestBuilder {
         val stressContainer = buildStressContainer(config, cluster)
         val otelSidecar = buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, cluster.clusterName)
 
-        return assembleJob(config.jobName, labels, stressContainer, otelSidecar)
+        val podSpec = buildRunPodSpec(stressContainer, otelSidecar, cluster.appSelector)
+        return wrapInJob(config.jobName, labels, TTL_STRESS_JOB_SECONDS, podSpec)
     }
 
     /**
@@ -133,7 +131,7 @@ object StressJobManifestBuilder {
 
         val pyroscope =
             listOf(
-                "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
+                JavaAgentDelivery.flag(JavaAgent.PYROSCOPE),
                 "-Dpyroscope.application.name=cassandra-easy-stress",
                 "-Dpyroscope.server.address=$pyroscopeServerAddress",
             ) + Constants.PyroscopeJavaAgent.PROFILER_FLAGS +
@@ -144,7 +142,7 @@ object StressJobManifestBuilder {
                 ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
         val otel =
             listOf(
-                "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
+                JavaAgentDelivery.flag(JavaAgent.OTEL),
                 "-Dotel.service.name=cassandra-easy-stress",
                 "-Dotel.resource.attributes=$otelResourceAttributes",
                 "-Dotel.exporter.otlp.endpoint=${OtelEndpoints.otlpHttpEndpoint()}",
@@ -161,21 +159,21 @@ object StressJobManifestBuilder {
         cluster: StressCluster,
     ): Container =
         ContainerBuilder()
-            .withName("stress")
+            .withName(STRESS_CONTAINER)
             .withImage(config.image)
             .withArgs(config.args)
             .withEnv(
                 EnvVarBuilder()
                     .withName("CASSANDRA_CONTACT_POINTS")
-                    .withValue(config.contactPoints)
+                    .withValue(config.target.contactPoint)
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_PORT")
-                    .withValue(Constants.Stress.DEFAULT_CASSANDRA_PORT.toString())
+                    .withValue(config.target.port.toString())
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_EASY_STRESS_DEFAULT_DC")
-                    .withValue(cluster.region)
+                    .withValue(config.target.datacenter)
                     .build(),
                 EnvVarBuilder()
                     .withName("CASSANDRA_EASY_STRESS_PROM_PORT")
@@ -184,17 +182,6 @@ object StressJobManifestBuilder {
                 EnvVarBuilder()
                     .withName("JDK_JAVA_OPTIONS")
                     .withValue(stressJavaOptions(config, cluster))
-                    .build(),
-            ).withVolumeMounts(
-                VolumeMountBuilder()
-                    .withName(PYROSCOPE_VOLUME_NAME)
-                    .withMountPath(PYROSCOPE_MOUNT_PATH)
-                    .withReadOnly(true)
-                    .build(),
-                VolumeMountBuilder()
-                    .withName(OTEL_AGENT_VOLUME_NAME)
-                    .withMountPath(OTEL_AGENT_MOUNT_PATH)
-                    .withReadOnly(true)
                     .build(),
             ).build()
 
@@ -251,11 +238,38 @@ object StressJobManifestBuilder {
             ).build()
     }
 
-    private fun assembleJob(
-        jobName: String,
-        labels: Map<String, String>,
+    /**
+     * The stress run's pod: on the pod network, on nodes matching [appSelector], with the OTel
+     * sidecar first and the Java agents copied in by init containers after it.
+     */
+    private fun buildRunPodSpec(
         stressContainer: Container,
         otelSidecar: Container,
+        appSelector: NodeSelector,
+    ): PodSpec {
+        val spec =
+            PodSpecBuilder()
+                .withRestartPolicy("Never")
+                .withNodeSelector<String, String>(appSelector.labels)
+                .withInitContainers(otelSidecar)
+                .withContainers(stressContainer)
+                .withVolumes(
+                    VolumeBuilder()
+                        .withName("otel-sidecar-config")
+                        .withNewConfigMap()
+                        .withName(StressSidecarConfig.CONFIG_MAP_NAME)
+                        .endConfigMap()
+                        .build(),
+                ).build()
+        return JavaAgentDelivery.applyTo(spec, STRESS_CONTAINER, STRESS_AGENTS)
+    }
+
+    /** A Job named [jobName] in the stress namespace that runs [podSpec] once and is removed [ttlSeconds] after it finishes. */
+    private fun wrapInJob(
+        jobName: String,
+        labels: Map<String, String>,
+        ttlSeconds: Int,
+        podSpec: PodSpec,
     ): Job =
         JobBuilder()
             .withNewMetadata()
@@ -265,51 +279,25 @@ object StressJobManifestBuilder {
             .endMetadata()
             .withNewSpec()
             .withBackoffLimit(0)
-            .withTtlSecondsAfterFinished(TTL_STRESS_JOB_SECONDS)
+            .withTtlSecondsAfterFinished(ttlSeconds)
             .withNewTemplate()
             .withNewMetadata()
             .withLabels<String, String>(labels)
             .endMetadata()
-            .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .withRestartPolicy("Never")
-            .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withInitContainers(otelSidecar)
-            .withContainers(stressContainer)
-            .withVolumes(
-                VolumeBuilder()
-                    .withName("otel-sidecar-config")
-                    .withNewConfigMap()
-                    .withName(StressSidecarConfig.CONFIG_MAP_NAME)
-                    .endConfigMap()
-                    .build(),
-                VolumeBuilder()
-                    .withName(PYROSCOPE_VOLUME_NAME)
-                    .withNewHostPath()
-                    .withPath(PYROSCOPE_HOST_PATH)
-                    .withType("Directory")
-                    .endHostPath()
-                    .build(),
-                VolumeBuilder()
-                    .withName(OTEL_AGENT_VOLUME_NAME)
-                    .withNewHostPath()
-                    .withPath(OTEL_AGENT_HOST_PATH)
-                    .withType("Directory")
-                    .endHostPath()
-                    .build(),
-            ).endSpec()
+            .withSpec(podSpec)
             .endTemplate()
             .endSpec()
             .build()
 
     /**
-     * Builds a simple Kubernetes Job for short-lived commands.
+     * Builds a simple Kubernetes Job for short-lived commands, on the pod network, on nodes
+     * matching [appSelector].
      */
     fun buildCommandJob(
         jobName: String,
         image: String,
         args: List<String>,
+        appSelector: NodeSelector,
     ): Job {
         val labels =
             mapOf(
@@ -320,33 +308,17 @@ object StressJobManifestBuilder {
 
         val stressContainer =
             ContainerBuilder()
-                .withName("stress")
+                .withName(STRESS_CONTAINER)
                 .withImage(image)
                 .withArgs(args)
                 .build()
 
-        return JobBuilder()
-            .withNewMetadata()
-            .withName(jobName)
-            .withNamespace(Constants.Stress.NAMESPACE)
-            .withLabels<String, String>(labels)
-            .endMetadata()
-            .withNewSpec()
-            .withBackoffLimit(0)
-            .withTtlSecondsAfterFinished(TTL_COMMAND_JOB_SECONDS)
-            .withNewTemplate()
-            .withNewMetadata()
-            .withLabels<String, String>(labels)
-            .endMetadata()
-            .withNewSpec()
-            .withHostNetwork(true)
-            .withDnsPolicy("ClusterFirstWithHostNet")
-            .withRestartPolicy("Never")
-            .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withContainers(stressContainer)
-            .endSpec()
-            .endTemplate()
-            .endSpec()
-            .build()
+        val podSpec =
+            PodSpecBuilder()
+                .withRestartPolicy("Never")
+                .withNodeSelector<String, String>(appSelector.labels)
+                .withContainers(stressContainer)
+                .build()
+        return wrapInJob(jobName, labels, TTL_COMMAND_JOB_SECONDS, podSpec)
     }
 }

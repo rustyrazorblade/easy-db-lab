@@ -48,18 +48,27 @@ edl_resource_name() {
   printf '%s-%s-%s\n' "${KIT_NAME}" "$1" "$(date +%s)"
 }
 
-# Fails, naming kit $1, when the cluster has no node labelled type=app.
+# Fails, naming kit $1, when no node matches the app role: APP_NODE_LABELS, a label selector, or any
+# schedulable node when it is empty (an unconstrained app role).
 edl_require_app_node() {
-  local nodes
-  nodes="$(kubectl get nodes -l type=app -o name)" || edl_fail "Could not list the cluster's app nodes"
-  [ -n "${nodes}" ] || edl_fail "$1 needs an app node (type=app); this cluster has none"
+  local nodes labels="${APP_NODE_LABELS:-}"
+  if [ -n "${labels}" ]; then
+    nodes="$(kubectl get nodes -l "${labels}" -o name)" || edl_fail "Could not list the cluster's app nodes"
+  else
+    nodes="$(kubectl get nodes -o name)" || edl_fail "Could not list the cluster's nodes"
+    labels="any node"
+  fi
+  [ -n "${nodes}" ] || edl_fail "$1 needs an app node (${labels}); this cluster has none"
 }
 
-# Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: the pod runs on an
-# app node and, when the three arguments are given, mounts ConfigMap $1 at path $2 in container $3.
-# kubectl run names the container after the pod, so $3 is the pod name.
+# Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: the pod runs on a
+# node of the app role (APP_NODE_SELECTOR, a JSON map; {} when unconstrained) and, when the three
+# arguments are given, mounts ConfigMap $1 at path $2 in container $3. kubectl run names the
+# container after the pod, so $3 is the pod name.
 edl_pod_overrides() {
-  local placement='"nodeSelector":{"type":"app"}'
+  local selector="${APP_NODE_SELECTOR:-}"
+  [ -n "${selector}" ] || selector='{}'
+  local placement="\"nodeSelector\":${selector}"
   case "$#" in
     0)
       printf '{"spec":{%s}}\n' "${placement}"
@@ -274,28 +283,42 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  if ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l node-role.kubernetes.io/control-plane -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
+  # The control role's node, by CONTROL_NODE_LABELS. With no control selector, or no node matching
+  # it, there is no control node to pin to: the push takes the first Running core pod by name,
+  # which stays the same between pushes, so one gauge stays one series.
+  control=""
+  if [ -n "${CONTROL_NODE_LABELS:-}" ] &&
+    ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l "${CONTROL_NODE_LABELS}" -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
     failure=": could not find the control node"
-  elif [ -z "${control}" ]; then
-    failure=": the cluster has no control node (node-role.kubernetes.io/control-plane)"
-  elif ! pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
-    "--field-selector=status.phase=Running,spec.nodeName=${control}" \
-    -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)"; then
-    failure=": could not list the otel-collector pods on control node ${control}"
+  elif [ -n "${control}" ]; then
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+      "--field-selector=status.phase=Running,spec.nodeName=${control}" \
+      -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
+      failure=": could not list the otel-collector pods on control node ${control}"
+  else
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+      "--field-selector=status.phase=Running" \
+      -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
+      failure=": could not list the otel-collector pods"
+    pods="$(printf '%s\n' "${pods}" | sort)"
   fi
   # The core collector tolerates every taint, so the control node always runs a core pod, and that
   # pod stamps host.name=control0. While it is Pending (a rollout, a slow image pull) the pod list
   # above has nothing Running there: the push warns and skips, and the kit runs on.
   if [ -z "${failure}" ]; then
-    # During a rolling update the control node can run two core pods; both stamp control0. A pod
-    # being deleted is still Running until it stops, so the first one with no deletionTimestamp.
+    # During a rolling update a node can run two core pods; both stamp the same node. A pod being
+    # deleted is still Running until it stops, so the first one with no deletionTimestamp.
     while read -r name deleting; do
       if [ -n "${name}" ] && [ -z "${deleting}" ]; then
         pod="${name}"
         break
       fi
     done <<< "${pods}"
-    [ -n "${pod}" ] || failure=": no running otel-collector pod on control node ${control}"
+    if [ -z "${pod}" ] && [ -n "${control}" ]; then
+      failure=": no running otel-collector pod on control node ${control}"
+    elif [ -z "${pod}" ]; then
+      failure=": no running otel-collector pod"
+    fi
   fi
   if [ -z "${failure}" ]; then
     EDL_PUSH_SAVED_TRAPS="$(trap -p INT TERM)"
@@ -416,7 +439,7 @@ edl_collect_catalogs() {
 
 # Installs or upgrades the helm release $1 of chart $2 at version $3, with the values file $4 and,
 # when edl_collect_catalogs found any catalog, a second values file <dir of $4>/.catalogs-override.yaml
-# that sets the chart value $5 to them. It does not wait for the rollout: see edl_replace_hostport_pod.
+# that sets the chart value $5 to them. It does not wait for the rollout.
 edl_helm_upgrade_with_catalogs() {
   local release="$1" chart="$2" version="$3" values="$4" key="$5"
   local override extra=()
@@ -433,14 +456,6 @@ edl_helm_upgrade_with_catalogs() {
     ${extra[@]+"${extra[@]}"}
 }
 
-# Replaces the pod of deployment $2, found by label selector $1, and waits for its rollout.
-# The coordinator uses hostPort, so on a single app node a rolling update deadlocks: the new pod
-# cannot bind the port while the old pod holds it. Deleting the pod lets the controller replace it.
-edl_replace_hostport_pod() {
-  kubectl delete pod -n default -l "$1" --ignore-not-found
-  kubectl rollout status "deployment/$2" --namespace default --timeout=180s
-}
-
 # Prints the cluster label (<name>-<id>) from the cluster-config ConfigMap, which every other
 # signal carries, so the profiling dashboards' cluster filter finds a kit's profiles. CLUSTER_NAME
 # is the bare name. Fails when `grafana update-config` has not run.
@@ -452,33 +467,28 @@ edl_cluster_label() {
 }
 
 # Prints the JAVA_TOOL_OPTIONS that load the Pyroscope agent for application $1. Needs
-# PYROSCOPE_URL and TENANT, which the kit runner sets. The format and profiler options are
+# PYROSCOPE_URL and TENANT, which the kit runner sets. The agent is the jar edl_patch_pyroscope's
+# init container copies to /edl/agents. The format and profiler options are
 # Constants.PyroscopeJavaAgent.PROFILER_FLAGS. The last two options make the agent retry without
 # limit and hold an hour of snapshots through a Pyroscope outage; they are the values of
 # Constants.PyroscopeJavaAgent.OUTAGE_FLAGS.
 edl_pyroscope_opts() {
-  printf '%s' "-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
+  printf '%s' "-javaagent:/edl/agents/pyroscope.jar -Dpyroscope.application.name=$1 -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms -Dpyroscope.ingest.max.tries=-1 -Dpyroscope.push.queue.capacity=360"
 }
 
 # Patches the container $2 of deployment $1 to load the Pyroscope agent for application $3, with
-# the profile labels cluster=$4 and component=$5. Any further arguments are container ports that
-# get a hostPort of the same number; a strategic merge patch matches a port by its containerPort.
+# the profile labels cluster=$4 and component=$5. The agent comes from an init
+# container that copies it from PYROSCOPE_AGENT_IMAGE (set by the kit runner) into an emptyDir the
+# JVM container mounts read-only, never from a host path, so the pods run on any node. The pod
+# declares no hostPort: clients reach a coordinator through its kit's NodePort Service.
 edl_patch_pyroscope() {
-  local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" ports="" sep="" opts patch
-  shift 5
-  while [ "$#" -ge 1 ]; do
-    case "$1" in
-      *[!0-9]* | "") edl_fail "edl_patch_pyroscope: '$1' is not a port number" ;;
-    esac
-    ports="${ports}${sep}{\"containerPort\":$1,\"hostPort\":$1}"
-    sep=","
-    shift
-  done
-  [ -z "${ports}" ] || ports=",\"ports\":[${ports}]"
+  local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" opts patch
+  local image="${PYROSCOPE_AGENT_IMAGE:?run this through easy-db-lab, which sets PYROSCOPE_AGENT_IMAGE}"
+  [ "$#" -eq 5 ] || edl_fail "edl_patch_pyroscope: expected 5 arguments, got $#"
   opts="$(edl_pyroscope_opts "${app}") -Dpyroscope.labels=cluster=${cluster_label},component=${component}"
   opts="${opts//\\/\\\\}"
   opts="${opts//\"/\\\"}"
-  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"pyroscope-agent\",\"hostPath\":{\"path\":\"/usr/local/pyroscope\"}}],\"containers\":[{\"name\":\"${container}\"${ports},\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"pyroscope-agent\",\"mountPath\":\"/usr/local/pyroscope\",\"readOnly\":true}]}]}}}}"
+  patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"java-agents\",\"emptyDir\":{}}],\"initContainers\":[{\"name\":\"pyroscope-agent\",\"image\":\"${image}\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"cp\",\"/pyroscope.jar\",\"/agents/pyroscope.jar\"],\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]},\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/agents\"}]}],\"containers\":[{\"name\":\"${container}\",\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/edl/agents\",\"readOnly\":true}]}]}}}}"
   kubectl patch deployment "${deployment}" \
     --namespace default \
     --type=strategic \

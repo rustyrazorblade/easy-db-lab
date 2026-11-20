@@ -17,15 +17,7 @@ spec:
         app: memcached
         easydblab/kit: memcached
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: type
-                    operator: In
-                    values:
-                      - db
+      nodeSelector: __DB_NODE_SELECTOR__
       containers:
         - name: memcached
           image: memcached:1.6-alpine

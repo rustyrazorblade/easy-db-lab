@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitRuntime
@@ -9,6 +10,23 @@ import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.client.utils.Serialization
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+
+/**
+ * The [ServiceTarget] that reaches this endpoint through [ServiceAccess]: [service] when the kit
+ * declares one (a port-forward needs it), and the endpoint's node role and NodePort (the Socks and
+ * Direct seams dial those). With no Service port known, the endpoint's port is forwarded, which the
+ * forward maps from a NodePort on the live Service.
+ *
+ * @throws IllegalArgumentException when the endpoint's `node-type` is not a role
+ */
+fun KitEndpoint.serviceTarget(service: KitService?): ServiceTarget =
+    ServiceTarget(
+        service?.namespace ?: Constants.K8s.NAMESPACE,
+        service?.name.orEmpty(),
+        service?.port ?: port,
+        ServerType.from(nodeType),
+        port,
+    )
 
 /**
  * The Kubernetes Service each endpoint of an installed kit is published on, and its port there.

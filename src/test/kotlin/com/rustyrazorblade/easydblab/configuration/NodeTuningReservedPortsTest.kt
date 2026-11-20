@@ -21,11 +21,8 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
-import com.rustyrazorblade.easydblab.configuration.stress.StressCluster
-import com.rustyrazorblade.easydblab.configuration.stress.StressJobManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
-import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PodSpec
@@ -161,7 +158,6 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
             builder<EbpfExporterManifestBuilder>() to EbpfExporterManifestBuilder().buildAllResources(),
             builder<BeylaManifestBuilder>() to BeylaManifestBuilder(templates).buildAllResources(),
             builder<SidecarManifestBuilder>() to sidecar,
-            builder<StressJobManifestBuilder>() to stressJobs(),
             // The capability probes bind no port; scanned so the host-network probe is accounted for.
             "CapabilityProbePods" to CapabilityProbePods.probes("default").values.toList(),
         )
@@ -179,23 +175,6 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
                 .toList()
                 .toSet()
         }
-
-    /** The stress Job and the command Job, both on the host network of an app node. */
-    private fun stressJobs(): List<HasMetadata> {
-        val image = "ghcr.io/apache/cassandra-easy-stress:latest"
-        val config =
-            StressJobConfig(
-                jobName = "stress-test",
-                image = image,
-                args = listOf("run", "KeyValue"),
-                contactPoints = "10.0.0.2",
-            )
-        val cluster = StressCluster("us-west-2", "test", "tenant", telemetryRedirect = null)
-        return listOf(
-            StressJobManifestBuilder.buildStressJob(config, cluster),
-            StressJobManifestBuilder.buildCommandJob("stress-command-test", image, listOf("list")),
-        )
-    }
 
     private fun podSpecs(resources: List<HasMetadata>): List<PodSpec> =
         resources.mapNotNull {
@@ -253,7 +232,6 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
             Constants.K8s.PYROSCOPE_PORT,
             Constants.K8s.OTEL_GRPC_PORT,
             Constants.Yace.PORT,
-            Constants.Stress.PROMETHEUS_PORT,
         )
 
         val missing = ports.filterKeys { it !in reservedPorts() }
@@ -305,7 +283,7 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
     fun `every host-network builder is scanned`() {
         val builders = hostNetworkBuilders()
         // The source walk must find the builders; an empty result would pass vacuously.
-        assertThat(builders).contains(builder<PyroscopeManifestBuilder>(), builder<StressJobManifestBuilder>())
+        assertThat(builders).contains(builder<PyroscopeManifestBuilder>(), builder<SidecarManifestBuilder>())
         assertThat(workloads().keys).containsAll(builders)
     }
 }

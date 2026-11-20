@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.DockerClientInterface
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -259,6 +261,40 @@ class InitLocalTest : BaseKoinTest() {
 
         assertThat(workspace.list().orEmpty().toSortedSet()).isEqualTo(before)
         assertThat(state().environment).isInstanceOf(Environment.K3sDocker::class.java)
+    }
+
+    /**
+     * The local nodes keep their `type=<role>` labels, like AWS (kit-host-independence spec). Their
+     * networks are Docker's and the pods', which easy-db-lab does not know at `init`, so with no
+     * `--client-network` nothing is recorded and kit variables fail, naming the option, instead of
+     * trusting the AWS VPC default.
+     */
+    @Test
+    fun `with no --role-nodes or --client-network it records the owned roles and no client network, and warns`() {
+        parsed("--local").execute()
+
+        val state = state()
+        assertThat(state.roleSelectors).isEqualTo(RoleSelectors.OWNED_NODES)
+        assertThat(state.clientNetworks).isNull()
+        assertThat(events).contains(Event.Setup.NoClientNetworksRecorded("K3s in Docker"))
+        assertThat(events.filterIsInstance<Event.Setup.ClientNetworksRecorded>()).isEmpty()
+        assertThatThrownBy { ClientNetworks.from(state) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("K3s in Docker")
+            .hasMessageContaining(ClientNetworks.OPTION)
+            .hasMessageNotContaining(Constants.Vpc.DEFAULT_CIDR)
+    }
+
+    @Test
+    fun `--client-network values are the only client networks a local workspace records`() {
+        parsed("--local", "--client-network", "172.18.0.0/16", "--client-network", "10.42.0.0/16").execute()
+
+        val state = state()
+        assertThat(state.clientNetworks).containsExactly("172.18.0.0/16", "10.42.0.0/16")
+        assertThat(ClientNetworks.from(state).cidrs.map { it.value })
+            .containsExactly("172.18.0.0/16", "10.42.0.0/16")
+            .doesNotContain(Constants.Vpc.DEFAULT_CIDR, Constants.K3s.CLUSTER_CIDR)
+        assertThat(events).contains(Event.Setup.ClientNetworksRecorded(listOf("172.18.0.0/16", "10.42.0.0/16")))
     }
 
     @Test

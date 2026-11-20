@@ -22,8 +22,6 @@ spec:
         - "list"
         image: "ghcr.io/apache/cassandra-easy-stress:latest"
         name: "stress"
-      dnsPolicy: "ClusterFirstWithHostNet"
-      hostNetwork: true
       nodeSelector:
         type: "app"
       restartPolicy: "Never"

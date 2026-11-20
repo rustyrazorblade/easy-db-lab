@@ -1683,6 +1683,29 @@ object Constants {
         }
     }
 
+    /** The workspace's cluster state file (`state.json`) and the lock its writers share. */
+    object ClusterStateFile {
+        /**
+         * The lock file beside `state.json`. Every change to the state holds an exclusive lock on it
+         * while it reads the file, applies the change and renames the new file into place, so two
+         * commands in one workspace never lose each other's changes.
+         */
+        const val LOCK_FILE = "state.json.lock"
+
+        /**
+         * How long a change waits for another process to release [LOCK_FILE]. A change holds the lock
+         * only for its read, apply and rename, a few milliseconds, so a wait this long means the holder
+         * is stuck, and the change fails rather than hang.
+         */
+        val LOCK_TIMEOUT: java.time.Duration = java.time.Duration.ofSeconds(LOCK_TIMEOUT_SECONDS)
+
+        /** How long a change sleeps between tries for [LOCK_FILE] held by another process. */
+        val LOCK_RETRY_INTERVAL: java.time.Duration = java.time.Duration.ofMillis(LOCK_RETRY_INTERVAL_MILLIS)
+
+        private const val LOCK_TIMEOUT_SECONDS = 30L
+        private const val LOCK_RETRY_INTERVAL_MILLIS = 20L
+    }
+
     // Proxy configuration
     object Proxy {
         /**

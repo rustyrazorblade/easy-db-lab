@@ -214,7 +214,7 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
 - **Failure**: `StepRunner` retries only an `AttemptFailed`; a node step that still fails goes to
   `NodeReplacer` (budget in `ReplacementBudget`). Control steps are retried and never replaced:
   `ControlNodeFailedException`. `ClusterStateWriter` is the only writer of hosts to `state.json`
-  during bring-up. Each attempt after the first is marked in the node's output as
+  during bring-up; it writes through `ClusterStateManager.update`, so a change another command saves meanwhile is kept. Each attempt after the first is marked in the node's output as
   `<step> attempt <N>` before it runs. When the pipeline is interrupted, `StepRunner` interrupts
   the attempt and waits once, up to `BringUpTiming.attemptStopGrace`, only if it is still running;
   one still running after that is emitted as `Provision.AttemptAbandoned` and left behind. When the

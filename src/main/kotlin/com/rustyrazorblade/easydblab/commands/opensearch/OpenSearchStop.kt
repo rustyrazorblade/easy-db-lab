@@ -48,8 +48,7 @@ class OpenSearchStop : PicoBaseCommand() {
         openSearchService.deleteDomain(domainState.domainName)
 
         // Clear the domain from cluster state
-        clusterState.updateOpenSearchDomain(null)
-        clusterStateManager.save(clusterState)
+        clusterStateManager.update { it.updateOpenSearchDomain(null) }
 
         eventBus.emit(Event.OpenSearch.DeletionInitiated(domainState.domainName))
         eventBus.emit(Event.OpenSearch.DeletionNote)

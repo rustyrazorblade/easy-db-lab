@@ -41,7 +41,6 @@ Override `additionalTestModules()` to register mocks for services not in the cor
 ```kotlin
 class MyCommandTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockClusterStateManager: ClusterStateManager
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -49,20 +48,23 @@ class MyCommandTest : BaseKoinTest() {
                 single {
                     mock<K8sService>().also { mockK8sService = it }
                 }
-                single {
-                    mock<ClusterStateManager>().also { mockClusterStateManager = it }
-                }
+                // Never a mock: the real manager over the test workspace.
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
-        mockClusterStateManager = getKoin().get()
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        getKoin().get<ClusterStateManager>().replace(testClusterState)
     }
 }
 ```
+
+`ClusterStateManager` is under `configuration/`, so it is never mocked. Seed the state with
+`replace(...)` and assert on `load()` after the command runs. To observe each save, wrap the real
+manager in a Mockito `spy` whose `update` answer calls `invocation.callRealMethod()` and records
+the returned state (see `UpTestFixture.recordSaves`).
 
 **Important:** When a command uses `by inject()` for a service, you MUST provide a mock in `additionalTestModules()` or the test will fail with a Koin resolution error.
 
@@ -125,7 +127,7 @@ val testState = ClusterState(
     name = "test-cluster",
     hosts = mapOf(ServerType.Control to listOf(testControlHost)),
 )
-whenever(mockClusterStateManager.load()).thenReturn(testState)
+getKoin().get<ClusterStateManager>().replace(testState)
 ```
 
 ### Exception Testing

@@ -84,14 +84,16 @@ class OpenSearchStatus : PicoBaseCommand() {
         result: OpenSearchDomainResult,
     ) {
         if (result.endpoint != domainState.endpoint || result.state.name != domainState.state) {
-            clusterState.updateOpenSearchDomain(
+            val refreshed =
                 domainState.copy(
                     endpoint = result.endpoint,
                     dashboardsEndpoint = result.dashboardsEndpoint,
                     state = result.state.name,
-                ),
-            )
-            clusterStateManager.save(clusterState)
+                )
+            // A domain another command cleared or replaced while the lookup ran stays as that command left it.
+            clusterStateManager.update {
+                if (it.openSearchDomain?.domainName == domainState.domainName) it.updateOpenSearchDomain(refreshed)
+            }
         }
     }
 
@@ -101,8 +103,7 @@ class OpenSearchStatus : PicoBaseCommand() {
             eventBus.emit(Event.OpenSearch.DomainNotExists(domainState.domainName))
             eventBus.emit(Event.OpenSearch.ClearingState)
         }
-        clusterState.updateOpenSearchDomain(null)
-        clusterStateManager.save(clusterState)
+        clusterStateManager.update { it.updateOpenSearchDomain(null) }
     }
 
     private fun handleStatusError(

@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.nodeGroups
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
@@ -384,8 +385,7 @@ class Up(
         initConfig: InitConfig,
         cidr: String,
     ) {
-        workingState.initConfig = initConfig.copy(cidr = cidr)
-        clusterStateManager.save(workingState)
+        clusterStateManager.update(workingState) { it.initConfig = it.initConfig?.copy(cidr = cidr) ?: initConfig.copy(cidr = cidr) }
     }
 
     /**
@@ -439,8 +439,7 @@ class Up(
         eventBus.emit(Event.Provision.VpcCreated(vpcId))
 
         // Save VPC ID to state
-        workingState.vpcId = vpcId
-        clusterStateManager.save(workingState)
+        clusterStateManager.update(workingState) { it.vpcId = vpcId }
 
         return vpcId
     }

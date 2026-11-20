@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.SavedSignal
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
+import com.rustyrazorblade.easydblab.configuration.update
 import java.time.Clock
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -101,8 +102,8 @@ class DefaultTeardownBackupService(
         clusterState: ClusterState,
         signal: TailSignal,
     ) {
-        clusterState.tailFlush = TailFlushRecord(recorded(clusterState) + (signal to SavedSignal(clock.instant())))
-        clusterStateManager.save(clusterState)
+        val saved = SavedSignal(clock.instant())
+        clusterStateManager.update(clusterState) { it.tailFlush = TailFlushRecord(recorded(it) + (signal to saved)) }
     }
 
     /**
@@ -110,7 +111,7 @@ class DefaultTeardownBackupService(
      * re-run finds the save complete and goes straight to the teardown.
      */
     private fun recordComplete(clusterState: ClusterState) {
-        clusterState.tailFlush = TailFlushRecord(recorded(clusterState), saveCompletedAt = clock.instant())
-        clusterStateManager.save(clusterState)
+        val completedAt = clock.instant()
+        clusterStateManager.update(clusterState) { it.tailFlush = TailFlushRecord(recorded(it), saveCompletedAt = completedAt) }
     }
 }

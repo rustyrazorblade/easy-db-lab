@@ -46,7 +46,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `dataBucket: String` — per-cluster data bucket (`easy-db-lab-data-{clusterId}`) for ClickHouse data and CloudWatch metrics
 - `backupHashes: Map<String, String>` — SHA-256 hashes of backed-up files
 - `infrastructureStatus: InfrastructureStatus` — UP, DOWN, or UNKNOWN
-- `tailFlush: TailFlushRecord?` — the signals a `down` already saved, as `TailSignal` → `SavedSignal(completedAt)`. Only `LOGS` and `METRICS` are ever recorded, each the moment its flush succeeds (their flushes stop Loki and Mimir and cannot run twice); a re-run skips them. `saveCompletedAt` is set once a save of every signal succeeded, right before the infrastructure teardown; a re-run (after a teardown that failed part-way) then skips the whole save and its SOCKS tunnel. `markInfrastructureUp()` clears it. `ClusterStateManager.save` writes a temp file with the state file's permissions and renames it over `state.json`, so a concurrent `load()` never reads a torn file
+- `tailFlush: TailFlushRecord?` — the signals a `down` already saved, as `TailSignal` → `SavedSignal(completedAt)`. Only `LOGS` and `METRICS` are ever recorded, each the moment its flush succeeds (their flushes stop Loki and Mimir and cannot run twice); a re-run skips them. `saveCompletedAt` is set once a save of every signal succeeded, right before the infrastructure teardown; a re-run (after a teardown that failed part-way) then skips the whole save and its SOCKS tunnel. `markInfrastructureUp()` clears it.
 
 Key methods:
 - `getControlHost()` — first control node (convenience)
@@ -81,12 +81,17 @@ enum class ServerType(val serverType: String) {
 
 ### ClusterStateManager (`ClusterStateManager.kt`)
 
-Handles persistence to `state.json`:
-- `load(): ClusterState` — read from file
-- `save(state)` — write to file (pretty-printed JSON)
+Handles persistence to `state.json`. Several commands can run in one workspace at once (issue 986), so no command writes back a whole copy it loaded earlier:
+- `load(): ClusterState` — read from file. Takes no lock; every write is a rename, so a reader never sees a torn file
+- `update { change }` — the only way to change existing state. Under an exclusive lock on `state.json.lock` (`Constants.ClusterStateFile`: 30s timeout, 20ms retry, through resilience4j) it reads the file again, applies `change` to that fresh copy, writes a temp file with the state file's permissions and renames it over `state.json`. A change another command saved after this one loaded is kept. A long command (`spark init`, `up`) holds the lock only for this, never while it waits. Threads of one JVM also take turns on an in-process lock first (a JVM cannot hold two locks on one file); a nested `update` fails at once
+- `update(local) { change }` (extension) — applies `change` on disk and then to the caller's own copy, so the code after it sees its change. The change runs twice: it must set values, not step them
+- `replace(state)` — writes a whole new state, under the same lock. Only `init` and a restore that found no `state.json` use it
 - `exists(): Boolean` — check if state file exists
-- `updateHosts()`, `updateEmrCluster()`, `updateInfrastructure()` — load-update-save atomically
-- `markInfrastructureUp()`, `markInfrastructureDown()` — status helpers
+- `incrementStressJobCounter()`, `addRunningWorkload()`, `removeRunningWorkload()` — `update`s
+- Failures: a lock timeout or an unparseable file is an `IOException` naming the file, and nothing is written; an `update` with no `state.json` is an `IllegalStateException` telling the user to run `init`
+- In tests, use a real `ClusterStateManager` over `@TempDir`. A mocked manager's `update` applies no change
+
+`ClusterState` helpers such as `updateHosts()`, `updateEmrCluster()`, `updateInfrastructure()`, `markInfrastructureUp()` and `markInfrastructureDown()` only change the object; call them inside `update`.
 
 Note: Uses Jackson (legacy) for serialization with lenient deserialization settings.
 

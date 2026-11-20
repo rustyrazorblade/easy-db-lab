@@ -32,7 +32,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a running SOCKS cluster gets its tunnel and the env file says it is not Tailscale`() {
-        stateManager.save(clusterState(tailscale = false))
+        stateManager.replace(clusterState(tailscale = false))
 
         preflight.ensureTunnel()
 
@@ -42,7 +42,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a Tailscale cluster starts no tunnel and the env file says it is Tailscale`() {
-        stateManager.save(clusterState(tailscale = true))
+        stateManager.replace(clusterState(tailscale = true))
 
         preflight.ensureTunnel()
 
@@ -52,7 +52,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a cluster that is not up starts no tunnel but still records the flag`() {
-        stateManager.save(clusterState(tailscale = true).apply { markInfrastructureDown() })
+        stateManager.replace(clusterState(tailscale = true).apply { markInfrastructureDown() })
 
         preflight.ensureTunnel()
 
@@ -70,7 +70,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `the tunnel it started or reused is recorded for the command, and clear removes it`() {
-        stateManager.save(clusterState(tailscale = false))
+        stateManager.replace(clusterState(tailscale = false))
         val started = SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH, reused = false)
         whenever(socksProxyService.ensureRunning(CONTROL)).thenReturn(started)
 
@@ -83,7 +83,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a Tailscale cluster records no tunnel for the command`() {
-        stateManager.save(clusterState(tailscale = true))
+        stateManager.replace(clusterState(tailscale = true))
 
         preflight.ensureTunnel()
 
@@ -92,7 +92,7 @@ internal class ProxyPreflightTest {
 
     @Test
     fun `a tunnel recorded on another thread is not this thread's`() {
-        stateManager.save(clusterState(tailscale = false))
+        stateManager.replace(clusterState(tailscale = false))
         whenever(socksProxyService.ensureRunning(CONTROL))
             .thenReturn(SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH))
         thread { preflight.ensureTunnel() }.join()

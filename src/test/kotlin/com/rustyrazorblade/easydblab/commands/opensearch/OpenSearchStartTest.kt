@@ -24,6 +24,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Test suite for OpenSearchStart command following TDD principles.
@@ -33,7 +34,7 @@ import org.mockito.kotlin.whenever
  */
 class OpenSearchStartTest : BaseKoinTest() {
     private lateinit var mockOpenSearchService: OpenSearchService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
 
     private val testControlHost =
         ClusterHost(
@@ -57,14 +58,14 @@ class OpenSearchStartTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<OpenSearchService>().also { mockOpenSearchService = it } }
-                single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockOpenSearchService = getKoin().get()
-        mockClusterStateManager = getKoin().get()
+        stateManager = getKoin().get()
         whenever(mockOpenSearchService.getAccountId()).thenReturn("123456789012")
     }
 
@@ -77,7 +78,7 @@ class OpenSearchStartTest : BaseKoinTest() {
                 infrastructure = null,
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutInfrastructure)
+        stateManager.replace(stateWithoutInfrastructure)
 
         val command = OpenSearchStart()
 
@@ -104,7 +105,7 @@ class OpenSearchStartTest : BaseKoinTest() {
                     ),
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithEmptySubnets)
+        stateManager.replace(stateWithEmptySubnets)
 
         val command = OpenSearchStart()
 
@@ -126,7 +127,7 @@ class OpenSearchStartTest : BaseKoinTest() {
 
         val stateWithInfrastructure = createValidClusterState()
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithInfrastructure)
+        stateManager.replace(stateWithInfrastructure)
         whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
         whenever(mockOpenSearchService.waitForDomainActive(any(), any(), any())).thenReturn(domainResult)
 
@@ -136,8 +137,7 @@ class OpenSearchStartTest : BaseKoinTest() {
 
         verify(mockOpenSearchService).createDomain(any())
         verify(mockOpenSearchService).waitForDomainActive(any(), any(), any())
-        // save() is called twice: once after create, once after waiting with updated endpoint
-        verify(mockClusterStateManager, org.mockito.kotlin.times(2)).save(any())
+        assertThat(stateManager.load().openSearchDomain?.endpoint).isEqualTo("search-test.us-west-2.es.amazonaws.com")
     }
 
     @Test
@@ -153,7 +153,7 @@ class OpenSearchStartTest : BaseKoinTest() {
 
         val stateWithInfrastructure = createValidClusterState()
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithInfrastructure)
+        stateManager.replace(stateWithInfrastructure)
         whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
 
         val command = OpenSearchStart()
@@ -177,7 +177,7 @@ class OpenSearchStartTest : BaseKoinTest() {
 
         val stateWithInfrastructure = createValidClusterState()
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithInfrastructure)
+        stateManager.replace(stateWithInfrastructure)
         whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
         whenever(mockOpenSearchService.waitForDomainActive(any(), any(), any())).thenReturn(domainResult)
 
@@ -199,7 +199,7 @@ class OpenSearchStartTest : BaseKoinTest() {
                 state = DomainState.ACTIVE,
             )
         val state = createValidClusterState()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
 
         OpenSearchStart().execute()

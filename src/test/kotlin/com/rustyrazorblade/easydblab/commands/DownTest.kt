@@ -166,7 +166,7 @@ class DownTest : BaseKoinTest() {
                 name = "test-cluster",
             )
         state.markInfrastructureUp()
-        manager.save(state)
+        manager.replace(state)
 
         // Verify it's UP
         val beforeState = manager.load()
@@ -175,7 +175,7 @@ class DownTest : BaseKoinTest() {
 
         // Simulate Down command marking it as DOWN
         beforeState.markInfrastructureDown()
-        manager.save(beforeState)
+        manager.replace(beforeState)
 
         // Load and verify it's DOWN
         val afterState = manager.load()
@@ -257,7 +257,7 @@ class DownTest : BaseKoinTest() {
                 name = "test-cluster",
             )
         state.updateTailscaleAuthKeyId("key-id-123")
-        manager.save(state)
+        manager.replace(state)
 
         // Verify the key ID is set
         val loadedState = manager.load()
@@ -266,7 +266,7 @@ class DownTest : BaseKoinTest() {
         // Simulate Down command clearing the key
         loadedState.updateTailscaleAuthKeyId(null)
         loadedState.markInfrastructureDown()
-        manager.save(loadedState)
+        manager.replace(loadedState)
 
         // Verify the key ID is cleared
         val afterState = manager.load()
@@ -288,14 +288,14 @@ class DownTest : BaseKoinTest() {
                 nodes = mutableMapOf("db0" to NodeState("4.1.3")),
             )
         state.markInfrastructureUp()
-        manager.save(state)
+        manager.replace(state)
 
         val clusterId = state.clusterId
         val createdAt = state.createdAt
 
         // Mark as DOWN
         state.markInfrastructureDown()
-        manager.save(state)
+        manager.replace(state)
 
         // Reload and verify all fields preserved except status
         val reloadedState = manager.load()

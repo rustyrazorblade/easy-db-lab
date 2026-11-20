@@ -455,6 +455,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         resetFakes()
 
         whenever(mockClusterStateManager.load()).thenReturn(happyState())
+        applyStateUpdates()
 
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
 
@@ -577,6 +578,19 @@ abstract class UpTestFixture : BaseKoinTest() {
      * wall-clock timing and attempt counts the tests name, not which decisions are made.
      */
     protected fun newUp(): Up = Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST)
+
+    /**
+     * The mocked manager applies each [ClusterStateManager.update] to the state its `load()` stub
+     * returns, as the file would, and hands every saved state to [onSave] (on the saving thread).
+     */
+    protected fun applyStateUpdates(onSave: (ClusterState) -> Unit = {}) {
+        whenever(mockClusterStateManager.update(any())).thenAnswer { invocation ->
+            val state = mockClusterStateManager.load()
+            invocation.getArgument<(ClusterState) -> Unit>(0)(state)
+            onSave(state)
+            state
+        }
+    }
 
     protected fun overrideUser(user: User) {
         whenever(mockClusterStateManager.load()).thenReturn(happyState())

@@ -115,32 +115,21 @@ class OpenSearchStart : PicoBaseCommand() {
     )
 
     private fun saveOpenSearchState(result: OpenSearchDomainResult) {
-        clusterState.updateOpenSearchDomain(
+        val domain =
             OpenSearchClusterState(
                 domainName = result.domainName,
                 domainId = result.domainId,
                 endpoint = result.endpoint,
                 dashboardsEndpoint = result.dashboardsEndpoint,
                 state = result.state.name,
-            ),
-        )
-        clusterStateManager.save(clusterState)
+            )
+        clusterStateManager.update { it.updateOpenSearchDomain(domain) }
     }
 
     private fun waitForDomainAndUpdateState(domainName: String) {
         eventBus.emit(Event.OpenSearch.Waiting)
         val activeResult = openSearchService.waitForDomainActive(domainName)
-
-        clusterState.updateOpenSearchDomain(
-            OpenSearchClusterState(
-                domainName = activeResult.domainName,
-                domainId = activeResult.domainId,
-                endpoint = activeResult.endpoint,
-                dashboardsEndpoint = activeResult.dashboardsEndpoint,
-                state = activeResult.state.name,
-            ),
-        )
-        clusterStateManager.save(clusterState)
+        saveOpenSearchState(activeResult)
 
         displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
     }

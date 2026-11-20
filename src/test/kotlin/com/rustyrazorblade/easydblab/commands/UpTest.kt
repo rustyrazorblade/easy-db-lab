@@ -364,9 +364,8 @@ class UpTest : UpTestFixture() {
         launched.forEach { publicIps["i-db$it"] = "54.9.9.$it" }
         val launchThread = AtomicReference<Thread>()
         val saves = Collections.synchronizedList(mutableListOf<List<ClusterHost>>())
-        whenever(mockClusterStateManager.save(any())).thenAnswer {
-            if (Thread.currentThread() == launchThread.get()) saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
-            Unit
+        applyStateUpdates { state ->
+            if (Thread.currentThread() == launchThread.get()) saves += state.hosts[ServerType.Cassandra].orEmpty()
         }
         whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
             launchThread.set(Thread.currentThread())
@@ -1256,11 +1255,7 @@ class UpTest : UpTestFixture() {
     /** A copy of the state at every save, in order. */
     private fun captureSaves(): List<ClusterState> {
         val saved = Collections.synchronizedList(mutableListOf<ClusterState>())
-        whenever(mockClusterStateManager.save(any())).thenAnswer {
-            val state = it.getArgument<ClusterState>(0)
-            synchronized(saved) { saved += state.copy(hosts = state.hosts) }
-            Unit
-        }
+        applyStateUpdates { state -> synchronized(saved) { saved += state.copy(hosts = state.hosts) } }
         return saved
     }
 

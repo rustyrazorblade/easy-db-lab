@@ -42,7 +42,7 @@ class SparkInitTest : BaseKoinTest() {
     }
 
     private fun saveState(state: ClusterState) {
-        testClusterStateManager.save(state)
+        testClusterStateManager.replace(state)
     }
 
     @Test

@@ -577,18 +577,19 @@ class Down : PicoBaseCommand() {
                 // owner's data and are never expired or deleted here.
                 dataBucketTeardown.stopMetrics(clusterState)
 
-                clusterState.markInfrastructureDown()
-                clusterState.updateHosts(emptyMap())
-                clusterState.updateEmrCluster(null)
-                clusterState.updateOpenSearchDomain(null)
-                clusterState.updateInfrastructure(null)
-                clusterState.updateTailscaleAuthKeyId(null)
-                clusterStateManager.save(clusterState)
+                clusterStateManager.update {
+                    it.markInfrastructureDown()
+                    it.updateHosts(emptyMap())
+                    it.updateEmrCluster(null)
+                    it.updateOpenSearchDomain(null)
+                    it.updateInfrastructure(null)
+                    it.updateTailscaleAuthKeyId(null)
+                }
                 eventBus.emit(Event.Teardown.ClusterStateMarkedDown)
             }
         } catch (e: IOException) {
-            // The state loaded successfully earlier in this run, so only reading it again or
-            // saving it can fail here, and both fail with an IOException.
+            // The state loaded successfully earlier in this run, so only reading it again, waiting
+            // for another command's state lock, or saving it can fail here: all are IOExceptions.
             reportClusterStateFailure(e)
         }
     }
@@ -618,8 +619,7 @@ class Down : PicoBaseCommand() {
             DeviceRemoval.NoneRecorded -> result
             is DeviceRemoval.Failed -> result.copy(success = false, errors = result.errors + removal.reason)
             is DeviceRemoval.Removed -> {
-                clusterState.tailscaleDeviceId = null
-                clusterStateManager.save(clusterState)
+                clusterStateManager.update { it.tailscaleDeviceId = null }
                 result
             }
         }

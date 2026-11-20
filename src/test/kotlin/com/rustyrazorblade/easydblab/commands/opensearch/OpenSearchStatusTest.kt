@@ -22,6 +22,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Test suite for OpenSearchStatus command.
@@ -31,7 +32,8 @@ import org.mockito.kotlin.whenever
  */
 class OpenSearchStatusTest : BaseKoinTest() {
     private lateinit var mockOpenSearchService: OpenSearchService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
+    private val stateFile by lazy { File(tempDir, "state.json") }
 
     private val testControlHost =
         ClusterHost(
@@ -55,14 +57,14 @@ class OpenSearchStatusTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<OpenSearchService>().also { mockOpenSearchService = it } }
-                single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockOpenSearchService = getKoin().get()
-        mockClusterStateManager = getKoin().get()
+        stateManager = getKoin().get()
     }
 
     @Nested
@@ -79,7 +81,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
                     openSearchDomain = null,
                 )
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithoutOpenSearch)
+            stateManager.replace(stateWithoutOpenSearch)
 
             val command = OpenSearchStatus()
             command.execute()
@@ -99,7 +101,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
                     openSearchDomain = null,
                 )
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithoutOpenSearch)
+            stateManager.replace(stateWithoutOpenSearch)
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
@@ -124,7 +126,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
@@ -146,7 +148,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
@@ -168,7 +170,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
@@ -193,7 +195,8 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
+            val before = stateFile.readText()
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
@@ -202,7 +205,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             verify(mockOpenSearchService).lookupDomain("test-cluster-os")
             // State should not be saved when using --endpoint flag (output only mode)
-            verify(mockClusterStateManager, never()).save(any())
+            assertThat(stateFile.readText()).isEqualTo(before)
         }
 
         @Test
@@ -218,7 +221,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
@@ -245,14 +248,14 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
 
-            // State should be saved because remote endpoint differs from local
-            verify(mockClusterStateManager).save(any())
+            assertThat(stateManager.load().openSearchDomain?.endpoint)
+                .isEqualTo("new-endpoint.us-west-2.es.amazonaws.com")
         }
 
         @Test
@@ -269,14 +272,15 @@ class OpenSearchStatusTest : BaseKoinTest() {
 
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
+            val before = stateFile.readText()
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
 
             // State should NOT be saved because remote matches local
-            verify(mockClusterStateManager, never()).save(any())
+            assertThat(stateFile.readText()).isEqualTo(before)
         }
     }
 
@@ -286,65 +290,63 @@ class OpenSearchStatusTest : BaseKoinTest() {
         fun `execute should clear state when domain not found`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.NotFound)
 
             val command = OpenSearchStatus()
             command.execute()
 
-            // State should be cleared and saved
-            verify(mockClusterStateManager).save(any())
-            assertThat(stateWithOpenSearch.openSearchDomain).isNull()
+            assertThat(stateManager.load().openSearchDomain).isNull()
         }
 
         @Test
         fun `execute should show cached state on transient errors`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
+            val before = stateFile.readText()
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
                 .thenReturn(DomainLookup.Unavailable("Network error"))
 
             val command = OpenSearchStatus()
             command.execute()
 
-            // State should NOT be cleared for transient errors
-            verify(mockClusterStateManager, never()).save(any())
-            assertThat(stateWithOpenSearch.openSearchDomain).isNotNull
+            assertThat(stateFile.readText()).describedAs("a transient error clears nothing").isEqualTo(before)
         }
 
         @Test
         fun `execute with --endpoint should not output when the domain is not found`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.NotFound)
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
             command.execute()
 
-            // State should be cleared and saved even with --endpoint flag
-            verify(mockClusterStateManager).save(any())
+            assertThat(stateManager.load().openSearchDomain).isNull()
         }
 
         @Test
         fun `a failure that is not an AWS failure propagates and leaves the state alone`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
+            val before = stateFile.readText()
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
                 .thenThrow(IllegalStateException("bug"))
 
             assertThatThrownBy { OpenSearchStatus().execute() }.isInstanceOf(IllegalStateException::class.java)
-            verify(mockClusterStateManager, never()).save(any())
+            assertThat(stateFile.readText()).isEqualTo(before)
         }
 
         @Test
         fun `execute with --endpoint should not output on transient errors`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
-            whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+            stateManager.replace(stateWithOpenSearch)
+            val before = stateFile.readText()
             whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
                 .thenReturn(DomainLookup.Unavailable("Network error"))
 
@@ -353,7 +355,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             command.execute()
 
             // State should NOT be modified for transient errors
-            verify(mockClusterStateManager, never()).save(any())
+            assertThat(stateFile.readText()).isEqualTo(before)
         }
     }
 

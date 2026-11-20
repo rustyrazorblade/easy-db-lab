@@ -29,7 +29,8 @@ class TeardownBackupServiceTest {
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val state = ClusterState(name = "lab")
 
-    private fun manager() = ClusterStateManager(File(dir, "state.json"))
+    /** The workspace state `init` wrote, holding [state] as the test set it up. */
+    private fun manager() = ClusterStateManager(File(dir, "state.json")).also { it.replace(state) }
 
     /** Saves the pending signals it is given, calling back for each in [saves] order. */
     private open inner class FakeSave(

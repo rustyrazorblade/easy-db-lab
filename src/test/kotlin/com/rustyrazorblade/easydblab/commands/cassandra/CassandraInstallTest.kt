@@ -85,9 +85,12 @@ class CassandraInstallTest : BaseKoinTest() {
         stateManager = mock()
         whenever(stateManager.load()).thenReturn(state)
         whenever(stateManager.exists()).thenReturn(true)
+        // The state on disk is [state]: each update applies its change there, as the file would.
         doAnswer {
-            saves += it.getArgument<ClusterState>(0).nodes.mapValues { (_, node) -> node.installed.keys.toSet() }
-        }.whenever(stateManager).save(any())
+            it.getArgument<(ClusterState) -> Unit>(0)(state)
+            saves += state.nodes.mapValues { (_, node) -> node.installed.keys.toSet() }
+            state
+        }.whenever(stateManager).update(any())
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 

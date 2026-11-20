@@ -174,7 +174,7 @@ class DefaultBackupRestoreService(
                     state
                 } else {
                     log.warn { "state.json was not found in S3 backup, using bootstrap state" }
-                    clusterStateManager.save(bootstrapState)
+                    clusterStateManager.replace(bootstrapState)
                     bootstrapState
                 }
 

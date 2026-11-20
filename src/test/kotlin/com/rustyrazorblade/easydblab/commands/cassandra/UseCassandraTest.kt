@@ -80,7 +80,10 @@ class UseCassandraTest : BaseKoinTest() {
         stateManager = mock()
         withNodes(2)
         whenever(stateManager.exists()).thenReturn(true)
-        doAnswer { saveCount++ }.whenever(stateManager).save(any())
+        doAnswer {
+            saveCount++
+            state
+        }.whenever(stateManager).update(any())
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 

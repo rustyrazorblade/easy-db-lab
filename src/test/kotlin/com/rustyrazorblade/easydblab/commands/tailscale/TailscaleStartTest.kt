@@ -20,16 +20,16 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 class TailscaleStartTest : BaseKoinTest() {
     private lateinit var mockTailscaleService: TailscaleService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testControlHost =
@@ -55,17 +55,17 @@ class TailscaleStartTest : BaseKoinTest() {
         listOf(
             module {
                 single<TailscaleService> { mockTailscaleService }
-                single<ClusterStateManager> { mockClusterStateManager }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockTailscaleService = mock()
-        mockClusterStateManager = mock()
+        stateManager = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        stateManager.replace(testClusterState)
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
         whenever(mockTailscaleService.getDeviceId(any())).thenReturn(Result.success("nDefaultCNTRL"))
     }
@@ -93,7 +93,7 @@ class TailscaleStartTest : BaseKoinTest() {
                     initConfig = InitConfig(region = "us-west-2"),
                     hosts = emptyMap(),
                 )
-            whenever(mockClusterStateManager.load()).thenReturn(stateNoControl)
+            stateManager.replace(stateNoControl)
 
             val command = TailscaleStart()
             command.clientId = "client-id"
@@ -183,8 +183,7 @@ class TailscaleStartTest : BaseKoinTest() {
             command.clientSecret = "client-secret"
             command.execute()
 
-            assertThat(testClusterState.tailscaleAuthKeyId).isEqualTo("key-id-456")
-            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+            assertThat(stateManager.load().tailscaleAuthKeyId).isEqualTo("key-id-456")
         }
 
         @Test
@@ -202,7 +201,7 @@ class TailscaleStartTest : BaseKoinTest() {
             command.clientSecret = "client-secret"
             command.execute()
 
-            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+            assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("nControl0CNTRL")
         }
     }
 
@@ -227,25 +226,27 @@ class TailscaleStartTest : BaseKoinTest() {
         @Test
         fun `a different previously recorded device is removed before the new one is recorded`() {
             testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stateManager.replace(testClusterState)
             stubSuccessfulStart("nNewCNTRL")
 
             val exitCode = startCommand().call()
 
             assertThat(exitCode).isEqualTo(0)
             verify(mockTailscaleService).deleteDevice(eq("client-id"), eq("client-secret"), eq("nOldCNTRL"))
-            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+            assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("nNewCNTRL")
             assertThat(outputHandler.messages.joinToString("\n")).contains("nOldCNTRL")
         }
 
         @Test
         fun `the same device re-registering is not deleted`() {
             testClusterState.tailscaleDeviceId = "nSameCNTRL"
+            stateManager.replace(testClusterState)
             stubSuccessfulStart("nSameCNTRL")
 
             assertThat(startCommand().call()).isEqualTo(0)
 
             verify(mockTailscaleService, never()).deleteDevice(any(), any(), any())
-            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nSameCNTRL")
+            assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("nSameCNTRL")
         }
 
         /**
@@ -256,6 +257,7 @@ class TailscaleStartTest : BaseKoinTest() {
         @Test
         fun `a failed removal of the old device is reported but still succeeds, recording the live device`() {
             testClusterState.tailscaleDeviceId = "nOldCNTRL"
+            stateManager.replace(testClusterState)
             stubSuccessfulStart("nNewCNTRL")
             whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
                 .thenThrow(TailscaleApiException("not allowed to delete device nOldCNTRL; grant it the 'devices:core' write scope"))
@@ -263,8 +265,7 @@ class TailscaleStartTest : BaseKoinTest() {
             val exitCode = startCommand().call()
 
             assertThat(exitCode).isEqualTo(0)
-            assertThat(testClusterState.tailscaleDeviceId).isEqualTo("nNewCNTRL")
-            verify(mockClusterStateManager, atLeastOnce()).save(testClusterState)
+            assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("nNewCNTRL")
             val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
             assertThat(errorOutput).contains("nOldCNTRL").contains("devices:core")
         }

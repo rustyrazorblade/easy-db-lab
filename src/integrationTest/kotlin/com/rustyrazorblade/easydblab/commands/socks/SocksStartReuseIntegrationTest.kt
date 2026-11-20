@@ -61,7 +61,7 @@ class SocksStartReuseIntegrationTest : BaseKoinTest() {
     fun `a running tunnel is reused, and its port is recorded and reported`() {
         val workspace = context.workingDirectory
         val sshConfig = File(workspace, "sshConfig").apply { writeText("Host control0\n  Hostname 10.0.1.5\n") }
-        get<ClusterStateManager>().save(
+        get<ClusterStateManager>().replace(
             ClusterState(
                 name = "test-cluster",
                 hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.1.2.3", "10.0.1.5", "control0", "us-west-2a", "i-ctrl"))),

@@ -55,7 +55,7 @@ class MetricsStreamSignalIntegrationTest {
         val userDir = File(root, "user")
         UserConfigProvider(File(userDir, "profiles/default").apply { mkdirs() })
             .saveUserConfig(User("test@example.com", "us-west-2", "key", "", "access", "secret"))
-        ClusterStateManager(File(workspace, "state.json")).save(
+        ClusterStateManager(File(workspace, "state.json")).replace(
             ClusterState(
                 name = "lab",
                 hosts = mapOf(ServerType.Control to listOf(ClusterHost("127.0.0.1", "127.0.0.1", "control0", "us-west-2a", "i-1"))),

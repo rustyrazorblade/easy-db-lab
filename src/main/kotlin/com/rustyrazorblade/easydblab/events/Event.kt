@@ -6170,19 +6170,36 @@ sealed interface Event {
                     "Add a network with --client-network <cidr>."
         }
 
+        /** Where a client network `init` records came from. */
+        @Serializable
+        enum class ClientNetworkSource {
+            /** An `init --client-network` value. */
+            OPTION,
+
+            /** A pod CIDR a node of a brought cluster reports. */
+            NODES,
+        }
+
         /**
-         * `init --client-network` was given [network], a /1 to /7 prefix covering [addresses]
-         * addresses, and recorded it: every one of them gets passwordless access to the database kits.
+         * `init` recorded [network], a /1 to /7 prefix covering [addresses] addresses, as a client
+         * network from [source]: every one of them gets passwordless access to the database kits.
          */
         @Serializable
         @SerialName("Setup.WideClientNetwork")
         data class WideClientNetwork(
             val network: String,
             val addresses: Long,
+            val source: ClientNetworkSource,
         ) : Setup {
             override fun toDisplayString(): String =
-                "Warning: --client-network $network gives $addresses addresses passwordless access to the " +
-                    "database kits. Give a narrower network unless that is intended."
+                when (source) {
+                    ClientNetworkSource.OPTION ->
+                        "Warning: --client-network $network gives $addresses addresses passwordless access to the " +
+                            "database kits. Give a narrower network unless that is intended."
+                    ClientNetworkSource.NODES ->
+                        "Warning: a node reports pod CIDR $network, which gives $addresses addresses passwordless " +
+                            "access to the database kits. Check the cluster's pod CIDRs unless that is intended."
+                }
         }
 
         /**

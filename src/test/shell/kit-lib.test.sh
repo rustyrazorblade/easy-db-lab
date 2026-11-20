@@ -162,6 +162,32 @@ test_overrides_use_a_mapped_app_selector() {
   [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{"pool":"clients"}' ] || fail "wrong nodeSelector: ${out}"
 }
 
+
+test_a_multi_label_app_role_is_checked_by_every_label() {
+  start_test "multi-label app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients,zone=a 'APP_NODE_SELECTOR={"pool":"clients","zone":"a"}' CONTROL_NODE_LABELS=)
+  run_lib 'edl_require_app_node sysbench'
+  [ "${rc}" -ne 0 ] || fail "exited 0 with no matching node"
+  [ "${err}" = "sysbench needs an app node (pool=clients,zone=a); this cluster has none" ] || fail "message: ${err}"
+  grep -Fqx 'get nodes -l pool=clients,zone=a -o name' <<< "$(calls)" || fail "did not read the mapped nodes: $(calls)"
+}
+
+test_overrides_use_every_label_of_a_multi_label_app_selector() {
+  start_test "overrides, multi-label app role"
+  ROLE_VARS=(APP_NODE_LABELS=pool=clients,zone=a 'APP_NODE_SELECTOR={"pool":"clients","zone":"a"}')
+  run_lib 'edl_pod_overrides edl-q-1 /edl run'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{"pool":"clients","zone":"a"}' ] || fail "wrong nodeSelector: ${out}"
+}
+
+test_overrides_with_an_empty_app_selector_string_are_unconstrained() {
+  start_test "overrides, APP_NODE_SELECTOR empty"
+  ROLE_VARS=(APP_NODE_LABELS= APP_NODE_SELECTOR= CONTROL_NODE_LABELS=)
+  run_lib 'edl_pod_overrides'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -c '.spec.nodeSelector' <<< "${out}")" = '{}' ] || fail "nodeSelector not empty: ${out}"
+}
+
 test_resource_names_end_in_a_timestamp_and_labels_name_kit_and_role() {
   start_test "names and labels"
   run_lib 'KIT_NAME=clickhouse-benchmark-clickhouse edl_resource_name run'
@@ -655,6 +681,9 @@ test_an_unconstrained_app_role_on_an_empty_cluster_says_any_node
 test_overrides_with_an_unconstrained_app_role_have_an_empty_node_selector
 test_overrides_with_no_app_selector_set_are_unconstrained
 test_overrides_use_a_mapped_app_selector
+test_a_multi_label_app_role_is_checked_by_every_label
+test_overrides_use_every_label_of_a_multi_label_app_selector
+test_overrides_with_an_empty_app_selector_string_are_unconstrained
 test_resource_names_end_in_a_timestamp_and_labels_name_kit_and_role
 test_configmap_missing_file_calls_no_create
 test_configmap_empty_file_fails

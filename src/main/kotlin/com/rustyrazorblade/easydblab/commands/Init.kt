@@ -37,6 +37,7 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
+import com.rustyrazorblade.easydblab.services.ClientNetworkProbeResult
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
@@ -594,7 +595,7 @@ class Init :
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
-        reportClientNetworks(clusterState, extraClients, probe?.noPodCidr == true)
+        reportClientNetworks(clusterState, extraClients, probe)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
@@ -622,21 +623,30 @@ class Init :
 
     /**
      * Tells the user which networks the passwordless database kits will trust ([Event.Setup.ClientNetworksRecorded]),
-     * after warning about each very wide [extraClients] network ([Event.Setup.WideClientNetwork]), and then
-     * warning, when a probed cluster reported no pod CIDR ([noPodCidr]), that pod clients may be refused
+     * after warning about each very wide network it records ([Event.Setup.WideClientNetwork]): one of
+     * [extraClients], or one the [probe] of a brought cluster read from its nodes. Then, when the probed
+     * nodes reported no pod CIDR, it warns that pod clients may be refused
      * ([Event.Setup.NoPodCidrClientNetworks]). Neither warning fails `init`.
      */
     private fun reportClientNetworks(
         clusterState: ClusterState,
         extraClients: List<Ipv4Cidr>,
-        noPodCidr: Boolean,
+        probe: ClientNetworkProbeResult?,
     ) {
         extraClients.filter { it.isVeryWideClientNetwork }.forEach { cidr ->
-            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount))
+            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount, Event.Setup.ClientNetworkSource.OPTION))
         }
+        probe
+            ?.networks
+            ?.cidrs
+            .orEmpty()
+            .filter { it.isVeryWideClientNetwork && it !in extraClients }
+            .forEach { cidr ->
+                eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount, Event.Setup.ClientNetworkSource.NODES))
+            }
         val recorded = ClientNetworks.from(clusterState).cidrs.map { it.value }
         eventBus.emit(Event.Setup.ClientNetworksRecorded(recorded))
-        if (noPodCidr) eventBus.emit(Event.Setup.NoPodCidrClientNetworks(recorded))
+        if (probe?.noPodCidr == true) eventBus.emit(Event.Setup.NoPodCidrClientNetworks(recorded))
     }
 
     /**

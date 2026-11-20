@@ -79,6 +79,8 @@ The coordinator and workers run on the app role's nodes: `type=app` on the nodes
 
 ## Connecting
 
+The coordinator runs in the Kubernetes pod network; earlier releases bound it to the node's port 8080 (`hostPort`). Query timings from this release are **not comparable** with results recorded before it; compare runs made on the same release.
+
 After `easy-db-lab trino start` completes, the Trino coordinator is published on the NodePort Service `trino-nodeport`, port 30881 on any node's private IP. Reach it at `jdbc:trino://<node-ip>:30881` through the workspace SOCKS5 tunnel: the tunnel listens on `127.0.0.1` at the `EDL_SOCKS_PORT` recorded in the workspace's `.socks5-proxy.env`, and the client carries it in its own proxy setting, the JDBC connection property `socksProxy=127.0.0.1:<port>` or the Trino CLI's `--socks-proxy 127.0.0.1:<port>`. Or port-forward the Service:
 
 ```bash

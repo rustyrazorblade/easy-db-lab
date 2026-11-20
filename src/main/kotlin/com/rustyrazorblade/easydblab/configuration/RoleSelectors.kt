@@ -11,7 +11,9 @@ import kotlinx.serialization.json.Json
  * (`__DB_NODE_SELECTOR__`, a kubectl `--overrides`) and [toLabelSelector] for `kubectl -l` and the
  * Kubernetes API. Both list the keys sorted, so a rendered manifest is stable.
  *
- * A data class, not a value class: it is recorded in `state.json`, which Jackson writes.
+ * A data class, not a value class: it is recorded in `state.json`, which `ClusterStateManager`
+ * still reads and writes with Jackson (deprecated here, but not yet migrated), and Jackson's
+ * Kotlin module cannot map a value class property.
  *
  * @property labels the label keys and values a node must carry.
  */
@@ -118,22 +120,25 @@ data class RoleSelectors(
         }
 
         private fun parseOne(value: String): Pair<ServerType, NodeSelector> {
-            val roleName = value.substringBefore("=")
-            val role = ServerType.entries.firstOrNull { it.serverType == roleName }
-            val selector = value.substringAfter("=", "")
+            val role = ServerType.entries.firstOrNull { it.serverType == value.substringBefore("=") }
+            require(role != null && "=" in value) { malformed(value, pairNote = "") }
+            val selector = value.substringAfter("=")
             // `<role>=` with nothing after it unmaps the role: its pods run on any node.
             val pairs = if (selector.isEmpty()) emptyList() else selector.split(",")
             val labels = pairs.map(::parseLabel)
             val badPair = pairs.zip(labels).firstOrNull { (_, label) -> label == null }?.first
-            require(role != null && "=" in value && badPair == null) {
-                val pairNote = badPair?.let { " (label '$it' is not one key=value)" }.orEmpty()
-                "Invalid $OPTION '$value'$pairNote: expected $EXPECTED_FORM, with <role> one of " +
-                    "${ServerType.entries.joinToString(", ") { it.serverType }}."
-            }
+            require(badPair == null) { malformed(value, pairNote = " (label '$badPair' is not one key=value)") }
             val parsed = labels.filterNotNull()
             parsed.forEach { (key, labelValue) -> requireLabel(value, key, labelValue) }
             return role to NodeSelector(parsed.toMap())
         }
+
+        private fun malformed(
+            value: String,
+            pairNote: String,
+        ): String =
+            "Invalid $OPTION '$value'$pairNote: expected $EXPECTED_FORM, with <role> one of " +
+                "${ServerType.entries.joinToString(", ") { it.serverType }}."
 
         /**
          * One `key=value` pair, or null when it is not one. The key is required; the value may be

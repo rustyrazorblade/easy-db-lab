@@ -1038,6 +1038,42 @@ class InitTest : BaseKoinTest() {
             assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("no pod CIDR")
         }
 
+        /** A probed pod CIDR is trusted passwordless like a --client-network, so a very wide one is warned about too. */
+        @Test
+        fun `a very wide pod CIDR a brought node reports is recorded with a warning naming it`() {
+            broughtNodes =
+                listOf(
+                    NodeBuilder(BROUGHT_NODE)
+                        .editSpec()
+                        .withPodCIDRs("8.0.0.0/6")
+                        .endSpec()
+                        .build(),
+                )
+
+            Init()
+                .apply {
+                    clean = true
+                    broughtCluster = BROUGHT_API
+                }.execute()
+
+            verify(mockClusterStateManager, atLeastOnce()).save(argThat { clientNetworks.orEmpty().contains("8.0.0.0/6") })
+            assertThat(outputHandler.messages.joinToString("\n"))
+                .contains("Warning: a node reports pod CIDR 8.0.0.0/6, which gives 67108864 addresses passwordless access")
+                .doesNotContain("pod CIDR 192.168.1.5/32")
+        }
+
+        @Test
+        fun `a very wide network given as --client-network on a brought cluster is warned about once, as the option`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--client-network", "10.0.0.0/7")
+            command.clean = true
+            command.broughtCluster = BROUGHT_API
+            command.execute()
+
+            val output = outputHandler.messages.joinToString("\n")
+            assertThat(output).contains("Warning: --client-network 10.0.0.0/7 gives").doesNotContain("pod CIDR 10.0.0.0/7")
+        }
+
         @Test
         fun `on a cluster the user brings, init reports the probed networks it recorded`() {
             Init()

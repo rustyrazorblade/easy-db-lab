@@ -844,6 +844,8 @@ easy-db-lab cassandra stress start -- KeyValue -d 1h --threads 100
 
 **Aliases:** `run`
 
+The stress pod runs in the Kubernetes pod network on the app role's nodes. Earlier releases ran it with `hostNetwork`, on the node's own network stack. The pod network adds the CNI datapath (and on a NodePort target, the Service hop) to every request, so throughput and latency from this release are **not comparable** with stress results recorded before the change. Compare runs made on the same release.
+
 `--image` runs a custom stress image. An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) pulls through the kubelet ECR credential provider that every node runs, with the node's instance role. easy-db-lab creates no image pull secret. If the image cannot be pulled, `stress start` fails at once and names the pod, the image and the registry's message.
 
 ### cassandra stress stop

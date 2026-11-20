@@ -68,6 +68,8 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         val ARRIVAL: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
         val SENDER_TIMEOUT: Duration = Duration.ofMinutes(1)
+        const val EVIDENCE_LOG_LINES = 80
+        val EVIDENCE_METRICS = Regex("segment_writer|store_metadata|dlq|metastore_index|distributor_received")
     }
 
     @TempDir
@@ -241,6 +243,35 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         return http.send(request, HttpResponse.BodyHandlers.ofString()).body()
     }
 
+    /**
+     * What Pyroscope did with the chunk, for a failed assertion: a 200 from the relay means the
+     * segment was written and its metadata either reached the metastore or went to the dead-letter
+     * queue, so the segment writer's and metastore's counters and both logs say where it stopped.
+     */
+    private fun ingestionEvidence(
+        pyroscope: GenericContainer<*>,
+        alloy: GenericContainer<*>,
+    ): String {
+        val base = "http://${pyroscope.host}:${pyroscope.getMappedPort(PyroscopeManifestBuilder.SERVER_PORT)}"
+        val metrics =
+            runCatching {
+                http
+                    .send(HttpRequest.newBuilder(URI("$base/metrics")).build(), HttpResponse.BodyHandlers.ofString())
+                    .body()
+                    .lineSequence()
+                    .filter { !it.startsWith("#") && !it.contains("_bucket{") && EVIDENCE_METRICS.containsMatchIn(it) }
+                    .joinToString("\n")
+            }.getOrElse { "metrics unreadable: $it" }
+        return """
+            |Pyroscope ingestion metrics:
+            |$metrics
+            |Pyroscope log (last $EVIDENCE_LOG_LINES lines):
+            |${pyroscope.logs.lines().takeLast(EVIDENCE_LOG_LINES).joinToString("\n")}
+            |Alloy log (last $EVIDENCE_LOG_LINES lines):
+            |${alloy.logs.lines().takeLast(EVIDENCE_LOG_LINES).joinToString("\n")}
+            """.trimMargin()
+    }
+
     @Test
     fun `a JFR chunk posted to the relay lands in Pyroscope under the tenant with its series name and labels`() {
         SharedLocalStack.createBucketIfMissing(s3, bucket)
@@ -271,7 +302,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
             series = cpuSeries(pyroscope, TENANT)
         }
         assertThat(series)
-            .describedAs("CPU series tenant $TENANT sees for $SERVICE")
+            .describedAs { "CPU series tenant $TENANT sees for $SERVICE\n${ingestionEvidence(pyroscope, alloy)}" }
             .contains("\"value\":\"$CLUSTER_LABEL\"", "\"value\":\"$HOSTNAME_LABEL\"", "\"value\":\"$SERVICE\"")
         assertThat(cpuSeries(pyroscope, "other")).describedAs("another tenant sees nothing").doesNotContain(CLUSTER_LABEL)
     }

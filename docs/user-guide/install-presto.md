@@ -61,7 +61,9 @@ kubectl wait --for=condition=Ready pods -l app=presto,component=coordinator --ti
 
 No `platform create-pvs` step — Presto is stateless.
 
-Every catalog update (`update-catalogs.sh`, run by `start` and by the `post-workload-start` hook) runs the helm upgrade without waiting, then replaces the coordinator pod and waits for its rollout. The coordinator uses hostPorts 8080 and 9090, which a rolling update could not satisfy on a single app node (the new pod cannot bind the ports while the old pod holds them); chart 0.4.0 deploys it with the `Recreate` strategy, and replacing the pod keeps the flow the same as Trino's whatever the strategy. Presto has no OpenSearch catalog: prestodb ships no `opensearch` connector.
+Every catalog update (`update-catalogs.sh`, run by `start` and by the `post-workload-start` hook) runs the helm upgrade without waiting, then restarts the coordinator and waits for its rollout. The coordinator declares no hostPort, so the new pod starts beside the old one on the same node. Presto has no OpenSearch catalog: prestodb ships no `opensearch` connector.
+
+The coordinator and workers run in the Kubernetes pod network, and clients reach the coordinator through the `presto-nodeport` Service. Earlier releases bound the coordinator to the node's ports 8080 and 9090 (`hostPort`). Query timings from this release are therefore **not comparable** with results recorded before it; compare runs made on the same release.
 
 The chart values run the Presto pods with `securityContext.appArmorProfile.type: Unconfined`. Presto's JMX agent attaches the JVM to itself, which sends it a SIGQUIT, and the node's default AppArmor profile refuses every signal a container sends; without the setting the coordinator and workers crash at startup with `IOException: Permission denied` in `JmxAgent9`.
 

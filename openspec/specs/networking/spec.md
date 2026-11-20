@@ -760,7 +760,7 @@ This file is the only source of proxy state for shell-side tools. Any value that
 
 The CLI MUST update keys without dropping the others, and MUST write the file atomically, with a unique temporary file in the workspace renamed into place.
 
-The CLI records the network mode at the end of `up`, after a VPC restore, in `socks start`, and before every command that requires the proxy whenever cluster state exists. Each of these writes the packaged wrappers into `<workspace>/bin/` first.
+The CLI records the network mode at the end of `up`, after a VPC restore, in `socks start`, and before every command that requires the proxy whenever cluster state exists. Each of these writes the packaged wrappers into `<workspace>/bin/` first, and rewrites `env.sh` first as "A workspace from an earlier release keeps working" states.
 
 #### Scenario: up records the network mode
 
@@ -1369,7 +1369,7 @@ A `networkMode` value other than `socks`, `tailscale` or `direct` MUST fail the 
 A workspace made by an earlier release has an env file with `EDL_TAILSCALE_ACTIVE` and no `EDL_NETWORK_MODE`, and wrappers in `<workspace>/bin/` that know only `EDL_TAILSCALE_ACTIVE`. Such a workspace MUST keep working with the new build, without the user running anything extra.
 
 - The CLI MUST read the old env file: `EDL_TAILSCALE_ACTIVE=true` as `tailscale`, `EDL_TAILSCALE_ACTIVE=false` as `socks`.
-- The CLI MUST write the packaged wrappers into `<workspace>/bin/`, replacing every copy that differs, and MUST rewrite `<workspace>/env.sh` from the packaged template, before every write that records the network mode. The env file MUST be converted only by a write that records the mode. That write MUST replace `EDL_TAILSCALE_ACTIVE` with `EDL_NETWORK_MODE`.
+- The CLI MUST write the packaged wrappers into `<workspace>/bin/`, replacing every copy that differs, before every write that records the network mode. It MUST rewrite `<workspace>/env.sh` from the packaged template before every such write from `up` or a VPC restore, and before any such write while the env file holds no `EDL_NETWORK_MODE`. The env file MUST be converted only by a write that records the mode. That write MUST replace `EDL_TAILSCALE_ACTIVE` with `EDL_NETWORK_MODE`.
 - Recording or removing a tunnel MUST NOT convert the file: it keeps `EDL_TAILSCALE_ACTIVE` as it found it.
 - The new wrappers, `with-proxy` and `socks5-status` MUST read an old env file correctly (see "Wrappers branch on the network mode").
 - The CLI MUST NOT write `EDL_TAILSCALE_ACTIVE` for a transition. A shell that sourced an `env.sh` from an earlier release keeps that release's `with-proxy` and `socks5-status` functions until the user sources `env.sh` again, which then loads the rewritten `env.sh`; wrapped tools resolve to the new wrappers through `PATH` and are not affected.

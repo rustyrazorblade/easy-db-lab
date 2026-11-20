@@ -95,13 +95,15 @@ interface ClusterConfigurationService {
  *
  * @property userConfigProvider Provider for user configuration including SSH key path
  * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
+ * @property envScript builds the `ProxyCommand`s for `sshConfig` and writes `env.sh`, so both route alike
  * @property workspaceShellTools writes the tool wrappers, `env.sh` and the network mode
  */
 class DefaultClusterConfigurationService(
     private val userConfigProvider: UserConfigProvider,
     private val eventBus: EventBus,
     private val sshRoute: SshRoute,
-    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(sshRoute)),
+    private val envScript: EnvScriptWriter = EnvScriptWriter(sshRoute),
+    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller(), envScript),
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
@@ -131,7 +133,7 @@ class DefaultClusterConfigurationService(
         val sshKeyPath = userConfigProvider.sshKeyPath
         // Built before the file is opened, so a host that cannot be routed fails the write instead of
         // leaving a half-written sshConfig behind.
-        val proxyCommands = EnvScriptWriter(sshRoute).proxyCommandsFor(clusterState.hosts)
+        val proxyCommands = envScript.proxyCommandsFor(clusterState.hosts)
         val sshConfigFile = File(workingDirectory.toFile(), SSH_CONFIG_FILE)
         sshConfigFile.bufferedWriter().use { writer ->
             ClusterConfigWriter.writeSshConfig(
@@ -142,10 +144,10 @@ class DefaultClusterConfigurationService(
             )
         }
 
-        // env.sh, the wrappers it puts first on PATH, and the network mode they read. A cluster that
-        // needs no tunnel never starts one that would record anything, so they are written here,
-        // where every cluster passes.
-        workspaceShellTools.prepare(workingDirectory.toFile(), clusterState)
+        // env.sh (its fallback ssh config routed as sshConfig is), the wrappers it puts first on PATH,
+        // and the network mode they read. A cluster that needs no tunnel never starts one that would
+        // record anything, so they are written here, where every cluster passes.
+        workspaceShellTools.prepareWithEnvScript(workingDirectory.toFile(), clusterState, proxyCommands)
     }
 
     override fun writeStressEnvironmentVariables(

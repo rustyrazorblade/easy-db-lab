@@ -127,7 +127,8 @@ object TestModules {
             single { ToolWrapperInstaller() }
 
             // Real: the wrappers, then the network mode, in the test workspace.
-            single { WorkspaceShellTools(get(), EnvScriptWriter(DirectSshRoute(22))) }
+            single { EnvScriptWriter(DirectSshRoute(22)) }
+            single { WorkspaceShellTools(get(), get()) }
 
             // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test

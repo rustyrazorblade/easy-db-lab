@@ -65,6 +65,12 @@ class ProxyEnvFile(
     private val lockFile = File(workspace, Constants.Proxy.ENV_LOCK_FILE)
 
     /**
+     * Whether the file already holds [Constants.Proxy.ENV_NETWORK_MODE], whatever its value: false
+     * for no file and for a file an earlier release wrote, which the next mode write converts.
+     */
+    fun recordsNetworkMode(): Boolean = parse(readValues()).rawMode != null
+
+    /**
      * Records [mode], keeping any recorded tunnel, and drops the legacy Tailscale key. Call it through
      * [WorkspaceShellTools.prepare], which installs the wrappers that read the new key first.
      */

@@ -4,9 +4,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
+import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -127,6 +129,35 @@ internal class ProxyPreflightTest {
     }
 
     @Test
+    fun `a converted workspace keeps its env sh and never asks the SSH route`() {
+        val route = CountingSshRoute()
+        val routedPreflight =
+            ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
+        File(workspace, "env.sh").writeText("# kept\n")
+        envFile.recordNetworkMode(NetworkMode.Direct)
+        stateManager.save(clusterState(NetworkMode.Direct))
+
+        routedPreflight.ensureTunnel()
+
+        assertThat(File(workspace, "env.sh")).hasContent("# kept")
+        assertThat(route.proxyCommandCalls).isZero()
+    }
+
+    @Test
+    fun `a workspace with no env file gets env sh before its first mode write`() {
+        val route = CountingSshRoute()
+        val routedPreflight =
+            ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
+        stateManager.save(clusterState(NetworkMode.Direct))
+
+        routedPreflight.ensureTunnel()
+
+        assertThat(File(workspace, "env.sh").readText()).contains("_edl_network_mode()")
+        assertThat(route.proxyCommandCalls).isEqualTo(1)
+        assertThat(envFile.read().networkMode).isEqualTo(NetworkMode.Direct)
+    }
+
+    @Test
     fun `a state file that cannot be loaded fails with its own message and writes nothing`() {
         File(workspace, "state.json").writeText("""{"name": "lab", "networkMode": "vpn"}""")
 
@@ -174,6 +205,16 @@ internal class ProxyPreflightTest {
         thread { preflight.ensureTunnel() }.join()
 
         assertThat(preflight.tunnelForCommand()).isNull()
+    }
+
+    /** A direct route that counts the `ProxyCommand` lookups, which under `ssm` resolve the SSM credentials. */
+    private class CountingSshRoute : SshRoute by DirectSshRoute(22) {
+        var proxyCommandCalls = 0
+
+        override fun proxyCommand(host: Host): String? {
+            proxyCommandCalls++
+            return null
+        }
     }
 
     private fun clusterState(mode: NetworkMode) =

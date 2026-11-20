@@ -57,7 +57,10 @@ val proxyModule =
         single { ToolWrapperInstaller() }
 
         // Prepares a workspace for shell-side tools: the wrappers and env.sh, then the network mode.
-        single { WorkspaceShellTools(get(), EnvScriptWriter(get())) }
+        single { WorkspaceShellTools(get(), get()) }
+
+        // Writes env.sh; the same instance builds the ProxyCommands for sshConfig, so both files route alike.
+        single { EnvScriptWriter(get()) }
 
         // The executor's tunnel start for @RequiresProxy commands.
         single { ProxyPreflight(get(), get(), get(), get<Context>().workingDirectory) }

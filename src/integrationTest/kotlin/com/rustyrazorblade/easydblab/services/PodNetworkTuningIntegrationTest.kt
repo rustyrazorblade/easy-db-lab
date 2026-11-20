@@ -114,6 +114,23 @@ class PodNetworkTuningIntegrationTest {
         assertThat(admittedSysctls(own)).isEqualTo(sysctls + ("net.ipv4.tcp_keepalive_time" to "300"))
     }
 
+    /** The policy then patches nothing; with failurePolicy Fail, a CEL error on that path would refuse the pod. */
+    @Test
+    fun `a pod that sets every injected key itself is admitted with its own values`() {
+        val ownValues = sysctls.mapValues { "1" }
+        assertThat(ownValues).isNotEqualTo(sysctls)
+        val own =
+            pod("own-all") {
+                editSpec()
+                    .withNewSecurityContext()
+                    .withSysctls(ownValues.map { (name, value) -> SysctlBuilder().withName(name).withValue(value).build() })
+                    .endSecurityContext()
+                    .endSpec()
+            }
+
+        assertThat(admittedSysctls(own)).isEqualTo(ownValues)
+    }
+
     /**
      * fabric8 drops an empty list when it serializes a pod, so the empty `sysctls` an operator or a
      * Helm chart can send is put back into the JSON tree and posted as written.

@@ -36,7 +36,7 @@ Two StorageClasses are created at `up` time:
 
 `up` applies one cluster-wide MutatingAdmissionPolicy, `easydblab-pod-network-sysctls`, before the StorageClasses, the observability stack and any kit. It gives every new pod in the pod network the per-namespace network sysctls the nodes run (`60-easydblab.conf`), so a kit database starts tuned. A value a pod sets itself is kept, and host-network pods are not changed. `up` waits until a dry-run pod carries every value and fails, naming the missing keys, after 30 seconds. See [Node tuning](node-tuning.md) for the keys and how to read them in a pod.
 
-The policy needs two K3s settings that `up` writes on every node: the API server flags that turn on the admission policy API (`30-admission-policy.yaml`, control node only), and the kubelet allowlist for the keys Kubernetes calls unsafe (`25-kubelet-sysctls.yaml`).
+The policy needs two K3s settings, which `up` writes: on the control node, the API server flags that turn on the admission policy API (`30-admission-policy.yaml`); on every node, the kubelet allowlist for the keys Kubernetes calls unsafe (`25-kubelet-sysctls.yaml`).
 
 ## Node Labels
 

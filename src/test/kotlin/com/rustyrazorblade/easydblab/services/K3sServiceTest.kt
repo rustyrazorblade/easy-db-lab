@@ -81,7 +81,7 @@ class K3sServiceTest : BaseKoinTest() {
 
     @Test
     fun `the server starts on the explicit cluster CIDR, with Flannel or a custom CNI`() {
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(Response(text = "", stderr = ""))
 

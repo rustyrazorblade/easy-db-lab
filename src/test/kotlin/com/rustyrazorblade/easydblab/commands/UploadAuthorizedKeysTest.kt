@@ -39,7 +39,7 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     private val remote: RemoteOperationsService =
         mock {
             on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
-            on { upload(any(), any(), any()) } doAnswer {
+            on { upload(any(), any(), any(), any()) } doAnswer {
                 uploadedSources.add(it.getArgument<Path>(1))
                 if (failUpload) throw IllegalStateException("upload failed")
                 uploadedContents += Files.readString(it.getArgument<Path>(1))

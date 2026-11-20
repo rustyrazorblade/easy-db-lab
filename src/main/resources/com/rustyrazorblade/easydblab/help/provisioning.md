@@ -16,7 +16,7 @@ Steps:
 5. `easy-db-lab down --auto-approve` — destroy everything. Run from the same workspace dir.
 
 Notes:
-- Db nodes need a data disk: use an NVMe instance type (`d` suffix, e.g. `i4i.xlarge`) or attach EBS with `--ebs.type`; otherwise `up` fails.
+- Db nodes need a data disk: use an instance type with local NVMe (the `i` family, e.g. `i7i.xlarge`, or a `d` suffix, e.g. `c8id.2xlarge`) or attach EBS with `--ebs.type`; otherwise `up` fails.
 
 Local workspace (K3s in Docker, no AWS):
 - `easy-db-lab init <name> --local` — needs no profile. Records the Docker daemon's architecture, Flannel and no region; the cluster is reached with no SOCKS tunnel (`socks start` says none is needed).

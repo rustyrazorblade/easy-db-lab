@@ -67,7 +67,11 @@ internal class ClusterToolingSshCommandsTest {
         helm = DefaultHelmService(tooling)
     }
 
-    private fun uploadedPath(): String = argumentCaptor<String>().also { verify(remoteOps).upload(any(), any(), it.capture()) }.firstValue
+    private fun uploadedPath(): String =
+        argumentCaptor<String>()
+            .also {
+                verify(remoteOps).upload(any(), any(), it.capture(), any())
+            }.firstValue
 
     @Test
     fun `applyUrl applies server-side from the url`() {
@@ -100,7 +104,7 @@ internal class ClusterToolingSshCommandsTest {
         val rendered = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: cache\n"
         answers["$kubeconfig kubectl create namespace cache --dry-run=client -o yaml"] = rendered
         var uploaded: String? = null
-        doAnswer { uploaded = Files.readString(it.getArgument<Path>(1)) }.whenever(remoteOps).upload(any(), any(), any())
+        doAnswer { uploaded = Files.readString(it.getArgument<Path>(1)) }.whenever(remoteOps).upload(any(), any(), any(), any())
 
         kubectl.createNamespace("cache")
 

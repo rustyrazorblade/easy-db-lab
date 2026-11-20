@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -93,7 +94,24 @@ class YaceManifestBuilderTest : BaseKoinTest() {
         val jobs = searchTagsByJob()
 
         for (type in listOf("AWS/EC2", "AWS/EBS", "AWS/ES")) {
-            assertThat(jobs[type]).describedAs(type).containsEntry("ClusterId", state.clusterId).containsEntry("easy_cass_lab", "1")
+            assertThat(jobs[type])
+                .describedAs(type)
+                .containsEntry("ClusterId", state.clusterId)
+                .containsEntry("easy_cass_lab", "1")
+                .doesNotContainKey("easy_db_lab")
         }
+    }
+
+    /** The account bucket is shared and has no ClusterId, so the S3 job matches the legacy marker alone. */
+    @Test
+    fun `the S3 job discovers by the legacy marker tag only`() {
+        assertThat(searchTagsByJob()["AWS/S3"]).containsExactly(entry("easy_cass_lab", "1"))
+    }
+
+    @Test
+    fun `the rendered config leaves no placeholder unfilled`() {
+        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap().data["yace-config.yaml"])
+
+        assertThat(yaml).doesNotContainPattern("__[A-Z_]+__")
     }
 }

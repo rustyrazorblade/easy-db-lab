@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.io.InterruptedIOException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -85,6 +87,19 @@ class ControlPlaneHealthMonitorTest {
     }
 
     @Test
+    fun `an interrupt while sampling stops the tick and is not reported as an unreachable API server`() {
+        val m = monitor(listOf({ throw InterruptedException("stop") }))
+
+        try {
+            assertThatThrownBy { m.tick() }.isInstanceOf(InterruptedException::class.java)
+        } finally {
+            Thread.interrupted()
+        }
+
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
+    }
+
+    @Test
     fun `a sampler that throws counts as an unreachable API server`() {
         val m = monitor(listOf({ throw IllegalStateException("connection refused") }))
 
@@ -94,6 +109,53 @@ class ControlPlaneHealthMonitorTest {
         val unhealthy = events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>().single()
         assertThat(unhealthy.latencyMs).isNull()
         assertThat(unhealthy.toDisplayString()).contains("API server unreachable (connection refused)")
+    }
+
+    /**
+     * Stopping the monitor interrupts its thread, which can cut a sample short: the client fails
+     * with its interrupt flag set. That says nothing about the control plane, so nothing changes.
+     */
+    @Test
+    fun `a sample cut short by the monitor's stop changes nothing`() {
+        val m =
+            monitor(
+                listOf({
+                    Thread.currentThread().interrupt()
+                    error("An error has occurred.")
+                }),
+            )
+
+        try {
+            m.tick()
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+
+        assertThat(latch.healthy).isTrue()
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
+        assertThat(progress.snapshot().controlPlane).isNotEqualTo(Event.Provision.ControlPlaneState.UNHEALTHY)
+    }
+
+    /**
+     * The client may turn the stop's interrupt into an I/O error and clear the flag. The monitor is
+     * marked stopped before its ticker is closed, so that sample is dropped too.
+     */
+    @Test
+    fun `a sample that fails after the monitor was stopped, with no interrupt left, changes nothing`() {
+        lateinit var m: ControlPlaneHealthMonitor
+        m =
+            monitor(
+                listOf({
+                    m.stop()
+                    throw InterruptedIOException("interrupted")
+                }),
+            )
+
+        m.tick()
+
+        assertThat(latch.healthy).isTrue()
+        assertThat(events.filterIsInstance<Event.Provision.ControlPlaneUnhealthy>()).isEmpty()
     }
 
     @Test

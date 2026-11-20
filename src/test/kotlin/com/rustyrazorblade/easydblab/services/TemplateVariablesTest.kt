@@ -436,6 +436,9 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(script).contains("edl_patch_pyroscope")
         assertThat(library).contains("-Dpyroscope.server.address=\${PYROSCOPE_URL}")
         assertThat(library).contains("-Dpyroscope.tenant.id=\${TENANT}")
+        // The shell library cannot read Constants, so it must carry the same profiler and outage options.
+        (Constants.PyroscopeJavaAgent.PROFILER_FLAGS + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS)
+            .forEach { assertThat(library).contains(it) }
         assertThat(script).doesNotContain(":4040")
         assertThat(library).doesNotContain(":4040")
     }

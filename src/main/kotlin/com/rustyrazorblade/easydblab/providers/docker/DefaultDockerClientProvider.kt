@@ -36,7 +36,7 @@ class DefaultDockerClientProvider : DockerClientProvider {
                 .build()
 
         val client = DockerClientImpl.getInstance(dockerConfig, httpClient)
-        DefaultDockerClient(client)
+        DefaultDockerClient(client, dockerConfig.dockerHost.toString())
     }
 
     override fun getDockerClient(): DockerClientInterface = dockerClientInstance

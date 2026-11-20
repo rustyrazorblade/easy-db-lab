@@ -207,8 +207,11 @@ data:
       max_fetched_chunks_per_query: 0
       max_fetched_series_per_query: 0
       max_fetched_chunk_bytes_per_query: 0
-      # Scrapes and OTLP pushes from several nodes arrive slightly out of order.
-      out_of_order_time_window: 10m
+      # Scrapes and OTLP pushes from several nodes arrive slightly out of order, and after a Mimir
+      # outage or restart each collector replays what it queued while new samples keep arriving
+      # (issue 991). The collectors queue up to about an hour, so the window is an hour too: a
+      # replayed sample is accepted, not refused as too old.
+      out_of_order_time_window: 1h
 ---
 ---
 apiVersion: "v1"

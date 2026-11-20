@@ -89,7 +89,7 @@ class CompactorAgentInstallerTest {
 
         assertThat(result).isEqualTo(jar.remote)
         val staged = argumentCaptor<String>()
-        verify(remoteOps).upload(eq(host), eq(jar.path), staged.capture())
+        verify(remoteOps).upload(eq(host), eq(jar.path), staged.capture(), any())
         assertThat(commands()).anySatisfy { command ->
             assertThat(
                 command,
@@ -106,7 +106,7 @@ class CompactorAgentInstallerTest {
 
         installer.install(host, jar)
 
-        verify(remoteOps, never()).upload(any(), any(), any())
+        verify(remoteOps, never()).upload(any(), any(), any(), any())
         assertThat(commands()).anySatisfy { assertThat(it).startsWith("test -f $remotePath") }
         assertThat(events).contains(Event.Grafana.CompactorAgentPrepared(remotePath, uploaded = false))
     }

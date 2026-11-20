@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.YamlTestSupport
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -14,8 +14,9 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterResult
-import com.rustyrazorblade.easydblab.services.EmrClusterProvisioningConfig
-import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -180,10 +181,12 @@ internal class EMRProvisioningServiceTest {
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
             .contains("-Dpyroscope.server.address=http://10.0.1.5:31040")
             .contains("-Dpyroscope.tenant.id=default")
+            .contains("-Dpyroscope.ingest.max.tries=-1", "-Dpyroscope.push.queue.capacity=360")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
             .contains("-Dpyroscope.tenant.id=default")
+            .contains("-Dpyroscope.ingest.max.tries=-1", "-Dpyroscope.push.queue.capacity=360")
         assertThat(sparkDefaults.properties["spark.driverEnv.OTEL_SERVICE_NAME"]).isEqualTo("spark")
         assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
         assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")

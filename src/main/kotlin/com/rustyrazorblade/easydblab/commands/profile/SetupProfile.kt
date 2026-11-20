@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidationException
@@ -68,11 +69,17 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun handleExistingProfile(existingConfig: Map<String, Any>) {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
-        eventBus.emit(Event.Setup.UpdatePrompt)
-
         val userConfig = loadExistingUser(existingConfig)
 
+        // A profile made before the easy_db_lab marker has a bucket and key pair with only the
+        // legacy one. This needs working credentials, and runs before the prompts so a failure
+        // (expired credentials, a key pair that no longer exists) stops setup before any change.
+        // A complete profile always names a bucket; the check only guards a User read without one.
+        if (userConfig.s3Bucket.isNotBlank()) s3BucketService.ensureMarkerTags(userConfig.s3Bucket)
+        keyPairService.ensureMarkerTags(userConfig)
+
         // Collect optional info, allowing updates
+        eventBus.emit(Event.Setup.UpdatePrompt)
         collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)
@@ -103,7 +110,7 @@ class SetupProfile : PicoBaseCommand() {
         showWelcomeMessage()
 
         // Retry loop for credential collection and validation
-        val (credentials, regionObj) = collectAndValidateCredentials(existingConfig)
+        val (credentials, region) = collectAndValidateCredentials(existingConfig)
 
         val userConfig = createInitialUserConfig(credentials, existingConfig)
         userConfigProvider.saveUserConfig(userConfig)
@@ -111,7 +118,7 @@ class SetupProfile : PicoBaseCommand() {
 
         collectAndSaveOptionalInfo(existingConfig, userConfig)
 
-        ensureAwsResources(userConfig, credentials, regionObj)
+        ensureAwsResources(userConfig, credentials, region)
 
         showSuccessMessage()
     }
@@ -123,27 +130,56 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, String> {
         var attempt = 0
+        var regionRejected = false
+        var credentialsRejected = false
+        // Every attempt counts, a rejected region included, so setup asks at most
+        // MAX_CREDENTIAL_RETRIES times.
         while (attempt < MAX_CREDENTIAL_RETRIES) {
             attempt++
-            // A saved AWS profile is used on the first attempt only. When it failed validation, the
-            // retry asks for the profile again instead of trying the same one.
-            val credentials = collectCoreCredentials(if (attempt == 1) existingConfig else existingConfig - "awsProfile")
-            AWSClientFactory.requireValidRegion(credentials.region)
-            val regionObj = credentials.region
+            // A saved AWS profile is used until a credential check fails with it; the retry then
+            // asks for the profile again instead of trying the same one. A rejected region is
+            // asked for again the same way, and leaves the saved profile in use.
+            var retryConfig = existingConfig
+            if (credentialsRejected) retryConfig = retryConfig - "awsProfile"
+            if (regionRejected) retryConfig = retryConfig - "region"
+            val credentials = collectCoreCredentials(retryConfig)
+            val region = credentials.region
+            if (!acceptRegion(region, lastAttempt = attempt >= MAX_CREDENTIAL_RETRIES)) {
+                // Stays set: a later credentials retry must not read the rejected saved region again.
+                regionRejected = true
+                continue
+            }
 
             try {
-                validateAwsCredentials(credentials, regionObj)
-                return credentials to regionObj
+                validateAwsCredentials(credentials, region)
+                return credentials to region
             } catch (e: SetupProfileException) {
                 if (attempt >= MAX_CREDENTIAL_RETRIES) {
                     throw e
                 }
+                credentialsRejected = true
                 eventBus.emit(Event.Setup.CredentialValidationRetry(attempt, MAX_CREDENTIAL_RETRIES))
                 // Loop continues - will ask for profile/credentials again
             }
         }
         // This shouldn't be reached, but satisfies the compiler
         throw SetupProfileException("Maximum credential validation attempts exceeded")
+    }
+
+    /**
+     * Whether [region] is one the SDK knows. An unknown region is reported, and the caller asks for
+     * it again; on the [lastAttempt] it fails setup instead.
+     *
+     * @throws SetupProfileException for an unknown region on the last attempt
+     */
+    private fun acceptRegion(
+        region: String,
+        lastAttempt: Boolean,
+    ): Boolean {
+        if (AWSClientFactory.isKnownRegion(region)) return true
+        eventBus.emit(Event.Setup.UnknownRegion(region))
+        if (lastAttempt) throw SetupProfileException("Unknown AWS region: '$region'")
+        return false
     }
 
     companion object {
@@ -215,18 +251,20 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun validateAwsCredentials(
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
 
-        try {
-            val identity = createAccountIdentity(credentials, regionObj)
+        // The command layer cannot name the SDK's exception types (the package-boundary test forbids
+        // it), so this boundary takes any failure of the validation and reports it as one.
+        runCatchingException {
+            val identity = createAccountIdentity(credentials, region)
             identity.checkPermissions()
 
             eventBus.emit(Event.Setup.CredentialsValidSuccess)
 
             offerIamPolicyDisplay(identity)
-        } catch (e: Exception) {
+        }.onFailure { e ->
             eventBus.emit(Event.Setup.CredentialsValidFailed)
             throw SetupProfileException("AWS credentials are invalid", e)
         }
@@ -237,12 +275,12 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun createAccountIdentity(
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ): AccountIdentity =
         if (credentials.awsProfile.isNotEmpty()) {
-            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, regionObj)
+            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, region)
         } else {
-            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, regionObj)
+            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, region)
         }
 
     /**
@@ -428,9 +466,9 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureAwsResources(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
-        ensureKeyPair(userConfig, credentials, regionObj)
+        ensureKeyPair(userConfig, credentials, region)
         ensureIamRoles(userConfig)
         ensureS3Bucket(userConfig)
         ensurePackerVpc()
@@ -443,14 +481,14 @@ class SetupProfile : PicoBaseCommand() {
     private fun ensureKeyPair(
         userConfig: User,
         credentials: CoreCredentials,
-        regionObj: String,
+        region: String,
     ) {
         if (userConfig.keyName.isBlank()) {
             eventBus.emit(Event.Setup.GeneratingKeyPair)
             val keyName =
                 keyPairService.generate(
                     context.profileDir,
-                    regionObj,
+                    region,
                     credentials.awsProfile,
                     credentials.awsAccessKey,
                     credentials.awsSecret,
@@ -458,6 +496,8 @@ class SetupProfile : PicoBaseCommand() {
             userConfig.keyName = keyName
             userConfigProvider.saveUserConfig(userConfig)
             eventBus.emit(Event.Setup.KeyPairSaved)
+        } else {
+            keyPairService.ensureMarkerTags(userConfig)
         }
     }
 
@@ -471,10 +511,11 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates an S3 bucket for shared resources if one doesn't exist.
+     * Creates an S3 bucket for shared resources if one doesn't exist, and gives an existing one
+     * any marker tag it lacks.
      */
     private fun ensureS3Bucket(userConfig: User) {
-        s3BucketService.ensureAccountBucket(userConfig)
+        s3BucketService.ensureMarkedAccountBucket(userConfig)
     }
 
     /**
@@ -527,7 +568,7 @@ class SetupProfile : PicoBaseCommand() {
         archType: Arch,
         userConfig: User,
     ) {
-        try {
+        runCatchingException {
             eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
 
             val exitCode =
@@ -544,7 +585,7 @@ class SetupProfile : PicoBaseCommand() {
             } else {
                 eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, userConfig.region))
             }
-        } catch (buildError: Exception) {
+        }.onFailure { buildError ->
             eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
         }
     }

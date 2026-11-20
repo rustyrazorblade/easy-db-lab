@@ -11,7 +11,7 @@ import com.rustyrazorblade.easydblab.containers.Packer
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.ProfileResourceMarkers
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
@@ -32,7 +32,7 @@ class BuildCassandraImage : PicoBaseCommand() {
 
     private val awsInfrastructure: AwsInfrastructureService by inject()
     private val awsResourceSetupService: AWSResourceSetupService by inject()
-    private val s3BucketService: AwsS3BucketService by inject()
+    private val profileResourceMarkers: ProfileResourceMarkers by inject()
     private val externalIpService: ExternalIpService by inject()
     private val userConfig: User by inject()
 
@@ -44,8 +44,9 @@ class BuildCassandraImage : PicoBaseCommand() {
 
         // Ensure AWS infrastructure (IAM roles, S3) exists first
         awsResourceSetupService.ensureAWSResources(userConfig)
-        // Ensure the account bucket exists so the S3 build cache is active (migrates old profiles)
-        s3BucketService.ensureAccountBucket(userConfig)
+        // Ensure the account bucket exists so the S3 build cache is active (migrates old profiles),
+        // and give it and the key pair any marker tag they lack
+        profileResourceMarkers.ensureAccountBucketAndKeyPair(userConfig)
 
         // Ensure Packer VPC infrastructure exists before building, scoping SSH to this machine's IP
         awsInfrastructure.ensurePackerInfrastructure(Constants.Network.SSH_PORT, externalIpService.getExternalCidr())

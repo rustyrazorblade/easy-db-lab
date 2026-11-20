@@ -320,8 +320,8 @@ added (see [AMI builds](../user-guide/network-connectivity.md#ami-builds)).
 |----------|-------------|---------|
 | `EASY_DB_LAB_USER_DIR` | Override configuration directory | `~/.easy-db-lab` |
 | `EASY_DB_LAB_PROFILE` | Use a named profile | `default` |
-| `EASY_DB_LAB_INSTANCE_TYPE` | Default database instance type for `init` | `i4i.xlarge` |
-| `EASY_DB_LAB_STRESS_INSTANCE_TYPE` | Default application (stress) instance type | `c6id.2xlarge` |
+| `EASY_DB_LAB_INSTANCE_TYPE` | Default database instance type for `init` | `i7i.xlarge` |
+| `EASY_DB_LAB_STRESS_INSTANCE_TYPE` | Default application (stress) instance type | `c8id.2xlarge` |
 | `EASY_DB_LAB_AMI` | Override AMI ID | (auto-detected) |
 
 ## Verify Installation

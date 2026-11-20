@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.aws.DomainLookup
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -21,7 +22,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.core.exception.SdkClientException
 
 /**
  * Test suite for OpenSearchStatus command.
@@ -84,7 +84,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val command = OpenSearchStatus()
             command.execute()
 
-            verify(mockOpenSearchService, never()).describeDomainOrNull(any())
+            verify(mockOpenSearchService, never()).lookupDomain(any())
         }
 
         @Test
@@ -105,7 +105,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             command.endpointOnly = true
             command.execute()
 
-            verify(mockOpenSearchService, never()).describeDomainOrNull(any())
+            verify(mockOpenSearchService, never()).lookupDomain(any())
         }
     }
 
@@ -125,12 +125,12 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
 
-            verify(mockOpenSearchService).describeDomainOrNull("test-cluster-os")
+            verify(mockOpenSearchService).lookupDomain("test-cluster-os")
         }
 
         @Test
@@ -147,12 +147,12 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
 
-            verify(mockOpenSearchService).describeDomainOrNull("test-cluster-os")
+            verify(mockOpenSearchService).lookupDomain("test-cluster-os")
         }
 
         @Test
@@ -169,12 +169,12 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
 
-            verify(mockOpenSearchService).describeDomainOrNull("test-cluster-os")
+            verify(mockOpenSearchService).lookupDomain("test-cluster-os")
         }
     }
 
@@ -194,13 +194,13 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
             command.execute()
 
-            verify(mockOpenSearchService).describeDomainOrNull("test-cluster-os")
+            verify(mockOpenSearchService).lookupDomain("test-cluster-os")
             // State should not be saved when using --endpoint flag (output only mode)
             verify(mockClusterStateManager, never()).save(any())
         }
@@ -219,13 +219,13 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
             command.execute()
 
-            verify(mockOpenSearchService).describeDomainOrNull("test-cluster-os")
+            verify(mockOpenSearchService).lookupDomain("test-cluster-os")
         }
     }
 
@@ -246,7 +246,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
@@ -270,7 +270,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(domainResult)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.Found(domainResult))
 
             val command = OpenSearchStatus()
             command.execute()
@@ -287,7 +287,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(null)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.NotFound)
 
             val command = OpenSearchStatus()
             command.execute()
@@ -302,8 +302,8 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os"))
-                .thenThrow(SdkClientException.create("Network error"))
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
+                .thenReturn(DomainLookup.Unavailable("Network error"))
 
             val command = OpenSearchStatus()
             command.execute()
@@ -314,11 +314,11 @@ class OpenSearchStatusTest : BaseKoinTest() {
         }
 
         @Test
-        fun `execute with --endpoint should not output on ResourceNotFoundException`() {
+        fun `execute with --endpoint should not output when the domain is not found`() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os")).thenReturn(null)
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenReturn(DomainLookup.NotFound)
 
             val command = OpenSearchStatus()
             command.endpointOnly = true
@@ -333,7 +333,7 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os"))
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
                 .thenThrow(IllegalStateException("bug"))
 
             assertThatThrownBy { OpenSearchStatus().execute() }.isInstanceOf(IllegalStateException::class.java)
@@ -345,8 +345,8 @@ class OpenSearchStatusTest : BaseKoinTest() {
             val stateWithOpenSearch = createStateWithOpenSearch()
 
             whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
-            whenever(mockOpenSearchService.describeDomainOrNull("test-cluster-os"))
-                .thenThrow(SdkClientException.create("Network error"))
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os"))
+                .thenReturn(DomainLookup.Unavailable("Network error"))
 
             val command = OpenSearchStatus()
             command.endpointOnly = true

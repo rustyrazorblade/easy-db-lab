@@ -20,6 +20,8 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.InsufficientInstanceCapacityException
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmForwardNotReadyException
@@ -65,6 +67,7 @@ import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import java.io.IOException
 import java.time.Instant
 import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -326,7 +329,7 @@ class UpTest : UpTestFixture() {
                 )
             }
         whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(mapOf(ServerType.Cassandra to existing))
-        accountCapacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2b", "us-west-2c"))
+        accountCapacity.offeredZones = mapOf("i7i.xlarge" to setOf("us-west-2b", "us-west-2c"))
         val events = captureEvents()
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
@@ -1078,6 +1081,68 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
+    fun `up prints each node's script output tagged with the node`() {
+        newUp().execute()
+
+        val printed = getKoin().get<RecordingNodeOutput>().stdout.toList()
+        assertThat(printed).allSatisfy { assertThat(it).matches("""\[(control0|db0|app0)] +ran .+""") }
+        // Every db and app node ran its setup script, and each one's line is under its own tag.
+        val setupBy = printed.filter { "setup_instance.sh" in it }.map { it.substringBefore("]").removePrefix("[") }
+        assertThat(setupBy).containsAll(listOf("db0", "app0"))
+    }
+
+    @Test
+    fun `up --quiet prints no node output, but the Ready lines still print, and output is shown again afterwards`() {
+        val events = captureEvents()
+        val recorded = getKoin().get<RecordingNodeOutput>()
+
+        newUp().apply { quiet = true }.execute()
+
+        assertThat(recorded.printed).isEmpty()
+        assertThat(recorded.tail("db0")).isNotEmpty()
+        assertThat(events.filterIsInstance<Event.Provision.NodeReady>().map { it.alias }).contains("db0", "app0")
+        assertThat(outputHandler.messages.joinToString("\n")).contains("db0 (", "is Ready after")
+
+        recorded.line("db0", NodeStream.Stdout, "after up")
+
+        assertThat(recorded.stdout).containsExactly("[db0] after up")
+    }
+
+    /**
+     * Quiet hides a node's script while it runs; when the node fails for good its last output is
+     * still shown, under the failure, and quiet ends with the failed `up`.
+     */
+    @Test
+    fun `up --quiet still shows a failed node's last output under its failure, and ends quiet when up fails`() {
+        val events = captureEvents()
+        val recorded = getKoin().get<RecordingNodeOutput>()
+        remoteFault = { host, command ->
+            if (host.alias == "db0" && command == SETUP_COMMAND) {
+                recorded.line("db0", NodeStream.Stderr, "ERROR: no data disk", host.instanceId)
+                setupFailure()
+            } else {
+                null
+            }
+        }
+
+        assertThatThrownBy { newUp().apply { quiet = true }.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        // Quiet covers the pipelines only: no setup or K3s line and none of db0's lines printed. The
+        // environment re-push after db0's replacement is a post-step, so its lines print as usual.
+        assertThat(recorded.printed).noneMatch { "setup_instance.sh" in it || "k3s" in it || it.startsWith("[db0]") }
+        val failed = events.filterIsInstance<Event.Provision.NodeFailed>().single()
+        assertThat(failed.alias).isEqualTo("db0")
+        assertThat(failed.outputTail).contains("stderr: ERROR: no data disk")
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains("last output of db0:\n", "    stderr: ERROR: no data disk")
+
+        recorded.line("db0", NodeStream.Stdout, "after up")
+
+        // Quiet has ended: the line prints, its tag padded to the longest alias printed so far.
+        assertThat(recorded.stdout.last()).matches("""\[db0] +after up""")
+    }
+
+    @Test
     fun `up --no-setup reports no SOCKS tunnel on a Tailscale cluster`() {
         val events = captureEvents()
 
@@ -1131,8 +1196,9 @@ class UpTest : UpTestFixture() {
         assertThat(events.filterIsInstance<Event.Provision.InstanceCapacityShortage>()).isEmpty()
     }
 
+    /** Every event `up` emits; node pipelines emit from their own threads, so the list is concurrent. */
     private fun captureEvents(): List<Event> {
-        val emitted = mutableListOf<Event>()
+        val emitted = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -1260,6 +1326,6 @@ class UpTest : UpTestFixture() {
         const val OVERLAP_WAIT_SECONDS = 5L
 
         /** The db node's setup, with the default database instance type from the fixture's state. */
-        const val SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
+        const val SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i7i.xlarge bash setup_instance.sh"
     }
 }

@@ -49,7 +49,7 @@ class NodeSetupServiceTest {
     @BeforeEach
     fun setup() {
         whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
-        whenever(remoteOps.upload(any(), any(), any())).thenAnswer {
+        whenever(remoteOps.upload(any(), any(), any(), any())).thenAnswer {
             val target = it.getArgument<Host>(0).alias
             val source = it.getArgument<Path>(1)
             if (Files.exists(source)) uploads.getOrPut(target) { mutableListOf() }.add(Files.readString(source))
@@ -94,7 +94,7 @@ class NodeSetupServiceTest {
         val order = inOrder(remoteOps)
         order.verify(remoteOps).executeRemotely(eq(db0), eq("rm -rf node-tuning"), any(), any())
         order.verify(remoteOps).uploadDirectory(eq(db0), any<File>(), eq("node-tuning"))
-        order.verify(remoteOps).upload(eq(db0), any(), eq("setup_instance.sh"))
+        order.verify(remoteOps).upload(eq(db0), any(), eq("setup_instance.sh"), any())
         order.verify(remoteOps).executeRemotely(eq(db0), eq("sudo bash setup_instance.sh"), any(), any())
         assertThat(uploadedFiles).containsExactlyElementsOf(Constants.NodeTuning.FILES.sorted())
     }
@@ -110,7 +110,7 @@ class NodeSetupServiceTest {
                             listOf(ClusterHost("54.0.0.12", "10.0.2.12", "control0", "us-west-2a")),
                     ),
                 initConfig =
-                    InitConfig(instanceType = "i4i.2xlarge", stressInstanceType = "c6id.4xlarge", controlInstanceType = "m5d.xlarge"),
+                    InitConfig(instanceType = "i4i.2xlarge", stressInstanceType = "c6id.4xlarge", controlInstanceType = "m8id.xlarge"),
             )
         val fromState = NodeSetupContext.from(state)
         regionOn("app0", "us-west-2\n")
@@ -124,7 +124,7 @@ class NodeSetupServiceTest {
         assertThat(setupCommands.allValues.filter { it.endsWith("setup_instance.sh") }).containsExactly(
             "sudo EDL_INSTANCE_TYPE=i4i.2xlarge bash setup_instance.sh",
             "sudo EDL_INSTANCE_TYPE=c6id.4xlarge bash setup_instance.sh",
-            "sudo EDL_INSTANCE_TYPE=m5d.xlarge bash setup_instance.sh",
+            "sudo EDL_INSTANCE_TYPE=m8id.xlarge bash setup_instance.sh",
         )
     }
 

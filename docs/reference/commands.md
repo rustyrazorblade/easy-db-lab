@@ -142,8 +142,8 @@ determined fails at `init`, before any instance is created.
 |--------|-------------|---------|
 | `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
-| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
-| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i7i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c8id.2xlarge |
 | `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8: the VPC is split into eight equal subnets, one per zone | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
@@ -163,6 +163,7 @@ determined fails at `init`, before any instance is created.
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--capability` | Override one node capability, as `<name>=true` or `<name>=false`; repeatable. Names: `systemd-journal`, `cloudwatch`, `s3`, `privileged`, `host-network`, `host-path`, `node-ssh`. An unknown name, a value other than `true`/`false`, or one name given both values fails `init` before anything is written. See [Node capabilities](#node-capabilities) | (the environment's declared set) |
 | `--up` | Auto-provision after init | false |
+| `--quiet`, `-q` | With `--up`: run `up --quiet`. Refused without `--up` | false |
 | `--clean` | Remove existing config first. Refused while AWS still shows infrastructure for the workspace's cluster: run `down` first | false |
 | `--local` | Create a K3s in Docker workspace on this machine instead of an AWS cluster. Needs no AWS profile. See [Local workspaces](#local-workspaces) | false |
 | `--data-dir` | With `--local`: the directory the observability data is kept in. A relative path is resolved against the current directory of the easy-db-lab process (in the REPL or the server, the directory it was started in, which need not be the workspace), like every other path option, and recorded as an absolute path. Without `--local`, `init` fails and writes nothing | `observability-data` |
@@ -216,6 +217,18 @@ Absent capabilities:
 The set is published as the `capabilities` key of the `cluster-config` ConfigMap, kit processes
 get `EDL_NODE_SSH` from `node-ssh`, and `status` lists every capability.
 
+### setup-instances
+
+Run the setup scripts on every node again. Each line a node prints is tagged with the node, as in `up`.
+
+```bash
+easy-db-lab setup-instances [--quiet]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--quiet`, `-q` | Hide what each node's scripts print. A failed node's error still shows its last output |
+
 ### up
 
 Provision AWS infrastructure.
@@ -227,6 +240,16 @@ easy-db-lab up [options]
 | Option | Description |
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
+| `--quiet`, `-q` | Hide what each node's scripts print while the nodes come up. Ready lines, progress lines and failures still print, and a failed node's error still shows its last output. The cluster-wide steps after the nodes print as usual |
+
+Each line a node's script prints is shown as it arrives, tagged with the node:
+
+```
+[db3] Installing packages
+[db3] E: Unable to locate package foo
+```
+
+When a node fails, its error ends with `last output of <node>:` and the last 30 lines its last instance printed, indented, also with `--quiet`. Lines it wrote to stderr start with `stderr: `.
 
 Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
@@ -252,11 +275,11 @@ easy-db-lab down [vpc-id] [options]
 
 | Argument | Description |
 |----------|-------------|
-| `vpc-id` | Optional: specific VPC to tear down. With no cluster state, `down` reads the VPC's tags: a VPC tagged `easy_cass_lab=1` with a `ClusterId` (or the packer VPC, which has the marker and its name) was created by easy-db-lab and is deleted whole; any other VPC is kept, and only the resources in it that carry an easy-db-lab `ClusterId` tag are removed, for every easy-db-lab cluster in it, since no state names one |
+| `vpc-id` | Optional: specific VPC to tear down. With no cluster state, `down` reads the VPC's tags: a VPC tagged `easy_cass_lab=1` with a `ClusterId` (ownership is read from the legacy key only; `easy_db_lab=1` is written but not read yet) (or the packer VPC, which has the marker and its name) was created by easy-db-lab and is deleted whole; any other VPC is kept, and only the resources in it that carry an easy-db-lab `ClusterId` tag are removed, for every easy-db-lab cluster in it, since no state names one |
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab |
+| `--all` | Tear down all VPCs tagged `easy_cass_lab=1`. easy-db-lab tags everything it creates with both `easy_cass_lab=1` and `easy_db_lab=1`; `--all` searches on the first, so VPCs created before the second existed are found too |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 | `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0. With no cluster state, or a state that records no VPC and no Tailscale device, it reports that there is nothing to tear down and exits non-zero, as `down` does, and still changes nothing. When the VPC is already gone and only the control node's Tailscale device is left, it reports that the device would be removed |
@@ -645,6 +668,24 @@ easy-db-lab cassandra restart [options]
 |--------|-------------|
 | `--hosts` | Filter to specific hosts |
 
+### cassandra nt
+
+Run `nodetool` on database nodes. Each line of output is tagged with its host.
+
+```bash
+easy-db-lab cassandra nt status
+easy-db-lab cassandra nt --hosts db0,db2 info
+```
+
+```
+[db0] Datacenter: us-west-2
+[db0] ...
+```
+
+| Option | Description |
+|--------|-------------|
+| `--hosts` | Filter to specific hosts |
+
 ### cassandra list
 
 List the Cassandra versions you can install, and the ones on each node.
@@ -815,6 +856,8 @@ View logs from stress jobs.
 easy-db-lab cassandra stress logs [options]
 ```
 
+Each pod's status and log lines are printed tagged with the pod name, for example `[stress-kv-1716-abcde] status Running`. A pod with no logs yet prints `[<pod>] (no logs available yet)`.
+
 ### cassandra stress list
 
 List available workloads.
@@ -850,6 +893,8 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 #### exec run
 
 Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
+
+In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable. A host whose command printed nothing shows `[db0] no output`.
 
 ```bash
 # Foreground (blocks until complete, shows output)

@@ -29,6 +29,7 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         val allUnresolved = mutableListOf<String>()
         val writtenNames = mutableListOf<String>()
 
+        var swapped = false
         try {
             for (entry in resolver.listTemplateFiles(source)) {
                 val isTemplate = entry.name.endsWith(".template")
@@ -82,9 +83,10 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
             check(tempDir.renameTo(outputDir)) {
                 "Failed to rename scaffold to ${outputDir.absolutePath}"
             }
-        } catch (e: Exception) {
-            tempDir.deleteRecursively()
-            throw e
+            swapped = true
+        } finally {
+            // A failed install must not leave its scaffold behind; the renamed directory is outputDir.
+            if (!swapped) tempDir.deleteRecursively()
         }
 
         for (name in writtenNames) {

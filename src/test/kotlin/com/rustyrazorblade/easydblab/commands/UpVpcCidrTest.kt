@@ -21,6 +21,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.time.Duration
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.random.Random
 
 /**
@@ -30,7 +31,9 @@ import kotlin.random.Random
  */
 class UpVpcCidrTest : UpTestFixture() {
     private val usedCidrs = listOf("10.0.0.0/16", "10.1.0.0/16")
-    private val emitted = mutableListOf<Event>()
+
+    // Pipeline threads emit too: a plain list would lose or corrupt their events.
+    private val emitted = CopyOnWriteArrayList<Event>()
 
     @BeforeEach
     fun captureEvents() {
@@ -150,9 +153,9 @@ class UpVpcCidrTest : UpTestFixture() {
             newUp(seed = 7).execute()
 
             if (expectBackfill) {
-                verify(mockVpcService).addTagsToVpc("vpc-existing", mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
+                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
             } else {
-                verify(mockVpcService, never()).addTagsToVpc(any(), any())
+                verify(mockVpcService, never()).addTags(any(), any())
             }
         }
     }

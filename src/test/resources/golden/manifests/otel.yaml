@@ -615,12 +615,40 @@ data:
       # service addresses in local mode, the external stack's endpoints under telemetry redirect.
       # Mimir and Loki run native multi-tenancy: every write carries the cluster's tenant, on a
       # redirected cluster too. TENANT comes from the cluster-config ConfigMap.
+      #
+      # Every exporter holds what it cannot deliver while a backend is down or restarting, in memory,
+      # and sends it when the backend is back (issue 991). Retries never give up (max_elapsed_time 0)
+      # and each queue holds 20000 batches. A batch is up to 1024 items, so the queue lasts an hour
+      # (Mimir's out-of-order window) only while the collector sends under about 5.5 batches a second,
+      # about 5,600 items a second at full batches; a busier collector fills it sooner and then drops
+      # new batches. A collector restart during an outage loses its queue; there is deliberately no
+      # on-disk queue.
       prometheus_remote_write:
-        endpoint: http://mimir.default.svc:9009/api/v1/push
-        tls:
-          insecure: true
-        headers:
-          X-Scope-OrgID: ${env:TENANT}
+        # endpoint, tls and headers live under http: once http is set, the deprecated top-level
+        # endpoint, tls and headers are ignored. http.timeout bounds one request.
+        http:
+          endpoint: http://mimir.default.svc:9009/api/v1/push
+          tls:
+            insecure: true
+          headers:
+            X-Scope-OrgID: ${env:TENANT}
+          timeout: 30s
+        # In 0.161.0 this exporter retries inside its push, and the top-level timeout (default 5s)
+        # bounds the whole push, retries included: a down Mimir dropped every batch after 5s.
+        # 0 removes that deadline, so the retry below is what decides.
+        timeout: 0
+        # Retried at a fixed 5s: this exporter copies only initial_interval, randomization_factor and
+        # multiplier into its backoff, so max_interval has no effect and is not set. 5xx and connection
+        # errors are retried; any other 4xx is a rejected batch and is not.
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_elapsed_time: 0
+        # This exporter's queue is remote_write_queue, not sending_queue. queue_size counts batches;
+        # a full queue drops new ones.
+        remote_write_queue:
+          enabled: true
+          queue_size: 20000
         resource_to_telemetry_conversion:
           enabled: true
       otlp_http/logs:
@@ -629,6 +657,14 @@ data:
           insecure: true
         headers:
           X-Scope-OrgID: ${env:TENANT}
+        # Retried without limit, but Loki accepts a line at most 30 minutes behind its stream's newest
+        # (half of max_chunk_age: 1h), so logs survive an outage of up to 30 minutes.
+        retry_on_failure:
+          enabled: true
+          max_elapsed_time: 0
+        sending_queue:
+          enabled: true
+          queue_size: 20000
       # Tempo runs native multi-tenancy: every write carries the cluster's tenant, on a redirected
       # cluster too. TENANT comes from the cluster-config ConfigMap.
       otlp_grpc/tempo:
@@ -637,6 +673,12 @@ data:
           insecure: true
         headers:
           X-Scope-OrgID: ${env:TENANT}
+        retry_on_failure:
+          enabled: true
+          max_elapsed_time: 0
+        sending_queue:
+          enabled: true
+          queue_size: 20000
 
     connectors:
       # Turns log records into metrics, so what a logger reports can be charted beside the JMX

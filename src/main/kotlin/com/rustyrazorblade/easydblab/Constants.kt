@@ -11,6 +11,21 @@ object Constants {
         const val SSH_KEY_MOUNT = "/secret.pem"
     }
 
+    /** Default EC2 and EMR instance types. All x86, because the nodes boot the account's AMIs, which are amd64 only. */
+    object InstanceTypes {
+        /** Database node: 4 vCPU, 32 GiB, local NVMe. */
+        const val DB = "i7i.xlarge"
+
+        /** Application (stress) node: 8 vCPU, 16 GiB, local NVMe. */
+        const val APP = "c8id.2xlarge"
+
+        /** Control node: 4 vCPU, 16 GiB, local NVMe. */
+        const val CONTROL = "m8id.xlarge"
+
+        /** Spark (EMR) master and worker nodes. */
+        const val SPARK = "m7i.xlarge"
+    }
+
     // Server types
     object Servers {
         const val DATABASE = "cassandra"
@@ -197,6 +212,13 @@ object Constants {
          * does not stop fails the step, and the node is replaced.
          */
         const val ATTEMPT_STOP_GRACE_SECONDS = 30L
+
+        /**
+         * How long a bring-up that is ending waits, in all, for its pipeline threads to stop. Longer
+         * than [ATTEMPT_STOP_GRACE_SECONDS], since a step waits that long for its attempt first; a
+         * pipeline still running after it is reported and left behind, so `up` never hangs on one.
+         */
+        const val PIPELINE_STOP_GRACE_SECONDS = 60L
 
         /** How long removing a stale Node and its node password waits for each to be gone. */
         const val NODE_CLEANUP_DELETE_WAIT_SECONDS = 60L
@@ -410,6 +432,11 @@ object Constants {
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
 
+        // What the shown IAM policies read where the account goes when no account is known: setup
+        // paths with no working credentials pass it to AWSPolicy.UserIAM.loadAll in place of the
+        // real account, which fills the templates' `__ACCOUNT_ID__` placeholder with it.
+        const val ACCOUNT_ID_PLACEHOLDER = "ACCOUNT_ID"
+
         // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
         // (Packer, SSM sessions) is pointed at the file with SHARED_CREDENTIALS_FILE_ENV.
         const val CREDENTIALS_FILE_PROFILE = "default"
@@ -427,6 +454,13 @@ object Constants {
         // EC2 error code for instance ids it does not know yet; right after RunInstances this is
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
+
+        // EC2 error code for a key pair name it does not know in the region.
+        const val EC2_KEY_PAIR_NOT_FOUND = "InvalidKeyPair.NotFound"
+
+        // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
+        // the retry policy must name it: it is a shortage, not a transient server error.
+        const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"
 
         /**
          * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
@@ -461,26 +495,33 @@ object Constants {
             const val CLOCK_SKEW = "RequestTimeTooSkewed"
 
             /**
-             * Prefixes of the `SdkClientException` messages a credentials provider raises when it finds no usable
-             * credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGE]. An expired SSO session
-             * has its own type, `ExpiredTokenException`, so it needs no message here.
+             * Prefixes of the `SdkClientException` messages a credentials or SSO token provider raises when it finds
+             * no usable credentials. They count only together with [CREDENTIALS_PROVIDER_PACKAGES]. The legacy SSO
+             * profile's expired session has its own type, `ExpiredTokenException`, so it needs no message here; an
+             * `sso_session` profile's `SsoOidcTokenProvider` raises the last two.
              */
             val CREDENTIALS_MESSAGES =
                 listOf(
                     "Unable to load credentials",
                     "Profile file contained no credentials for profile",
+                    "Token is expired",
+                    "Unable to load SSO token",
                 )
 
-            /** The SDK package whose providers raise a missing-credentials `SdkClientException`. */
-            const val CREDENTIALS_PROVIDER_PACKAGE = "software.amazon.awssdk.auth.credentials."
+            /**
+             * The SDK packages whose providers raise a missing-credentials `SdkClientException`: the credentials
+             * providers, the SSO OIDC token provider and the SSO credentials provider.
+             */
+            val CREDENTIALS_PROVIDER_PACKAGES =
+                listOf(
+                    "software.amazon.awssdk.auth.credentials.",
+                    "software.amazon.awssdk.services.ssooidc.",
+                    "software.amazon.awssdk.services.sso.",
+                )
 
             /** The SDK package of the exception builders, skipped to find the code that raised an exception. */
             const val SDK_EXCEPTION_PACKAGE = "software.amazon.awssdk.core.exception."
         }
-
-        // EC2 error code for a launch AWS has no capacity for. AWS answers it with HTTP 500, so
-        // the retry policy must name it: it is a shortage, not a transient server error.
-        const val EC2_INSUFFICIENT_CAPACITY = "InsufficientInstanceCapacity"
 
         // IAM Role Names
         object Roles {
@@ -552,6 +593,18 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /** Account bucket tag key: the easy-db-lab profile that created the bucket */
+        const val PROFILE_TAG_KEY = "Profile"
+
+        /** Account bucket tag key: the email of the profile that created the bucket */
+        const val OWNER_TAG_KEY = "Owner"
+
+        /** Data bucket tag key: the id of the cluster the bucket belongs to */
+        const val CLUSTER_ID_TAG_KEY = "cluster_id"
+
+        /** Data bucket tag key: the name of the cluster the bucket belongs to */
+        const val CLUSTER_NAME_TAG_KEY = "cluster_name"
     }
 
     /**
@@ -798,6 +851,9 @@ object Constants {
 
         // Per-profile user settings, written under the active profile directory
         const val PROFILE_SETTINGS_FILE = "settings.yaml"
+
+        // The profile key pair's private key, written owner-only under the active profile directory
+        const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }
 
     // K3s configuration
@@ -1077,7 +1133,7 @@ object Constants {
     // OpenSearch configuration
     object OpenSearch {
         const val DEFAULT_VERSION = "2.11"
-        const val DEFAULT_INSTANCE_TYPE = "t3.small.search"
+        const val DEFAULT_INSTANCE_TYPE = "r8g.xlarge.search"
         const val DEFAULT_INSTANCE_COUNT = 1
         const val DEFAULT_EBS_SIZE_GB = 100
         const val POLL_INTERVAL_MS = 30_000L // 30 seconds - domains take 10-30 min to create
@@ -1309,6 +1365,44 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+
+        /**
+         * `pyroscope.ingest.max.tries`: a negative value retries an upload without limit, so a
+         * Pyroscope outage or restart does not drop profiles (issue 991). The default, 8 tries
+         * with 1s-30s backoff, gave up within about two minutes.
+         */
+        const val INGEST_MAX_TRIES = -1
+
+        /**
+         * `pyroscope.push.queue.capacity`: snapshots the agent holds while it cannot upload. One
+         * snapshot is taken every 10s, so 360 is an hour, Mimir's and the collectors' window. When
+         * full the agent drops the oldest. The default is 8, about 80 seconds. The queue is in the
+         * profiled JVM's heap: measured on a Cassandra stress JVM, a queued snapshot holds about
+         * 0.17 MB, so a full queue there is about 62 MB, inside the owner's 256 MB budget. The size
+         * depends on the workload; a synthetic load with many stacks measured 5 to 15 MB a snapshot,
+         * so other JVMs (kits, Spark, the sidecar) can hold far more during a long outage.
+         */
+        const val PUSH_QUEUE_CAPACITY = 360
+
+        /**
+         * What the agent profiles and how it sends it, the same for every JVM the tool attaches it
+         * to: JFR format, CPU samples, an allocation sample every 512 KB and locks held 10ms or more.
+         * `edl_pyroscope_opts` in `edl-kit-lib.sh` repeats them, and `TemplateVariablesTest` checks it.
+         */
+        val PROFILER_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.format=jfr",
+                "-Dpyroscope.profiler.event=cpu",
+                "-Dpyroscope.profiler.alloc=512k",
+                "-Dpyroscope.profiler.lock=10ms",
+            )
+
+        /** [INGEST_MAX_TRIES] and [PUSH_QUEUE_CAPACITY] as JVM flags, for every JVM the tool attaches the agent to. */
+        val OUTAGE_FLAGS: List<String> =
+            listOf(
+                "-Dpyroscope.ingest.max.tries=$INGEST_MAX_TRIES",
+                "-Dpyroscope.push.queue.capacity=$PUSH_QUEUE_CAPACITY",
+            )
     }
 
     // The in-cluster Pyroscope server's identity.
@@ -1327,6 +1421,9 @@ object Constants {
     // 30 s count only on its first passing check (dskit ring/lifecycler.go:271-277). Measured from
     // container start: 48 s on a fresh data directory, 47 s on a restart over existing data. The
     // Pyroscope 1.x liveness probe (30 s delay, then 3 x 15 s) killed it during that window.
+    // config.yaml now sets both waits to 0s, because each one is also a wait at shutdown, during
+    // which Pyroscope refuses every push with an answer the Java agent does not retry (issue 991).
+    // With them off, /ready passed 18 s after container start; the budget below is kept as is.
     object PyroscopeProbes {
         /** How often the startup probe polls /ready while the server comes up. */
         const val STARTUP_PERIOD_SECONDS = 5
@@ -1940,8 +2037,47 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // Raw output of commands run on cluster nodes, printed through NodeOutput
+    object NodeOutput {
+        /** Lines of a node's recent output kept for its failure report. */
+        const val TAIL_LINES = 30
+
+        /** Bytes after which a line with no newline is emitted anyway, so it never grows without bound. */
+        const val MAX_LINE_BYTES = 8192
+
+        /**
+         * How far back from a hard cut a URL's `://` is looked for, so the URL moves whole to the
+         * next piece and its credential can still be redacted.
+         */
+        const val URL_CARRY_BYTES = 512
+
+        /**
+         * How long an interrupted command still waits for its queued output to print. A console
+         * that is stalled (a paused terminal) must not hold an abandoned worker forever.
+         */
+        val INTERRUPTED_DRAIN_WAIT: java.time.Duration = java.time.Duration.ofSeconds(INTERRUPTED_DRAIN_WAIT_SECONDS)
+
+        /** [INTERRUPTED_DRAIN_WAIT] in seconds. */
+        const val INTERRUPTED_DRAIN_WAIT_SECONDS = 5L
+
+        /** Name of the thread that prints one remote command's output lines. */
+        const val DRAIN_THREAD_NAME = "ssh-output"
+
+        /** Characters of a line kept in a node's tail; the console still prints the whole line. */
+        const val TAIL_ENTRY_CHARS = 512
+
+        /** Ends a tail entry that was cut to [TAIL_ENTRY_CHARS]. */
+        const val TAIL_ENTRY_ELLIPSIS = "…"
+
+        /** Marks a tail entry that came from stderr. */
+        const val TAIL_STDERR_PREFIX = "stderr: "
+    }
+
     // OpenSSH options the generated sshConfig sets for every SSH transport
     object Ssh {
+        /** Name prefix of the platform threads a virtual thread's SSH calls run on (`ssh/PlatformThreadCall`). */
+        const val CALL_THREAD_NAME = "ssh-call"
+
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
         const val INSTALL_STAGING_PREFIX = "edl-staged-"
 
@@ -2101,14 +2237,32 @@ object Constants {
         /** Default VPC CIDR block */
         const val DEFAULT_CIDR = "10.0.0.0/16"
 
-        /** Tag key used to identify easy-db-lab resources */
-        const val TAG_KEY = "easy_cass_lab"
+        /**
+         * Tag key that marks a resource as easy-db-lab's.  Every resource easy-db-lab creates
+         * carries it, alongside [LEGACY_TAG_KEY].  Nothing reads it yet: infrastructure created
+         * before it existed carries only the legacy key.
+         */
+        const val TAG_KEY = "easy_db_lab"
 
-        /** Tag value used to identify easy-db-lab resources */
+        /**
+         * The marker tag key from the project's old name.  Still written on every resource, and
+         * the only key read: IAM conditions, YACE discovery, the `down --all` VPC search, the
+         * ownership checks and the data-bucket search all look for it, because older
+         * infrastructure carries no other.
+         */
+        const val LEGACY_TAG_KEY = "easy_cass_lab"
+
+        /** Tag value of both marker keys */
         const val TAG_VALUE = "1"
+
+        /** The marker tags written on every resource easy-db-lab creates: the new key and the legacy key. */
+        val MARKER_TAGS: Map<String, String> = mapOf(LEGACY_TAG_KEY to TAG_VALUE, TAG_KEY to TAG_VALUE)
 
         /** Tag key naming the cluster that created a resource, set on every VPC and resource `up` creates */
         const val CLUSTER_ID_TAG_KEY = "ClusterId"
+
+        /** The EC2 `Name` tag key, which the console shows as the resource name and the find-or-create lookups match on */
+        const val NAME_TAG_KEY = "Name"
 
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"

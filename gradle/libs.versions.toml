@@ -72,6 +72,10 @@ fabric8-kubernetes = "7.8.0"
 # OpenTelemetry
 opentelemetry-agent = "2.26.0"
 
+# Pyroscope Java agent, for PyroscopeAgentReplayIntegrationTest only; the cluster installs the
+# release jar. Must equal Constants.PyroscopeJavaAgent.VERSION (the test checks it).
+pyroscope-agent = "2.3.0"
+
 # Gradle Plugins
 shadow = "9.4.1"
 versions = "0.54.0"
@@ -81,6 +85,7 @@ kover = "0.9.8"
 jib = "3.5.2"
 
 [libraries]
+pyroscope-agent = { module = "io.pyroscope:agent", version.ref = "pyroscope-agent" }
 # Kotlin
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }

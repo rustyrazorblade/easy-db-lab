@@ -1,20 +1,26 @@
 package com.rustyrazorblade.easydblab.ssh
 
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.output.LineSplittingOutputStream
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.redact
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.apache.commons.io.output.TeeOutputStream
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.scp.client.CloseableScpClient
 import org.apache.sshd.scp.client.ScpClientCreator
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.file.Path
 import java.rmi.RemoteException
 import java.util.ArrayDeque
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Main class for SSH operations
@@ -29,7 +35,7 @@ import java.util.ArrayDeque
  * - File and directory upload/download with SCP
  * - Proper resource cleanup on close
  *
- * Thread-safety: All operations are synchronized via operationLock to prevent
+ * Thread-safety: All operations are serialized via operationLock to prevent
  * concurrent access to the underlying Apache SSHD ClientSession, which is not
  * thread-safe. This allows multiple SSHClient instances (different hosts) to
  * operate in parallel while serializing operations on the same session.
@@ -41,9 +47,7 @@ import java.util.ArrayDeque
  */
 class SSHClient(
     private val session: ClientSession,
-) : ISSHClient,
-    KoinComponent {
-    private val eventBus: EventBus by inject()
+) : ISSHClient {
     private val log = KotlinLogging.logger {}
 
     companion object {
@@ -55,12 +59,16 @@ class SSHClient(
 
         /** The status in MINA's `Remote command failed (N): <command>`; anchored so a command that quotes the phrase cannot match. */
         private val EXIT_STATUS_IN_MESSAGE = Regex("^Remote command failed \\((-?\\d+)\\)")
+
+        /** Where [RemoteException]'s message starts repeating its cause. */
+        private const val NESTED_EXCEPTION = "; nested exception is:"
     }
 
-    // Synchronization lock to ensure thread-safe access to the session
-    // This allows multiple SSHClient instances (different hosts) to operate in parallel
-    // while serializing operations on the same session (same host)
-    private val operationLock = Any()
+    // Serializes operations on this session (one host) while other SSHClient instances run in
+    // parallel. A ReentrantLock, not `synchronized`: callers are virtual threads, and on JDK 21 a
+    // virtual thread that blocks inside `synchronized` pins its carrier. A command blocks for as
+    // long as it runs, so enough pinned callers would leave no carrier for anything else.
+    private val operationLock = ReentrantLock()
 
     // Helper property for logging and error messages
     private val remoteAddress: String
@@ -70,24 +78,24 @@ class SSHClient(
      * Execute a command on a remote host
      *
      * @param command The command to execute
-     * @param output Whether to print the command output
+     * @param sink Receives each redacted output line while the command runs; never used for a secret command
      * @param secret Whether the command contains sensitive information
      * @return The command output wrapped in a Response object
      */
     override fun executeRemoteCommand(
         command: String,
-        output: Boolean,
+        sink: RemoteOutputSink?,
         secret: Boolean,
     ): Response =
-        synchronized(operationLock) {
+        operationLock.withLock {
             require(command.isNotBlank()) { "Command cannot be blank" }
 
-            // Every sink below — the debug log, the emitted event, the returned Response and the
+            // Every sink below — the debug log, the streamed output lines, the returned Response and the
             // thrown exception — is redacted here rather than at each call site. A remote command
             // legitimately carries a git URL with an embedded token, and the remote side echoes it
             // straight back; a per-call-site convention only has to be forgotten once to leak it.
             if (!secret) {
-                log.debug { "Executing remote command: ${redactUrlCredentials(command)}" }
+                log.debug { "Executing remote command: ${redact(command)}" }
             } else {
                 log.debug { "Executing remote command: [hidden]" }
             }
@@ -97,19 +105,30 @@ class SSHClient(
             // and the command's own error message is the only thing that explains the failure.
             val stdoutStream = ByteArrayOutputStream()
             val stderrStream = ByteArrayOutputStream()
+            // A secret command echoes its own argument, so nothing of it is ever streamed. MINA writes
+            // into these streams on its shared I/O threads, so the sink is called off them.
+            val lineSink = sink.takeUnless { secret }?.let { OffThreadOutputSink(sink = it) }
+            val stdoutLines = lineSink?.let { lines(it, NodeStream.Stdout) }
+            val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {
-                session.executeRemoteCommand(command, stdoutStream, stderrStream, Charset.defaultCharset())
+                PlatformThreadCall.run {
+                    session.executeRemoteCommand(
+                        command,
+                        tee(stdoutStream, stdoutLines),
+                        tee(stderrStream, stderrLines),
+                        Charset.defaultCharset(),
+                    )
+                }
             } catch (e: RemoteException) {
                 throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)
+            } finally {
+                // The sink is closed last, so every line is printed before the command returns.
+                closeAll(stdoutLines, stderrLines, lineSink)
             }
 
             val result = redactUrlCredentials(stdoutStream.toString(Charset.defaultCharset()))
 
-            if (output) {
-                eventBus.emit(Event.Ssh.CommandOutput(result))
-            }
-
-            return@synchronized Response(result, redactUrlCredentials(stderrStream.toString(Charset.defaultCharset())))
+            return@withLock Response(result, redactUrlCredentials(stderrStream.toString(Charset.defaultCharset())))
         }
 
     private fun remoteCommandFailure(
@@ -133,11 +152,11 @@ class SSHClient(
             )
         }
         return RemoteCommandFailedException(
-            command = redactUrlCredentials(command),
+            command = redact(command),
             stdout = tail(stdoutStream.toString(Charset.defaultCharset())),
             stderr = tail(stderrStream.toString(Charset.defaultCharset())),
-            summary = "$remoteAddress: ${redactUrlCredentials(failure.message ?: "Remote command failed: $command")}",
             exitStatus = exitStatus,
+            summary = "$remoteAddress: ${redact(exitSummary(failure) ?: "Remote command failed: $command")}",
         )
     }
 
@@ -153,9 +172,45 @@ class SSHClient(
             ?.get(1)
             ?.toIntOrNull()
 
+    /**
+     * The "Remote command failed (N): <command>" part of [failure]. Its message also appends the
+     * nested ServerException MINA puts the exit status in ("; nested exception is: ..."), which
+     * tells a reader nothing the first part has not.
+     */
+    private fun exitSummary(failure: RemoteException): String? = failure.message?.substringBefore(NESTED_EXCEPTION)
+
+    /**
+     * Closes each of [closeables] in order, even when one before it throws, so the output sink is
+     * always closed and its drain thread always ends. The first failure is rethrown, with any later
+     * one suppressed on it.
+     */
+    private fun closeAll(vararg closeables: Closeable?) {
+        var failure: IOException? = null
+        closeables.filterNotNull().forEach { closeable ->
+            try {
+                closeable.close()
+            } catch (e: IOException) {
+                failure?.addSuppressed(e) ?: run { failure = e }
+            }
+        }
+        failure?.let { throw it }
+    }
+
+    /** Splits one remote stream into whole lines and hands each, redacted, to [sink]. */
+    private fun lines(
+        sink: RemoteOutputSink,
+        stream: NodeStream,
+    ) = LineSplittingOutputStream { sink.line(stream, redact(it)) }
+
+    /** Writes to [capture] always, and also to [lines] when there is one. */
+    private fun tee(
+        capture: OutputStream,
+        lines: OutputStream?,
+    ): OutputStream = if (lines == null) capture else TeeOutputStream(capture, lines)
+
     /** Keeps a failure message readable when the command spewed (e.g. a replayed ant build log). */
     private fun tail(text: String): String =
-        redactUrlCredentials(
+        redact(
             text.lines().takeLast(MAX_FAILURE_OUTPUT_LINES).joinToString("\n"),
         )
 
@@ -166,13 +221,13 @@ class SSHClient(
         local: Path,
         remote: String,
     ): Unit =
-        synchronized(operationLock) {
+        operationLock.withLock {
             require(remote.isNotBlank()) { "Remote path cannot be blank" }
             require(local.toFile().exists()) { "Local file does not exist: ${local.toAbsolutePath()}" }
             require(local.toFile().isFile) { "Local path is not a file: ${local.toAbsolutePath()}" }
 
-            eventBus.emit(Event.Ssh.UploadingFile(local.toAbsolutePath().toString(), remoteAddress, remote))
-            getScpClient().upload(local, remote)
+            val scp = getScpClient()
+            PlatformThreadCall.run { scp.upload(local, remote) }
         }
 
     /**
@@ -204,13 +259,13 @@ class SSHClient(
         // Phase 2a: Create all remote directories in a single batched command
         // This reduces SSH round-trips from O(n) to O(1)
         if (directoriesToCreate.isNotEmpty()) {
-            synchronized(operationLock) {
+            operationLock.withLock {
                 // Sort to ensure parent directories are created before children
                 val mkdirCommand =
                     directoriesToCreate
                         .sorted()
                         .joinToString(" && ") { dir -> "mkdir -p '$dir'" }
-                executeRemoteCommand(mkdirCommand, false, false)
+                executeRemoteCommand(mkdirCommand, null, false)
             }
         }
 
@@ -284,11 +339,12 @@ class SSHClient(
         remote: String,
         local: Path,
     ): Unit =
-        synchronized(operationLock) {
+        operationLock.withLock {
             require(remote.isNotBlank()) { "Remote path cannot be blank" }
 
             log.debug { "Downloading file from $remoteAddress:$remote to ${local.toAbsolutePath()}" }
-            getScpClient().download(remote, local)
+            val scp = getScpClient()
+            PlatformThreadCall.run { scp.download(remote, local) }
         }
 
     /**
@@ -305,7 +361,7 @@ class SSHClient(
         includeFilters: List<String>,
         excludeFilters: List<String>,
     ): Unit =
-        synchronized(operationLock) {
+        operationLock.withLock {
             require(remoteDir.isNotBlank()) { "Remote directory path cannot be blank" }
 
             if (!localDir.exists()) {
@@ -314,7 +370,7 @@ class SSHClient(
 
             log.debug { "Downloading directory from $remoteAddress:$remoteDir to ${localDir.absolutePath}" }
 
-            val fileListOutput = executeRemoteCommand("find $remoteDir -type f", false, false)
+            val fileListOutput = executeRemoteCommand("find $remoteDir -type f", null, false)
             val remoteFiles = fileListOutput.text.split("\n").filter { it.isNotEmpty() }
 
             // Download each file
@@ -378,8 +434,8 @@ class SSHClient(
      * @return A CloseableScpClient instance for this session
      */
     override fun getScpClient(): CloseableScpClient =
-        synchronized(operationLock) {
-            return@synchronized cachedScpClient
+        operationLock.withLock {
+            return@withLock cachedScpClient
                 ?: CloseableScpClient
                     .singleSessionInstance(ScpClientCreator.instance().createScpClient(session))
                     .also { cachedScpClient = it }
@@ -394,8 +450,8 @@ class SSHClient(
      * @return true if the session is open and authenticated, false otherwise
      */
     override fun isSessionOpen(): Boolean =
-        synchronized(operationLock) {
-            return@synchronized try {
+        operationLock.withLock {
+            return@withLock try {
                 session.isOpen && session.isAuthenticated
             } catch (e: Exception) {
                 log.debug(e) { "Error checking session status for $remoteAddress" }
@@ -413,7 +469,7 @@ class SSHClient(
      * It is safe to call this method multiple times.
      */
     override fun close(): Unit =
-        synchronized(operationLock) {
+        operationLock.withLock {
             log.debug { "Stopping SSH client for $remoteAddress" }
 
             // Close cached SCP client if it exists
@@ -421,11 +477,11 @@ class SSHClient(
                 try {
                     it.close()
                     cachedScpClient = null
-                } catch (e: java.io.IOException) {
+                } catch (e: IOException) {
                     log.debug(e) { "Error closing SCP client for $remoteAddress during session cleanup" }
                 }
             }
 
-            session.close()
+            PlatformThreadCall.run { session.close() }
         }
 }

@@ -13,7 +13,10 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.NodeOutput
+import com.rustyrazorblade.easydblab.output.NodeOutputTail
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
@@ -33,7 +36,6 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.DataBucketTeardown
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.TailnetCleanup
 import com.rustyrazorblade.easydblab.services.TailscaleService
@@ -41,6 +43,7 @@ import com.rustyrazorblade.easydblab.services.TeardownPlanner
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.DataBucketTeardown
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -49,13 +52,21 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsResponse
+import software.amazon.awssdk.services.ec2.model.KeyPairInfo
+import software.amazon.awssdk.services.ec2.model.Tag
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse
 import java.io.File
 import java.nio.file.Path
+import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
 /** Test modules for Koin dependency injection in tests. */
 object TestModules {
@@ -145,6 +156,53 @@ object TestModules {
             // This matches the production pattern but uses a test-friendly handler
             // Use single to ensure all components get the same instance within a test
             single<OutputHandler> { BufferedOutputHandler() }
+            single { RecordingNodeOutput() }
+            single<NodeOutput> { get<RecordingNodeOutput>() }
+            single<NodeOutputTail> { get<RecordingNodeOutput>() }
+        }
+
+    /**
+     * A mocked EC2 client whose key pair already carries both marker tags, so the key-pair
+     * backfill `up` and the image builds run finds nothing to add.
+     */
+    private fun markedKeyPairEc2(): Ec2Client =
+        mock<Ec2Client>().also { ec2 ->
+            val keyPair =
+                KeyPairInfo
+                    .builder()
+                    .keyName("test-key")
+                    .keyPairId("key-test")
+                    .tags(
+                        Constants.Vpc.MARKER_TAGS.map { (key, value) ->
+                            Tag
+                                .builder()
+                                .key(key)
+                                .value(value)
+                                .build()
+                        },
+                    ).build()
+            whenever(ec2.describeKeyPairs(any<DescribeKeyPairsRequest>()))
+                .thenReturn(DescribeKeyPairsResponse.builder().keyPairs(keyPair).build())
+        }
+
+    /** An S3 client whose bucket exists: GetBucketTagging answers an empty set, as a fresh bucket does. */
+    private fun emptyTagSetS3Client(): S3Client =
+        mock<S3Client>().also { s3 ->
+            whenever(s3.getBucketTagging(any<GetBucketTaggingRequest>()))
+                .thenReturn(GetBucketTaggingResponse.builder().tagSet(emptyList<S3Tag>()).build())
+        }
+
+    /** An STS client that answers every GetCallerIdentity with the test account. */
+    private fun callerIdentityStsClient(): StsClient =
+        mock<StsClient>().also { mockSts ->
+            val response =
+                GetCallerIdentityResponse
+                    .builder()
+                    .account("123456789012")
+                    .arn("arn:aws:iam::123456789012:user/test")
+                    .userId("AIDATEST123")
+                    .build()
+            whenever(mockSts.getCallerIdentity(any<GetCallerIdentityRequest>())).thenReturn(response)
         }
 
     /**
@@ -171,19 +229,9 @@ object TestModules {
 
             // Mock individual AWS SDK clients
             single { mock<IamClient>() }
-            single { mock<S3Client>() }
-            single {
-                mock<StsClient>().also { mockSts ->
-                    val response =
-                        GetCallerIdentityResponse
-                            .builder()
-                            .account("123456789012")
-                            .arn("arn:aws:iam::123456789012:user/test")
-                            .userId("AIDATEST123")
-                            .build()
-                    whenever(mockSts.getCallerIdentity(any<GetCallerIdentityRequest>())).thenReturn(response)
-                }
-            }
+            // A bucket that exists answers GetBucketTagging; an empty set is what a fresh one returns.
+            single { emptyTagSetS3Client() }
+            single { callerIdentityStsClient() }
 
             // Account identity and IAM roles over the mocked STS and IAM clients: the real logic
             // runs while no AWS API call is made
@@ -210,12 +258,12 @@ object TestModules {
                         accessKey: String,
                         secret: String,
                         region: String,
-                    ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
+                    ): Ec2Client = markedKeyPairEc2()
 
                     override fun createEc2ClientWithProfile(
                         profileName: String,
                         region: String,
-                    ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
+                    ): Ec2Client = markedKeyPairEc2()
                 }
             }
 
@@ -238,7 +286,14 @@ object TestModules {
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
 
-            factory { AwsKeyPairService(get(), get(), AwsErrorHandler()) }
+            factory {
+                AwsKeyPairService(
+                    get(),
+                    get(),
+                    AwsErrorHandler(),
+                    File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE),
+                )
+            }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {
@@ -333,6 +388,7 @@ object TestModules {
                         host: Host,
                         local: Path,
                         remote: String,
+                        notice: String,
                     ) {
                         // No-op for mock implementation
                     }

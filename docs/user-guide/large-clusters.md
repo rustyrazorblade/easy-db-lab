@@ -147,6 +147,11 @@ The control node is never replaced. Each of its steps is tried twice; if one sti
 fails at once, stops every node pipeline and keeps every instance. It prints the control node, its
 step and the reason once.
 
+When the bring-up ends, `up` waits up to 60 seconds for every node pipeline it stopped to finish,
+so no node's state write lands after `up` has gone on. A pipeline still running after that is
+named in an error, `The pipelines of <nodes> did not stop within 60000ms of the bring-up's end and
+are still running`, and `up` goes on without it rather than hang.
+
 ### Control-plane health
 
 While nodes join, `up` samples the API server every 5 seconds. A sample is unhealthy when a
@@ -174,11 +179,35 @@ While the control node's own steps run, the line starts with its step, for examp
 `control control-plane`. The per-step counts are the nodes in that step now. `join` is the join
 slots in use against the limit. Each step's start and end is published to Redis only, not printed.
 
+### Node output
+
+For a large cluster, run `up -q` (or `init --up -q`). At a few hundred nodes the node output
+scrolls faster than it can be read; `-q` hides it and still prints the progress lines, each node's
+Ready line and every failure. It hides the node pipelines only: once the last node is Ready or
+failed, the cluster-wide steps print as they do without it.
+
+Without `-q`, each line a node's scripts print is shown as it arrives, tagged with the node, so
+lines from many nodes running at once can be told apart. Tags are padded so the text lines up:
+
+```
+[db12]  Installing packages
+[db140] Mounting /dev/nvme1n1 on /mnt/db1
+```
+
+A retried step prints `<step> attempt <N>` before its next attempt runs. This output is plain
+text. It is not an event and is not published to Redis; subscribers see the node's step, Ready and
+failure events instead.
+
 ### When a node fails
 
 When a node has used its replacements, or the cluster has used its limit, the node fails and
 keeps its last instance for debugging. `up` prints the failure as it happens
 (`db7 failed at setup: ...`). The other nodes and the cluster-wide steps still finish.
+A node that failed before its last instance joined has the alias's old Node and node password
+deleted once the control plane is ready, after its failure is printed, if an earlier instance may have registered them (it was replaced, or it
+was launched in this `up`). That Node's kubelet is gone, so it would stay NotReady and hold the
+observability rollout on a node already reported failed. If the deletion fails, the summary
+below adds that to the node's reason.
 Then `up` names each failed node, its instance, its step and the reason, and exits non-zero:
 
 ```
@@ -186,6 +215,20 @@ Then `up` names each failed node, its instance, its step and the reason, and exi
   db7 (i-0abc..., kept for debugging): setup: setup failed (ERROR: no data disk); the node had its 2 replacements
   db9 (i-0def..., terminated, no instance left): join: join failed (...); the replacement failed at launch: ...
 ```
+
+The failure line ends with the last 30 lines the node's last instance printed, also under
+`--quiet`, so the cause is on screen without scrolling back:
+
+```
+db7 failed at setup: setup failed (ERROR: no data disk)
+last output of db7:
+    Checking block devices
+    stderr: ERROR: no data disk found: no unused non-root block device
+```
+
+Lines the node wrote to stderr start with `stderr: `, and a line longer than 512 characters is cut
+and ends with `…`. A replacement starts with an empty tail, so these lines are always from the
+instance that failed.
 
 A failed join's reason says what it was waiting for (for example, that the agent started but no
 node registered) and ends with the last lines of the node's K3s agent log.

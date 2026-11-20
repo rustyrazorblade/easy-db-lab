@@ -46,7 +46,7 @@ import com.rustyrazorblade.easydblab.services.access.Fabric8PodForwarder
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
 import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.bringup.aws.Ec2BringUpPorts
@@ -244,7 +244,6 @@ val servicesModule =
             DefaultObservabilityHttp(get(), { clusterStateManager.load().tenant() }, get())
         }
         factory { TailnetCleanup(get(), lazy { get<User>() }, get()) }
-        factory { DataBucketTeardown(get(), get()) }
         factory { TeardownPlanner(get()) }
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
@@ -303,16 +302,6 @@ val servicesModule =
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
-
-        // EMR provisioning service for Spark cluster creation
-        single<EMRProvisioningService> {
-            DefaultEMRProvisioningService(
-                get<EMRService>(),
-                get<ObjectStore>(),
-                get<TemplateService>(),
-                get<EventBus>(),
-            )
-        }
 
         // Cluster provisioning service for parallel instance creation
         single<ClusterProvisioningService> {

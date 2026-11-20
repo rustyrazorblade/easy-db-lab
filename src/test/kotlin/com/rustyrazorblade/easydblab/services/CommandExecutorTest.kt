@@ -376,6 +376,28 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a failed command whose cleanup also fails is reported once, for the command`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(FailingCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("Command failed intentionally")
+            .doesNotContain("close failed")
+    }
+
+    @Test
+    fun `a command that already reported its failure gets no report for a failed cleanup`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(ReportedFailureCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
     fun `an unexpected failure is reported as an execution error`() {
         commandExecutor.execute { FailingCommand() }
 

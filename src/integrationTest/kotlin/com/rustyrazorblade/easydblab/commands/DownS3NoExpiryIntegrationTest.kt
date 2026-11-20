@@ -164,7 +164,7 @@ class DownS3NoExpiryIntegrationTest : BaseKoinTest() {
                         .tagSet(
                             Tag
                                 .builder()
-                                .key(Constants.Vpc.TAG_KEY)
+                                .key(Constants.Vpc.LEGACY_TAG_KEY)
                                 .value(Constants.Vpc.TAG_VALUE)
                                 .build(),
                         ).build(),

@@ -38,7 +38,7 @@ class OpenSearchStart : PicoBaseCommand() {
 
     @Option(
         names = ["--instance-type"],
-        description = ["OpenSearch instance type (e.g., t3.small.search, r5.large.search)"],
+        description = ["OpenSearch instance type (e.g., r8g.xlarge.search, m8g.large.search)"],
     )
     var instanceType: String = Constants.OpenSearch.DEFAULT_INSTANCE_TYPE
 
@@ -114,10 +114,7 @@ class OpenSearchStart : PicoBaseCommand() {
         accountId = openSearchService.getAccountId(),
         region = user.region,
         tags =
-            mapOf(
-                Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE,
-                Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId,
-            ),
+            Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId),
     )
 
     private fun saveOpenSearchState(result: OpenSearchDomainResult) {

@@ -106,7 +106,7 @@ class Init :
         private const val DEFAULT_EBS_SIZE_GB = 256
 
         /** Control node instance type. Kept in sync with [InitConfig] control defaults. */
-        const val DEFAULT_CONTROL_INSTANCE_TYPE = "m5d.xlarge"
+        const val DEFAULT_CONTROL_INSTANCE_TYPE = Constants.InstanceTypes.CONTROL
 
         /** Classpath directory holding the OTel agent's Cassandra JMX rule files. */
         private const val CASSANDRA_RESOURCE_DIR = "/com/rustyrazorblade/easydblab/configuration/cassandra"
@@ -154,13 +154,19 @@ class Init :
     var start = false
 
     @Option(
+        names = ["--quiet", "-q"],
+        description = ["With --up: hide the output of each node's scripts; Ready lines, progress and failures still print"],
+    )
+    var quiet = false
+
+    @Option(
         names = ["--instance", "-i"],
         description = [
             "Legacy alias for --db.instance-type. Database instance type. " +
                 "Set EASY_DB_LAB_INSTANCE_TYPE to set a default.",
         ],
     )
-    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: "i4i.xlarge"
+    var instanceType: String = System.getenv("EASY_DB_LAB_INSTANCE_TYPE") ?: Constants.InstanceTypes.DB
 
     @Option(
         names = ["--db.instance-type"],
@@ -177,7 +183,7 @@ class Init :
                 "Set EASY_DB_LAB_STRESS_INSTANCE_TYPE to set a default.",
         ],
     )
-    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: "c6id.2xlarge"
+    var stressInstanceType: String = System.getenv("EASY_DB_LAB_STRESS_INSTANCE_TYPE") ?: Constants.InstanceTypes.APP
 
     @Option(
         names = ["--app.instance-type"],
@@ -554,7 +560,7 @@ class Init :
         if (start) {
             eventBus.emit(Event.Setup.ProvisioningInstances)
             // Schedule Up to run after Init's full lifecycle completes
-            commandExecutor.schedule { Up() }
+            commandExecutor.schedule { Up().also { it.quiet = quiet } }
         } else {
             eventBus.emit(Event.Setup.InitNextSteps)
         }
@@ -603,6 +609,7 @@ class Init :
     }
 
     private fun validateParameters() {
+        require(!quiet || start) { "--quiet hides the output of the nodes 'up' brings up, so it needs --up" }
         require(resolvedDbCount > 0) { "Number of database instances must be positive" }
         require(resolvedAppCount >= 0) { "Number of application instances cannot be negative" }
         require(ebsSize > 0) { "EBS size must be positive" }

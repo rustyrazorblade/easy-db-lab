@@ -24,9 +24,10 @@ Keep the dependency direction one way: the root module may use this module, and 
 - `Gate` and `GateFile` — what the agent tells the compactor containers.  `GateFile` writes `valid-until` (epoch seconds, by a write and a rename) and the `ready` marker for the readiness probe, in the emptyDir the pod shares.
 - `ScratchWipe` — empties the compactors' scratch directories when the agent takes the lease.
 - `LeaseAgentConfig` — the agent's configuration, read from the pod's environment.
-- `aws/LeaseAgentMain` — the jar's entry point.  It uses the node's instance role through IMDS and logs every lease transition to stdout.
+- `aws/S3LeaseStore` — `withS3LeaseStore` builds the agent's S3 client (call timeouts within `LeaseTiming.storeCallTimeout`, the default credentials chain) and hands the block an `S3ConditionalObjects`.
+- `LeaseAgentMain` — the jar's entry point.  It uses the node's instance role through IMDS (by `withS3LeaseStore`) and logs every lease transition to stdout.
 
-The AWS SDK appears only in `compactorlease.aws` (`S3ConditionalObjects` and `LeaseAgentMain`); the root module's `PackageBoundaryTest` counts it as an adapter package, and every other class here stays free of SDK types.
+The AWS SDK appears only in the `aws` subpackage.  The root module's `PackageBoundaryTest` scans this module too and names `compactorlease.aws..` as an adapter package; nothing else here may name an SDK type.
 
 The gate script that reads `valid-until` is not in this module.  It is `compactor-gate.sh` in the root module's resources, and its tests are in `src/test/shell/`.
 

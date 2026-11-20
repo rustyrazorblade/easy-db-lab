@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyAction
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument
@@ -14,6 +16,7 @@ import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
 import software.amazon.awssdk.services.opensearch.model.CreateDomainRequest
@@ -57,7 +60,7 @@ enum class DomainState {
  * Configuration for creating an OpenSearch domain.
  *
  * @property domainName Unique name for the OpenSearch domain (3-28 characters, lowercase, numbers, hyphens)
- * @property instanceType OpenSearch instance type (e.g., "t3.small.search", "r5.large.search")
+ * @property instanceType OpenSearch instance type (e.g., "r8g.xlarge.search", "m8g.large.search")
  * @property instanceCount Number of data nodes in the cluster
  * @property ebsVolumeSize Size of EBS volume in GB for each data node
  * @property engineVersion OpenSearch engine version (e.g., "OpenSearch_2.11")
@@ -98,6 +101,25 @@ data class OpenSearchDomainResult(
 )
 
 /**
+ * What a domain lookup found, as [OpenSearchService.lookupDomain] reports it. A value rather than an
+ * SDK exception, so the command layer can tell a missing domain from AWS not answering.
+ */
+sealed interface DomainLookup {
+    /** The domain exists; [result] is its current status. */
+    data class Found(
+        val result: OpenSearchDomainResult,
+    ) : DomainLookup
+
+    /** AWS reports no domain by that name. */
+    data object NotFound : DomainLookup
+
+    /** AWS could not answer; [reason] is the SDK's message. */
+    data class Unavailable(
+        val reason: String,
+    ) : DomainLookup
+}
+
+/**
  * Service for creating and managing AWS OpenSearch domains.
  *
  * This service handles the lifecycle of OpenSearch domains including creation,
@@ -112,9 +134,13 @@ class OpenSearchService(
     private val iamRoles: IamRoles,
     private val accountIdentity: AccountIdentity,
     private val eventBus: EventBus = EventBus(),
+    private val errorHandler: ProviderErrorHandler,
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        /** Failures [lookupDomain] leaves to the command failure reporter instead of reporting as unavailable. */
+        private val PROPAGATED_KINDS = setOf(ProviderErrorKind.CREDENTIALS, ProviderErrorKind.PERMISSION_DENIED)
     }
 
     /**
@@ -221,20 +247,27 @@ class OpenSearchService(
     }
 
     /**
-     * Describes a domain, or returns null when it does not exist.
+     * Looks a domain up and reports the outcome as a value: found, not found, or unavailable when
+     * AWS could not answer (a network failure, a throttle that outlasted the retry).
      *
-     * The not-found case is a value, so callers outside the AWS adapter need no SDK exception type.
-     * The catch sits outside the retry on purpose: translating an error inside a retried call would
-     * hide it from the retry's predicate.
+     * The outcome is a value, so callers outside the AWS adapter need no SDK exception type. The
+     * catch sits outside the retry on purpose: translating an error inside a retried call would hide
+     * it from the retry's predicate. A credentials or permission failure propagates, so the command
+     * failure reporter shows it with its remedy (the EasyDBLabOpenSearch policy for a denial); so
+     * does any failure that is not an AWS SDK failure.
      *
      * @param domainName The domain name
-     * @return Current domain status, or null when AWS reports no such domain
+     * @return What AWS reported for [domainName]
      */
-    fun describeDomainOrNull(domainName: String): OpenSearchDomainResult? =
+    fun lookupDomain(domainName: String): DomainLookup =
         try {
-            describeDomain(domainName)
+            DomainLookup.Found(describeDomain(domainName))
         } catch (_: ResourceNotFoundException) {
-            null
+            DomainLookup.NotFound
+        } catch (e: SdkException) {
+            if (errorHandler.describe(e)?.kind in PROPAGATED_KINDS) throw e
+            log.warn(e) { "Failed to describe OpenSearch domain $domainName" }
+            DomainLookup.Unavailable(e.message ?: e::class.simpleName.orEmpty())
         }
 
     /**
@@ -509,7 +542,7 @@ class OpenSearchService(
                     log.info { "Found OpenSearch domain $domainName in VPC" }
                     domainsInVpc.add(domainName)
                 }
-            } catch (e: Exception) {
+            } catch (e: SdkException) {
                 log.warn(e) { "Failed to describe domain $domainName, skipping" }
             }
         }

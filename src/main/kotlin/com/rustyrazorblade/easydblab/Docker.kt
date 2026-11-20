@@ -38,6 +38,11 @@ interface DockerClientInterface {
         tag: String,
     ): List<Image>
 
+    /**
+     * Pulls [name]:[tag], reporting progress to [callback], and returns once the pull is complete.
+     *
+     * @throws DockerException when the daemon cannot be reached or the pull fails in transport
+     */
     fun pullImage(
         name: String,
         tag: String,
@@ -81,27 +86,44 @@ interface DockerClientInterface {
     fun serverArchitecture(): String
 }
 
-// Default implementation that delegates to the actual DockerClient
+/**
+ * The one adapter from [DockerClientInterface] to docker-java, and the seam where its transport
+ * failures get a Docker type.
+ *
+ * docker-java's HTTP transport throws a socket failure (a missing socket, a stopped daemon, a
+ * refused `DOCKER_HOST`) as a bare `RuntimeException` around the `IOException`, with nothing that
+ * says Docker. Every call here rethrows that shape as the project [DockerException], naming the
+ * operation, so the failure reads as Docker's wherever it surfaces and the Docker retry policy
+ * still retries it. An answer from a running daemon (a 404 `NotFoundException`, a conflict) is
+ * docker-java's own exception and passes through unchanged.
+ *
+ * @param endpoint the daemon address the client was built for (a `unix://` socket or a `tcp://`
+ *   host), named in a transport failure because docker-java's own message names no path
+ */
 class DefaultDockerClient(
     private val dockerClient: DockerClient,
+    private val endpoint: String? = null,
 ) : DockerClientInterface {
     override fun listImages(
         name: String,
         tag: String,
-    ): List<Image> = dockerClient.listImagesCmd().withReferenceFilter("$name:$tag").exec()
+    ): List<Image> = dockerTransport("list images $name:$tag") { dockerClient.listImagesCmd().withReferenceFilter("$name:$tag").exec() }
 
     override fun pullImage(
         name: String,
         tag: String,
         callback: PullImageResultCallback,
     ) {
-        val pullCommand =
-            if (tag.isNotBlank()) {
-                dockerClient.pullImageCmd(name).withTag(tag)
-            } else {
-                dockerClient.pullImageCmd(name)
-            }
-        pullCommand.exec(callback)
+        dockerTransport("pull image $name:$tag") {
+            val pullCommand =
+                if (tag.isNotBlank()) {
+                    dockerClient.pullImageCmd(name).withTag(tag)
+                } else {
+                    dockerClient.pullImageCmd(name)
+                }
+            // The pull streams on docker-java's own thread; its transport failure surfaces from the await.
+            pullCommand.exec(callback).awaitCompletion()
+        }
     }
 
     override fun buildImage(
@@ -109,62 +131,100 @@ class DefaultDockerClient(
         imageTag: String,
         onOutput: (String) -> Unit,
     ): String =
-        dockerClient
-            .buildImageCmd(contextDir)
-            .withTags(setOf(imageTag))
-            .withPull(true)
-            .exec(
-                object : BuildImageResultCallback() {
-                    override fun onNext(item: BuildResponseItem) {
-                        item.stream
-                            ?.trimEnd()
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let(onOutput)
-                        super.onNext(item)
-                    }
-                },
-            ).awaitImageId()
+        dockerTransport("build image $imageTag") {
+            dockerClient
+                .buildImageCmd(contextDir)
+                .withTags(setOf(imageTag))
+                .withPull(true)
+                .exec(
+                    object : BuildImageResultCallback() {
+                        override fun onNext(item: BuildResponseItem) {
+                            item.stream
+                                ?.trimEnd()
+                                ?.takeIf { it.isNotEmpty() }
+                                ?.let(onOutput)
+                            super.onNext(item)
+                        }
+                    },
+                ).awaitImageId()
+        }
 
     override fun createContainer(imageTag: String): ContainerCreationCommand =
-        ContainerCreationCommand(dockerClient.createContainerCmd(imageTag))
+        ContainerCreationCommand(dockerClient.createContainerCmd(imageTag)) { create ->
+            dockerTransport("create container from $imageTag", create)
+        }
 
     override fun attachContainer(
         containerId: String,
         stdin: PipedInputStream,
         callback: ResultCallback.Adapter<Frame>,
     ) {
-        dockerClient
-            .attachContainerCmd(containerId)
-            .withStdIn(stdin)
-            .withStdOut(true)
-            .withStdErr(true)
-            .withFollowStream(true)
-            .exec(callback)
+        dockerTransport("attach to container $containerId") {
+            dockerClient
+                .attachContainerCmd(containerId)
+                .withStdIn(stdin)
+                .withStdOut(true)
+                .withStdErr(true)
+                .withFollowStream(true)
+                .exec(callback)
+        }
     }
 
     override fun startContainer(containerId: String) {
-        dockerClient.startContainerCmd(containerId).exec()
+        dockerTransport("start container $containerId") { dockerClient.startContainerCmd(containerId).exec() }
     }
 
-    override fun inspectContainer(containerId: String): InspectContainerResponse = dockerClient.inspectContainerCmd(containerId).exec()
+    override fun inspectContainer(containerId: String): InspectContainerResponse =
+        dockerTransport("inspect container $containerId") { dockerClient.inspectContainerCmd(containerId).exec() }
 
     override fun removeContainer(
         containerId: String,
         removeVolumes: Boolean,
     ) {
-        dockerClient
-            .removeContainerCmd(containerId)
-            .withRemoveVolumes(removeVolumes)
-            .exec()
+        dockerTransport("remove container $containerId") {
+            dockerClient
+                .removeContainerCmd(containerId)
+                .withRemoveVolumes(removeVolumes)
+                .exec()
+        }
     }
 
     override fun serverArchitecture(): String =
-        requireNotNull(dockerClient.infoCmd().exec().architecture) { "The Docker daemon reported no architecture" }
+        requireNotNull(dockerTransport("read the daemon's info") { dockerClient.infoCmd().exec() }.architecture) {
+            "The Docker daemon reported no architecture"
+        }
+
+    /**
+     * Runs one docker-java [call], rethrowing a transport failure (a `RuntimeException` around an
+     * `IOException`, which is how docker-java reports a socket it cannot reach) as a [DockerException]
+     * that names the [operation] and the [endpoint] and keeps the socket failure as its cause.
+     * Anything else passes through.
+     */
+    private fun <T> dockerTransport(
+        operation: String,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (e: RuntimeException) {
+            // Only the bare wrapper is the transport. A subclass (DockerClientException around a
+            // local IOException, such as a build context it could not read) is not the daemon.
+            if (e.javaClass != RuntimeException::class.java) throw e
+            val io = e.cause as? IOException ?: throw e
+            val at = endpoint?.let { " at $it" }.orEmpty()
+            throw DockerException("Docker could not $operation$at: ${io.messageOrString()}", e)
+        }
 }
 
-// Wrapper class for container creation commands to make testing easier
+/**
+ * Builder for a container creation, so the command layer never holds a docker-java command type.
+ *
+ * @param runCreate runs the create call; [DefaultDockerClient] passes its transport seam, so a
+ *   daemon that cannot be reached fails as a [DockerException]
+ */
 class ContainerCreationCommand(
     private val command: CreateContainerCmd,
+    private val runCreate: (() -> CreateContainerResponse) -> CreateContainerResponse = { it() },
 ) {
     fun withCmd(commands: List<String>): ContainerCreationCommand {
         command.withCmd(commands)
@@ -199,7 +259,7 @@ class ContainerCreationCommand(
         return this
     }
 
-    fun exec(): CreateContainerResponse = command.exec()
+    fun exec(): CreateContainerResponse = runCreate { command.exec() }
 }
 
 // Utility for getting user ID, extracted for testability
@@ -317,13 +377,17 @@ class Docker(
         return result.isNotEmpty()
     }
 
+    /**
+     * Pulls [container]'s image. A daemon that cannot be reached fails as the client seam's
+     * [DockerException]; an answer from the daemon (an unknown image, a failed pull) is wrapped here.
+     */
     internal fun pullImage(container: Containers) {
         try {
             return pullImage(container.containerName, container.tag)
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
             throw DockerException("Error pulling image ${container.containerName}:${container.tag}", e)
-        } catch (e: IOException) {
-            throw DockerException("IO error pulling image ${container.containerName}:${container.tag}", e)
+        } catch (e: DockerClientException) {
+            throw DockerException("Error pulling image ${container.containerName}:${container.tag}", e)
         }
     }
 
@@ -359,7 +423,6 @@ class Docker(
             }
 
         dockerClient.pullImage(name, tag, callback)
-        callback.awaitCompletion()
 
         log.info { "Finished pulling $name" }
     }

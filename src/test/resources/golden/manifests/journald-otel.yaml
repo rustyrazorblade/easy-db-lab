@@ -15,6 +15,11 @@ data:
       http_listen: 0.0.0.0
       http_port: 2020
       health_check: true
+      # Retries back off exponentially up to this many seconds (default 2000), plus the one second
+      # Fluent Bit adds to every retry delay, so 31s at most. At the default, a
+      # chunk could wait many minutes after the collector came back, and arrive past Loki's 30-minute
+      # out-of-order window or after `down` removed the collector (issue 991).
+      scheduler.cap: 30
 
     pipeline:
       inputs:
@@ -37,8 +42,12 @@ data:
           call: process
 
       outputs:
+        # The node collector restarts on every kit start and stop, and its config roll can outlast
+        # Fluent Bit's default of one retry. Retry without a limit so no journal line is dropped
+        # (issue 991). Chunks stay in memory: there is no storage.path, by owner decision.
         - name: opentelemetry
           match: journald
+          retry_limit: no_limits
           host: 127.0.0.1
           port: 4318
           logs_uri: /v1/logs

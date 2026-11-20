@@ -65,7 +65,7 @@ class K3sServiceTest : BaseKoinTest() {
                 "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}"
         val successResponse = Response(text = "", stderr = "")
 
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any(), any())
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
 
@@ -86,7 +86,7 @@ class K3sServiceTest : BaseKoinTest() {
                 "--kube-controller-manager-arg=node-cidr-mask-size=${Constants.K3s.NODE_CIDR_MASK_SIZE}"
         val successResponse = Response(text = "", stderr = "")
 
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any(), any())
         // chmod succeeds but script execution fails
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenReturn(successResponse)
@@ -105,7 +105,7 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `start should return failure when SSH operation throws exception`() {
         // Given - upload itself fails
-        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any())
+        doNothing().whenever(mockRemoteOps).upload(eq(testHost), any(), any(), any())
 
         whenever(mockRemoteOps.executeRemotely(eq(testHost), any(), any(), any()))
             .thenThrow(RuntimeException("Connection refused"))

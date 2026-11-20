@@ -85,7 +85,7 @@ class EC2SecurityGroupService(
         log.info { "Creating security group: $name in VPC: $vpcId" }
         eventBus.emit(Event.Infra.SecurityGroupCreating(name))
 
-        val allTags = tags + ("Name" to name)
+        val allTags = tags + (Constants.Vpc.NAME_TAG_KEY to name)
         val tagSpecification = buildTagSpecification("security-group", allTags)
 
         val createRequest =

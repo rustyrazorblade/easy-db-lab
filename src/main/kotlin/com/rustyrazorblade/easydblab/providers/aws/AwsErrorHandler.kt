@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderResponse
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -11,6 +12,7 @@ import software.amazon.awssdk.services.emr.model.EmrException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.opensearch.model.OpenSearchException
 import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.servicequotas.model.ServiceQuotasException
 import software.amazon.awssdk.services.ssm.model.SsmException
 import software.amazon.awssdk.services.sso.auth.ExpiredTokenException
 import software.amazon.awssdk.services.sts.model.StsException
@@ -35,39 +37,56 @@ class AwsErrorHandler : ProviderErrorHandler {
     private fun describeService(error: AwsServiceException): ErrorDescription? {
         val code = error.awsErrorDetails()?.errorCode()
         val detail = error.awsErrorDetails()?.errorMessage() ?: error.message.orEmpty()
-        return when {
-            code in Constants.AWS.ErrorCodes.CREDENTIALS -> describeAs(ProviderErrorKind.CREDENTIALS, detail, CREDENTIALS_REMEDY)
-            code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> permissionDenied(error, detail)
-            // Deliberate null: clock skew is neither credentials nor permission, and it answers 403, so this branch
-            // must stay ahead of the 403 fallback below or it would be reported as permission denied.
-            code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
-            error.statusCode() == Constants.HttpStatus.FORBIDDEN -> permissionDenied(error, detail)
-            else -> null
-        }
+        val kind =
+            when {
+                code in Constants.AWS.ErrorCodes.CREDENTIALS -> ProviderErrorKind.CREDENTIALS
+                code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> ProviderErrorKind.PERMISSION_DENIED
+                // Deliberate null: clock skew is neither credentials nor permission, and it answers 403, so this branch
+                // must stay ahead of the 403 fallback below or it would be reported as permission denied.
+                code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
+                error.statusCode() == Constants.HttpStatus.FORBIDDEN -> ProviderErrorKind.PERMISSION_DENIED
+                else -> null
+            } ?: return null
+        val remedy = if (kind == ProviderErrorKind.CREDENTIALS) CREDENTIALS_REMEDY else permissionRemedy(error)
+        return ErrorDescription(
+            provider = PROVIDER,
+            kind = kind,
+            detail = detail,
+            remedy = remedy,
+            response = responseOf(error, code),
+        )
     }
 
-    private fun permissionDenied(
+    /** The service, error code, HTTP status and request id of [error], which its detail message leaves out. */
+    private fun responseOf(
         error: AwsServiceException,
-        detail: String,
-    ): ErrorDescription = describeAs(ProviderErrorKind.PERMISSION_DENIED, detail, permissionRemedy(error))
+        code: String?,
+    ): ProviderResponse =
+        ProviderResponse(
+            service = error.awsErrorDetails()?.serviceName(),
+            errorCode = code,
+            statusCode = error.statusCode().takeIf { it > 0 },
+            requestId = error.requestId(),
+        )
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
         val isCredentialsProblem = error is ExpiredTokenException || isProviderCredentialsFailure(error, message)
         return if (isCredentialsProblem) {
-            describeAs(ProviderErrorKind.CREDENTIALS, message, CREDENTIALS_REMEDY)
+            ErrorDescription(provider = PROVIDER, kind = ProviderErrorKind.CREDENTIALS, detail = message, remedy = CREDENTIALS_REMEDY)
         } else {
             null
         }
     }
 
     /**
-     * A missing credentials chain is a plain `SdkClientException`: the SDK gives it no subtype and no code,
-     * so its message alone cannot tell it from an S3 or network error that quotes the same words. What the SDK
-     * does fix is where it is raised: a credentials provider (`ProfileCredentialsProvider`,
-     * `AwsCredentialsProviderChain`) builds it itself. So it is claimed only when the code that built it, the
-     * first frame past the SDK's exception builder, is in the SDK's credentials package, and its message starts
-     * with one of the SDK's own credentials messages.
+     * A missing credentials chain, or an expired or missing SSO token, is a plain `SdkClientException`: the SDK
+     * gives it no subtype and no code, so its message alone cannot tell it from an S3 or network error that quotes
+     * the same words. What the SDK does fix is where it is raised: a credentials provider
+     * (`ProfileCredentialsProvider`, `AwsCredentialsProviderChain`) or an SSO token provider
+     * (`SsoOidcTokenProvider` for an `sso_session` profile, `SsoCredentialsProvider`) builds it itself. So it is
+     * claimed only when the code that built it, the first frame past the SDK's exception builder, is in one of
+     * those packages, and its message starts with one of the SDK's own credentials messages.
      */
     private fun isProviderCredentialsFailure(
         error: SdkClientException,
@@ -78,16 +97,11 @@ class AwsErrorHandler : ProviderErrorHandler {
                 .firstOrNull { !it.className.startsWith(Constants.AWS.ErrorCodes.SDK_EXCEPTION_PACKAGE) }
                 ?.className
                 .orEmpty()
-        return raisedBy.startsWith(Constants.AWS.ErrorCodes.CREDENTIALS_PROVIDER_PACKAGE) &&
+        return Constants.AWS.ErrorCodes.CREDENTIALS_PROVIDER_PACKAGES
+            .any { raisedBy.startsWith(it) } &&
             Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
                 .any { message.startsWith(it) }
     }
-
-    private fun describeAs(
-        kind: ProviderErrorKind,
-        detail: String,
-        remedy: String,
-    ): ErrorDescription = ErrorDescription(provider = PROVIDER, kind = kind, detail = detail, remedy = remedy)
 
     private fun permissionRemedy(error: Throwable): String =
         if (error is StsException) {
@@ -114,7 +128,7 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private fun policyFor(error: Throwable): String? =
         when (error) {
-            is Ec2Exception, is SsmException -> AWSPolicy.UserIAM.EC2_POLICY
+            is Ec2Exception, is SsmException, is ServiceQuotasException -> AWSPolicy.UserIAM.EC2_POLICY
             is IamException, is S3Exception -> AWSPolicy.UserIAM.IAM_POLICY
             is EmrException -> AWSPolicy.UserIAM.EMR_POLICY
             is OpenSearchException -> AWSPolicy.UserIAM.OPENSEARCH_POLICY

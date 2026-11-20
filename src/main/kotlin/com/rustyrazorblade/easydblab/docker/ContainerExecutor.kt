@@ -47,9 +47,11 @@ class ContainerExecutor(
     /**
      * Start a container and wait for it to complete.
      *
-     * Retries transient Docker API failures (socket errors and Docker API errors) with the checked
-     * decorator, since a socket error is a checked IOException once it is unwrapped. A container
-     * that does not exist (a 404) fails at once, as a [DockerException].
+     * Retries transient Docker failures: a socket error, which the client seam
+     * ([com.rustyrazorblade.easydblab.DefaultDockerClient]) already raises as the project
+     * [DockerException], and docker-java API errors. A container that does not exist (a 404) fails
+     * at once, as a [DockerException]. The project [DockerException] is checked, so the call runs
+     * in the checked decorator, the only one that sees it.
      *
      * @param containerId The ID of the container to start
      * @param maxWaitTime Maximum time to wait (default: 10 minutes)
@@ -63,32 +65,27 @@ class ContainerExecutor(
 
         try {
             Retry
-                .decorateCheckedRunnable(retry) {
-                    surfacingTransportIo { dockerClient.startContainer(containerId) }
-                }.run()
+                .decorateCheckedRunnable(retry) { dockerClient.startContainer(containerId) }
+                .run()
             eventBus.emit(Event.Docker.ContainerStarting(containerId))
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
-            val errorMsg = "Docker error starting container: $containerId"
-            log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
-            throw DockerException("Failed to start container $containerId", e)
-        } catch (e: IOException) {
-            val errorMsg = "IO error starting container: $containerId"
-            log.error(e) { errorMsg }
-            eventBus.emit(Event.Docker.ContainerStartError(e.message.orEmpty()))
-            throw DockerException("IO error starting container $containerId", e)
+            failStart(e, DockerException("Failed to start container $containerId", e))
+        } catch (e: DockerException) {
+            // The client seam already named the operation and kept the socket failure as the cause.
+            failStart(e, e)
         }
 
         return waitForContainerToComplete(containerId, maxWaitTime)
     }
 
-    /**
-     * Runs a Docker API [call], rethrowing a socket error as the IOException it is. docker-java's
-     * HTTP transport wraps one in a bare RuntimeException, which the Docker retry policy would
-     * otherwise fail fast on instead of retrying.
-     */
-    private fun surfacingTransportIo(call: () -> Unit) {
-        runCatching(call).onFailure { e -> throw (e as? RuntimeException)?.cause as? IOException ?: e }
+    /** Logs and reports a container that failed to start, then throws [failure]. */
+    private fun failStart(
+        cause: Exception,
+        failure: DockerException,
+    ): Nothing {
+        log.error(cause) { failure.message }
+        eventBus.emit(Event.Docker.ContainerStartError(cause.message.orEmpty()))
+        throw failure
     }
 
     /**
@@ -135,9 +132,8 @@ class ContainerExecutor(
         val failure =
             runCatchingException {
                 Retry
-                    .decorateCheckedRunnable(retry) {
-                        surfacingTransportIo { dockerClient.removeContainer(containerId, true) }
-                    }.run()
+                    .decorateCheckedRunnable(retry) { dockerClient.removeContainer(containerId, true) }
+                    .run()
             }.exceptionOrNull()
 
         when (failure) {

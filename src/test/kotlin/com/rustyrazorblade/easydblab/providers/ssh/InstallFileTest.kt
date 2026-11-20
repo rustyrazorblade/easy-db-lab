@@ -26,6 +26,7 @@ class InstallFileTest {
         val remote: String,
         val content: String,
         val localPath: Path,
+        val notice: String,
     )
 
     private class RecordingRemoteOps : RemoteOperationsService {
@@ -50,10 +51,11 @@ class InstallFileTest {
             host: Host,
             local: Path,
             remote: String,
+            notice: String,
         ) {
             attemptedUploads.add(local)
             uploadFailure?.let { throw it }
-            uploads += Upload(remote, Files.readString(local), local)
+            uploads += Upload(remote, Files.readString(local), local, notice)
         }
 
         override fun uploadDirectory(
@@ -87,6 +89,19 @@ class InstallFileTest {
             host: Host,
             inputVersion: String,
         ): Version = error("not used")
+    }
+
+    /** The staged name is an implementation detail; the reader wants where the file ends up. */
+    @Test
+    fun `the upload's notice names the final path and the mode, not the staged name`(
+        @TempDir dir: Path,
+    ) {
+        val source = Files.writeString(dir.resolve("local.txt"), "payload")
+        val ops = RecordingRemoteOps()
+
+        ops.installFile(host, source, "/etc/rancher/k3s/config.yaml", "0600")
+
+        assertThat(ops.uploads.single().notice).isEqualTo("installing /etc/rancher/k3s/config.yaml (mode 0600)")
     }
 
     @ParameterizedTest

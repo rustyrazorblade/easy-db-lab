@@ -10,11 +10,15 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.onException
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.CreatedInstance
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
+import com.rustyrazorblade.easydblab.services.aws.EmrClusterProvisioningConfig
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -290,7 +294,7 @@ class DefaultClusterProvisioningService(
             .filter { it.neededCount > 0 }
             .map { spec ->
                 thread(start = true, name = "create-${spec.serverType.name}") {
-                    try {
+                    runCatchingException {
                         val infraContext = instanceConfig.toInfrastructureContext()
                         createInstancesForType(spec, infraContext) { hosts ->
                             synchronized(ctx.stateLock) {
@@ -298,10 +302,7 @@ class DefaultClusterProvisioningService(
                                 ctx.callbacks.onHostsCreated(spec.serverType, hosts)
                             }
                         }
-                    } catch (e: Exception) {
-                        log.error(e) { "Failed to create ${spec.serverType.name} instances" }
-                        ctx.threadErrors["${spec.serverType.name} instances"] = e
-                    }
+                    }.onException { ctx.record("${spec.serverType.name} instances", it) }
                 }
             }
 
@@ -317,7 +318,7 @@ class DefaultClusterProvisioningService(
             return null
         }
         return thread(start = true, name = "create-EMR") {
-            try {
+            runCatchingException {
                 instancesReady.await()
                 val cluster =
                     emrProvisioningService.provisionEmrCluster(
@@ -338,10 +339,7 @@ class DefaultClusterProvisioningService(
                     ctx.emrCluster = cluster
                     ctx.callbacks.onEmrCreated(cluster)
                 }
-            } catch (e: Exception) {
-                log.error(e) { "Failed to create EMR cluster" }
-                ctx.threadErrors["EMR cluster"] = e
-            }
+            }.onException { ctx.record("EMR cluster", it) }
         }
     }
 
@@ -351,7 +349,7 @@ class DefaultClusterProvisioningService(
     ): Thread? {
         if (!servicesConfig.initConfig.opensearchEnabled) return null
         return thread(start = true, name = "create-OpenSearch") {
-            try {
+            runCatchingException {
                 val domain =
                     createOpenSearchDomain(
                         initConfig = servicesConfig.initConfig,
@@ -363,11 +361,17 @@ class DefaultClusterProvisioningService(
                     ctx.openSearchDomain = domain
                     ctx.callbacks.onOpenSearchCreated(domain)
                 }
-            } catch (e: Exception) {
-                log.error(e) { "Failed to create OpenSearch domain" }
-                ctx.threadErrors["OpenSearch domain"] = e
-            }
+            }.onException { ctx.record("OpenSearch domain", it) }
         }
+    }
+
+    /** Logs [failure] and records it under [resource], for the report read after the threads join. */
+    private fun ThreadContext.record(
+        resource: String,
+        failure: Exception,
+    ) {
+        log.error(failure) { "Failed to create $resource" }
+        threadErrors[resource] = failure
     }
 
     /**

@@ -81,7 +81,7 @@ class EC2VpcService(
         log.info { "Creating VPC: $name with CIDR: $cidr" }
         eventBus.emit(Event.Infra.VpcCreating(name))
 
-        val allTags = tags + ("Name" to name)
+        val allTags = tags + (Constants.Vpc.NAME_TAG_KEY to name)
         log.info { "Creating VPC with tags $allTags" }
         val tagSpecification = buildTagSpecification("vpc", allTags)
 
@@ -121,7 +121,7 @@ class EC2VpcService(
         log.info { "Creating subnet: $name in VPC: $vpcId with CIDR: $cidr$azInfo" }
         eventBus.emit(Event.Infra.SubnetCreating(name))
 
-        val allTags = tags + ("Name" to name)
+        val allTags = tags + (Constants.Vpc.NAME_TAG_KEY to name)
         log.debug { "Subnet tags being applied: $allTags" }
         val tagSpecification = buildTagSpecification("subnet", allTags)
 
@@ -167,7 +167,7 @@ class EC2VpcService(
         log.info { "Creating internet gateway: $name" }
         eventBus.emit(Event.Infra.InternetGatewayCreating(name))
 
-        val allTags = tags + ("Name" to name)
+        val allTags = tags + (Constants.Vpc.NAME_TAG_KEY to name)
         val tagSpecification = buildTagSpecification("internet-gateway", allTags)
 
         val createRequest =
@@ -226,7 +226,7 @@ class EC2VpcService(
 
         // Apply tags to the route table if provided
         if (tags.isNotEmpty()) {
-            createTags(routeTableId, tags)
+            createTags(listOf(routeTableId), tags)
             log.info { "Applied tags to route table: $routeTableId" }
         }
 
@@ -311,8 +311,16 @@ class EC2VpcService(
         return igws.firstOrNull()?.internetGatewayId()
     }
 
+    override fun addTags(
+        resourceIds: List<String>,
+        tags: Map<String, String>,
+    ) {
+        log.info { "Adding tags to $resourceIds: ${tags.keys}" }
+        createTags(resourceIds, tags)
+    }
+
     private fun createTags(
-        resourceId: String,
+        resourceIds: List<String>,
         tags: Map<String, String>,
     ) {
         val awsTags =
@@ -327,7 +335,7 @@ class EC2VpcService(
         val createTagsRequest =
             CreateTagsRequest
                 .builder()
-                .resources(resourceId)
+                .resources(resourceIds)
                 .tags(awsTags)
                 .build()
 
@@ -408,7 +416,7 @@ class EC2VpcService(
         val vpcs = withAwsRetry("get-vpc-name") { ec2Client.describeVpcs(describeRequest).vpcs() }
         val vpc = vpcs.firstOrNull() ?: return null
 
-        return vpc.tags().firstOrNull { it.key() == "Name" }?.value()
+        return vpc.tags().firstOrNull { it.key() == Constants.Vpc.NAME_TAG_KEY }?.value()
     }
 
     override fun getVpcCidr(vpcId: VpcId): String? {
@@ -437,14 +445,6 @@ class EC2VpcService(
                 ?: error("VPC $vpcId not found")
 
         return vpc.tags().associate { it.key() to it.value() }
-    }
-
-    override fun addTagsToVpc(
-        vpcId: VpcId,
-        tags: Map<String, String>,
-    ) {
-        log.info { "Adding tags to VPC $vpcId: ${tags.keys}" }
-        createTags(vpcId, tags)
     }
 
     override fun findInstancesInVpc(vpcId: VpcId): List<InstanceId> {
@@ -654,7 +654,7 @@ class EC2VpcService(
             vpcId,
             listOf(
                 filterOf("tag-key", Constants.Vpc.CLUSTER_ID_TAG_KEY),
-                filterOf("tag:${Constants.Vpc.TAG_KEY}", Constants.Vpc.TAG_VALUE),
+                filterOf("tag:${Constants.Vpc.LEGACY_TAG_KEY}", Constants.Vpc.TAG_VALUE),
             ),
         )
     }

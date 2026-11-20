@@ -1,13 +1,11 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
-import com.rustyrazorblade.easydblab.providers.aws.requireAwsFailure
-import com.rustyrazorblade.easydblab.runCatchingException
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 
 /**
  * How stopping a data bucket's request metrics ended.
@@ -55,11 +53,10 @@ class DataBucketTeardown(
             return MetricsStop.NoBucket
         }
 
-        return runCatchingException {
+        return try {
             s3BucketService.teardownDataBucket(dataBucket, clusterState.metricsConfigId())
             MetricsStop.Stopped(dataBucket)
-        }.getOrElse { failure ->
-            val e = failure.requireAwsFailure()
+        } catch (e: SdkException) {
             log.warn(e) { "Failed to tear down data bucket: $dataBucket" }
             val reason = e.messageOrString()
             eventBus.emit(Event.Teardown.DataBucketMetricsDisableFailed(dataBucket, reason))
@@ -73,8 +70,9 @@ class DataBucketTeardown(
      */
     fun deleteEmptyBuckets(): DataBucketSweep {
         val dataBuckets =
-            runCatchingException { s3BucketService.findDataBuckets() }.getOrElse { failure ->
-                val e = failure.requireAwsFailure()
+            try {
+                s3BucketService.findDataBuckets()
+            } catch (e: SdkException) {
                 log.warn(e) { "Failed to discover data buckets" }
                 eventBus.emit(Event.Teardown.DataBucketDiscoveryFailed(e.messageOrString()))
                 return DataBucketSweep(emptyList(), emptyList())
@@ -88,7 +86,7 @@ class DataBucketTeardown(
     }
 
     private fun deleteIfEmpty(bucket: String): Boolean =
-        runCatchingException {
+        try {
             eventBus.emit(Event.S3.DataBucketDeleting(bucket))
             s3BucketService
                 .deleteEmptyBucket(bucket)
@@ -96,8 +94,7 @@ class DataBucketTeardown(
                 .onFailure { exception ->
                     eventBus.emit(Event.S3.DataBucketKept(bucket, exception.messageOrString()))
                 }.isSuccess
-        }.getOrElse { failure ->
-            val e = failure.requireAwsFailure()
+        } catch (e: SdkException) {
             log.warn(e) { "Failed to handle data bucket: $bucket" }
             eventBus.emit(Event.S3.DataBucketKept(bucket, e.messageOrString()))
             false

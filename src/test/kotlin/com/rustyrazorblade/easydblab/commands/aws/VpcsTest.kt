@@ -40,7 +40,7 @@ class VpcsTest : BaseKoinTest() {
 
     @Test
     fun `execute outputs message when no VPCs found`() {
-        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
+        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.LEGACY_TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
             .thenReturn(emptyList())
         Vpcs().execute()
         // NoVpcsFound is still an event
@@ -50,7 +50,7 @@ class VpcsTest : BaseKoinTest() {
 
     @Test
     fun `execute lists VPCs with name and cluster id`() {
-        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
+        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.LEGACY_TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
             .thenReturn(listOf("vpc-123"))
         whenever(mockVpcService.getVpcTags("vpc-123"))
             .thenReturn(mapOf("Name" to "my-cluster", "ClusterId" to "abc-123"))
@@ -63,7 +63,7 @@ class VpcsTest : BaseKoinTest() {
 
     @Test
     fun `execute handles VPCs with missing tags`() {
-        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
+        whenever(mockVpcService.findVpcsByTag(eq(Constants.Vpc.LEGACY_TAG_KEY), eq(Constants.Vpc.TAG_VALUE)))
             .thenReturn(listOf("vpc-456"))
         whenever(mockVpcService.getVpcTags("vpc-456")).thenReturn(emptyMap())
         Vpcs().execute()

@@ -29,6 +29,7 @@ The workflow SHALL be reached as `easy-db-lab profile setup`. The former top-lev
 - **GIVEN** a completed profile: it can authenticate and holds a key pair and an S3 bucket
 - **WHEN** the user runs `easy-db-lab profile setup` again
 - **THEN** existing settings are available for review and modification.
+- **AND** the profile's S3 bucket and key pair gain any marker tag (`easy_db_lab`, `easy_cass_lab`) they lack, keeping their other tags; a key pair without the legacy marker is left alone. This runs before the review prompts and needs working credentials; a failure, or a key pair the profile names that no longer exists, stops setup before any setting changes.
 
 #### Scenario: Incomplete profile finishes setup
 

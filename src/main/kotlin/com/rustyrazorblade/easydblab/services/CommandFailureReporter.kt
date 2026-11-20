@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.causeChain
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val log = KotlinLogging.logger {}
@@ -43,14 +44,7 @@ class CommandFailureReporter(
         log.error(error) { "Command execution failed" }
         val description = chain.firstNotNullOfOrNull { cause -> handlers.firstNotNullOfOrNull { describeSafely(it, cause) } }
         if (description != null) {
-            eventBus.emit(
-                Event.Command.ProviderError(
-                    provider = description.provider,
-                    kind = description.kind,
-                    detail = description.detail,
-                    remedy = description.remedy,
-                ),
-            )
+            eventBus.emit(description.toEvent())
         } else {
             eventBus.emit(
                 Event.Command.ExecutionError(
@@ -60,18 +54,28 @@ class CommandFailureReporter(
         }
     }
 
-    /** A handler that itself fails must not hide the failure being reported, so it counts as not claiming. */
+    /**
+     * A handler that itself fails must not hide the failure being reported, so it counts as not claiming.
+     * [runCatchingException] still rethrows a JVM error and restores the interrupt flag; an interrupt is
+     * rethrown too, so the command stops instead of reporting.
+     */
     private fun describeSafely(
         handler: ProviderErrorHandler,
         cause: Throwable,
     ): ErrorDescription? =
-        try {
-            handler.describe(cause)
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw e
-        } catch (e: Exception) {
-            log.warn(e) { "Provider error handler ${handler::class.simpleName} failed on ${cause::class.simpleName}" }
-            null
-        }
+        runCatchingException { handler.describe(cause) }
+            .onFailure {
+                if (it is InterruptedException) throw it
+                log.warn(it) { "Provider error handler ${handler::class.simpleName} failed on ${cause::class.simpleName}" }
+            }.getOrNull()
 }
+
+/** The one event that reports a failure a provider handler described. */
+fun ErrorDescription.toEvent(): Event.Command.ProviderError =
+    Event.Command.ProviderError(
+        provider = provider,
+        kind = kind,
+        detail = detail,
+        remedy = remedy,
+        response = response,
+    )

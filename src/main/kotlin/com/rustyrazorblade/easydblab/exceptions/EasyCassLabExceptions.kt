@@ -69,7 +69,7 @@ class RemoteCommandFailedException(
     val command: String,
     val stdout: String,
     val stderr: String,
-    summary: String,
+    val summary: String,
     val exitStatus: Int? = null,
 ) : EasyDBLabException(
         buildString {

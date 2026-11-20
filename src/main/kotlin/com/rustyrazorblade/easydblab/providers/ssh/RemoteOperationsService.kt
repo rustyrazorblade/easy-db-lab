@@ -33,11 +33,13 @@ interface RemoteOperationsService {
      * @param host The target host
      * @param local The local file path
      * @param remote The remote destination path
+     * @param notice the line printed under the node for this upload; by default it names both paths
      */
     fun upload(
         host: Host,
         local: Path,
         remote: String,
+        notice: String = "uploading $local to $remote",
     )
 
     /**

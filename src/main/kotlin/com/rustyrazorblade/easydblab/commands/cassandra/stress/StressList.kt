@@ -53,7 +53,7 @@ class StressList : PicoBaseCommand() {
                 }
 
         if (output.isNotEmpty()) {
-            eventBus.emit(Event.Stress.CommandOutput(output))
+            println(output)
         }
     }
 }

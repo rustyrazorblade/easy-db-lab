@@ -41,7 +41,7 @@ class Packer(
     private val remoteOps: RemoteOperationsService by inject()
 
     private val awsCredentialsManager: AWSCredentialsManager by inject()
-    private val secretKeyFile by lazy { File(context.profileDir, "secret.pem") }
+    private val secretKeyFile by lazy { File(context.profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE) }
 
     private val containerWorkingDir = Constants.Paths.LOCAL_MOUNT
     private val logger = KotlinLogging.logger {}
@@ -80,8 +80,21 @@ class Packer(
                     addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
                 }
                 releaseVersion?.let { addVar("release_version", it) }
+                addVar("marker_tags", hclMap(Constants.Vpc.MARKER_TAGS))
                 add(name)
             }
+
+        /**
+         * An HCL map literal for a `-var` of type `map(string)`, e.g. `{"a" = "1", "b" = "2"}`.
+         * A backslash or a double quote in a key or value is escaped, so it stays inside its string.
+         */
+        internal fun hclMap(entries: Map<String, String>): String =
+            entries.entries.joinToString(prefix = "{", postfix = "}", separator = ", ") { (key, value) ->
+                "${hclString(key)} = ${hclString(value)}"
+            }
+
+        /** [text] as a quoted HCL string. */
+        private fun hclString(text: String): String = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
         private fun MutableList<String>.addVar(
             key: String,

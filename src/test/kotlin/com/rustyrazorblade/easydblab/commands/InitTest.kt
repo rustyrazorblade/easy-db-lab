@@ -61,11 +61,16 @@ class InitTest : BaseKoinTest() {
                     object : CommandExecutor {
                         override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
 
-                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) {
+                            scheduled += commandFactory()
+                        }
                     }
                 }
             },
         )
+
+    /** Every command Init scheduled to run after it, built but not run. */
+    private val scheduled = mutableListOf<PicoCommand>()
 
     /** When set, the exit code every nested command reports instead of running. */
     private var nestedFailure: Int? = null
@@ -249,6 +254,19 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `execute refuses --quiet without --up, before writing anything`() {
+            val command = Init()
+            command.clean = true
+            command.quiet = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("--quiet")
+                .hasMessageContaining("--up")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
         fun `execute fails with negative stress instances`() {
             val command = Init()
             command.clean = true
@@ -355,6 +373,18 @@ class InitTest : BaseKoinTest() {
                         initConfig?.instanceType == "i3.2xlarge"
                 },
             )
+        }
+
+        @ParameterizedTest(name = "quiet {0}")
+        @ValueSource(booleans = [true, false])
+        fun `init --up schedules an up that is quiet exactly when init is`(quiet: Boolean) {
+            val command = Init()
+            command.clean = true
+            command.start = true
+            command.quiet = quiet
+            command.execute()
+
+            assertThat(scheduled.filterIsInstance<Up>().single().quiet).isEqualTo(quiet)
         }
 
         @Test
@@ -581,7 +611,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 2
@@ -598,7 +628,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a control instance type without instance store fails, naming the node type and instance type`() {
-            withStore("i4i.xlarge", "c6id.2xlarge")
+            withStore("i7i.xlarge", "c8id.2xlarge")
             val command = Init()
             command.clean = true
 
@@ -612,7 +642,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `a db instance type without instance store fails without an ebs type and passes with one`() {
-            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val noEbs = Init()
             noEbs.clean = true
             noEbs.instanceType = "c5.2xlarge"
@@ -635,7 +665,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `an app instance type without instance store fails even with no app nodes`() {
-            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 0
@@ -650,7 +680,7 @@ class InitTest : BaseKoinTest() {
 
         @Test
         fun `the default db, control and app instance types pass`() {
-            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            withStore("i7i.xlarge", "c8id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
             val command = Init()
             command.clean = true
             command.stressInstances = 1

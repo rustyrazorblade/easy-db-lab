@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.loki
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -84,7 +85,7 @@ class LokiIntegrationTest : BaseKoinTest() {
     ): GenericContainer<*> {
         val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
         return ObservabilityBackends
-            .startLoki(ObservabilityBackends.lokiConfig(rendered), volume, bucket, PREFIX, tenant, cluster)
+            .startLoki(ObservabilityBackends.lokiConfig(rendered), volume, bucket, PREFIX, LokiIngester(tenant, cluster))
             .also { containers.add(it) }
     }
 

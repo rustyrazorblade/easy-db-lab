@@ -159,6 +159,8 @@ val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars overr
 
 ## Other Configuration Classes
 
+- **`PodNetworkSysctlPolicyBuilder`** — the one cluster-wide `MutatingAdmissionPolicy` (`admissionregistration.k8s.io/v1beta1`) and its binding, `easydblab-pod-network-sysctls`, that give every non-hostNetwork pod the pod network sysctls (`services/PodNetworkSysctls`, read from `60-easydblab.conf`). A CEL JSONPatch adds a missing `securityContext`, a missing `sysctls` list, and each key the pod does not set itself; `failurePolicy: Fail`. It builds no container, so it is not in `K8sServiceIntegrationTest.collectAllResources()`; its apply test is `PodNetworkTuningIntegrationTest`, which runs its own K3s with the two drop-ins the policy needs (the API server flags from `start-k3s-server.sh`, the kubelet allowlist from `services/KubeletSysctlsDropIn`). The shared K3s has neither, and a cluster-wide policy there would change every other test's pods. Move it to `v1` when the AMI reaches K3s 1.36.
+
 - Cassandra versions are not configuration: `services/cassandraversions/` resolves a name from its sources (profile builds, ASF, cassandra-builds, the build catalog) at runtime, and the record lives in `ClusterState.nodes`.
 - **`CassandraYaml`** — cassandra.yaml manipulation (Jackson-based)
 - **`Seeds`** — seed list management

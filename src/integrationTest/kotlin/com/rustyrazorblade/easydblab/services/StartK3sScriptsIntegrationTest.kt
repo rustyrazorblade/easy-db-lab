@@ -25,6 +25,7 @@ class StartK3sScriptsIntegrationTest {
         private const val EVICTION_CONFIG = "/etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
         private const val DATASTORE_CONFIG = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
         private const val KUBELET_LIMITS_CONFIG = "/etc/rancher/k3s/config.yaml.d/15-kubelet-limits.yaml"
+        private const val ADMISSION_POLICY_CONFIG = "/etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml"
         private const val CALLS_LOG = "/tmp/calls.log"
         private const val SERVER = "start-k3s-server.sh"
         private const val AGENT = "start-k3s-agent.sh"
@@ -242,6 +243,23 @@ class StartK3sScriptsIntegrationTest {
             // The collector's k3s-etcd job scrapes etcd's metrics listener on the control node.
             assertThat(node.sh("grep -c '^etcd-expose-metrics: true$' $DATASTORE_CONFIG")).isEqualTo("1")
             assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
+        }
+    }
+
+    /** `up` applies a MutatingAdmissionPolicy, beta and off by default on K3s 1.35: only the server enables it. */
+    @Test
+    fun `the server enables the admission policy API and the agent does not`() {
+        runScript(SERVER, mounted = true, runs = 2) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("cat $ADMISSION_POLICY_CONFIG"))
+                .isEqualTo(
+                    "kube-apiserver-arg+:\n  - \"feature-gates=MutatingAdmissionPolicy=true\"\n" +
+                        "  - \"runtime-config=admissionregistration.k8s.io/v1beta1=true\"",
+                )
+        }
+        runScript(AGENT, mounted = true) { node ->
+            assertThat(node.exitCode).describedAs(node.output).isZero()
+            assertThat(node.sh("test -e $ADMISSION_POLICY_CONFIG && echo present || echo absent")).isEqualTo("absent")
         }
     }
 

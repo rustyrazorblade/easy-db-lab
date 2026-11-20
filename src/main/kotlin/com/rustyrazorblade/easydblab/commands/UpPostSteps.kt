@@ -10,17 +10,22 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.K8sStorageOperations
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 
 /**
  * The cluster-wide steps `up` runs once, after every node's pipeline has ended (design D2): the
- * StorageClasses for local PVs, the observability stack, and on a local-stack cluster the Cilium
- * install annotations, which need Grafana to exist.
+ * pod network sysctl policy, the StorageClasses for local PVs, the observability stack, and on a
+ * local-stack cluster the Cilium install annotations, which need Grafana to exist.
+ *
+ * The sysctl policy comes first, so every pod made after it, the observability stack's and every
+ * kit's, runs with the tuned network values (pod-network-tuning).
  *
  * Bring-up drives the observability stack service directly rather than `grafana update-config`:
  * on a redirect cluster that command refuses, but bring-up must still deploy the collectors
  * pointed at the external stack.
  */
 class UpPostSteps(
+    private val podNetworkTuning: PodNetworkTuning,
     private val storage: K8sStorageOperations,
     private val observability: ObservabilityStackService,
     private val annotator: CiliumInstallAnnotator,
@@ -31,6 +36,7 @@ class UpPostSteps(
         control: ClusterHost,
         localTelemetry: Boolean,
     ) {
+        podNetworkTuning.apply()
         storage.ensureLocalStorageClass().getOrThrow()
         storage.ensureLocalStorageWfcClass().getOrThrow()
         observability

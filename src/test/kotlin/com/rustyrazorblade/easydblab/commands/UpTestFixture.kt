@@ -50,6 +50,9 @@ import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
+import com.rustyrazorblade.easydblab.services.PodNetworkSysctls
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
+import com.rustyrazorblade.easydblab.services.ProbeResult
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -80,6 +83,7 @@ import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
+import io.fabric8.kubernetes.api.model.HasMetadata
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -264,6 +268,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<DocumentService> { mock<DocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<K8sStorageOperations> { get<K8sService>() }
+            // The real tuning step over the mocked manifests; the API server admits every pod tuned.
+            single { PodNetworkTuning(get<K8sService>(), { ProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
             single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles()) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
@@ -499,6 +505,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         stubCiliumSuccess()
 
         whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageClass()).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageWfcClass()).thenReturn(Result.success(Unit))
 

@@ -144,6 +144,20 @@ internal class ProxyPreflightTest {
     }
 
     @Test
+    fun `a converted workspace with no env sh gets it back`() {
+        val route = CountingSshRoute()
+        val routedPreflight =
+            ProxyPreflight(stateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(route)), workspace)
+        envFile.recordNetworkMode(NetworkMode.Direct)
+        stateManager.save(clusterState(NetworkMode.Direct))
+
+        routedPreflight.ensureTunnel()
+
+        assertThat(File(workspace, "env.sh").readText()).contains("_edl_network_mode()")
+        assertThat(route.proxyCommandCalls).isEqualTo(1)
+    }
+
+    @Test
     fun `a workspace with no env file gets env sh before its first mode write`() {
         val route = CountingSshRoute()
         val routedPreflight =

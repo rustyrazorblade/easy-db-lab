@@ -17,9 +17,9 @@ import java.io.File
  * `up` and a VPC restore call [prepareWithEnvScript], which always rewrites `env.sh` with the
  * `ProxyCommand`s they already built for `sshConfig`. `socks start` and the preflight of every
  * `@RequiresProxy` command call [prepare], which rewrites `env.sh` only while the env file does not
- * yet record `EDL_NETWORK_MODE`: that is the one write that converts it. Building `env.sh` asks the
- * SSH route for each host's `ProxyCommand`, which under the `ssm` transport resolves the SSM
- * credentials, so a command on a converted workspace does not pay for it.
+ * yet record `EDL_NETWORK_MODE` (the one write that converts it) or `env.sh` is missing. Building
+ * `env.sh` asks the SSH route for each host's `ProxyCommand`, which under the `ssm` transport
+ * resolves the SSM credentials, so a command on a converted workspace does not pay for it.
  *
  * A cluster that needs no tunnel never starts one, and without the mode the wrappers could not tell
  * it from a SOCKS cluster whose tunnel is down.
@@ -32,8 +32,8 @@ class WorkspaceShellTools(
     private val envScript: EnvScriptWriter,
 ) {
     /**
-     * Writes the wrappers, rewrites `env.sh` when the env file is about to be converted, then
-     * records [state]'s network mode in [workspace]'s proxy env file.
+     * Writes the wrappers, rewrites `env.sh` when the env file is about to be converted or `env.sh` is
+     * missing, then records [state]'s network mode in [workspace]'s proxy env file.
      *
      * @throws IllegalStateException if `bin/` holds a tool file that easy-db-lab did not write; the
      *   env file is then left as it was
@@ -44,7 +44,9 @@ class WorkspaceShellTools(
     ) {
         installer.install(workspace)
         val envFile = ProxyEnvFile(workspace)
-        if (!envFile.recordsNetworkMode()) envScript.write(workspace, state, envScript.proxyCommandsFor(state.hosts))
+        if (!envFile.recordsNetworkMode() || !File(workspace, EnvScriptWriter.FILE_NAME).isFile) {
+            envScript.write(workspace, state, envScript.proxyCommandsFor(state.hosts))
+        }
         envFile.recordNetworkMode(state.networkMode)
     }
 

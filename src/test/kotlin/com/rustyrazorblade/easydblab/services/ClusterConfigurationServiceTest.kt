@@ -207,6 +207,26 @@ class ClusterConfigurationServiceTest {
         }
 
         @Test
+        fun `env sh carries the same ProxyCommand as sshConfig for every host`() {
+            val clusterState =
+                createClusterState(
+                    controlHosts = listOf(ClusterHost("2.2.2.2", "10.0.0.2", "control0", "us-west-2a", "i-control")),
+                )
+
+            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+
+            val sshConfig = File(tempDir.toFile(), "sshConfig").readLines()
+            val envScript = File(tempDir.toFile(), "env.sh").readLines()
+            for (alias in listOf("db0", "control0")) {
+                val inSshConfig = hostBlock(sshConfig, alias).filter { it.trimStart().startsWith("ProxyCommand") }
+                assertThat(inSshConfig).hasSize(1)
+                assertThat(hostBlock(envScript, alias).filter { it.trimStart().startsWith("ProxyCommand") })
+                    .describedAs(alias)
+                    .isEqualTo(inSshConfig)
+            }
+        }
+
+        @Test
         fun `a direct route leaves hosts without a ProxyCommand`() {
             service.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
 

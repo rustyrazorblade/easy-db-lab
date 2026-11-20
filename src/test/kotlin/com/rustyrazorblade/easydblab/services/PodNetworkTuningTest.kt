@@ -13,6 +13,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tests for [PodNetworkTuning]: the policy is applied, the wait ends only when a dry-run pod carries
@@ -171,6 +173,35 @@ class PodNetworkTuningTest {
         } finally {
             Thread.interrupted()
         }
+    }
+
+    @Test
+    fun `interrupting up while a probe waits stops up with no event and interrupts the probe`() {
+        val probeStarted = CountDownLatch(1)
+        val probeInterrupted = CountDownLatch(1)
+        val probe =
+            PodSysctlProbe {
+                probeStarted.countDown()
+                try {
+                    CountDownLatch(1).await()
+                } catch (e: InterruptedException) {
+                    probeInterrupted.countDown()
+                    throw e
+                }
+                ProbeResult.Admitted(sysctls)
+            }
+        val thrown = AtomicReference<Throwable>()
+        val up = Thread { thrown.set(runCatching { tuning(probe).apply() }.exceptionOrNull()) }
+
+        up.start()
+        assertThat(probeStarted.await(5, TimeUnit.SECONDS)).isTrue()
+        up.interrupt()
+        up.join(Duration.ofSeconds(5))
+
+        assertThat(up.isAlive).isFalse()
+        assertThat(thrown.get()).isInstanceOf(InterruptedException::class.java)
+        assertThat(probeInterrupted.await(5, TimeUnit.SECONDS)).isTrue()
+        assertThat(events).isEmpty()
     }
 
     @Test

@@ -264,7 +264,7 @@ The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwo
   through `K8sManifestOperations`, then polls `PodSysctlProbe` (a `dryRun=All` pod,
   `Fabric8PodSysctlProbe`) until the pod carries every value, up to
   `POD_SYSCTL_POLICY_READY_SECONDS`; each probe runs on a virtual thread given only the time left,
-  so a probe that never answers ends the wait at the deadline (the last real answer is reported). It emits `Platform.PodSysctlPolicyReady`, or
+  so a probe that never answers ends the wait at the deadline (the last real answer is reported). A cut-off probe is interrupted, which makes fabric8 drop its request and close the client's connection, so it does not linger for the 60s request timeout (`PodSysctlProbeDeadlineIntegrationTest`). It emits `Platform.PodSysctlPolicyReady`, or
   `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` / `PodSysctlProbeFailed` (a probe
   that threw, which the poll does not retry) and throws `CommandFailedException`; an interrupt
   propagates and emits nothing.

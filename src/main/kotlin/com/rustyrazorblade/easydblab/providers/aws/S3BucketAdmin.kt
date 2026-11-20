@@ -55,7 +55,7 @@ interface S3BucketAdmin {
         configId: String,
     )
 
-    /** Every per-cluster data bucket (the data bucket prefix) that carries the easy_cass_lab tag. */
+    /** Every per-cluster data bucket (the data bucket prefix) that carries the legacy marker tag (`Constants.Vpc.LEGACY_TAG_KEY`). */
     fun findDataBuckets(): List<String>
 
     /**

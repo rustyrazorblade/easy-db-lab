@@ -226,8 +226,8 @@ class PyroscopeManifestBuilder(
      * `pyroscope` in the account bucket (configured at build time via TemplateService);
      * the v2 metastore index lives on the node at [DATA_HOST_PATH], so a pod restart keeps it.
      *
-     * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 spends
-     * about 45 s of every start in fixed readiness waits; see [Constants.PyroscopeProbes].
+     * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 takes
+     * tens of seconds to start; see [Constants.PyroscopeProbes].
      */
     private fun buildServerPodTemplate(): Deployment =
         DeploymentBuilder()

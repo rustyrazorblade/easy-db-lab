@@ -5,9 +5,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 
 /** The AxonOps agent one node starts Cassandra with, or why it has none (design D6). */
 sealed interface AgentOutcome {

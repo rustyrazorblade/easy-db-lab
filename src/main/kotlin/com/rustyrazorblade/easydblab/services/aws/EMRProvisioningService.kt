@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -13,11 +13,10 @@ import com.rustyrazorblade.easydblab.profiling.pyroscopeNodePortUrl
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
-import com.rustyrazorblade.easydblab.providers.aws.isAwsFailure
-import com.rustyrazorblade.easydblab.runCatchingException
-import com.rustyrazorblade.easydblab.services.aws.EMRService
-import com.rustyrazorblade.easydblab.services.aws.S3Uri
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.TemplateService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.core.exception.SdkException
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
@@ -134,14 +133,12 @@ class DefaultEMRProvisioningService(
     ) {
         eventBus.emit(Event.Emr.BootstrapFailureDiagnosing)
 
-        // A diagnostic: an AWS or I/O failure to fetch the log falls back to the manual debug
-        // instructions; any other failure propagates.
-        runCatchingException {
+        try {
             val masterInstances = emrService.listInstances(clusterId)
             if (masterInstances.isEmpty()) {
                 eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable("No master instance found"))
                 emitDebugInstructions(clusterId, s3Path)
-                return@runCatchingException
+                return
             }
 
             val instanceId = masterInstances.first()
@@ -160,8 +157,9 @@ class DefaultEMRProvisioningService(
                 }
 
             eventBus.emit(Event.Emr.BootstrapFailureLog(content))
-        }.onFailure { e ->
-            if (!e.isAwsFailure() && e !is IOException) throw e
+        } catch (e: SdkException) {
+            emitBootstrapLogUnavailable(clusterId, s3Path, e)
+        } catch (e: IOException) {
             emitBootstrapLogUnavailable(clusterId, s3Path, e)
         }
     }
@@ -169,7 +167,7 @@ class DefaultEMRProvisioningService(
     private fun emitBootstrapLogUnavailable(
         clusterId: String,
         s3Path: ClusterStoragePath,
-        cause: Throwable,
+        cause: Exception,
     ) {
         log.debug(cause) { "Failed to retrieve bootstrap logs for cluster $clusterId" }
         eventBus.emit(Event.Emr.BootstrapFailureLogUnavailable(cause.message ?: "Unknown error"))
@@ -214,13 +212,10 @@ class DefaultEMRProvisioningService(
                 "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",
                 "-Dpyroscope.application.name=spark",
                 "-Dpyroscope.server.address=$pyroscopeServerAddress",
-                "-Dpyroscope.format=jfr",
-                "-Dpyroscope.profiler.event=cpu",
-                "-Dpyroscope.profiler.alloc=512k",
-                "-Dpyroscope.profiler.lock=10ms",
+            ) + Constants.PyroscopeJavaAgent.PROFILER_FLAGS +
                 // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
-                "-Dpyroscope.tenant.id=${clusterState.tenant()}",
-            )
+                "-Dpyroscope.tenant.id=${clusterState.tenant()}" +
+                Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
         val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
 
         val otelEnvVars =

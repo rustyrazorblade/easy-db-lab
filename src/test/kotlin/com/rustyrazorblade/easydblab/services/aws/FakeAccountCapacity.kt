@@ -13,9 +13,9 @@ import java.util.Collections
 class FakeAccountCapacity(
     var types: Map<String, InstanceTypeFacts> =
         mapOf(
-            "i4i.xlarge" to InstanceTypeFacts(vcpus = 4, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
-            "c6id.2xlarge" to InstanceTypeFacts(vcpus = 8, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
-            "m5d.xlarge" to InstanceTypeFacts(vcpus = 4, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
+            "i7i.xlarge" to InstanceTypeFacts(vcpus = 4, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
+            "c8id.2xlarge" to InstanceTypeFacts(vcpus = 8, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
+            "m8id.xlarge" to InstanceTypeFacts(vcpus = 4, maxNetworkInterfaces = 4, ipv4AddressesPerInterface = 15),
         ),
     var standardQuota: Int = 1_000_000,
     var standardInUse: Int = 0,

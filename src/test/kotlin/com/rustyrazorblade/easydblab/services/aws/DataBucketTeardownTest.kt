@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -65,7 +64,7 @@ class DataBucketTeardownTest {
                 .tagSet(
                     Tag
                         .builder()
-                        .key(Constants.Vpc.TAG_KEY)
+                        .key(Constants.Vpc.LEGACY_TAG_KEY)
                         .value(Constants.Vpc.TAG_VALUE)
                         .build(),
                 ).build()

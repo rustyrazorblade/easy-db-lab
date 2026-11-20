@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -46,7 +47,7 @@ class ExecStop : PicoBaseCommand() {
         for (type in types) {
             hostOperationsService.withHosts(clusterState.hosts, type, hosts.hostList, parallel = true) { host ->
                 val h = host.toHost()
-                try {
+                runCatchingException {
                     val checkResult =
                         remoteOps.executeRemotely(
                             h,
@@ -58,7 +59,7 @@ class ExecStop : PicoBaseCommand() {
 
                     remoteOps.executeRemotely(h, "sudo systemctl stop $unitName", output = false, secret = true)
                     eventBus.emit(Event.Command.ToolStopped(h.alias, unitName))
-                } catch (e: Exception) {
+                }.onFailure { e ->
                     eventBus.emit(
                         Event.Command.ToolStopError(
                             h.alias,

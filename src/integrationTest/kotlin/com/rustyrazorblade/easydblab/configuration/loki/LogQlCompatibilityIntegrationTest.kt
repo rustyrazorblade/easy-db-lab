@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.loki
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DashboardQueries
+import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -95,8 +96,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
                 volume,
                 bucket,
                 "loki",
-                "acme",
-                "logql-x",
+                LokiIngester("acme", "logql-x"),
             )
         loki = container
         val base = ObservabilityBackends.baseUrl(container, Constants.K8s.LOKI_HTTP_PORT)

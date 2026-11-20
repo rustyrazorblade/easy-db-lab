@@ -116,19 +116,21 @@ class LeaseLoop(
      */
     fun step(): Duration =
         try {
-            when (val current = state) {
-                is State.Holding -> renew(current)
-                State.Starting, is State.Standby -> watch(current)
+            attempt {
+                when (val current = state) {
+                    is State.Holding -> renew(current)
+                    State.Starting, is State.Standby -> watch(current)
+                }
+            }.getOrElse { e ->
+                log.error(e) { "Lease agent $holder failed a round; stopping compactors and standing by" }
+                closeGate()
+                if (state is State.Holding) state = State.Standby(null, clock.monotonic())
+                timing.standbyPoll
             }
         } catch (e: InterruptedException) {
             closeGate()
             Thread.currentThread().interrupt()
             throw e
-        } catch (e: Exception) {
-            log.error(e) { "Lease agent $holder failed a round; stopping compactors and standing by" }
-            closeGate()
-            if (state is State.Holding) state = State.Standby(null, clock.monotonic())
-            timing.standbyPoll
         }
 
     private fun renew(holding: State.Holding): Duration {
@@ -369,14 +371,13 @@ class LeaseLoop(
      * Runs [block] and answers any [Exception] it throws as a failure, except an
      * [InterruptedException], which propagates with the interrupt flag set. A JVM [Error] is not
      * caught.
+     *
+     * This copies the root module's `runCatchingInterruptibly` on purpose: this module cannot
+     * depend on the root module.
      */
     private inline fun <T> attempt(block: () -> T): Result<T> =
-        try {
-            Result.success(block())
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
+        runCatching(block).onFailure {
+            if (it is InterruptedException) Thread.currentThread().interrupt()
+            if (it !is Exception || it is InterruptedException) throw it
         }
 }

@@ -7,13 +7,13 @@ import com.rustyrazorblade.easydblab.configuration.InstalledVersion
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.hasRedactedCredentials
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
-import com.rustyrazorblade.easydblab.ssh.hasRedactedCredentials
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 
 /** What the caller is doing, which decides how a version already on a node is treated. */
 enum class InstallMode {

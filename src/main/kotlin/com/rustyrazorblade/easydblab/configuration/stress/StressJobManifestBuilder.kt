@@ -131,26 +131,29 @@ object StressJobManifestBuilder {
         // Tempo on the control node more spans than it could take in.
         val otelResourceAttributes = buildResourceAttributes(config.jobName, config.tags)
 
-        return listOf(
-            "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
-            "-Dpyroscope.application.name=cassandra-easy-stress",
-            "-Dpyroscope.server.address=$pyroscopeServerAddress",
-            "-Dpyroscope.format=jfr",
-            "-Dpyroscope.profiler.event=cpu",
-            "-Dpyroscope.profiler.alloc=512k",
-            "-Dpyroscope.profiler.lock=10ms",
-            "-Dpyroscope.labels=$pyroscopeLabels",
-            // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
-            "-Dpyroscope.tenant.id=${cluster.tenant}",
-            "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
-            "-Dotel.service.name=cassandra-easy-stress",
-            "-Dotel.resource.attributes=$otelResourceAttributes",
-            "-Dotel.exporter.otlp.endpoint=${OtelEndpoints.otlpHttpEndpoint()}",
-            "-Dotel.metric.export.interval=5s",
-            "-Dotel.logs.exporter=none",
-            "-Dotel.traces.sampler=parentbased_traceidratio",
-            "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
-        ).joinToString(" ")
+        val pyroscope =
+            listOf(
+                "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
+                "-Dpyroscope.application.name=cassandra-easy-stress",
+                "-Dpyroscope.server.address=$pyroscopeServerAddress",
+            ) + Constants.PyroscopeJavaAgent.PROFILER_FLAGS +
+                listOf(
+                    "-Dpyroscope.labels=$pyroscopeLabels",
+                    // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                    "-Dpyroscope.tenant.id=${cluster.tenant}",
+                ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS
+        val otel =
+            listOf(
+                "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
+                "-Dotel.service.name=cassandra-easy-stress",
+                "-Dotel.resource.attributes=$otelResourceAttributes",
+                "-Dotel.exporter.otlp.endpoint=${OtelEndpoints.otlpHttpEndpoint()}",
+                "-Dotel.metric.export.interval=5s",
+                "-Dotel.logs.exporter=none",
+                "-Dotel.traces.sampler=parentbased_traceidratio",
+                "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
+            )
+        return (pyroscope + otel).joinToString(" ")
     }
 
     private fun buildStressContainer(
@@ -227,10 +230,9 @@ object StressJobManifestBuilder {
                     .withName("CLUSTER_NAME")
                     .withValue(clusterName)
                     .build(),
-                EnvVarBuilder()
-                    .withName("GOMEMLIMIT")
-                    .withValue("64MiB")
-                    .build(),
+                // No GOMEMLIMIT: the sidecar queues up to 20000 batches through a node collector
+                // outage (issue 991), and a soft limit below that queue would keep the Go GC
+                // running and take CPU from the workload under test.
                 EnvVarBuilder()
                     .withName("OTEL_RESOURCE_ATTRIBUTES")
                     .withValue(resourceAttributes)

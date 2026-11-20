@@ -4,10 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.model.AMI
-import com.rustyrazorblade.easydblab.providers.aws.requireAwsFailure
-import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -125,16 +122,18 @@ class PruneAMIs : PicoBaseCommand() {
             println("  - Skipped")
             return false
         }
-        // One AMI that AWS will not delete is reported and skipped; the rest of the prune goes on.
-        // Any other failure propagates.
-        return runCatchingException {
-            service.deregisterAMI(ami.id)
-            for (snapshotId in ami.snapshotIds) {
-                service.deleteSnapshot(snapshotId)
+        return when (val deletion = service.deleteWithSnapshots(ami)) {
+            AMIService.AmiDeletion.Deleted -> {
+                println("  ✓ Deleted")
+                true
             }
-            println("  ✓ Deleted")
-        }.onFailure { e -> eventBus.emit(Event.Ami.DeleteFailed(e.requireAwsFailure().messageOrString())) }
-            .isSuccess
+            is AMIService.AmiDeletion.Failed -> {
+                eventBus.emit(
+                    Event.Ami.DeleteFailed(deletion.amiId, deletion.failedStep, deletion.remainingSnapshotIds, deletion.reason),
+                )
+                false
+            }
+        }
     }
 
     private fun displayAMIDetails(ami: AMI) {

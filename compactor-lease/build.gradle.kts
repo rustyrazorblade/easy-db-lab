@@ -43,7 +43,7 @@ tasks.named<ShadowJar>("shadowJar") {
     archiveFileName.set("compactor-lease.jar")
     mergeServiceFiles()
     manifest {
-        attributes("Main-Class" to "com.rustyrazorblade.easydblab.compactorlease.aws.LeaseAgentMainKt")
+        attributes("Main-Class" to "com.rustyrazorblade.easydblab.compactorlease.LeaseAgentMainKt")
     }
 }
 

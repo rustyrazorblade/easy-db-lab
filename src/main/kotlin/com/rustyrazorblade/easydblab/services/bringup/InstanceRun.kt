@@ -22,6 +22,12 @@ internal class InstanceRun(
 ) : AutoCloseable {
     private val watch = run.ports.tracker.watch(launched.instanceId)
 
+    init {
+        // The tail of a failure report is this instance's output only: after a replacement, the
+        // instance kept for debugging is the last one, and the earlier ones are gone.
+        run.nodeOutput.reset(launched.alias, launched.instanceId)
+    }
+
     /** The instance as it is known now. */
     var host: ClusterHost = launched
         private set

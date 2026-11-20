@@ -452,12 +452,35 @@ tasks.named<Test>("test") {
     )
 }
 
+// The Pyroscope Java agent at the pinned version, resolved from Maven Central through the Gradle
+// cache, for PyroscopeAgentReplayIntegrationTest. Not transitive: the agent jar is self-contained.
+val pyroscopeAgentConfig: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+val pyroscopeAgentVersion: String =
+    libs.versions.pyroscope.agent
+        .get()
+
+dependencies {
+    pyroscopeAgentConfig(libs.pyroscope.agent)
+}
+
 // The account compactor's integration test runs the real lease agent jar in containers.
 tasks.named<Test>("integrationTest") {
     dependsOn(copyCompactorLeaseAgent)
     val leaseJar = layout.buildDirectory.file("compactor-lease-agent/compactor-lease.jar")
     inputs.file(leaseJar).withPropertyName("compactorLeaseJar").withPathSensitivity(PathSensitivity.NONE)
     systemProperty("easydblab.test.compactorLeaseJar", leaseJar.get().asFile.absolutePath)
+    val pyroscopeAgent = pyroscopeAgentConfig.elements.map { it.single().asFile.absolutePath }
+    inputs
+        .files(pyroscopeAgentConfig)
+        .withPropertyName("pyroscopeAgentJar")
+        .withPathSensitivity(PathSensitivity.NONE)
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Deasydblab.test.pyroscopeAgentJar=${pyroscopeAgent.get()}") })
+    systemProperty("easydblab.test.pyroscopeAgentVersion", pyroscopeAgentVersion)
 }
 
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).

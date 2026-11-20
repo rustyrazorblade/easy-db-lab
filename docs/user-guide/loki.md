@@ -19,6 +19,12 @@ Cassandra's application logs (`system.log`, `debug.log`) reach Loki only over OT
 
 The collector sends everything to Loki's OTLP endpoint, `http://loki.default.svc.cluster.local:3100/otlp`, with the cluster's tenant in the `X-Scope-OrgID` header.
 
+### When Loki restarts or is down
+
+A Loki restart or outage of up to 30 minutes loses no log line. While Loki cannot take a write, each collector keeps the batches in an in-memory queue (20000 batches) and retries without a time limit; when Loki is back, it sends them. The limit is Loki's out-of-order window (see [Configuration](#configuration)): after 30 minutes, the oldest held lines are more than 30 minutes behind the newest line of their stream and Loki refuses them.
+
+The collector reaches Loki through its Service, which sends traffic to Loki only once it answers `/ready`. A Loki that is starting is therefore a connection error to the collector, which it retries. The queue is in memory: a collector that restarts while Loki is down loses what it held. `otelcol_exporter_queue_size{exporter="otlp_http/logs"}` in Mimir shows a backlog.
+
 ## Labels
 
 Four resource attributes become stream labels. Loki adds `service_name`, and for pod logs the Kubernetes labels (`k8s_namespace_name`, `k8s_pod_name`, `k8s_container_name`):
@@ -143,7 +149,7 @@ Every Grafana annotation is also written to Loki as its own stream (`source="ann
    kubectl logs -l app.kubernetes.io/name=loki
    ```
 
-2. Check that the collector is sending. A failing exporter shows up in `otelcol_exporter_send_failed_log_records_total` in Mimir, and in the collector's log:
+2. Check that the collector is sending. A growing `otelcol_exporter_queue_size{exporter="otlp_http/logs"}` in Mimir means the collector is holding lines it cannot deliver yet; a rising `otelcol_exporter_send_failed_log_records_total` means lines were dropped. Both show in the collector's log:
    ```bash
    kubectl logs -l app.kubernetes.io/name=otel-collector
    ```

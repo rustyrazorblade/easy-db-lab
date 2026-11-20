@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.io.IOException

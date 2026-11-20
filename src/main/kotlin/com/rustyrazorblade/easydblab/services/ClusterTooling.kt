@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redactUrlCredentials
 
 /**
  * The cluster command-line tools a kit or service drives: what [ClusterTooling] can run.

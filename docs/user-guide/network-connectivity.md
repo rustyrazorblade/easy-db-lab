@@ -433,7 +433,7 @@ command stay the same.
 - **IAM:** your user or role must be allowed to open sessions. The EC2 policy printed by
   `easy-db-lab show-iam-policies ec2` allows `ssm:StartSession` with the SSH and port-forwarding
   session documents, only to instances tagged `easy_cass_lab=1` (every cluster node and AMI build
-  instance is), and allows `ssm:TerminateSession` and `ssm:ResumeSession` on your own sessions
+  instance is; they also carry the new `easy_db_lab=1` tag, which the policies do not read yet), and allows `ssm:TerminateSession` and `ssm:ResumeSession` on your own sessions
   only (matched on the session's `aws:ssmmessages:session-id` tag, which works for IAM users and
   SSO or assumed roles alike), plus `ssmmessages:OpenDataChannel`.
 - **On the cluster:** nothing. Every node's instance role carries a small inline Session Manager

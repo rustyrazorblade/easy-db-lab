@@ -10,11 +10,14 @@ import java.nio.file.Path
  */
 interface ISSHClient {
     /**
-     * Execute a command on a remote host
+     * Execute a command on a remote host.
+     *
+     * @param sink receives each output line as it arrives; null shows nothing
+     * @param secret the command carries a secret, so neither it nor its output is ever repeated
      */
     fun executeRemoteCommand(
         command: String,
-        output: Boolean,
+        sink: RemoteOutputSink?,
         secret: Boolean,
     ): Response
 

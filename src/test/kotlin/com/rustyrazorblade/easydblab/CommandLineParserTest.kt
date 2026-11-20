@@ -467,6 +467,6 @@ class CommandLineParserTest : BaseKoinTest() {
     /** A plain Picocli command, not a PicoCommand, so the executor never sees it. */
     @CommandLine.Command(name = "boom")
     class BoomCommand : Runnable {
-        override fun run(): Unit = throw IllegalStateException("boom happened")
+        override fun run(): Unit = error("boom happened")
     }
 }

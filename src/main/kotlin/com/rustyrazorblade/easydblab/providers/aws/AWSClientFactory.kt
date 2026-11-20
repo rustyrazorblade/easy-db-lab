@@ -16,13 +16,12 @@ import software.amazon.awssdk.services.sts.StsClient
 interface AWSClientFactory {
     companion object {
         /**
-         * Rejects a blank region, which is the only input `Region.of` refuses. Callers outside the
-         * adapter hold a plain region name, so this is where their bad input fails, before any
-         * client is built. A misspelt region is not detected here, by decision.
+         * Whether [region] is one the SDK knows (`Region.regions()`); false for a blank or misspelt
+         * name. Callers outside the adapter hold a plain region name, so profile setup asks here
+         * before any client is built. `Region.of` alone accepts any non-blank string. A region AWS
+         * opens after the SDK release is refused until the SDK is upgraded.
          */
-        fun requireValidRegion(region: String) {
-            Region.of(region)
-        }
+        fun isKnownRegion(region: String): Boolean = Region.regions().any { it.id() == region }
     }
 
     /**

@@ -29,11 +29,11 @@ JAR="spark/bulk-writer-s3-iam/build/libs/bulk-writer-s3-iam-all.jar"
 echo "=== Initialising cluster ==="
 bin/easy-db-lab init \
   -c 3 -s 0 \
-  -i m5.xlarge \
+  -i i7i.xlarge \
   --ebs.type gp3 \
   --spark.enable \
-  --spark.master.instance.type m5.xlarge \
-  --spark.worker.instance.type m5.xlarge \
+  --spark.master.instance.type m7i.xlarge \
+  --spark.worker.instance.type m7i.xlarge \
   --spark.worker.instance.count 2 \
   --clean --up \
   "$CLUSTER"

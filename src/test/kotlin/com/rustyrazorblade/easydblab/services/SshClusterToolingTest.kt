@@ -168,11 +168,11 @@ internal class SshClusterToolingTest {
             val local = it.getArgument<Path>(1)
             localPaths.add(local)
             uploadedContent = Files.readString(local)
-        }.whenever(remoteOps).upload(any(), any(), any())
+        }.whenever(remoteOps).upload(any(), any(), any(), any())
 
         tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "kind: ConfigMap\n")
 
-        val remotePath = argumentCaptor<String>().also { verify(remoteOps).upload(any(), any(), it.capture()) }.firstValue
+        val remotePath = argumentCaptor<String>().also { verify(remoteOps).upload(any(), any(), it.capture(), any()) }.firstValue
         assertThat(remotePath).matches("/tmp/easydblab-input-[0-9a-f-]{36}\\.yaml")
         assertThat(uploadedContent).isEqualTo("kind: ConfigMap\n")
         assertThat(remoteCommands()).containsExactly(
@@ -187,7 +187,7 @@ internal class SshClusterToolingTest {
     fun `helm values on stdin keep the values flag and swap only the dash`() {
         tooling.run(ClusterTool.HELM, listOf("upgrade", "--install", "r", "chart", "--values", "-", "--set", "a=b"), stdin = "x: 1\n")
 
-        val remotePath = argumentCaptor<String>().also { verify(remoteOps).upload(any(), any(), it.capture()) }.firstValue
+        val remotePath = argumentCaptor<String>().also { verify(remoteOps).upload(any(), any(), it.capture(), any()) }.firstValue
         assertThat(remoteCommands().first())
             .isEqualTo("$kubeconfig helm upgrade --install r chart --values $remotePath --set a=b")
     }
@@ -197,7 +197,7 @@ internal class SshClusterToolingTest {
         tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x: 1\n")
 
         val order = inOrder(remoteOps)
-        order.verify(remoteOps).upload(any(), any(), any())
+        order.verify(remoteOps).upload(any(), any(), any(), any())
         order.verify(remoteOps).executeRemotely(any(), argThat { startsWith(kubeconfig) }, eq(true), any())
         order.verify(remoteOps).executeRemotely(any(), argThat { startsWith("rm -f ") }, eq(false), any())
     }
@@ -224,7 +224,7 @@ internal class SshClusterToolingTest {
 
     @Test
     fun `a failed upload still cleans up both files`() {
-        doThrow(IllegalStateException("scp down")).whenever(remoteOps).upload(any(), any(), any())
+        doThrow(IllegalStateException("scp down")).whenever(remoteOps).upload(any(), any(), any(), any())
 
         assertThatThrownBy { tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x: 1\n") }
             .hasMessageContaining("scp down")
@@ -308,7 +308,7 @@ internal class SshClusterToolingTest {
     fun `a dash argument without stdin is passed through untouched`() {
         tooling.run(ClusterTool.KUBECTL, listOf("logs", "-f", "-"))
 
-        verify(remoteOps, never()).upload(any(), any(), any())
+        verify(remoteOps, never()).upload(any(), any(), any(), any())
         assertThat(remoteCommands()).containsExactly("$kubeconfig kubectl logs -f -")
     }
 

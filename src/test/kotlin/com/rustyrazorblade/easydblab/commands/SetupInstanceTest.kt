@@ -15,6 +15,8 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
@@ -39,6 +41,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -138,7 +141,7 @@ class SetupInstanceTest : BaseKoinTest() {
         SetupInstance().execute()
 
         val locals = argumentCaptor<Path>()
-        verify(remoteOps, atLeastOnce()).upload(any(), locals.capture(), any())
+        verify(remoteOps, atLeastOnce()).upload(any(), locals.capture(), any(), any())
         assertThat(locals.allValues.filterNot { it.fileName.toString().endsWith(".env") })
             .isNotEmpty
             .allSatisfy { assertThat(it.isAbsolute && it.startsWith(workspace)).describedAs("$it").isTrue() }
@@ -169,7 +172,7 @@ class SetupInstanceTest : BaseKoinTest() {
     private fun setupFailureOnDb1(failure: RemoteCommandFailedException): Event.Provision.InstanceSetupFailed {
         whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq(DB_SETUP_COMMAND), any(), any()))
             .thenAnswer { throw failure }
-        val events = mutableListOf<Event>()
+        val events = CopyOnWriteArrayList<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -239,10 +242,84 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThat(failed.reason).contains("exit status 1", "lsblk: command not found")
     }
 
+    @Test
+    fun `a failed setup carries the lines its node printed`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        output.line("db1", NodeStream.Stdout, "left over from an earlier command")
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq(DB_SETUP_COMMAND), any(), any()))
+            .thenAnswer {
+                output.line("db1", NodeStream.Stdout, "Checking block devices")
+                output.line("db1", NodeStream.Stderr, "ERROR: no data disk found")
+                throw setupScriptFailure(stdout = "Checking block devices\n", stderr = "ERROR: no data disk found\n")
+            }
+        val events = CopyOnWriteArrayList<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single().outputTail)
+            .containsExactly("Checking block devices", "stderr: ERROR: no data disk found")
+    }
+
+    /** Any remote command of a setup can fail, not just the script: it is reported the same way, by its summary. */
+    @Test
+    fun `a failed remote command other than the setup script is reported with its summary and the node's output`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, argThat { contains("hostnamectl") }, any(), any()))
+            .thenAnswer {
+                output.line("db1", NodeStream.Stderr, "Failed to connect to bus")
+                throw RemoteCommandFailedException(
+                    "hostnamectl",
+                    "",
+                    "Failed to connect to bus\n".repeat(30),
+                    "db1: Remote command failed (1): hostnamectl",
+                )
+            }
+        val events = CopyOnWriteArrayList<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single()
+        assertThat(failed.host).isEqualTo("db1")
+        assertThat(failed.reason).isEqualTo("db1: Remote command failed (1): hostnamectl")
+        assertThat(failed.outputTail).containsExactly("stderr: Failed to connect to bus")
+    }
+
+    @Test
+    fun `setup-instances --quiet prints none of the nodes' lines`() {
+        val output = getKoin().get<RecordingNodeOutput>()
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
+            output.line(invocation.getArgument<Host>(0).alias, NodeStream.Stdout, "setting up")
+            Response("")
+        }
+
+        SetupInstance().apply { quiet = true }.execute()
+
+        assertThat(output.printed).isEmpty()
+        assertThat(output.tail("db0")).isNotEmpty()
+    }
+
     private companion object {
         const val OVERLAP_WAIT_SECONDS = 5L
 
         /** A db node's setup, with the database instance type the state's init config defaults to. */
-        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i4i.xlarge bash setup_instance.sh"
+        const val DB_SETUP_COMMAND = "sudo EDL_INSTANCE_TYPE=i7i.xlarge bash setup_instance.sh"
     }
 }

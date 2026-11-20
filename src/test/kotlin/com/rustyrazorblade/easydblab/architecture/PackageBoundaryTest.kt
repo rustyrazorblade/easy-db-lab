@@ -20,11 +20,11 @@ import org.junit.jupiter.api.Test
 /**
  * Where cloud SDK types may appear, and which package dependencies stay broken.
  *
- * The AWS SDK belongs to the AWS adapter packages (`providers.aws..`, `services.aws..` and the lease
- * agent's S3 adapter, `compactorlease.aws..`, in the `compactor-lease` module); anything
- * else that names an SDK type blocks a second cloud. These rules scan main classes only, carry no
- * allowlist, and read compiled bytecode, so they also see types no import shows (an inferred return
- * type, a reified binding, a class literal).
+ * The AWS SDK belongs to the AWS adapter packages (`providers.aws..` and `services.aws..` in the CLI,
+ * `compactorlease.aws..` in the lease agent module); anything else that names an SDK type blocks a
+ * second cloud. These rules scan main classes only, carry no allowlist, and read compiled bytecode, so
+ * they also see types no import shows (an inferred return type, a reified binding, a class literal).
+ * The lease agent module shares the package root and is on the classpath, so the same scan covers it.
  */
 class PackageBoundaryTest {
     private val root = "com.rustyrazorblade.easydblab"
@@ -37,16 +37,21 @@ class PackageBoundaryTest {
             .importPackages(root)
 
     @Test
-    fun `the scanned set holds the entry point and no test support`() {
+    fun `the scanned set holds both entry points and no test support`() {
         val names = mainClasses.map { it.name }
 
-        assertThat(names).contains("$root.MainKt")
+        assertThat(names).contains("$root.MainKt", "$root.compactorlease.LeaseAgentMainKt")
         assertThat(names).doesNotContain("$root.BaseKoinTest")
     }
 
     @Test
     fun `no class outside the adapters depends on an SDK type`() {
         sdkDependencyRule().check(mainClasses)
+    }
+
+    @Test
+    fun `no code outside the adapters catches an SDK throwable`() {
+        sdkCatchRule().check(mainClasses)
     }
 
     /**
@@ -71,11 +76,6 @@ class PackageBoundaryTest {
             .dependOnClassesThat()
             .resideInAPackage(sdk)
             .check(storeModel)
-    }
-
-    @Test
-    fun `no code outside the adapters catches an SDK throwable`() {
-        sdkCatchRule().check(mainClasses)
     }
 
     @Test

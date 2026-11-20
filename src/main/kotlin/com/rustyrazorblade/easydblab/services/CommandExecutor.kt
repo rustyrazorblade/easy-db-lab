@@ -131,17 +131,9 @@ class DefaultCommandExecutor(
         command: PicoCommand,
         commandName: String? = null,
     ): Int =
-        runCatching { runTopLevel(command, commandName) }.getOrElse { failure ->
-            // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
-            // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
-            if (failure !is Exception) throw failure
-            if (failure is InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw failure
-            }
-            failureReporter.report(failure)
-            Constants.ExitCodes.ERROR
-        }
+        // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
+        // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
+        runCatchingException { runTopLevel(command, commandName) }.getOrElse(::reportFailure)
 
     private fun runTopLevel(
         command: PicoCommand,
@@ -150,30 +142,48 @@ class DefaultCommandExecutor(
         // VPC reconstruction from environment variable (if set)
         handleVpcReconstructionFromEnv()
 
+        // Pessimistic until the commands return: a throw out of them leaves it non-zero.
+        var exitCode = Constants.ExitCodes.ERROR
         try {
-            val exitCode = executeWithLifecycle(command, commandName)
-
-            // Process scheduled commands (each with full lifecycle)
-            // Stop on first failure
-            while (scheduledQueue.get().isNotEmpty()) {
-                val commandFactory = scheduledQueue.get().removeFirst()
-                val scheduledCommand = commandFactory()
-                val scheduledExitCode = executeWithLifecycle(scheduledCommand)
-                if (scheduledExitCode != 0) {
-                    // Clear remaining scheduled commands on failure
-                    scheduledQueue.get().clear()
-                    return scheduledExitCode
-                }
-            }
-
+            exitCode = runCommands(command, commandName)
             return exitCode
         } finally {
-            // Clean up resources in non-interactive mode (CLI commands)
-            // In interactive mode (REPL/Server), resources stay open for reuse
-            if (!context.isInteractive) {
-                log.debug { "Non-interactive mode: cleaning up resources" }
-                resourceManager.closeAll()
+            closeResources(commandSucceeded = exitCode == 0)
+        }
+    }
+
+    /** Runs [command] and then each command it scheduled, stopping at the first failure. */
+    private fun runCommands(
+        command: PicoCommand,
+        commandName: String?,
+    ): Int {
+        val exitCode = executeWithLifecycle(command, commandName)
+        while (scheduledQueue.get().isNotEmpty()) {
+            val scheduledCommand = scheduledQueue.get().removeFirst()()
+            val scheduledExitCode = executeWithLifecycle(scheduledCommand)
+            if (scheduledExitCode != 0) {
+                // Clear remaining scheduled commands on failure
+                scheduledQueue.get().clear()
+                return scheduledExitCode
             }
+        }
+        return exitCode
+    }
+
+    /**
+     * Closes the command's resources in non-interactive mode (CLI commands); in interactive mode
+     * (REPL/Server) they stay open for reuse.
+     *
+     * A failure to close is reported only when the commands succeeded, and then it fails the run.
+     * After a failure the user already saw its one report, so a close failure is only logged: a
+     * second report would bury the first. A JVM [Error] still propagates either way.
+     */
+    private fun closeResources(commandSucceeded: Boolean) {
+        if (context.isInteractive) return
+        log.debug { "Non-interactive mode: cleaning up resources" }
+        runCatchingException { resourceManager.closeAll() }.onFailure { e ->
+            if (commandSucceeded) throw e
+            log.warn(e) { "Closing resources failed after a failed command; the command's failure was reported" }
         }
     }
 
@@ -209,12 +219,7 @@ class DefaultCommandExecutor(
             runCatchingException {
                 checkRequirements(command, commandName)
                 command.call()
-            }.getOrElse { failure ->
-                // Ctrl-C or SIGTERM in REPL or server mode: cancellation is not a command failure.
-                if (failure is InterruptedException) throw failure
-                failureReporter.report(failure)
-                Constants.ExitCodes.ERROR
-            }
+            }.getOrElse(::reportFailure)
 
         // 3. Post-success actions
         if (exitCode == 0) {
@@ -222,6 +227,18 @@ class DefaultCommandExecutor(
         }
 
         return exitCode
+    }
+
+    /**
+     * Reports [failure] of a command, or of its requirement checks, through [CommandFailureReporter]
+     * and returns the exit code that stands for it. An [InterruptedException] is Ctrl-C or SIGTERM in
+     * REPL or server mode: cancellation is not a command failure, so it propagates;
+     * [runCatchingException] has already restored the interrupt flag.
+     */
+    private fun reportFailure(failure: Throwable): Int {
+        if (failure is InterruptedException) throw failure
+        failureReporter.report(failure)
+        return Constants.ExitCodes.ERROR
     }
 
     /**

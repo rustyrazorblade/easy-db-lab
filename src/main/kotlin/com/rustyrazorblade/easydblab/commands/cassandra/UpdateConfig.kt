@@ -94,14 +94,10 @@ class UpdateConfig : PicoBaseCommand() {
             remoteOps.upload(it, tmp, file)
             tmp.deleteExisting()
 
-            // Execute patch-config and handle errors.
+            // Execute patch-config and handle errors. Its stdout and stderr print tagged with the host.
             // Check stdout for the success marker — stderr may contain sudo warnings (e.g. sudoers
             // parse warnings from third-party packages) that are harmless but non-empty.
             val patchResult = remoteOps.executeRemotely(it, "/usr/local/bin/patch-config $file")
-            if (patchResult.stderr.isNotEmpty()) {
-                eventBus.emit(Event.Cassandra.PatchStderr(patchResult.stderr))
-            }
-            eventBus.emit(Event.Cassandra.PatchOutput(patchResult.text))
             if (!patchResult.text.contains("Successfully patched")) {
                 val reason = patchResult.stderr.ifEmpty { patchResult.text }.trim()
                 eventBus.emit(Event.Cassandra.PatchFailed(it.alias, reason))

@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderResponse
+import com.rustyrazorblade.easydblab.services.toEvent
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -17,6 +19,7 @@ import software.amazon.awssdk.services.emr.model.EmrException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.opensearch.model.OpenSearchException
 import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.servicequotas.model.ServiceQuotasException
 import software.amazon.awssdk.services.ssm.model.SsmException
 import software.amazon.awssdk.services.sts.model.StsException
 import java.io.IOException
@@ -239,6 +242,7 @@ class AwsErrorHandlerTest {
         val cases =
             listOf(
                 Ec2Exception.builder() to "EasyDBLabEC2",
+                ServiceQuotasException.builder() to "EasyDBLabEC2",
                 SsmException.builder() to "EasyDBLabEC2",
                 IamException.builder() to "EasyDBLabIAM",
                 S3Exception.builder() to "EasyDBLabIAM",
@@ -268,16 +272,20 @@ class AwsErrorHandlerTest {
     }
 
     @Test
-    fun `the policy named for an SSM failure really holds the SSM actions`() {
+    fun `the policy named for Service Quotas and SSM failures really holds those actions`() {
         val policies =
             com.rustyrazorblade.easydblab.providers.aws.AWSPolicy.UserIAM
                 .loadAll("123456789012")
                 .associate { it.name to it.body }
+        val quotaHolders = policies.filterValues { "\"servicequotas:GetServiceQuota\"" in it }.keys
         val ssmHolders = policies.filterValues { "\"ssm:StartSession\"" in it }.keys
 
-        assertThat(ssmHolders).hasSize(1)
-        val remedy = handler.describe(awsError(SsmException.builder(), "AccessDenied", 403))!!.remedy
-        assertThat(remedy).contains("show-iam-policies ${ssmHolders.single()}")
+        assertThat(quotaHolders).hasSize(1)
+        assertThat(ssmHolders).isEqualTo(quotaHolders)
+        for (builder in listOf(ServiceQuotasException.builder(), SsmException.builder())) {
+            val remedy = handler.describe(awsError(builder, "AccessDenied", 403))!!.remedy
+            assertThat(remedy).contains("show-iam-policies ${quotaHolders.single()}")
+        }
     }
 
     @Test
@@ -314,5 +322,58 @@ class AwsErrorHandlerTest {
             .doesNotContain("EasyDBLabEC2")
             .contains("service control policy")
             .contains("permissions boundary")
+    }
+
+    @Test
+    fun `a denial from a service no lab policy is mapped to names every lab policy`() {
+        val description = handler.describe(awsError(AwsServiceException.builder(), "AccessDenied", 403))!!
+
+        assertThat(description.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(description.remedy).contains("show-iam-policies)")
+        AWSPolicy.UserIAM.ALL_NAMES.forEach { assertThat(description.remedy).contains(it) }
+    }
+
+    @Test
+    fun `a 403 with no error details is permission denied, with the SDK message as its detail`() {
+        val error =
+            S3Exception
+                .builder()
+                .statusCode(403)
+                .message("Forbidden")
+                .build() as AwsServiceException
+
+        val description = handler.describe(error)!!
+
+        assertThat(error.awsErrorDetails()).isNull()
+        assertThat(description.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(description.detail).isEqualTo("Forbidden")
+        val response = description.response!!
+        assertThat(response.errorCode).isNull()
+        assertThat(response.statusCode).isEqualTo(403)
+    }
+
+    @Test
+    fun `the service, error code, status and request id of the answer are kept and shown`() {
+        val error =
+            StsException
+                .builder()
+                .statusCode(403)
+                .requestId("req-123")
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .serviceName("Sts")
+                        .errorCode("ExpiredToken")
+                        .errorMessage("The security token included in the request is expired")
+                        .build(),
+                ).build() as AwsServiceException
+
+        val description = handler.describe(error)!!
+
+        assertThat(description.response)
+            .isEqualTo(ProviderResponse(service = "Sts", errorCode = "ExpiredToken", statusCode = 403, requestId = "req-123"))
+        assertThat(description.toEvent().toDisplayString())
+            .contains("The security token included in the request is expired")
+            .contains("(service Sts, code ExpiredToken, HTTP 403, request id req-123)")
     }
 }

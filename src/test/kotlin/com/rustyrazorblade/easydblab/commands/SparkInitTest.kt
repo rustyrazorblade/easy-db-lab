@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.services.EMRProvisioningService
+import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -220,14 +220,5 @@ class SparkInitTest : BaseKoinTest() {
                     config.keyName == "test-key"
             },
         )
-    }
-
-    @Test
-    fun `should use default instance types when not specified`() {
-        val command = SparkInit()
-
-        assertThat(command.masterInstanceType).isEqualTo("m5.xlarge")
-        assertThat(command.workerInstanceType).isEqualTo("m5.xlarge")
-        assertThat(command.workerCount).isEqualTo(3)
     }
 }

@@ -361,7 +361,7 @@ class CiliumServiceTest : BaseKoinTest() {
         makeService().installTailscaleMasquerade(controlHost).getOrThrow()
 
         val pathCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).upload(eq(controlHost), any<Path>(), pathCaptor.capture())
+        verify(mockRemoteOps).upload(eq(controlHost), any<Path>(), pathCaptor.capture(), any())
         assertThat(pathCaptor.firstValue).isEqualTo(DefaultCiliumService.MASQUERADE_REMOTE_PATH)
 
         val commandCaptor = argumentCaptor<String>()

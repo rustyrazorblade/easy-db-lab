@@ -36,8 +36,8 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
 /**
  * Koin module for the AWS adapter's SDK-facing bindings.
  *
- * Provides the region, the credentials provider, the SDK clients, [AccountIdentity] and [IamRoles],
- * [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
+ * Provides the region, the credentials provider, the SDK clients, [AccountIdentity], [IamRoles],
+ * [RegionalS3Clients], [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
  * [ProviderErrorHandler], and the SSM Session Manager transport bindings. Its only edges outside
  * `providers/aws` are `configuration`, `events` and `Context`; the bindings of `services/aws`
  * classes live in `AwsServicesModule`.
@@ -135,12 +135,9 @@ val awsClientsModule =
                 .build()
         }
 
-        // The account identity (STS) and IAM role operations, each a small interface
+        // Account identity (STS) and IAM role operations, each a small interface
         single<AccountIdentity> { StsAccountIdentity(get<StsClient>()) }
         single<IamRoles> { AwsIamRoles(get<IamClient>(), get<AccountIdentity>()) }
-
-        // S3 clients for the account bucket's own region, which can differ from the profile's
-        single<RegionalS3Clients> { DefaultRegionalS3Clients(get()) }
 
         // Provide AWSClientFactory for creating AWS clients with custom credentials
         single<AWSClientFactory> { DefaultAWSClientFactory() }
@@ -149,6 +146,9 @@ val awsClientsModule =
         // single: its credentials file is lazy, and a single would keep stale SSO credentials across
         // builds in REPL or Server mode.
         factory { AWSCredentialsManager(get<Context>().profileDir, get<AwsCredentialsProvider>()) }
+
+        // S3 clients for a region named at call time (the account bucket's region)
+        single { RegionalS3Clients(get<AwsCredentialsProvider>()) }
 
         // Role policy set for the EC2 instance role
         single { InstanceRolePolicies(get()) }

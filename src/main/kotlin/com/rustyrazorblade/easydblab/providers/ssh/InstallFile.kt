@@ -36,7 +36,7 @@ fun RemoteOperationsService.installFile(
 ) {
     require(FILE_MODE.matches(mode)) { "File mode must be octal digits such as 0644, got '$mode'" }
     val staged = "${Constants.Ssh.INSTALL_STAGING_PREFIX}${UUID.randomUUID()}-${remotePath.substringAfterLast('/')}"
-    upload(host, source, staged)
+    upload(host, source, staged, notice = "installing $remotePath (mode $mode)")
     val stagedPath = staged.shellQuote()
     val target = remotePath.shellQuote()
     // A failed chmod or mv removes the staged copy, which may hold a secret, then fails the command.

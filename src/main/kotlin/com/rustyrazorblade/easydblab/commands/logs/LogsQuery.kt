@@ -140,7 +140,8 @@ class LogsQuery : PicoBaseCommand() {
         if (logs.isEmpty()) {
             eventBus.emit(Event.Logs.NoLogsFound)
         } else {
-            eventBus.emit(Event.Logs.QueryResults(logs))
+            // The lines are raw output: printed as text, not an event.
+            println(logs.joinToString(separator = "\n", postfix = "\n\nFound ${logs.size} log entries."))
         }
     }
 }

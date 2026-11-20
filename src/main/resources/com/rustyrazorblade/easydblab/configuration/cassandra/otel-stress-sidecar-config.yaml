@@ -22,12 +22,20 @@ processors:
     override: false
 
 exporters:
+  # The node collector restarts on every kit start and stop (its config changes). This exporter
+  # holds what it cannot send in memory and retries without a time limit, as the node collector's
+  # backend exporters do (issue 991). No on-disk queue. The sidecar sets no GOMEMLIMIT, so a long
+  # outage grows the heap with the queue instead of running the Go GC against a soft limit.
   otlp_grpc:
     endpoint: __OTEL_CORE_GRPC_ENDPOINT__
     tls:
       insecure: true
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 0
     sending_queue:
-      enabled: false
+      enabled: true
+      queue_size: 20000
 
 service:
   telemetry:

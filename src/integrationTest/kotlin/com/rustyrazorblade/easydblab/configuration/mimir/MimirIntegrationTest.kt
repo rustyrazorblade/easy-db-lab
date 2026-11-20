@@ -44,7 +44,9 @@ import java.util.UUID
  *
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
  *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
- *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
+ *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 1h out-of-order window;
+ * - a sample 30 minutes older than the tenant's newest, as a replay after an outage sends, is stored,
+ *   so the 1h out-of-order window is in effect (the old 10m window refused it);
  * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
  *   and the samples are still answered, now from the local block;
  * - after a SIGKILL and a restart on the same data volume, every sample written before the kill is
@@ -62,6 +64,9 @@ class MimirIntegrationTest : BaseKoinTest() {
 
         /** How long a written sample may take to be answered; the sample carries the host's clock, the query Docker's. */
         val ANSWER_WITHIN: Duration = Duration.ofSeconds(30)
+
+        /** How far a replayed sample trails the tenant's newest: past the old 10m window, inside the 1h one. */
+        val REPLAY_AGE: Duration = Duration.ofMinutes(30)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -264,6 +269,22 @@ class MimirIntegrationTest : BaseKoinTest() {
         assertThat(holding)
             .describedAs("a block under ${Constants.Observability.METRICS_ROOT}/acme/ holding the first sample, within $UPLOAD_WITHIN")
             .isNotEmpty()
+    }
+
+    /**
+     * After an outage, newer samples move the tenant's head forward, and a drained queue's older
+     * samples arrive late. Mimir must store a sample [REPLAY_AGE] older than the tenant's newest
+     * instead of answering 400 and losing it. The window is measured from the tenant's head, so an
+     * outage plus its drain must stay inside it.
+     */
+    @Test
+    fun `a sample replayed half an hour behind its series is stored`() {
+        val mimir = startMimir()
+        val now = System.currentTimeMillis()
+        write(mimir, "late", "lab-a", 1.0, now)
+        write(mimir, "late", "lab-a", 2.0, now - REPLAY_AGE.toMillis())
+
+        assertThat(awaitSamples(mimir, "late", 2)).describedAs("the newest sample and the replayed one").isEqualTo(2)
     }
 
     @Test

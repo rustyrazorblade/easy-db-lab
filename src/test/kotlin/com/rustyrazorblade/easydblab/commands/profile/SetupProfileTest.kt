@@ -9,6 +9,8 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
@@ -37,10 +39,22 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
+import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsResponse
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.ec2.model.KeyPairInfo
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketPolicyRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
+import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.ec2.model.Tag as Ec2Tag
+import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
 class SetupProfileTest : BaseKoinTest() {
     private lateinit var mockUserConfigProvider: UserConfigProvider
@@ -50,6 +64,7 @@ class SetupProfileTest : BaseKoinTest() {
     private lateinit var mockCommandExecutor: CommandExecutor
     private lateinit var mockAws: AccountIdentity
     private lateinit var mockAwsClientFactory: AWSClientFactory
+    private lateinit var mockEc2: Ec2Client
     private lateinit var testPrompter: TestPrompter
     private lateinit var bufferedOutput: BufferedOutputHandler
 
@@ -68,6 +83,28 @@ class SetupProfileTest : BaseKoinTest() {
         // Default: factory returns our mock AWS (both credential types)
         whenever(mockAwsClientFactory.createAccountIdentity(any(), any(), any())).thenReturn(mockAws)
         whenever(mockAwsClientFactory.createAccountIdentityWithProfile(any(), any())).thenReturn(mockAws)
+
+        // Default: the profile's existing key pair carries only the legacy marker
+        mockEc2 = mock()
+        whenever(mockAwsClientFactory.createEc2Client(any(), any(), any())).thenReturn(mockEc2)
+        whenever(mockAwsClientFactory.createEc2ClientWithProfile(any(), any())).thenReturn(mockEc2)
+        whenever(mockEc2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenReturn(
+            DescribeKeyPairsResponse
+                .builder()
+                .keyPairs(
+                    KeyPairInfo
+                        .builder()
+                        .keyName("test-key")
+                        .keyPairId("key-0abc")
+                        .tags(
+                            Ec2Tag
+                                .builder()
+                                .key("easy_cass_lab")
+                                .value("1")
+                                .build(),
+                        ).build(),
+                ).build(),
+        )
 
         // Default: AWS operations succeed
         doNothing().whenever(mockAws).checkPermissions()
@@ -91,6 +128,113 @@ class SetupProfileTest : BaseKoinTest() {
 
     @Nested
     inner class WhenProfileAlreadySetUp {
+        private val updatePromptText =
+            Event.Setup.UpdatePrompt
+                .toDisplayString()
+                .trim()
+
+        /** A complete profile from before the new marker, naming bucket legacy-bucket and key pair test-key. */
+        private fun completeLegacyProfile() {
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "email" to "test@example.com",
+                    "region" to "us-west-2",
+                    "awsProfile" to "my-profile",
+                    "keyName" to "test-key",
+                    "s3Bucket" to "legacy-bucket",
+                ),
+            )
+            whenever(mockUserConfigProvider.getUserConfig()).thenReturn(
+                User(
+                    email = "test@example.com",
+                    region = "us-west-2",
+                    keyName = "test-key",
+                    awsProfile = "my-profile",
+                    awsAccessKey = "",
+                    awsSecret = "",
+                    s3Bucket = "legacy-bucket",
+                ),
+            )
+            testPrompter = TestPrompter()
+            setupTestModule()
+        }
+
+        /** Nothing was asked, printed as an update prompt, or saved. */
+        private fun assertStoppedBeforeAnyChange() {
+            assertThat(testPrompter.getCallLog()).isEmpty()
+            assertThat(bufferedOutput.messages.joinToString("\n")).doesNotContain(updatePromptText)
+            verify(mockUserConfigProvider, never()).saveUserConfig(any())
+        }
+
+        @Test
+        fun `a key pair the complete profile names that is gone stops setup before any prompt`() {
+            completeLegacyProfile()
+            whenever(mockEc2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenThrow(
+                Ec2Exception
+                    .builder()
+                    .statusCode(400)
+                    .awsErrorDetails(AwsErrorDetails.builder().errorCode("InvalidKeyPair.NotFound").build())
+                    .build(),
+            )
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOf(ConfigurationException::class.java)
+                .hasMessageContaining("test-key")
+
+            assertStoppedBeforeAnyChange()
+        }
+
+        @Test
+        fun `a credential failure reading the bucket stops setup before any prompt`() {
+            completeLegacyProfile()
+            val expired =
+                S3Exception
+                    .builder()
+                    .statusCode(400)
+                    .awsErrorDetails(AwsErrorDetails.builder().errorCode("ExpiredToken").build())
+                    .build()
+            whenever(get<S3Client>().getBucketTagging(any<GetBucketTaggingRequest>())).thenThrow(expired)
+
+            assertThatThrownBy { SetupProfile().execute() }.isSameAs(expired)
+
+            assertStoppedBeforeAnyChange()
+        }
+
+        /** The profiles that need the backfill are complete ones from before the new marker. */
+        @Test
+        fun `a complete profile's legacy-only bucket and key pair gain the new marker`() {
+            completeLegacyProfile()
+            whenever(get<S3Client>().getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
+                GetBucketTaggingResponse
+                    .builder()
+                    .tagSet(
+                        S3Tag
+                            .builder()
+                            .key("easy_cass_lab")
+                            .value("1")
+                            .build(),
+                    ).build(),
+            )
+
+            SetupProfile().execute()
+
+            assertThat(bufferedOutput.messages.joinToString("\n")).contains(updatePromptText)
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
+            val bucketTags = argumentCaptor<PutBucketTaggingRequest>()
+            verify(get<S3Client>()).putBucketTagging(bucketTags.capture())
+            assertThat(bucketTags.firstValue.bucket()).isEqualTo("legacy-bucket")
+            assertThat(
+                bucketTags.firstValue
+                    .tagging()
+                    .tagSet()
+                    .associate { it.key() to it.value() },
+            ).containsExactlyInAnyOrderEntriesOf(mapOf("easy_cass_lab" to "1", "easy_db_lab" to "1"))
+            val keyTags = argumentCaptor<CreateTagsRequest>()
+            verify(mockEc2).createTags(keyTags.capture())
+            assertThat(keyTags.firstValue.tags().associate { it.key() to it.value() })
+                .containsExactlyEntriesOf(mapOf("easy_db_lab" to "1"))
+        }
+
         @Test
         fun `execute prompts for each optional field when profile exists`() {
             // Given - all required fields already exist with static credentials
@@ -142,7 +286,7 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(output).contains("Profile 'default' is already configured")
             assertThat(output).contains("Configuration updated!")
 
-            // Should not call any AWS operations
+            // Creates no AWS resources (the marker backfill is checked in its own test)
             verify(mockAwsResourceSetup, never()).ensureAWSResources(any())
         }
 
@@ -525,6 +669,71 @@ class SetupProfileTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a misspelt region is reported and asked for again before any AWS call`() {
+            testPrompter =
+                TestPrompter(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "AWS Profile" to "my-profile",
+                        "IAM policies" to "N",
+                    ),
+                )
+            testPrompter.addSequentialResponses("AWS region", "us-wset-2", "us-west-2")
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            assertThat(bufferedOutput.errors.joinToString("\n") { it.first }).contains("'us-wset-2' is not an AWS region")
+            assertThat(bufferedOutput.messages.joinToString("\n")).contains("Account setup complete!")
+            assertThat(testPrompter.getCallLog().count { it.question.contains("AWS region") }).isEqualTo(2)
+            val region = argumentCaptor<String>()
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(any(), region.capture())
+            assertThat(region.allValues).containsExactly("us-west-2")
+        }
+
+        @Test
+        fun `a saved unknown region is asked for again, not reused, and the saved profile is kept`() {
+            testPrompter = TestPrompter(mapOf("IAM policies" to "N"))
+            testPrompter.addSequentialResponses("AWS region", "eu-west-1")
+            setupTestModule()
+            whenever(mockUserConfigProvider.loadExistingConfig())
+                .thenReturn(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "region" to "mars-north-1",
+                        "awsProfile" to "saved-profile",
+                        "keyName" to "test-key",
+                        // Empty, so the profile is not fully set up and setup runs the credential loop.
+                        "s3Bucket" to "",
+                    ),
+                )
+
+            SetupProfile().execute()
+
+            val profile = argumentCaptor<String>()
+            val region = argumentCaptor<String>()
+            verify(mockAwsClientFactory).createAccountIdentityWithProfile(profile.capture(), region.capture())
+            assertThat(region.allValues).containsExactly("eu-west-1")
+            // Only the region failed, so the saved profile is still the one used and is not asked for.
+            assertThat(profile.allValues).containsExactly("saved-profile")
+            assertThat(testPrompter.wasPromptedFor("AWS Profile")).isFalse()
+        }
+
+        @Test
+        fun `setup fails after the last attempt gives an unknown region`() {
+            testPrompter = TestPrompter(mapOf("email" to "user@test.com", "AWS Profile" to "my-profile"))
+            testPrompter.addSequentialResponses("AWS region", "nowhere-1")
+            setupTestModule()
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOf(SetupProfileException::class.java)
+                .hasMessageContaining("nowhere-1")
+            assertThat(testPrompter.getCallLog().count { it.question.contains("AWS region") })
+                .isEqualTo(SetupProfile.MAX_CREDENTIAL_RETRIES)
+            verify(mockAwsClientFactory, never()).createAccountIdentityWithProfile(any(), any())
+        }
+
+        @Test
         fun `execute throws SetupProfileException after max retries when credentials are invalid`() {
             // Given - AWS checkPermissions always throws exception
             doThrow(RuntimeException("Invalid credentials")).whenever(mockAws).checkPermissions()
@@ -620,6 +829,46 @@ class SetupProfileTest : BaseKoinTest() {
 
             // Then - should not create bucket
             verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
+        }
+
+        @Test
+        fun `execute gives an existing bucket and key pair the new marker tag`() {
+            whenever(mockUserConfigProvider.loadExistingConfig()).thenReturn(
+                mapOf(
+                    "keyName" to "test-key",
+                    "s3Bucket" to "existing-bucket",
+                ),
+            )
+            testPrompter =
+                TestPrompter(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "region" to "us-west-2",
+                        "AWS Profile" to "",
+                        "AWS Access Key" to "AKIATEST123",
+                        "AWS Secret" to "secretkey123",
+                        "IAM policies" to "N",
+                    ),
+                )
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            val bucketTags = argumentCaptor<PutBucketTaggingRequest>()
+            verify(get<S3Client>()).putBucketTagging(bucketTags.capture())
+            assertThat(bucketTags.firstValue.bucket()).isEqualTo("existing-bucket")
+            assertThat(
+                bucketTags.firstValue
+                    .tagging()
+                    .tagSet()
+                    .associate { it.key() to it.value() },
+            ).containsEntry("easy_cass_lab", "1")
+                .containsEntry("easy_db_lab", "1")
+            val keyTags = argumentCaptor<CreateTagsRequest>()
+            verify(mockEc2).createTags(keyTags.capture())
+            assertThat(keyTags.firstValue.resources()).containsExactly("key-0abc")
+            assertThat(keyTags.firstValue.tags().associate { it.key() to it.value() })
+                .containsExactlyEntriesOf(mapOf("easy_db_lab" to "1"))
         }
     }
 

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import com.github.ajalt.mordant.TermColors
 import com.rustyrazorblade.easydblab.di.KoinModules
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import org.koin.core.context.startKoin
 import kotlin.system.exitProcess
@@ -26,5 +27,7 @@ fun main(arguments: Array<String>) {
         }
     }
 
-    CommandLineParser().eval(arguments)
+    val reporter = koin.get<CommandFailureReporter>()
+    val parser = ParserStartup.buildOrReport(reporter) { CommandLineParser() } ?: exitProcess(Constants.ExitCodes.ERROR)
+    parser.eval(arguments)
 }

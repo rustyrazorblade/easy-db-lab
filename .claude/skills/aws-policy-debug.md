@@ -238,7 +238,7 @@ AWS_PROFILE=their-profile \
 ## Key Concepts
 
 ### Account ID Substitution
-All policies contain `ACCOUNT_ID` placeholders that get replaced with the actual AWS account ID when displayed. This ensures:
+The policy templates contain `__ACCOUNT_ID__` placeholders (and `__LEGACY_TAG_KEY__` / `__TAG_VALUE__` for the marker tag conditions) that `AWSPolicy.UserIAM.loadAll` replaces with the actual AWS account ID and the tag constants. This ensures:
 - Policies are scoped to the specific AWS account
 - No cross-account access is granted accidentally
 - PassRole permissions are restricted to the correct account

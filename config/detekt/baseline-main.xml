@@ -3,10 +3,6 @@
   <ManuallySuppressedIssues />
   <CurrentIssues>
     <ID>CyclomaticComplexMethod:KitInfo.kt$KitInfo.Companion$fun buildInfoText( config: KitConfig, templateFiles: List&lt;String&gt;, ): String</ID>
-    <ID>HasPlatformType:BeylaManifestBuilder.kt$BeylaManifestBuilder$@Suppress("LongMethod") fun buildDaemonSet()</ID>
-    <ID>HasPlatformType:BeylaManifestBuilder.kt$BeylaManifestBuilder$fun buildConfigMap()</ID>
-    <ID>HasPlatformType:Context.kt$Context$val appHome = System.getProperty("easydblab.apphome")</ID>
-    <ID>HasPlatformType:EbpfExporterManifestBuilder.kt$EbpfExporterManifestBuilder$@Suppress("LongMethod") fun buildDaemonSet()</ID>
     <ID>HasPlatformType:JournaldOtelManifestBuilder.kt$JournaldOtelManifestBuilder$@Suppress("LongMethod") fun buildDaemonSet()</ID>
     <ID>HasPlatformType:JournaldOtelManifestBuilder.kt$JournaldOtelManifestBuilder$fun buildConfigMap()</ID>
     <ID>HasPlatformType:OtelManifestBuilder.kt$OtelManifestBuilder$@Suppress("LongMethod") fun buildDaemonSet()</ID>
@@ -18,7 +14,6 @@
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildServerConfigMap()</ID>
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildServerDeployment()</ID>
     <ID>HasPlatformType:PyroscopeManifestBuilder.kt$PyroscopeManifestBuilder$fun buildServerService()</ID>
-    <ID>HasPlatformType:RegistryManifestBuilder.kt$RegistryManifestBuilder$@Suppress("LongMethod") fun buildDeployment()</ID>
     <ID>HasPlatformType:SidecarManifestBuilder.kt$SidecarManifestBuilder$fun buildConfigMap()</ID>
     <ID>HasPlatformType:TempoManifestBuilder.kt$TempoManifestBuilder$@Suppress("LongMethod") fun buildDeployment()</ID>
     <ID>HasPlatformType:TempoManifestBuilder.kt$TempoManifestBuilder$fun buildConfigMap()</ID>

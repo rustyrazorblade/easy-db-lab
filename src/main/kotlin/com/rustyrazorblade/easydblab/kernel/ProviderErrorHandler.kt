@@ -44,10 +44,38 @@ enum class ProviderErrorKind {
  * @property kind what class of failure it is
  * @property detail the provider's own message
  * @property remedy what the user should do next
+ * @property response what the provider's service answered, when the failure is a service answer
  */
 data class ErrorDescription(
     val provider: String,
     val kind: ProviderErrorKind,
     val detail: String,
     val remedy: String,
+    val response: ProviderResponse? = null,
 )
+
+/**
+ * The identifying facts of a provider service's error answer. The detail message alone loses them, and
+ * they are what tells two failures apart and what the provider's support asks for.
+ *
+ * @property service the service that answered, for example "Sts"
+ * @property errorCode the provider's error code, for example "ExpiredToken"
+ * @property statusCode the HTTP status of the answer
+ * @property requestId the provider's id for the failed request
+ */
+@Serializable
+data class ProviderResponse(
+    val service: String? = null,
+    val errorCode: String? = null,
+    val statusCode: Int? = null,
+    val requestId: String? = null,
+) {
+    /** One line naming each fact that is known, for example "service Sts, code ExpiredToken, HTTP 403". */
+    fun summary(): String =
+        listOfNotNull(
+            service?.let { "service $it" },
+            errorCode?.let { "code $it" },
+            statusCode?.let { "HTTP $it" },
+            requestId?.let { "request id $it" },
+        ).joinToString(", ")
+}

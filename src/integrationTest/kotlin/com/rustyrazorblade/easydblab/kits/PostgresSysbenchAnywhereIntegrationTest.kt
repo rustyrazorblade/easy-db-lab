@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
@@ -105,7 +106,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
         k3s.start()
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).apply { writeText(k3s.kubeConfigYaml) }
-        ProxyEnvFile(workspace).recordDirect(true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
         createRetainedCopyOfLocalPath()
 
         val api = KubeApi(kubeconfig.toPath(), checkNotNull(currentContextOf(kubeconfig.toPath())))

@@ -767,6 +767,28 @@ something the `install` phase creates, such as an operator's helm release, would
 `start` after a successful install. A kit with no `runtime` block is looked up by the pod label
 `app.kubernetes.io/name=<kit>`.
 
+## Pod network tuning
+
+Every pod in the pod network gets the tuned network sysctls the nodes run, with no work in the
+kit. `up` applies one cluster-wide MutatingAdmissionPolicy, `easydblab-pod-network-sysctls`,
+before the observability stack and before any kit. It adds the per-namespace keys of the node tuning file
+(`somaxconn`, `tcp_max_syn_backlog`, the TCP buffer and keepalive keys,
+`tcp_slow_start_after_idle`, `tcp_tw_reuse`) to every new pod's `securityContext.sysctls`. See
+[Node tuning](../user-guide/node-tuning.md) for the values.
+
+- Do not add a `sysctls` block for these keys to a kit's manifests or chart values.
+- A kit pod that sets one of these keys itself keeps its own value; the policy adds only the
+  keys the pod lacks.
+- A kit still never uses `hostNetwork`. A host-network pod is not changed by the policy.
+- Pods keep the kernel default `ip_local_port_range` and no reserved ports.
+
+To check a kit pod:
+
+```bash
+kubectl get pod <pod> -o jsonpath='{.spec.securityContext.sysctls}'
+kubectl exec <pod> -- cat /proc/sys/net/core/somaxconn
+```
+
 ## Runtime
 
 The `runtime` field tells easy-db-lab how to find running pods for status checks, log tailing, and

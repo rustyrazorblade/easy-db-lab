@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeOrigin
@@ -25,7 +26,6 @@ import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
-import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
@@ -577,10 +577,13 @@ class Init :
         // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
         refuseExistingBin()
 
+        // The shell-side tools learn a direct network mode from the env file. It is written before state.json, so
+        // a failure between the two never leaves a recorded environment whose env file says otherwise. This is
+        // the one mode write that does not go through WorkspaceShellTools: the workspace has no bin/ (refused
+        // above), so no wrapper from an earlier release can read the file, and the wrappers come with `up`.
         val contract = ClusterContract.of(clusterState)
-        // The shell-side tools learn the network mode from the env file. It is written before state.json, so
-        // a failure between the two never leaves a recorded environment whose env file says otherwise.
-        ProxyEnvFile(context.workingDirectory).recordDirect(contract.networkMode == NetworkMode.Direct)
+        val networkMode = contract.networkMode
+        if (networkMode == NetworkMode.Direct) ProxyEnvFile(context.workingDirectory).recordNetworkMode(networkMode)
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
@@ -783,7 +786,7 @@ class Init :
                     appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
                     controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                 ),
-            tailscaleActive = tailscaleActive,
+            networkMode = if (tailscaleActive) NetworkMode.Tailscale else NetworkMode.Socks,
             capabilities = capabilities.present().toSet(),
             exposure = Exposure.atInit(tailscaleActive = tailscaleActive),
         )
@@ -817,7 +820,7 @@ class Init :
         ClusterState(
             name = name,
             initConfig = InitConfig.forLocal(init = this, hostArch = dockerArchitecture()),
-            tailscaleActive = false,
+            networkMode = NetworkMode.Direct,
             capabilities = capabilities.present().toSet(),
             exposure = Exposure.PortForward,
             environment = environment,

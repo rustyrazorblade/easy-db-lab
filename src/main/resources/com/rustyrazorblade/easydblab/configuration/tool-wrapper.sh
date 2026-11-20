@@ -11,13 +11,15 @@
 # reach the nodes over SSH itself, never the SOCKS tunnel, so their proxy variables and KUBECONFIG are
 # left as the caller had them, and they fail when the workspace has no sshConfig.
 #
-# Each call of the other tools reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI writes:
-#   - on a Tailscale cluster it runs the real tool with the environment unchanged;
-#   - when the file holds EDL_NETWORK_MODE=direct (the cluster API is reachable from this machine) it
-#     does the same, with no tunnel needed;
-#   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
-#   - with no tunnel recorded, or when the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails
-#     and says to run `easy-db-lab socks start`.
+# Each call of the other tools reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI
+# writes, and takes the cluster's network mode from EDL_NETWORK_MODE. A file from an earlier release
+# holds EDL_TAILSCALE_ACTIVE instead: true reads as tailscale, and anything else (or no file) as socks.
+#   - tailscale or direct: it runs the real tool with the environment unchanged, needs no tunnel and
+#     ignores a recorded one;
+#   - socks: it routes this one call through the recorded tunnel port; with no tunnel recorded, or when
+#     the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails and says to run
+#     `easy-db-lab socks start`;
+#   - any other value: it fails, names the value, and says to run `easy-db-lab socks start`.
 # kubectl, helm, cilium and k9s always use <workspace>/kubeconfig, in place of any inherited KUBECONFIG,
 # because a wrapper reaches only its own workspace's cluster. curl and skopeo leave KUBECONFIG alone.
 # The proxy variables are set for this call only, so tools that are not wrapped (aws included)
@@ -90,14 +92,27 @@ if [ -f "$env_file" ]; then
     . "$env_file"
 fi
 
-if [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
-    exec "$real" "$@"
+# The network mode: the recorded one, else the old Tailscale flag of an earlier release's file, else socks.
+if [ -n "${EDL_NETWORK_MODE+set}" ]; then
+    mode=$EDL_NETWORK_MODE
+elif [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
+    mode=tailscale
+else
+    mode=socks
 fi
 
-# Direct mode: the cluster API is reachable from this machine, so no tunnel is needed or used.
-if [ "${EDL_NETWORK_MODE:-}" = direct ]; then
-    exec "$real" "$@"
-fi
+case $mode in
+    tailscale | direct)
+        # No tunnel is needed or used: the cluster is reached as this machine reaches it.
+        exec "$real" "$@"
+        ;;
+    socks) ;;
+    *)
+        echo "easy-db-lab: unknown network mode '$mode' in $env_file, so $tool cannot reach the cluster." >&2
+        echo "easy-db-lab: run 'easy-db-lab socks start' in $workspace to record the mode again." >&2
+        exit 1
+        ;;
+esac
 
 # Fails with the pointer to socks start; $1 says why there is no tunnel to use, and $2, when set, where
 # to read more.

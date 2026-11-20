@@ -719,7 +719,7 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 
 `init --local` MUST record:
 
-- `tailscaleActive: false`;
+- `networkMode: direct`;
 - the local Docker capability set, with any capability overrides applied;
 - Flannel as the CNI;
 - the Docker daemon's architecture for every role, not the JVM's (they differ under Rosetta), so `init --local` needs a running Docker daemon;

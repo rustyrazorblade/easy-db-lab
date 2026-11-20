@@ -189,8 +189,8 @@ class DefaultCommandExecutor(
 
     /**
      * Starts the SOCKS5 proxy for commands that carry [RequiresProxy] (see [checkRequirements]),
-     * when the cluster is provisioned, infrastructure is UP, and Tailscale is not active, and records
-     * the cluster's Tailscale flag for the shell-side tool wrappers (see [ProxyPreflight]).
+     * when the cluster is provisioned, infrastructure is UP, and its network mode is `socks`, and
+     * records the cluster's network mode for the shell-side tool wrappers (see [ProxyPreflight]).
      *
      * A failure to establish the proxy propagates to the caller rather than being swallowed:
      * the annotation is the assertion that the command cannot proceed without a working tunnel,

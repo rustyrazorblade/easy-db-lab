@@ -261,3 +261,29 @@ agree. The script is run as `sudo EDL_INSTANCE_TYPE=<type> bash setup_instance.s
 node's instance type from `NodeSetupContext.instanceTypes` (the cluster state), so nothing on the
 node asks the cloud provider. The values and why are in `docs/user-guide/node-tuning.md`; the decisions are in
 `openspec/changes/issue-1199/design.md` until it is archived.
+
+## Pod Network Sysctls
+
+The per-namespace `net.*` keys of the tuning file also reach every non-hostNetwork pod
+(spec `openspec/specs/pod-network-tuning/`, decisions in `openspec/changes/archive/2026-11-19-issue-1202/design.md`):
+
+- `PodNetworkSysctls` reads the packaged `60-easydblab.conf` and returns the keys of
+  `Constants.NodeTuning.POD_NETWORK_SYSCTLS` with the file's values. It is the only source of the
+  numbers; `PodNetworkSysctlsTest` fails when a `net.*` key of the file is in neither
+  `POD_NETWORK_SYSCTLS` nor `NOT_INJECTED_NETWORK_SYSCTLS`, or in both.
+- `PodNetworkTuning` is the first of `UpPostSteps`: it applies `configuration/PodNetworkSysctlPolicyBuilder`
+  through `K8sManifestOperations`, then polls `PodSysctlProbe` (a `dryRun=All` pod,
+  `Fabric8PodSysctlProbe`) until the pod carries every value, up to
+  `POD_SYSCTL_POLICY_READY_SECONDS`; each probe runs on a virtual thread given only the time left,
+  so a probe that never answers ends the wait at the deadline (the last real answer is reported). A cut-off probe is interrupted, which makes fabric8 drop its request and close the client's connection, so it does not linger for the 60s request timeout (`PodSysctlProbeDeadlineIntegrationTest`). It emits `Platform.PodSysctlPolicyReady`, or
+  `PodSysctlPolicyNotApplied` / `PodSysctlPolicyNotInEffect` / `PodSysctlProbeFailed` (a probe
+  that threw, which the poll does not retry) and throws `CommandFailedException`; an interrupt,
+  during a probe or in the wait between probes, propagates and emits nothing; an `InterruptedException` thrown on the probe's own thread is a probe failure. One deadline bounds the poll (`pollUntilDeadline`) and each probe. `Fabric8PodSysctlProbe.resultOf`
+  calls a statusless client exception unreachable only when an `IOException` or a `TimeoutException` (not
+  a Jackson parse failure) caused it; any other is a defect and throws.
+- `bringup/pollUntil` cuts each wait to the time left, so it never sleeps past its deadline, and turns
+  resilience4j's `CancellationException` for an interrupted wait into an `InterruptedException`.
+- K3s only: `KubeletSysctlsDropIn` installs `25-kubelet-sysctls.yaml` (`kubelet-arg+:
+  allowed-unsafe-sysctls=...`) before the start script on the server (`DefaultK3sService.startServer`)
+  and every agent (`DefaultK3sAgentService.start`). `start-k3s-server.sh` writes
+  `30-admission-policy.yaml`, the API server feature gate and runtime-config the beta API needs.

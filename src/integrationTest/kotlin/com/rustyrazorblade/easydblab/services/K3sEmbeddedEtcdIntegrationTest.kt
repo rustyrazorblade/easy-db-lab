@@ -23,7 +23,6 @@ class K3sEmbeddedEtcdIntegrationTest {
     private companion object {
         const val DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
         const val DATA_DIR = "/var/lib/rancher/k3s"
-        const val SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
         const val READY_TIMEOUT_SECONDS = 180L
         const val POLL_MILLIS = 2_000L
         const val LOG_TAIL_CHARS = 4_000
@@ -43,16 +42,6 @@ class K3sEmbeddedEtcdIntegrationTest {
             .createNetworkCmdModifier { cmd ->
                 cmd.withIpam(Ipam().withConfig(Ipam.Config().withSubnet(SUBNET).withGateway(GATEWAY)))
             }.build()
-
-    /** The heredoc body the server script writes to the datastore drop-in. */
-    private fun datastoreDropIn(): String {
-        val script =
-            checkNotNull(this::class.java.getResourceAsStream(SCRIPT_RESOURCE)) { "$SCRIPT_RESOURCE is not packaged" }
-                .use { it.readBytes().decodeToString() }
-        val start = script.indexOf("cat > $DROP_IN_PATH <<'EOF'\n")
-        check(start >= 0) { "start-k3s-server.sh does not write $DROP_IN_PATH" }
-        return script.substring(start).substringAfter("<<'EOF'\n").substringBefore("\nEOF\n") + "\n"
-    }
 
     private fun K3sContainer.kubectl(vararg args: String): String {
         val result = execInContainer("kubectl", *args)
@@ -102,7 +91,7 @@ class K3sEmbeddedEtcdIntegrationTest {
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
                     cmd.withIpv4Address(CONTAINER_IP)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
-        container.withCopyToContainer(Transferable.of(datastoreDropIn()), DROP_IN_PATH)
+        container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
 
         network.use { _ ->
             container.use {

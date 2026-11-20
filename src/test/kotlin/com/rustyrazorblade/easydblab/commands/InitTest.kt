@@ -7,9 +7,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -45,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -400,7 +403,7 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `a plain init records EC2 plus K3s and leaves no network mode in the env file`() {
+        fun `a plain init records EC2 plus K3s and records no network mode before up`() {
             val envFile = ProxyEnvFile(context.workingDirectory)
 
             Init().apply { clean = true }.execute()
@@ -408,7 +411,9 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager).save(
                 argThat { environment == Environment.Ec2K3s && exposure == Exposure.Socks && initConfig?.cni == CniMode.Cilium },
             )
-            assertThat(envFile.file.readText()).doesNotContain(Constants.Proxy.ENV_NETWORK_MODE)
+            // No mode is recorded until `up` or the command preflight writes it with the wrappers.
+            assertThat(envFile.file).doesNotExist()
+            assertThat(envFile.read().networkMode).isNull()
         }
 
         @Test
@@ -441,6 +446,25 @@ class InitTest : BaseKoinTest() {
             command.execute()
 
             assertThat(scheduled.filterIsInstance<Up>().single().quiet).isEqualTo(quiet)
+        }
+
+        @ParameterizedTest(name = "credentials {0}, --no-tailscale {1} -> {2}")
+        @CsvSource("true, false, Tailscale", "true, true, Socks", "false, false, Socks")
+        fun `init records tailscale only when the profile has Tailscale credentials and --no-tailscale is not given`(
+            credentials: Boolean,
+            noTailscale: Boolean,
+            expected: NetworkMode,
+        ) {
+            getKoin().get<User>().apply {
+                tailscaleClientId = if (credentials) "ts-client-id" else ""
+                tailscaleClientSecret = if (credentials) "ts-client-secret" else ""
+            }
+            val command = Init()
+            command.clean = true
+            command.noTailscale = noTailscale
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { networkMode == expected })
         }
 
         @Test

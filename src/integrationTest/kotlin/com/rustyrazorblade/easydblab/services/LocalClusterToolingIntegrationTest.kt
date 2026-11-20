@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.events.Event
@@ -59,7 +60,7 @@ import java.net.InetAddress
  *
  * The test starts its own K3s container and does not share [SharedK3s]'s, because the kit applies
  * cluster-scoped kinds (a namespace, a CRD). Its workspace is a `@TempDir` that holds the container's kubeconfig and the
- * `direct` key in `.socks5-proxy.env` (`ProxyEnvFile.recordDirect`), so the workspace wrappers reach
+ * `EDL_NETWORK_MODE=direct` in `.socks5-proxy.env` (`ProxyEnvFile.recordNetworkMode`), so the workspace wrappers reach
  * the cluster without a tunnel. Everything the fixtures need is local: the helm repository is an okhttp
  * `MockWebServer` serving an `index.yaml` and a chart archive that the test builds with `helm package`
  * and `helm repo index` from the fixture chart under `src/integrationTest/resources`. The test needs
@@ -146,7 +147,7 @@ class LocalClusterToolingIntegrationTest {
     fun setup() {
         assertSocksPropertiesUnset()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText(k3s.kubeConfigYaml)
-        ProxyEnvFile(workspace).recordDirect(true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
         tooling =
             LocalClusterTooling(
                 workspace,

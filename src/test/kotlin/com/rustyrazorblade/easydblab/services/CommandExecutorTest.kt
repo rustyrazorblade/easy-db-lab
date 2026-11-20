@@ -40,6 +40,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -56,11 +57,15 @@ import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import org.assertj.core.api.Assertions.assertThat
@@ -163,7 +168,13 @@ class CommandExecutorTest : BaseKoinTest() {
                 ),
             resourceManager = mockResourceManager,
             eventBus = eventBus,
-            proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
+            proxyPreflight =
+                ProxyPreflight(
+                    mockClusterStateManager,
+                    mockSocksProxyService,
+                    WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                    context.workingDirectory,
+                ),
             proxyAvailability = proxyAvailability,
             profileSetupProvider = profileSetupProvider,
         )
@@ -739,7 +750,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -756,12 +767,12 @@ class CommandExecutorTest : BaseKoinTest() {
     fun `a command without RequiresProxy restores a lost direct key before it runs and starts no tunnel`() {
         recordEnvironment(Environment.K3sDocker("/data"))
         val envFile = ProxyEnvFile(context.workingDirectory)
-        var directWhenRun: Boolean? = null
+        var modeWhenRun: NetworkMode? = null
 
-        val exitCode = commandExecutor.executeTopLevel(TestCommand { directWhenRun = envFile.read().direct })
+        val exitCode = commandExecutor.executeTopLevel(TestCommand { modeWhenRun = envFile.read().networkMode })
 
         assertThat(exitCode).isZero()
-        assertThat(directWhenRun).isTrue()
+        assertThat(modeWhenRun).isEqualTo(NetworkMode.Direct)
         verifyNoInteractions(mockSocksProxyService)
     }
 
@@ -779,7 +790,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -799,7 +810,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = true,
+                networkMode = NetworkMode.Tailscale,
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(state)
@@ -810,7 +821,7 @@ class CommandExecutorTest : BaseKoinTest() {
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
         // The shell-side tool wrappers learn from the env file that this cluster needs no tunnel.
-        assertThat(ProxyEnvFile(context.workingDirectory).read().tailscaleActive).isTrue()
+        assertThat(ProxyEnvFile(context.workingDirectory).read().networkMode).isEqualTo(NetworkMode.Tailscale)
     }
 
     @Test
@@ -839,7 +850,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -875,7 +886,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -908,7 +919,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)
@@ -942,7 +953,7 @@ class CommandExecutorTest : BaseKoinTest() {
             ClusterState(
                 name = "test",
                 infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
+                networkMode = NetworkMode.Socks,
                 hosts = mapOf(ServerType.Control to listOf(controlHost)),
             )
         whenever(mockClusterStateManager.exists()).thenReturn(true)

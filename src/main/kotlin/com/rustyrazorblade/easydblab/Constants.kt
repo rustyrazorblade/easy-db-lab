@@ -697,6 +697,62 @@ object Constants {
         /** The variable node setup passes `setup_instance.sh` the node's instance type in. */
         const val INSTANCE_TYPE_VARIABLE = "EDL_INSTANCE_TYPE"
 
+        /**
+         * The network keys of [SYSCTL_FILE] that are per network namespace and that every pod in
+         * the pod network gets (pod-network-tuning). Their values are read from [SYSCTL_FILE] by
+         * `PodNetworkSysctls`, never repeated here. Every `net.*` key of the file is in exactly one
+         * of this list and [NOT_INJECTED_NETWORK_SYSCTLS]; PodNetworkSysctlsTest checks it.
+         */
+        val POD_NETWORK_SYSCTLS =
+            listOf(
+                "net.core.somaxconn",
+                "net.ipv4.tcp_max_syn_backlog",
+                "net.ipv4.tcp_rmem",
+                "net.ipv4.tcp_wmem",
+                "net.ipv4.tcp_keepalive_time",
+                "net.ipv4.tcp_keepalive_intvl",
+                "net.ipv4.tcp_keepalive_probes",
+                "net.ipv4.tcp_slow_start_after_idle",
+                "net.ipv4.tcp_tw_reuse",
+            )
+
+        /**
+         * The network keys of [SYSCTL_FILE] pods do not get. The `net.core` ones are host-wide, so
+         * they reach pods already and have no entry in a pod's `/proc/sys/net`. Pods keep the
+         * kernel's port range and reserved list: the host's reserved list names host ports, not a
+         * pod's own listeners (owner decision R1 of #1202).
+         */
+        val NOT_INJECTED_NETWORK_SYSCTLS =
+            listOf(
+                "net.core.netdev_max_backlog",
+                "net.core.rmem_max",
+                "net.core.wmem_max",
+                "net.core.rps_sock_flow_entries",
+                "net.ipv4.ip_local_port_range",
+                "net.ipv4.ip_local_reserved_ports",
+            )
+
+        /** The name of the cluster-wide admission policy that adds [POD_NETWORK_SYSCTLS] to every pod-network pod, and of its binding. */
+        const val POD_SYSCTL_POLICY_NAME = "easydblab-pod-network-sysctls"
+
+        /** How long `up` waits for the API server to put the policy in effect. */
+        const val POD_SYSCTL_POLICY_READY_SECONDS = 30L
+
+        /** How often `up` checks whether the policy is in effect. */
+        const val POD_SYSCTL_POLICY_POLL_SECONDS = 2L
+
+        /** The namespace of the dry-run pod `up` checks the policy with; it is never created, so any namespace that exists does. */
+        const val POD_SYSCTL_PROBE_NAMESPACE = "default"
+
+        /** The dry-run pod's generateName prefix; a generated name never collides with a pod that exists. */
+        const val POD_SYSCTL_PROBE_NAME_PREFIX = "easydblab-pod-sysctl-probe-"
+
+        /** The dry-run pod's image; a dry run never pulls it. */
+        const val POD_SYSCTL_PROBE_IMAGE = "busybox:1.37.0-musl"
+
+        /** The K3s config drop-in that lets every kubelet admit [POD_NETWORK_SYSCTLS]. */
+        const val KUBELET_SYSCTLS_DROP_IN = "/etc/rancher/k3s/config.yaml.d/25-kubelet-sysctls.yaml"
+
         // Host listeners no manifest builder names, read from `ss -tlnp` and `ss -ulnp` on a
         // running cluster's nodes. Each one is in the packaged ip_local_reserved_ports.
 
@@ -1939,9 +1995,9 @@ object Constants {
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
-         * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT], [ENV_SOCKS_PID] and [ENV_NETWORK_MODE], one `KEY=value` line each, so no
-         * shell code ever parses JSON.
+         * tool wrappers in `bin/`, the tunnel script and `env.sh`. The CLI writes only [ENV_NETWORK_MODE],
+         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses
+         * JSON. A file from an earlier release holds [ENV_TAILSCALE_ACTIVE] in place of the mode.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -1951,7 +2007,12 @@ object Constants {
          */
         const val ENV_LOCK_FILE = ".socks5-proxy.env.lock"
 
-        /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
+        /**
+         * The env file key an earlier release wrote to say whether the cluster reaches its nodes over
+         * Tailscale (`true`/`false`). It is read only from such a file, never written: `true` reads as
+         * the `tailscale` network mode and `false` as `socks`, until the next mode write replaces it
+         * with [ENV_NETWORK_MODE].
+         */
         const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
 
         /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
@@ -1964,15 +2025,20 @@ object Constants {
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
 
         /**
-         * The env file key that says the cluster API is reachable from this machine with no tunnel.
-         * It is present, with the value [ENV_NETWORK_MODE_DIRECT], only while direct mode is active, and
-         * the tool wrappers then run the real tool with no proxy variables. It is separate from
-         * [ENV_TAILSCALE_ACTIVE], which means Tailscale and nothing else.
+         * The env file key that holds the cluster's network mode, `socks`, `tailscale` or `direct`,
+         * copied from `networkMode` in `state.json` (the wire ids of `configuration.NetworkMode`). The
+         * tool wrappers route through the tunnel only in `socks` mode, and refuse a value they do not know.
          */
         const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
 
-        /** The value of [ENV_NETWORK_MODE] that selects direct mode. */
-        const val ENV_NETWORK_MODE_DIRECT = "direct"
+        /**
+         * The wire id of the direct network mode, for the one place that cannot name
+         * `configuration.NetworkMode`: the `Proxy.TunnelNotNeeded` event text.
+         */
+        const val NETWORK_MODE_DIRECT = "direct"
+
+        /** The wire id of the Tailscale network mode, for the same reason as [NETWORK_MODE_DIRECT]. */
+        const val NETWORK_MODE_TAILSCALE = "tailscale"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

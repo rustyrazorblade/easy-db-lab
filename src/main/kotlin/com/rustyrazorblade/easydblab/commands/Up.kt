@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -30,6 +31,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.effectiveNetworkMode
 import com.rustyrazorblade.easydblab.proxy.reachedBySocksTunnel
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
@@ -42,6 +44,7 @@ import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -122,6 +125,7 @@ class Up(
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val kitStorageResolver: KitStorageResolver by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
+    private val podNetworkTuning: PodNetworkTuning by inject()
     private val nodeSetupService: NodeSetupService by inject()
     private val hostOperationsService: HostOperationsService by inject()
     private val socksProxyService: SocksProxyService by inject()
@@ -258,17 +262,18 @@ class Up(
         )
 
     /**
-     * The operator's route into the cluster: the SOCKS tunnel when the cluster is reached through it
-     * (a [com.rustyrazorblade.easydblab.configuration.Exposure.Socks] cluster without Tailscale), and
-     * Tailscale and its route check on a Tailscale cluster. A Direct or PortForward cluster never gets
-     * a tunnel. Under `--no-setup` a Tailscale cluster gets neither, as the VPN is started with node
-     * setup.
+     * The operator's route into the cluster, by the cluster's network mode: the SOCKS tunnel when the
+     * cluster is reached through it (a [com.rustyrazorblade.easydblab.configuration.Exposure.Socks]
+     * cluster in `socks` mode); Tailscale and its route check in `tailscale` mode; nothing in `direct`
+     * mode, where this machine reaches the cluster as it is. A Direct or PortForward cluster never gets
+     * a tunnel. Under `--no-setup` a Tailscale cluster gets no route either, as the VPN is started with
+     * node setup.
      */
     private fun operatorRoute(launched: CompletableFuture<Unit>): UpOperatorRoute {
         val connect: (ClusterHost) -> Unit =
             when {
                 workingState.reachedBySocksTunnel() -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
-                !workingState.isTailscaleEnabled() || noSetup -> { _ -> }
+                workingState.effectiveNetworkMode() != NetworkMode.Tailscale || noSetup -> { _ -> }
                 else ->
                     TailnetRoute(
                         userConfig,
@@ -310,7 +315,7 @@ class Up(
             }
         if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
         val initConfig = writer.read { it.initConfig }
-        UpPostSteps(kitStorageResolver, observabilityStackService, ciliumInstallAnnotator, eventBus)
+        UpPostSteps(podNetworkTuning, kitStorageResolver, observabilityStackService, ciliumInstallAnnotator, eventBus)
             .run(localTelemetry = initConfig?.telemetryRedirect == null, kitStorageClass = initConfig?.kitStorageClass)
         if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
     }

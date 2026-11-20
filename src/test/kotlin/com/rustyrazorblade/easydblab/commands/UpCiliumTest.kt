@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -80,7 +81,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up skips the Tailscale masquerade chain on a Cilium cluster without Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium).copy(tailscaleActive = false))
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium).copy(networkMode = NetworkMode.Socks))
 
         newUp().execute()
 

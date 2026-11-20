@@ -201,8 +201,11 @@ If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for ev
   `K8sClientProvider`) or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory`), and
   therefore needs the SOCKS5 tunnel. `DefaultCommandExecutor.checkRequirements()` starts the
   tunnel before the command runs, when the cluster is provisioned, infrastructure is UP, and it
-  is reached through the tunnel (`proxy/reachedBySocksTunnel`: `exposure` Socks and
-  Tailscale not active, and the environment's network mode is `Tunnel`; a Direct or PortForward cluster, or one in the direct network mode such as K3s in Docker, never gets one, and the preflight records the network mode in the env file either way); a failure to establish it propagates and aborts the command. See
+  is reached through the tunnel (`proxy/reachedBySocksTunnel`: `exposure` Socks and a network
+  mode that needs a tunnel, `socks`; the mode is `proxy/effectiveNetworkMode`, the recorded one on
+  EC2 and `direct` in every other environment such as K3s in Docker). A Direct or PortForward
+  cluster, or one in the `tailscale` or `direct` mode, never gets one, and the preflight records
+  the network mode in the env file either way; a failure to establish it propagates and aborts the command. See
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.
 

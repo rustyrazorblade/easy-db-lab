@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -13,7 +14,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * The generated `env.sh`, sourced for real in bash from a workspace written the way `up` writes it.
- * zsh is checked by hand; CI runs bash.
+ * The network-mode cases also run in zsh where it is installed; CI's runners have none.
  */
 internal class EnvShSourcingTest {
     @TempDir
@@ -155,7 +156,7 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `with-proxy with no port recorded fails and names socks start`() {
-        ProxyEnvFile(workspace).recordTailscale(active = false)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
 
         val result = bash("source ./env.sh >/dev/null; with-proxy echo ran")
 
@@ -166,7 +167,7 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `with-proxy on a Tailscale cluster runs the command with no proxy variables added`() {
-        ProxyEnvFile(workspace).recordTailscale(active = true)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Tailscale)
 
         val result = bash("source ./env.sh >/dev/null; with-proxy sh -c 'echo \"ALL_PROXY=${'$'}{ALL_PROXY-unset}\"'")
 
@@ -177,7 +178,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `with-proxy routes through the recorded port`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, ProcessHandle.current().pid())
         }
 
@@ -196,7 +197,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `socks5-status reports the recorded port`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, ProcessHandle.current().pid())
         }
 
@@ -209,7 +210,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `with-proxy fails with the socks start message when the recorded tunnel script has exited`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, exitedPid())
         }
 
@@ -223,7 +224,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `socks5-status says no tunnel runs when the recorded tunnel script has exited`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, exitedPid())
         }
 
@@ -235,8 +236,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `with-proxy in direct mode runs the command with inherited proxy variables untouched`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
-            recordDirect(active = true)
+            recordNetworkMode(NetworkMode.Direct)
         }
 
         val result = bash("export http_proxy=http://corp:3128; source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
@@ -248,9 +248,8 @@ internal class EnvShSourcingTest {
     @Test
     fun `with-proxy in direct mode ignores a recorded tunnel`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
             recordTunnel(41234, ProcessHandle.current().pid())
-            recordDirect(active = true)
+            recordNetworkMode(NetworkMode.Direct)
         }
 
         val result = bash("source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
@@ -261,7 +260,7 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `with-proxy ignores an inherited EDL_NETWORK_MODE`() {
-        ProxyEnvFile(workspace).recordTailscale(active = false)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
 
         val result = bash("export EDL_NETWORK_MODE=direct; source ./env.sh >/dev/null; with-proxy echo ran")
 
@@ -273,8 +272,7 @@ internal class EnvShSourcingTest {
     @Test
     fun `socks5-status in direct mode reports that no tunnel is needed`() {
         ProxyEnvFile(workspace).apply {
-            recordTailscale(active = false)
-            recordDirect(active = true)
+            recordNetworkMode(NetworkMode.Direct)
         }
 
         val result = bash("source ./env.sh >/dev/null; socks5-status")
@@ -285,11 +283,77 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `socks5-status ignores an inherited EDL_NETWORK_MODE`() {
-        ProxyEnvFile(workspace).recordTailscale(active = false)
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
 
         val result = bash("export EDL_NETWORK_MODE=direct; source ./env.sh >/dev/null; socks5-status")
 
         assertThat(result.stdout).contains("No running SOCKS5 tunnel").doesNotContain("direct network mode")
+    }
+
+    @Test
+    fun `with-proxy on an earlier release's file with EDL_TAILSCALE_ACTIVE=true runs the command directly`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=true\n")
+
+        val result = bash("source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset")
+    }
+
+    @Test
+    fun `socks5-status on an earlier release's file with EDL_TAILSCALE_ACTIVE=true reports Tailscale`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=true\n")
+
+        val result = bash("source ./env.sh >/dev/null; socks5-status")
+
+        assertThat(result.exitCode).isZero()
+        assertThat(result.stdout).contains("uses Tailscale")
+    }
+
+    @Test
+    fun `with-proxy on an earlier release's file with EDL_TAILSCALE_ACTIVE=false asks for the tunnel`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=false\n")
+
+        val result = bash("source ./env.sh >/dev/null; with-proxy echo ran")
+
+        assertThat(result.exitCode).isNotZero()
+        assertThat(result.stdout).doesNotContain("ran")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `with-proxy and socks5-status fail on an unknown network mode and name it`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_NETWORK_MODE=vpn\n")
+
+        val withProxy = bash("source ./env.sh >/dev/null; with-proxy echo ran")
+        val status = bash("source ./env.sh >/dev/null; socks5-status")
+
+        assertThat(withProxy.exitCode).isNotZero()
+        assertThat(withProxy.stdout).doesNotContain("ran")
+        assertThat(withProxy.stderr).contains("unknown network mode 'vpn'").contains("so echo cannot reach")
+        assertThat(status.exitCode).isNotZero()
+        assertThat(status.stderr).contains("unknown network mode 'vpn'").contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `with-proxy in direct mode under zsh runs the command with no proxy variables added`() {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Direct)
+
+        val result = zsh("source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset")
+    }
+
+    @Test
+    fun `with-proxy on an unknown network mode under zsh fails and names it`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_NETWORK_MODE=vpn\n")
+
+        val result = zsh("source ./env.sh >/dev/null; with-proxy echo ran")
+
+        assertThat(result.exitCode).isNotZero()
+        assertThat(result.stdout).doesNotContain("ran")
+        assertThat(result.stderr).contains("unknown network mode 'vpn'")
     }
 
     /** The PID of a process that has already exited. */
@@ -299,8 +363,20 @@ internal class EnvShSourcingTest {
             process.pid()
         }
 
-    private fun bash(script: String): Result {
-        val process = ProcessBuilder("/bin/bash", "-c", script).directory(workspace).start()
+    private fun bash(script: String): Result = shell("/bin/bash", script)
+
+    /** Runs [script] in zsh; a machine with no zsh skips the test, as CI's runners have none. */
+    private fun zsh(script: String): Result {
+        val zsh = ZSH_PATHS.firstOrNull { File(it).canExecute() }
+        assumeTrue(zsh != null, "zsh is not installed")
+        return shell(checkNotNull(zsh), script)
+    }
+
+    private fun shell(
+        shell: String,
+        script: String,
+    ): Result {
+        val process = ProcessBuilder(shell, "-c", script).directory(workspace).start()
         process.outputStream.close()
         val stdout = process.inputStream.bufferedReader().readText()
         val stderr = process.errorStream.bufferedReader().readText()
@@ -316,6 +392,8 @@ internal class EnvShSourcingTest {
 
     private companion object {
         const val LIMIT_SECONDS = 30L
+
+        val ZSH_PATHS = listOf("/bin/zsh", "/usr/bin/zsh")
 
         /** A `sh -c` body that prints the proxy variables the command sees, `unset` for a missing one. */
         const val PRINT_PROXY_VARIABLES =

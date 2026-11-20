@@ -57,7 +57,7 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
     private val containers = mutableListOf<GenericContainer<*>>()
     private val collectorIds = mutableListOf<String>()
     private val docker = DockerClientFactory.instance().client()
-    private val state = ClusterState(name = "journald-retry", initConfig = InitConfig(tenant = "acme"))
+    private val state = ClusterState(name = "journald-retry", s3Bucket = "easy-db-lab-journald-retry", initConfig = InitConfig(tenant = "acme"))
 
     override fun additionalTestModules(): List<Module> =
         listOf(

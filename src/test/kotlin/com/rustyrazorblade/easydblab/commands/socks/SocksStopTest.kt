@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.socks
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -84,7 +85,7 @@ class SocksStopTest : BaseKoinTest() {
 
         assertThat(tunnel.handle.isAlive).isFalse()
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         assertThat(events).containsExactly(Event.Proxy.TunnelStopped(PID.toInt()))
     }
@@ -110,7 +111,7 @@ class SocksStopTest : BaseKoinTest() {
         SocksStop().call()
 
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 
@@ -120,7 +121,7 @@ class SocksStopTest : BaseKoinTest() {
 
         SocksStop().call()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 
@@ -128,7 +129,7 @@ class SocksStopTest : BaseKoinTest() {
 
     private fun recordedEnv() =
         ProxyEnvFile(context.workingDirectory).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(PORT, ProcessHandle.current().pid())
         }
 

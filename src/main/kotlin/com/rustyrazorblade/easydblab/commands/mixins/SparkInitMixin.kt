@@ -26,13 +26,13 @@ class SparkInitMixin {
         names = ["--spark.master.instance.type"],
         description = ["Master Instance Type"],
     )
-    var masterInstanceType: String = "m5.xlarge"
+    var masterInstanceType: String = Constants.InstanceTypes.SPARK
 
     @Option(
         names = ["--spark.worker.instance.type"],
         description = ["Worker Instance Type"],
     )
-    var workerInstanceType: String = "m5.xlarge"
+    var workerInstanceType: String = Constants.InstanceTypes.SPARK
 
     @Option(
         names = ["--spark.worker.instance.count"],

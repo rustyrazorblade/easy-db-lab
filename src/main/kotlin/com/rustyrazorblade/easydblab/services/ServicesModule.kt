@@ -112,6 +112,7 @@ val servicesModule =
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         single { K8sClientProvider(get(), get()) }
+        factory { PodNetworkTuning(get(), Fabric8PodSysctlProbe(get()), get()) }
         factoryOf(::DefaultK8sService).binds(
             arrayOf(
                 K8sService::class,

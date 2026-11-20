@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -113,12 +114,14 @@ internal class BackupRestoreServiceTest {
             )
             whenever(mockClusterBackupService.restoreAll(any(), any()))
                 .thenReturn(Result.success(RestoreResult(successfulTargets = setOf(BackupTarget.STATE_JSON), filesRestored = 1)))
-            whenever(mockClusterStateManager.load()).thenReturn(createClusterState(s3Bucket = "test-bucket").copy(tailscaleActive = true))
+            whenever(
+                mockClusterStateManager.load(),
+            ).thenReturn(createClusterState(s3Bucket = "test-bucket").copy(networkMode = NetworkMode.Tailscale))
 
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
 
             assertThat(result.isSuccess).isTrue()
-            assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
+            assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = null))
             assertThat(File(tempDir, Constants.ToolWrappers.DIRECTORY).list())
                 .containsExactlyInAnyOrderElementsOf(
                     Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +

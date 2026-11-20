@@ -171,12 +171,20 @@ To start it for everything else (your shell, a browser), run:
 easy-db-lab socks start
 ```
 
-`socks start` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
-no tunnel is needed.
+`socks start` prints the tunnel's local port. In `tailscale` or `direct` mode it starts nothing and
+says that no tunnel is needed.
 
 Each new tunnel listens on a random free local port, from 20000 to 29999; no port is preferred. The range is below the ports the OS gives outgoing connections (32768 and up on Linux, 49152 and up on macOS), so no outgoing connection can take the tunnel's port while `ssh` waits to restart. If 20 random ports in the range are all in use, the CLI fails with a message that names the range. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
 
-The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it. Each write holds a lock on `.socks5-proxy.env.lock`, so two easy-db-lab commands in the same workspace never lose each other's values.
+The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_NETWORK_MODE`, the cluster's network mode. The CLI is the only writer of this file; the wrappers and `env.sh` read it.
+
+The network mode is one of:
+
+- `socks`: the cluster is reached through the SOCKS5 tunnel. Every cluster without Tailscale uses it.
+- `tailscale`: the cluster is reached over the tailnet, with no tunnel. `init` picks it when your profile has Tailscale credentials and you did not pass `--no-tailscale`.
+- `direct`: this machine reaches the cluster's private network with no tunnel and no Tailscale. No command sets it yet; it is there for clusters that run where you already have a route to them.
+
+The mode is recorded as `networkMode` in `state.json` and copied to `.socks5-proxy.env` whenever the CLI writes the wrappers. A workspace made by an earlier release holds `tailscaleActive` in `state.json` and `EDL_TAILSCALE_ACTIVE` in `.socks5-proxy.env` instead. Both are read as before, and the next `up`, `socks start` or cluster command converts them, after it rewrites the wrappers in `bin/` and `env.sh`. If you sourced the old `env.sh` in an open shell, source it again after that, so `with-proxy` and `socks5-status` read the new key. Each write holds a lock on `.socks5-proxy.env.lock`, so two easy-db-lab commands in the same workspace never lose each other's values.
 
 A wrapper checks only that some process still holds the recorded PID, because a shell script cannot read another process's arguments portably. The CLI checks more: it reuses a recorded tunnel only when the process with that PID is the workspace's tunnel script, with the recorded port and `sshConfig`. When another program now holds the PID, the next CLI command that needs the tunnel starts a new one.
 
@@ -202,9 +210,10 @@ The `ssh`, `scp` and `sftp` wrappers add `-F <workspace>/sshConfig` before your 
 
 Each call of the other wrapped tools reads the workspace's `.socks5-proxy.env`, which the CLI writes, and then:
 
-- on a SOCKS cluster, routes that one call through the tunnel;
-- on a Tailscale cluster, runs the tool unchanged, so it connects directly;
-- with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab socks start`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
+- in `socks` mode, routes that one call through the tunnel;
+- in `tailscale` or `direct` mode, runs the tool unchanged, so it connects directly, and ignores any recorded tunnel;
+- with a mode it does not know, fails with exit code 1, names the mode, and says to run `easy-db-lab socks start`;
+- in `socks` mode with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab socks start`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
 
 The `kubectl`, `helm`, `cilium` and `k9s` wrappers always use the workspace `kubeconfig`. They replace any `KUBECONFIG` you exported, because a workspace's wrapper reaches only that workspace's cluster. A bare `<workspace>/bin/kubectl get ns` works with no setup: you do not need to source `env.sh` or set `KUBECONFIG`. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers do not change `KUBECONFIG`.
 
@@ -222,8 +231,8 @@ removes the old `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `sc
 
 ### Manual Proxy Usage
 
-For other commands, use the `with-proxy` helper from `env.sh`. On a Tailscale cluster it runs the
-command directly:
+For other commands, use the `with-proxy` helper from `env.sh`. In `tailscale` or `direct` mode it
+runs the command directly:
 
 ```bash
 with-proxy wget http://10.0.1.50:8080/api

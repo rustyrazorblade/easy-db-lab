@@ -137,14 +137,15 @@ class UpVpcCidrTest : UpTestFixture() {
 
     @Test
     fun `a VPC supplied with --vpc keeps its tags, while the cluster's own VPC gets the bucket tag backfilled`() {
-        val bucket = "acct-bucket"
+        // `up` records and tags the bucket `ensureAccountBucket` returns, whatever the state held before.
+        val accountBucket = "easy-db-lab-test-bucket"
         listOf(true to false, false to true).forEach { (supplied, expectBackfill) ->
             resetMocksForRun()
             val state =
                 happyState(cidr = "10.42.0.0/16").apply {
                     vpcId = "vpc-existing"
                     vpcSupplied = supplied
-                    s3Bucket = bucket
+                    s3Bucket = "a-stale-bucket"
                 }
             clusterStateManager.replace(state)
             whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("a-vpc")
@@ -152,9 +153,9 @@ class UpVpcCidrTest : UpTestFixture() {
 
             newUp(seed = 7).execute()
 
+            assertThat(clusterStateManager.load().s3Bucket).isEqualTo(accountBucket)
             if (expectBackfill) {
-                val savedBucket = clusterStateManager.load().s3Bucket.orEmpty()
-                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to savedBucket))
+                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to accountBucket))
             } else {
                 verify(mockVpcService, never()).addTags(any(), any())
             }

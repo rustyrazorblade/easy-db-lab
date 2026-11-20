@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Lets a maintainer run this workflow by hand on a chosen ref, with that ref's copy of this file.
+  # Each job's `if:` decides whether it runs on a dispatch; on main, none does.
+  workflow_dispatch:
   workflow_run:
     workflows: ["PR Checks"]
     types:

@@ -237,8 +237,11 @@ class Down : PicoBaseCommand() {
         // The tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
         // it down. A tunnel failure touched nothing and fails every signal the save would have saved.
         // Either failure stops `down` with the standard "no infrastructure removed / --force"
-        // guidance rather than a raw stack trace.
-        runCatching { socksProxyService.ensureRunning(controlHost) }.onFailure { failure ->
+        // guidance rather than a raw stack trace. A network mode that needs no tunnel reaches the
+        // control node directly, so no tunnel is started.
+        runCatching {
+            if (state.networkMode.needsTunnel) socksProxyService.ensureRunning(controlHost)
+        }.onFailure { failure ->
             log.error(failure) { "The SOCKS tunnel to the control node failed before the pre-teardown save" }
             eventBus.emit(unsavedAbort(state, TUNNEL_STEP, failure))
             return false

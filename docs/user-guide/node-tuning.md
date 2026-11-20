@@ -97,7 +97,38 @@ The settings deliberately leave a few keys alone:
 - kube-proxy sizes connection tracking (`nf_conntrack_*`).
 - The kubelet sets `vm.overcommit_memory` and the `kernel.panic*` keys.
 
-Most `net.*` values are per network namespace. They apply to Cassandra, the stress server and every host-network pod, which is the whole observability stack. They do not reach a kit database in the pod network, which starts at kernel defaults. Tuning pod network namespaces is follow-up [#1202](https://github.com/rustyrazorblade/easy-db-lab/issues/1202). The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering below do reach pods, because pod traffic arrives on the node's physical interfaces.
+Most `net.*` values are per network namespace. They apply to Cassandra, the stress server and every host-network pod, which is the whole observability stack, because those share the host's namespace.
+
+Every pod in the pod network, which is every kit database and operator, gets the per-namespace values too. `up` applies one cluster-wide admission policy, `easydblab-pod-network-sysctls`, before the observability stack and before any kit. The K3s system pods that start with the cluster (CoreDNS, metrics-server, the local-path provisioner, Hubble) come up before it and keep the kernel defaults. The policy adds these keys to each new pod's `securityContext.sysctls`, with the values from `60-easydblab.conf`:
+
+- `net.core.somaxconn`
+- `net.ipv4.tcp_max_syn_backlog`
+- `net.ipv4.tcp_rmem` and `net.ipv4.tcp_wmem`
+- `net.ipv4.tcp_keepalive_time`, `tcp_keepalive_intvl` and `tcp_keepalive_probes`
+- `net.ipv4.tcp_slow_start_after_idle`
+- `net.ipv4.tcp_tw_reuse`
+
+A pod that sets one of these keys itself keeps its own value. A host-network pod is left alone. Pods keep the kernel defaults for `ip_local_port_range` (`32768 60999`) and `ip_local_reserved_ports` (none). The host's reserved list names host ports, not a pod's own listeners, so the host's wide range would let a database's outbound connection take its own listener port; the default range sits above every kit's listener port. `up` fails, naming the missing keys, when a new pod does not get every value within 30 seconds.
+
+To read the values in a running pod:
+
+```bash
+kubectl exec <pod> -- cat /proc/sys/net/core/somaxconn /proc/sys/net/ipv4/tcp_keepalive_time
+kubectl get pod <pod> -o jsonpath='{.spec.securityContext.sysctls}'
+```
+
+```admonish warning title="When new pods are refused, check the sysctl policy first"
+The policy uses `failurePolicy: Fail`: when the API server cannot apply it, a new pod in the pod network is refused, never created untuned. If pods stop being created (a Deployment or StatefulSet stuck with no new pods, an operator that reports a create error, or `kubectl run` failing with a message that names `easydblab-pod-network-sysctls`), look at the policy before anything else:
+
+    kubectl get mutatingadmissionpolicy easydblab-pod-network-sysctls -o yaml
+    kubectl get mutatingadmissionpolicybinding easydblab-pod-network-sysctls -o yaml
+    kubectl get events -A --field-selector reason=FailedCreate
+    kubectl run sysctl-check --image=busybox --restart=Never --dry-run=server -o jsonpath='{.spec.securityContext.sysctls}'
+
+The dry-run pod is what `up` itself checks: it should print every key listed above. A pod that is created but does not start with `SysctlForbidden` means the node's kubelet does not permit the keys; check `/etc/rancher/k3s/config.yaml.d/25-kubelet-sysctls.yaml` on that node.
+```
+
+The global keys (`netdev_max_backlog`, `rmem_max`, `wmem_max`, `rps_sock_flow_entries`) and the packet steering below do reach pods, because pod traffic arrives on the node's physical interfaces.
 
 ## Packet steering and interrupts
 
@@ -118,11 +149,11 @@ Where the instance exposes them:
 
 C1 is the idle state named `C1` (or `C1_ACPI`, or `C1-` followed by a CPU model, such as `C1-SKX`). Where no state has that name, C1 is the first state that is not `POLL`: `HALT` on older x86 kernels, and `WFI` on arm64. So on Graviton `.metal` `cpu-sleep` is disabled and `WFI` stays on.
 
-Most EC2 instance types expose neither, including the defaults (`i4i.xlarge`, `c6id.2xlarge`, `m5d.xlarge`) and every Graviton type except `.metal`. Only some whole-socket and `.metal` sizes have processor state control; Graviton `.metal` exposes idle states but no frequency scaling. On a node without them, the tuning service logs one line per skipped setting, naming the node and the instance type (from the cluster state), and carries on:
+Most EC2 instance types expose neither, including the defaults (`i7i.xlarge`, `c8id.2xlarge`, `m8id.xlarge`) and every Graviton type except `.metal`. Only some whole-socket and `.metal` sizes have processor state control; Graviton `.metal` exposes idle states but no frequency scaling. On a node without them, the tuning service logs one line per skipped setting, naming the node and the instance type (from the cluster state), and carries on:
 
 ```
-edl-node-tuning: skipped CPU governor on db0: i4i.xlarge exposes no frequency scaling
-edl-node-tuning: skipped CPU idle states on db0: i4i.xlarge exposes no idle states
+edl-node-tuning: skipped CPU governor on db0: i7i.xlarge exposes no frequency scaling
+edl-node-tuning: skipped CPU idle states on db0: i7i.xlarge exposes no idle states
 ```
 
 These lines come from `edl-node-tuning.service`, so they are in the node's journal. Setup prints the service's lines from its own run after it starts the service, prefixed with `edl-node-tuning.service:`. Later boots log them only to the journal. The node's log collector does not ship journal lines from before it started, so lines from setup and early boot are only on the node itself. Read them with `journalctl -u edl-node-tuning -b --no-pager -o cat`.

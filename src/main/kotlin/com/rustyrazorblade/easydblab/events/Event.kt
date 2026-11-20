@@ -6230,6 +6230,62 @@ sealed interface Event {
         ) : Platform {
             override fun toDisplayString(): String = "Created $count PVs for '$kit'"
         }
+
+        /** The admission policy [policy] is in effect: a new pod-network pod carries every one of [sysctls]. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyReady")
+        data class PodSysctlPolicyReady(
+            val policy: String,
+            val sysctls: Map<String, String>,
+        ) : Platform {
+            override fun toDisplayString(): String = "Pod network sysctls in effect for new pods (${sysctls.size} keys, policy $policy)"
+        }
+
+        /** The API server refused the admission policy [policy] or its binding; [reason] is its answer. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotApplied")
+        data class PodSysctlPolicyNotApplied(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the pod network sysctl policy $policy could not be applied: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The dry-run probe for [policy] failed with an error that is neither a refusal nor an
+         * unreachable API server, so `up` stopped at once instead of waiting; [reason] is the error.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlProbeFailed")
+        data class PodSysctlProbeFailed(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the probe for the pod network sysctl policy $policy failed: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys] of [policy]; [reason] says
+         * why the last probe got no pod back, when the API server refused it or could not be reached.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotInEffect")
+        data class PodSysctlPolicyNotInEffect(
+            val policy: String,
+            val missingKeys: List<String>,
+            val timeoutSeconds: Long,
+            val reason: String? = null,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                "Error: after ${timeoutSeconds}s a new pod still lacks the pod network sysctls ${missingKeys.joinToString(", ")}" +
+                    (reason?.let { "; no pod was admitted: $it" } ?: "")
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================
@@ -6666,12 +6722,24 @@ sealed interface Event {
                 """.trimMargin()
         }
 
-        /** The cluster reaches its nodes over Tailscale, so no tunnel was started. */
+        /**
+         * The cluster's network mode needs no tunnel, so none was started. [networkMode] is the mode's
+         * wire id, `tailscale` or `direct`; each has its own text. Any other id (`socks` needs a tunnel,
+         * so it never comes here) gets a text that names the mode and claims nothing about it.
+         */
         @Serializable
         @SerialName("Proxy.TunnelNotNeeded")
-        data object TunnelNotNeeded : Proxy {
+        data class TunnelNotNeeded(
+            val networkMode: String,
+        ) : Proxy {
             override fun toDisplayString(): String =
-                "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                when (networkMode) {
+                    Constants.Proxy.NETWORK_MODE_DIRECT ->
+                        "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
+                    Constants.Proxy.NETWORK_MODE_TAILSCALE ->
+                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                    else -> "No SOCKS5 tunnel was started for this cluster's network mode '$networkMode'."
+                }
         }
 
         /** No tunnel could be started because the workspace has no running cluster. */

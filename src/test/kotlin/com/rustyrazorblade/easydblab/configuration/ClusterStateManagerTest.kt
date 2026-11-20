@@ -1,10 +1,14 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
@@ -176,5 +180,85 @@ class ClusterStateManagerTest {
         ClusterStateManager(stateFile).replace(ClusterState(name = "test-cluster"))
 
         assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(Files.getPosixFilePermissions(plain))
+    }
+
+    @ParameterizedTest(name = "tailscaleActive={0} reads as {1}")
+    @CsvSource("true, Tailscale", "false, Socks")
+    fun `a state from before the network mode reads its mode from the old Tailscale flag`(
+        legacy: Boolean,
+        expected: NetworkMode,
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        writeOldState(stateFile) { it.put("tailscaleActive", legacy) }
+
+        assertThat(ClusterStateManager(stateFile).load().networkMode).isEqualTo(expected)
+    }
+
+    @Test
+    fun `a state with neither field reads as socks`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        writeOldState(stateFile) { }
+
+        assertThat(ClusterStateManager(stateFile).load().networkMode).isEqualTo(NetworkMode.Socks)
+    }
+
+    @Test
+    fun `a recorded network mode wins over an old Tailscale flag beside it`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        writeOldState(stateFile) {
+            it.put("networkMode", "direct")
+            it.put("tailscaleActive", true)
+        }
+
+        assertThat(ClusterStateManager(stateFile).load().networkMode).isEqualTo(NetworkMode.Direct)
+    }
+
+    @Test
+    fun `an unknown network mode is refused at load, naming the value and the known ones`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        writeOldState(stateFile) { it.put("networkMode", "vpn") }
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'vpn'")
+            .hasMessageContaining("socks, tailscale, direct")
+    }
+
+    @Test
+    fun `loading an old state writes nothing, and the next save writes the mode and drops the old flag`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        writeOldState(stateFile) { it.put("tailscaleActive", true) }
+        val before = stateFile.readText()
+        val manager = ClusterStateManager(stateFile)
+
+        val state = manager.load()
+        assertThat(stateFile.readText()).isEqualTo(before)
+        manager.replace(state)
+
+        val saved = ObjectMapper().readTree(stateFile) as ObjectNode
+        assertThat(saved.get("networkMode").asText()).isEqualTo("tailscale")
+        assertThat(saved.has("tailscaleActive")).isFalse()
+    }
+
+    /** Saves a current state, then rewrites its JSON as an earlier release would have left it. */
+    private fun writeOldState(
+        stateFile: File,
+        change: (ObjectNode) -> Unit,
+    ) {
+        ClusterStateManager(stateFile).replace(ClusterState(name = "test-cluster"))
+        val mapper = ObjectMapper()
+        val tree = mapper.readTree(stateFile) as ObjectNode
+        tree.remove("networkMode")
+        change(tree)
+        mapper.writerWithDefaultPrettyPrinter().writeValue(stateFile, tree)
     }
 }

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -144,13 +145,13 @@ class DownTest : BaseKoinTest() {
     fun `cleanupSocks5Proxy removes the port from the proxy env file and keeps the Tailscale flag`() {
         val envFile =
             ProxyEnvFile(context.workingDirectory).apply {
-                recordTailscale(active = false)
+                recordNetworkMode(NetworkMode.Socks)
                 recordTunnel(41234, ProcessHandle.current().pid())
             }
 
         Down().cleanupSocks5Proxy()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
     }
 
     @Test

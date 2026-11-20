@@ -41,7 +41,7 @@ class LaunchCapacityPreflightTest {
     private fun db(
         newCount: Int,
         startIndex: Int = 0,
-        instanceType: String = "i4i.xlarge",
+        instanceType: String = "i7i.xlarge",
     ) = LaunchGroup(ServerType.Cassandra, instanceType, (startIndex until startIndex + newCount).toList())
 
     private fun plan(
@@ -63,7 +63,7 @@ class LaunchCapacityPreflightTest {
 
     @Test
     fun `a cluster the account can hold passes every check`() {
-        preflight.verifyCapacity(plan(db(3), LaunchGroup(ServerType.Control, "m5d.xlarge", listOf(0))))
+        preflight.verifyCapacity(plan(db(3), LaunchGroup(ServerType.Control, "m8id.xlarge", listOf(0))))
 
         assertThat(events.filter { it.isError() }).isEmpty()
         assertThat(eventsOf<Event.Provision.LaunchCapacityVerified>().single().newNodes).isEqualTo(4)
@@ -132,20 +132,20 @@ class LaunchCapacityPreflightTest {
     inner class Zones {
         @Test
         fun `fails naming the zones where the type is not offered`() {
-            capacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2a", "us-west-2b"))
+            capacity.offeredZones = mapOf("i7i.xlarge" to setOf("us-west-2a", "us-west-2b"))
 
             assertThatThrownBy { preflight.verifyCapacity(plan(db(3))) }
                 .isInstanceOf(IllegalStateException::class.java)
                 .hasMessageContaining("us-west-2c")
 
             val event = eventsOf<Event.Provision.InstanceTypeNotOffered>().single()
-            assertThat(event.instanceType).isEqualTo("i4i.xlarge")
+            assertThat(event.instanceType).isEqualTo("i7i.xlarge")
             assertThat(event.zones).containsExactly("us-west-2c")
         }
 
         @Test
         fun `only the zones the new nodes land in must offer the type`() {
-            capacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2b", "us-west-2c"))
+            capacity.offeredZones = mapOf("i7i.xlarge" to setOf("us-west-2b", "us-west-2c"))
 
             // Indexes 4 and 5 land in zones b and c; db0..db3 already exist.
             preflight.verifyCapacity(plan(db(newCount = 2, startIndex = 4)))
@@ -171,7 +171,7 @@ class LaunchCapacityPreflightTest {
     inner class NetworkInterfaces {
         @Test
         fun `under Cilium each node needs its primary ENI and the ENIs its pod addresses fill`() {
-            // i4i.xlarge: 15 addresses per ENI, one of them the ENI's own; 16 pod addresses take
+            // i7i.xlarge: 15 addresses per ENI, one of them the ENI's own; 16 pod addresses take
             // two ENIs. Three nodes need six.
             capacity.eniQuota = 100
             capacity.enisInUse = 95
@@ -234,7 +234,7 @@ class LaunchCapacityPreflightTest {
 
             // db0, db3 and app0 land in zone a: 3 x 17 = 51.
             assertThatThrownBy {
-                preflight.verifyCapacity(plan(db(4), LaunchGroup(ServerType.Stress, "c6id.2xlarge", listOf(0))))
+                preflight.verifyCapacity(plan(db(4), LaunchGroup(ServerType.Stress, "c8id.2xlarge", listOf(0))))
             }.hasMessageContaining("us-west-2a")
         }
 
@@ -287,7 +287,7 @@ class LaunchCapacityPreflightTest {
         ) = InstanceCreationConfig(
             serverType = serverType,
             indexes = (0 until count).toList(),
-            instanceType = "i4i.xlarge",
+            instanceType = "i7i.xlarge",
             amiId = "ami-real",
             keyName = "key",
             securityGroupId = "sg-1",
@@ -345,7 +345,7 @@ class LaunchCapacityPreflightTest {
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
                 indexes = (0 until 9).toList(),
-                instanceType = "i4i.xlarge",
+                instanceType = "i7i.xlarge",
                 amiId = "ami-real",
                 keyName = "key",
                 securityGroupId = "sg-1",

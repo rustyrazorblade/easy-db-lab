@@ -180,7 +180,7 @@ If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for ev
   `K8sClientProvider`) or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory`), and
   therefore needs the SOCKS5 tunnel. `DefaultCommandExecutor.checkRequirements()` starts the
   tunnel before the command runs, when the cluster is provisioned, infrastructure is UP, and
-  Tailscale is not active; a failure to establish it propagates and aborts the command. See
+  the cluster's network mode is `socks`; a failure to establish it propagates and aborts the command. See
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.
 
@@ -236,7 +236,7 @@ Commands should delegate to these services:
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
 | `DocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
-| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS only in the `socks` network mode) |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |

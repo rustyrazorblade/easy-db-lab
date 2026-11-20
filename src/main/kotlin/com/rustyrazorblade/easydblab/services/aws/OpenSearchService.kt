@@ -60,7 +60,7 @@ enum class DomainState {
  * Configuration for creating an OpenSearch domain.
  *
  * @property domainName Unique name for the OpenSearch domain (3-28 characters, lowercase, numbers, hyphens)
- * @property instanceType OpenSearch instance type (e.g., "t3.small.search", "r5.large.search")
+ * @property instanceType OpenSearch instance type (e.g., "r8g.xlarge.search", "m8g.large.search")
  * @property instanceCount Number of data nodes in the cluster
  * @property ebsVolumeSize Size of EBS volume in GB for each data node
  * @property engineVersion OpenSearch engine version (e.g., "OpenSearch_2.11")

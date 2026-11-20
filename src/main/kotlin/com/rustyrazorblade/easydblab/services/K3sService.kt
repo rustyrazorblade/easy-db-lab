@@ -122,6 +122,8 @@ class DefaultK3sService(
             log.debug { "Starting K3s server on ${host.alias} (useCustomCni=$useCustomCni)" }
 
             remoteOps.installFile(host, SERVER_SCRIPT_RESOURCE, SERVER_SCRIPT_PATH, "0755")
+            // The control node runs a kubelet too; it reads the allowlist on its first start.
+            KubeletSysctlsDropIn.install(remoteOps, host)
 
             // The pod range must hold one node CIDR per node at 1,000+ nodes; see Constants.K3s.
             val args =

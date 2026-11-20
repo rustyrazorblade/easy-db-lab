@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
@@ -42,6 +43,7 @@ import com.rustyrazorblade.easydblab.services.K8sStorageOperations
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -122,6 +124,7 @@ class Up(
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val k8sStorage: K8sStorageOperations by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
+    private val podNetworkTuning: PodNetworkTuning by inject()
     private val nodeSetupService: NodeSetupService by inject()
     private val hostOperationsService: HostOperationsService by inject()
     private val socksProxyService: SocksProxyService by inject()
@@ -254,16 +257,18 @@ class Up(
         )
 
     /**
-     * The operator's route into the cluster: the SOCKS tunnel unless the cluster uses Tailscale,
-     * then Tailscale and its route check. Under `--no-setup` a Tailscale cluster gets neither, as
-     * the VPN is started with node setup.
+     * The operator's route into the cluster, by the cluster's network mode: the SOCKS tunnel in
+     * `socks` mode; Tailscale and its route check in `tailscale` mode; nothing in `direct` mode,
+     * where this machine reaches the cluster as it is. Under `--no-setup` a Tailscale cluster gets
+     * no route either, as the VPN is started with node setup.
      */
     private fun operatorRoute(launched: CompletableFuture<Unit>): UpOperatorRoute {
         val connect: (ClusterHost) -> Unit =
-            when {
-                !workingState.isTailscaleEnabled() -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
-                noSetup -> { _ -> }
-                else ->
+            when (workingState.networkMode) {
+                NetworkMode.Socks -> SocksRoute(socksProxyService, eventBus, preflightTunnel)::connect
+                NetworkMode.Direct -> { _ -> }
+                NetworkMode.Tailscale if noSetup -> { _ -> }
+                NetworkMode.Tailscale ->
                     TailnetRoute(
                         userConfig,
                         eventBus,
@@ -303,7 +308,7 @@ class Up(
                     state.hosts.mapValues { (_, hosts) -> hosts.filterNot { it.alias in failed } }
             }
         if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
-        UpPostSteps(k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
+        UpPostSteps(podNetworkTuning, k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
             .run(control, localTelemetry = workingState.initConfig?.telemetryRedirect == null)
         if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
     }

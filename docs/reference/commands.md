@@ -139,8 +139,8 @@ determined fails at `init`, before any instance is created.
 |--------|-------------|---------|
 | `--db.count` (alias `--db`, `--cassandra`, `-c`) | Number of database instances | 3 |
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
-| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
-| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
+| `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i7i.xlarge |
+| `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c8id.2xlarge |
 | `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8: the VPC is split into eight equal subnets, one per zone | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.ResourceLock
@@ -20,7 +21,7 @@ internal class ProcessSocksProxyStopTest : ProcessSocksProxyServiceTestBase() {
 
         assertThat(result).isEqualTo(TunnelStopResult.Stopped(FAKE_PID.toInt()))
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = null))
     }
 
     @Test

@@ -76,7 +76,7 @@ internal class SsmProxyWrapperScriptTest {
         proxy.outputStream.close()
 
         assertThat(proxy.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
-        awaitGone("plugin.pid")
+        awaitGone("plugin.pid", "aws.pid")
         assertThat(alive("aws.pid")).isFalse()
         assertThat(alive("plugin.pid")).isFalse()
     }
@@ -102,7 +102,7 @@ internal class SsmProxyWrapperScriptTest {
 
         parent.destroyForcibly().waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)
 
-        awaitGone("plugin.pid")
+        awaitGone("plugin.pid", "aws.pid")
         assertThat(alive("aws.pid")).isFalse()
         assertThat(alive("plugin.pid")).isFalse()
         awaitGone("wrapper.pid")
@@ -116,7 +116,7 @@ internal class SsmProxyWrapperScriptTest {
         ProcessBuilder("kill", "-HUP", proxy.pid().toString()).start().waitFor()
 
         assertThat(proxy.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
-        awaitGone("plugin.pid")
+        awaitGone("plugin.pid", "aws.pid")
         assertThat(alive("aws.pid")).isFalse()
         assertThat(alive("plugin.pid")).isFalse()
     }
@@ -140,11 +140,12 @@ internal class SsmProxyWrapperScriptTest {
     private fun awaitPids() = waitUntil { pid("aws.pid") != null && pid("plugin.pid") != null }
 
     /**
-     * The wrapper SIGKILLs the plugin and exits at once, but the plugin was re-parented when the stub
-     * `aws` died, and it stays a zombie until its new parent reaps it. [ProcessHandle.isAlive] counts
-     * a zombie as alive, so a check made right after the wrapper exits can see it.
+     * The wrapper SIGKILLs the stub `aws` and the plugin and exits without reaping them, so each is
+     * a zombie until its new parent reaps it: the plugin was re-parented when `aws` died, and `aws`
+     * when the wrapper exited. [ProcessHandle.isAlive] counts a zombie as alive, so a check made
+     * right after the wrapper exits can see either.
      */
-    private fun awaitGone(name: String) = waitUntil { !alive(name) }
+    private fun awaitGone(vararg names: String) = waitUntil { names.none(::alive) }
 
     private fun waitUntil(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LIMIT_SECONDS)

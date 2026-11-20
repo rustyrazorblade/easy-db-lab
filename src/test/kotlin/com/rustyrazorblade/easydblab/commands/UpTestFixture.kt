@@ -83,6 +83,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -112,7 +113,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         const val K3S_URL = "https://10.0.0.1:6443"
     }
 
-    protected lateinit var mockClusterStateManager: ClusterStateManager
+    protected lateinit var clusterStateManager: ClusterStateManager
     protected lateinit var mockS3BucketService: AwsS3BucketService
     protected lateinit var mockVpcService: VpcService
     protected lateinit var mockAwsInfrastructureService: AwsInfrastructureService
@@ -233,7 +234,14 @@ abstract class UpTestFixture : BaseKoinTest() {
     /** The AWS side of `up`: state, bucket, network, instances and the provisioning services. */
     private fun provisioningModule(): Module =
         module {
-            single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+            single {
+                // The real manager on the test workspace; the spy only reports each saved state to [recordSaves].
+                spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                    doAnswer { invocation -> (invocation.callRealMethod() as ClusterState).also { onSave(it) } }
+                        .whenever(manager)
+                        .update(any())
+                }
+            }
             single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
             single<OpenSearchService> { mock<OpenSearchService>() }
             single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
@@ -434,7 +442,7 @@ abstract class UpTestFixture : BaseKoinTest() {
 
     @BeforeEach
     fun setupMocks() {
-        mockClusterStateManager = getKoin().get()
+        clusterStateManager = getKoin().get()
         mockS3BucketService = getKoin().get()
         mockVpcService = getKoin().get()
         mockAwsInfrastructureService = getKoin().get()
@@ -454,8 +462,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         resetFakes()
 
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
-        applyStateUpdates()
+        // `init` wrote the workspace state before `up` runs.
+        clusterStateManager.replace(happyState())
 
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
 
@@ -579,21 +587,15 @@ abstract class UpTestFixture : BaseKoinTest() {
      */
     protected fun newUp(): Up = Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST)
 
-    /**
-     * The mocked manager applies each [ClusterStateManager.update] to the state its `load()` stub
-     * returns, as the file would, and hands every saved state to [onSave] (on the saving thread).
-     */
-    protected fun applyStateUpdates(onSave: (ClusterState) -> Unit = {}) {
-        whenever(mockClusterStateManager.update(any())).thenAnswer { invocation ->
-            val state = mockClusterStateManager.load()
-            invocation.getArgument<(ClusterState) -> Unit>(0)(state)
-            onSave(state)
-            state
-        }
+    private var onSave: (ClusterState) -> Unit = {}
+
+    /** Hands every state `up` saves, as saved, to [onSave], on the saving thread. */
+    protected fun recordSaves(onSave: (ClusterState) -> Unit) {
+        this.onSave = onSave
     }
 
     protected fun overrideUser(user: User) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
+        clusterStateManager.replace(happyState())
         getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
     }
 }

@@ -41,7 +41,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up installs Cilium with the control host and resolved VPC CIDR when cni is Cilium`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
@@ -56,7 +56,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up wires the K3s cluster for a custom CNI only when cni is Cilium`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
 
         newUp().execute()
@@ -67,7 +67,7 @@ class UpCiliumTest : UpTestFixture() {
     @Test
     fun `up installs the Tailscale masquerade chain after Cilium when Tailscale is enabled`() {
         // happyState marks Tailscale active, so the control node is the subnet router.
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
 
         newUp().execute()
 
@@ -80,7 +80,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up skips the Tailscale masquerade chain on a Cilium cluster without Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium).copy(tailscaleActive = false))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium).copy(tailscaleActive = false))
 
         newUp().execute()
 
@@ -90,7 +90,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up aborts when the Tailscale masquerade chain cannot be installed`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         whenever(mockCiliumService.installTailscaleMasquerade(any()))
             .thenReturn(Result.failure(RuntimeException("nft: command not found")))
 
@@ -114,7 +114,7 @@ class UpCiliumTest : UpTestFixture() {
         // When init left the CIDR unset, `up` auto-selects one before installing Cilium — so the
         // install must receive that resolved block, never a null. This is why installCilium's
         // requireNotNull guard cannot fire through a full run: the CIDR is always resolved first.
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium, cidr = null))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium, cidr = null))
         whenever(mockVpcService.listAllVpcCidrs()).thenReturn(emptyList())
         whenever(mockCiliumService.install(any(), any())).thenReturn(Result.success(Unit))
 
@@ -145,7 +145,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `a node whose AMI lacks the Cilium node fixes fails, named with its missing files, and is not replaced`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         val lacking = listOf(Constants.Cilium.NODE_FIX_FILES.last())
         missingCiliumFixes["db0"] = lacking
         val emitted = captureEvents()
@@ -174,7 +174,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up checks every node's AMI and installs Cilium when all carry the fixes`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
@@ -211,7 +211,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `up posts the Cilium install annotations to Grafana only after the observability stack is up`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         ciliumInstallRecordsAnnotations()
         var stackDeployed = false
         var annotationsPostedBeforeStack = false
@@ -239,7 +239,7 @@ class UpCiliumTest : UpTestFixture() {
     @Test
     fun `up does not post Cilium annotations on a redirect cluster, which has no local Grafana`() {
         val state = happyState(cni = CniMode.Cilium)
-        whenever(mockClusterStateManager.load()).thenReturn(
+        clusterStateManager.replace(
             state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = TelemetryRedirect.fromBaseHost("10.9.9.9"))),
         )
         ciliumInstallRecordsAnnotations()
@@ -258,7 +258,7 @@ class UpCiliumTest : UpTestFixture() {
 
     @Test
     fun `a failed annotation post is reported and does not fail up`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cni = CniMode.Cilium))
+        clusterStateManager.replace(happyState(cni = CniMode.Cilium))
         ciliumInstallRecordsAnnotations()
         whenever(mockGrafanaClient.createAnnotation(any(), any()))
             .thenThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000/api/annotations returned 502"))

@@ -30,7 +30,7 @@ class UpCapacityTest : UpTestFixture() {
 
     @Test
     fun `a cluster the account cannot hold launches nothing`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 3))
+        clusterStateManager.replace(happyState(cassandraInstances = 3))
         accountCapacity.standardQuota = 8
 
         assertThatThrownBy { newUp().execute() }
@@ -43,7 +43,7 @@ class UpCapacityTest : UpTestFixture() {
     @Test
     fun `a re-run checks only the instances it adds`() {
         // db0..db2 run already; two more db nodes and nothing else are to be launched.
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 5, stressInstances = 0))
+        clusterStateManager.replace(happyState(cassandraInstances = 5, stressInstances = 0))
         whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(
             mapOf(ServerType.Cassandra to listOf("db0", "db1", "db2").map(::discovered)),
         )

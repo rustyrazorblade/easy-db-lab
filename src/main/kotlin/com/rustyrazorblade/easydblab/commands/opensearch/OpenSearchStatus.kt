@@ -90,7 +90,10 @@ class OpenSearchStatus : PicoBaseCommand() {
                     dashboardsEndpoint = result.dashboardsEndpoint,
                     state = result.state.name,
                 )
-            clusterStateManager.update { it.updateOpenSearchDomain(refreshed) }
+            // A domain another command cleared or replaced while the lookup ran stays as that command left it.
+            clusterStateManager.update {
+                if (it.openSearchDomain?.domainName == domainState.domainName) it.updateOpenSearchDomain(refreshed)
+            }
         }
     }
 

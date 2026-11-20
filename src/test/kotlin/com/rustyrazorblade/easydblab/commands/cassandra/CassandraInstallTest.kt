@@ -29,8 +29,9 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
-import org.mockito.kotlin.mock
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * `cassandra install` end to end over a fake fleet: the real resolver and installer run, and only
@@ -61,7 +62,7 @@ class CassandraInstallTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { stateManager }
                 single<RemoteOperationsService> { nodes }
-                single { HostOperationsService(stateManager) }
+                single { HostOperationsService(get()) }
                 single<CassandraService> { FakeCassandraService(running) }
                 single { CassandraVersionResolver(RecordOnlySources()) }
                 single { CassandraInstaller(get(), get(), get(), get()) }
@@ -82,15 +83,16 @@ class CassandraInstallTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         nodes = FakeNodes()
-        stateManager = mock()
-        whenever(stateManager.load()).thenReturn(state)
-        whenever(stateManager.exists()).thenReturn(true)
-        // The state on disk is [state]: each update applies its change there, as the file would.
-        doAnswer {
-            it.getArgument<(ClusterState) -> Unit>(0)(state)
-            saves += state.nodes.mapValues { (_, node) -> node.installed.keys.toSet() }
-            state
-        }.whenever(stateManager).update(any())
+        // The real manager on the test workspace; the spy only records each saved state's records.
+        stateManager =
+            spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                doAnswer { invocation ->
+                    (invocation.callRealMethod() as ClusterState).also { saved ->
+                        saves += saved.nodes.mapValues { (_, node) -> node.installed.keys.toSet() }
+                    }
+                }.whenever(manager).update(any())
+            }
+        stateManager.replace(state)
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 
@@ -112,7 +114,9 @@ class CassandraInstallTest : BaseKoinTest() {
         assertThat(nodes.scriptRuns("db1")).hasSize(1)
         assertThat(saves).containsExactly(mapOf("db0" to setOf("5.0"), "db1" to setOf("5.0")))
         assertThat(
-            state.nodes
+            stateManager
+                .load()
+                .nodes
                 .getValue("db0")
                 .installed
                 .getValue("5.0")
@@ -160,6 +164,7 @@ class CassandraInstallTest : BaseKoinTest() {
         nodes.disk("db1") += "5.0"
         state.nodes["db0"] = NodeState(version = "5.0")
         state.nodes["db1"] = NodeState(version = "4.1")
+        stateManager.replace(state)
 
         install { reinstall = true }.execute()
 
@@ -184,6 +189,7 @@ class CassandraInstallTest : BaseKoinTest() {
         nodes.disk("db1") += "5.0"
         state.nodes["db0"] = NodeState(version = "5.0", javaVersion = "17")
         state.nodes["db1"] = NodeState(version = "4.1", javaVersion = "11")
+        stateManager.replace(state)
 
         install {
             reinstall = true
@@ -192,15 +198,28 @@ class CassandraInstallTest : BaseKoinTest() {
 
         assertThat(nodes.commandsOn("db0").filter { it.startsWith("sudo use-cassandra") })
             .containsExactly("sudo use-cassandra 5.0 --java $expectedJava --python 3.11.9")
-        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo(expectedJava)
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .javaVersion,
+        ).isEqualTo(expectedJava)
         assertThat(nodes.commandsOn("db1").filter { it.startsWith("sudo use-cassandra") }).isEmpty()
-        assertThat(state.nodes.getValue("db1").javaVersion).isEqualTo("11")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db1")
+                .javaVersion,
+        ).isEqualTo("11")
     }
 
     @Test
     fun `a reinstall whose activation fails on a node exits non-zero, names the node, and keeps its recorded JDK`() {
         nodes.disk("db0") += "5.0"
         state.nodes["db0"] = NodeState(version = "5.0", javaVersion = "17")
+        stateManager.replace(state)
         nodes.failOn("db0", "sudo use-cassandra", "use-cassandra: no JDK 11")
 
         assertThatThrownBy {
@@ -211,7 +230,13 @@ class CassandraInstallTest : BaseKoinTest() {
             }.execute()
         }.isInstanceOf(CommandExecutionException::class.java)
             .hasMessageContaining("db0")
-        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("17")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .javaVersion,
+        ).isEqualTo("17")
         assertThat(errors()).contains("db0", "no JDK 11")
     }
 
@@ -219,6 +244,7 @@ class CassandraInstallTest : BaseKoinTest() {
     fun `a reinstall whose config step fails exits non-zero and names the step`() {
         nodes.disk("db0") += "5.0"
         state.nodes["db0"] = NodeState(version = "5.0")
+        stateManager.replace(state)
         nestedExitCodes[UpdateConfig::class.java] = 1
 
         assertThatThrownBy { install { reinstall = true }.execute() }
@@ -231,6 +257,7 @@ class CassandraInstallTest : BaseKoinTest() {
     fun `a reinstall of the version Cassandra runs is refused on that node and changes nothing there`() {
         nodes.disk("db0") += "5.0"
         state.nodes["db0"] = NodeState(version = "5.0")
+        stateManager.replace(state)
         running = setOf("db0")
 
         assertThatThrownBy { install { reinstall = true }.execute() }

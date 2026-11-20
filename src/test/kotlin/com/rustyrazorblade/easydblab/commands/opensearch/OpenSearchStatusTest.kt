@@ -158,6 +158,28 @@ class OpenSearchStatusTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a domain another command cleared during the lookup stays cleared`() {
+            val domainResult =
+                OpenSearchDomainResult(
+                    domainName = "test-cluster-os",
+                    domainId = "123456789012/test-cluster-os",
+                    endpoint = "search-test.us-west-2.es.amazonaws.com",
+                    dashboardsEndpoint = null,
+                    state = DomainState.ACTIVE,
+                )
+            stateManager.replace(createStateWithOpenSearch())
+            whenever(mockOpenSearchService.lookupDomain("test-cluster-os")).thenAnswer {
+                // `opensearch stop` runs while this lookup waits on the provider.
+                stateManager.update { it.openSearchDomain = null }
+                DomainLookup.Found(domainResult)
+            }
+
+            OpenSearchStatus().execute()
+
+            assertThat(stateManager.load().openSearchDomain).isNull()
+        }
+
+        @Test
         fun `execute should handle deleted domain state`() {
             val domainResult =
                 OpenSearchDomainResult(

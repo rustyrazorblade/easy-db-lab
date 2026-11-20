@@ -141,6 +141,28 @@ class OpenSearchStartTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a domain opensearch stop cleared during the wait stays cleared`() {
+        val domainResult =
+            OpenSearchDomainResult(
+                domainName = "test-cluster-opensearch",
+                domainId = "123456789012/test-cluster-opensearch",
+                endpoint = "search-test.us-west-2.es.amazonaws.com",
+                dashboardsEndpoint = null,
+                state = DomainState.ACTIVE,
+            )
+        stateManager.replace(createValidClusterState())
+        whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
+        whenever(mockOpenSearchService.waitForDomainActive(any(), any(), any())).thenAnswer {
+            stateManager.update { it.openSearchDomain = null }
+            domainResult
+        }
+
+        OpenSearchStart().apply { wait = true }.execute()
+
+        assertThat(stateManager.load().openSearchDomain).isNull()
+    }
+
+    @Test
     fun `execute should not wait by default`() {
         val domainResult =
             OpenSearchDomainResult(

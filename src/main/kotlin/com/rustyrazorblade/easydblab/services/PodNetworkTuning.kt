@@ -93,8 +93,9 @@ class PodNetworkTuning(
         probes: ExecutorService,
         deadline: Instant,
     ): ProbeResult? {
+        val left = Duration.between(Instant.now(), deadline).toNanos()
+        if (left <= 0L) return null
         val answer = probes.submit<ProbeResult> { probe.probe() }
-        val left = Duration.between(Instant.now(), deadline).toNanos().coerceAtLeast(0L)
         return try {
             answer.get(left, TimeUnit.NANOSECONDS)
         } catch (_: TimeoutException) {

@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.reason
@@ -9,6 +11,7 @@ import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
 import java.io.IOException
+import java.util.concurrent.TimeoutException
 
 /**
  * What a server-side dry-run pod came back with. `up` probes again until the deadline after any
@@ -46,7 +49,7 @@ fun interface PodSysctlProbe {
  * [Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE].
  *
  * An answer from the API server that refuses the pod is a [ProbeResult.Refused]; a client exception
- * with no HTTP status (the cluster was not reached) is a [ProbeResult.Unreachable] (see [resultOf]).
+ * with no HTTP status that a transport failure caused is a [ProbeResult.Unreachable] (see [resultOf]).
  * So is a workspace with no kubeconfig, or one that could not be read, so it goes through the same
  * retry, deadline and typed event in [PodNetworkTuning]; a kubeconfig that does not parse is a defect
  * and throws. fabric8 wraps a transport failure
@@ -105,12 +108,25 @@ class Fabric8PodSysctlProbe(
     companion object {
         /**
          * An answer with an HTTP status is the API server refusing the pod. With none (fabric8 sets
-         * the code to -1 and no status when the request never got an answer) the server was not reached.
+         * the code to -1 and no status) the server was not reached only when a transport failure
+         * caused it: an I/O failure, or fabric8's own request timeout.
+         *
+         * @throws KubernetesClientException [e] itself when no transport failure caused it (an answer
+         *   the client could not read, for one): that is a defect, not an unreachable server
          */
         fun resultOf(e: KubernetesClientException): ProbeResult =
             when {
-                e.status == null && e.code <= 0 -> ProbeResult.Unreachable(e.messageOrString())
-                else -> ProbeResult.Refused(e.status?.message ?: e.messageOrString())
+                e.status != null || e.code > 0 -> ProbeResult.Refused(e.status?.message ?: e.messageOrString())
+                e.causeChain().any(::isTransportFailure) -> ProbeResult.Unreachable(e.messageOrString())
+                else -> throw e
+            }
+
+        /** A failure to send the request or get its answer; a body Jackson could not parse is not one. */
+        private fun isTransportFailure(cause: Throwable): Boolean =
+            when (cause) {
+                is JsonProcessingException -> false
+                is IOException, is TimeoutException -> true
+                else -> false
             }
 
         /** [pod]'s `spec.securityContext.sysctls`, name to value. */

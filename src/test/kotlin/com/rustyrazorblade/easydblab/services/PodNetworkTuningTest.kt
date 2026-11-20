@@ -205,6 +205,53 @@ class PodNetworkTuningTest {
     }
 
     @Test
+    fun `interrupting up while it waits between probes stops up with no event`() {
+        val probed = CountDownLatch(1)
+        val probe = PodSysctlProbe { ProbeResult.Admitted(emptyMap()).also { probed.countDown() } }
+        val slowPolls = PodNetworkTuning(manifests, probe, eventBus, sysctls, Duration.ofSeconds(30), Duration.ofSeconds(10))
+        val thrown = AtomicReference<Throwable>()
+        val up = Thread { thrown.set(runCatching { slowPolls.apply() }.exceptionOrNull()) }
+
+        up.start()
+        assertThat(probed.await(5, TimeUnit.SECONDS)).isTrue()
+        awaitSleeping(up)
+        up.interrupt()
+        up.join(Duration.ofSeconds(5))
+
+        assertThat(up.isAlive).isFalse()
+        assertThat(thrown.get()).isInstanceOf(InterruptedException::class.java)
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `a poll interval longer than the time left does not stretch the wait past the deadline`() {
+        val longPolls =
+            PodNetworkTuning(
+                manifests,
+                { ProbeResult.Admitted(emptyMap()) },
+                eventBus,
+                sysctls,
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(10),
+            )
+        val started = System.nanoTime()
+
+        assertThatThrownBy { longPolls.apply() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3))
+        assertThat(events.single()).isInstanceOf(Event.Platform.PodSysctlPolicyNotInEffect::class.java)
+    }
+
+    /** Waits until [thread] is in the retry wait between probes, not waiting on a probe's answer. */
+    private fun awaitSleeping(thread: Thread) {
+        val until = System.nanoTime() + Duration.ofSeconds(5).toNanos()
+        while (thread.stackTrace.none { it.className == "java.lang.Thread" && it.methodName == "sleep" }) {
+            check(System.nanoTime() < until) { "the poll never reached its wait between probes" }
+            Thread.onSpinWait()
+        }
+    }
+
+    @Test
     fun `a policy the API server rejects fails before any probe`() {
         manifests.failure = IllegalStateException("no kind MutatingAdmissionPolicy")
         var probes = 0

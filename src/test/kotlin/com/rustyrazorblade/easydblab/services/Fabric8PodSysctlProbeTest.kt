@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.fasterxml.jackson.core.JsonParseException
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
@@ -10,19 +11,34 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
+import java.io.IOException
 import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeoutException
+import java.util.stream.Stream
 
 /**
  * How [Fabric8PodSysctlProbe] tells an API server that refused the probe pod from one it never
  * reached, using the exceptions fabric8 itself builds for each case.
  */
 class Fabric8PodSysctlProbeTest {
-    @Test
-    fun `a request that got no answer is unreachable`() {
-        val transport = KubernetesClientException("Operation: [create] for kind: [Pod] failed", ConnectException("Connection refused"))
-
-        assertThat(Fabric8PodSysctlProbe.resultOf(transport)).isInstanceOf(ProbeResult.Unreachable::class.java)
+    companion object {
+        /** Each way fabric8 reports a request that got no answer: the cause is what the transport threw. */
+        @JvmStatic
+        fun transportFailures(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of("connection refused", KubernetesClientException("create failed", ConnectException("Connection refused"))),
+                Arguments.of("read timed out", KubernetesClientException("create failed", SocketTimeoutException("Read timed out"))),
+                Arguments.of(
+                    "fabric8 request timeout",
+                    KubernetesClientException("create failed", IOException("timed out", TimeoutException())),
+                ),
+                Arguments.of("timeout with no IOException", KubernetesClientException("create failed", TimeoutException())),
+            )
     }
 
     @Test
@@ -69,6 +85,23 @@ class Fabric8PodSysctlProbeTest {
         assertThatThrownBy { Fabric8PodSysctlProbe(provider).probe() }
             .isInstanceOf(IllegalStateException::class.java)
             .isNotInstanceOf(KubeconfigNotFoundException::class.java)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("transportFailures")
+    fun `a request a transport failure ended is unreachable`(
+        case: String,
+        failure: KubernetesClientException,
+    ) {
+        assertThat(Fabric8PodSysctlProbe.resultOf(failure)).describedAs(case).isInstanceOf(ProbeResult.Unreachable::class.java)
+    }
+
+    @Test
+    fun `an answer the client could not parse is a defect, not an unreachable server`() {
+        // fabric8 wraps a Jackson parse failure (an IOException subtype) the same way as a transport failure.
+        val unreadable = KubernetesClientException("Error executing: POST", JsonParseException(null, "Unexpected character"))
+
+        assertThatThrownBy { Fabric8PodSysctlProbe.resultOf(unreadable) }.isSameAs(unreadable)
     }
 
     @Test

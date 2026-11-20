@@ -4,11 +4,16 @@ import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.time.Clock
 import java.time.Duration
+import java.util.concurrent.CancellationException
 
 /**
  * Reads [look] every [interval] until [done] holds for what it read or [timeout] has passed, and
  * returns the last read. A wall-clock deadline, not an attempt count, bounds it, so it does not
- * stretch with how long one read takes. An exception from [look] is not retried: it propagates.
+ * stretch with how long one read takes, and the wait before a read is cut to the time left, so the
+ * poll never sleeps past the deadline. An exception from [look] is not retried: it propagates.
+ *
+ * @throws InterruptedException when the thread is interrupted while it waits between reads, with
+ *   the interrupt flag set again (resilience4j reports that as a [CancellationException])
  */
 fun <T> pollUntil(
     name: String,
@@ -23,9 +28,14 @@ fun <T> pollUntil(
         RetryConfig
             .custom<T>()
             .maxAttempts(Int.MAX_VALUE)
-            .intervalFunction { _ -> interval.toMillis() }
+            .intervalFunction { _ -> minOf(interval, Duration.between(clock.instant(), deadline)).toMillis().coerceAtLeast(0L) }
             .retryOnResult { !done(it) && clock.instant().isBefore(deadline) }
             .retryOnException { false }
             .build()
-    return Retry.decorateSupplier(Retry.of(name, config), look).get()
+    return try {
+        Retry.decorateSupplier(Retry.of(name, config), look).get()
+    } catch (e: CancellationException) {
+        if (!Thread.currentThread().isInterrupted) throw e
+        throw InterruptedException("$name was interrupted between reads").apply { initCause(e) }
+    }
 }

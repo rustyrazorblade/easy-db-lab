@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.ClientNetworkOrigin
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import kotlinx.serialization.json.Json
 
@@ -41,12 +43,14 @@ data class ClientNetworks(
         }
 
         /**
-         * The networks [state] records, or, for a state that records none (the nodes easy-db-lab
-         * builds), the VPC CIDR and the K3s cluster CIDR easy-db-lab passes to K3s, followed by
-         * the networks added with [OPTION], each once.
+         * The networks [state] records. With none recorded, on the nodes easy-db-lab builds
+         * ([ClientNetworkOrigin.BuiltNetworks]) they are the VPC CIDR and the K3s cluster CIDR
+         * easy-db-lab passes to K3s, followed by the networks added with [OPTION], each once.
          *
-         * @throws IllegalStateException when the state records an empty list: `init` never writes
-         * one (a probe that finds nothing fails), and rendering it would trust no client at all.
+         * @throws IllegalStateException when the state records an empty list (`init` never writes
+         * one, and rendering it would trust no client at all), or records none in an environment
+         * whose networks easy-db-lab did not build: the VPC default would trust a network the
+         * cluster may not use and refuse its real node and pod networks.
          */
         fun from(state: ClusterState): ClientNetworks {
             val recorded = state.clientNetworks
@@ -54,26 +58,47 @@ data class ClientNetworks(
                 "state.json records an empty client network list, so the database kits would accept no client. " +
                     "Remove clientNetworks from state.json, or run init again with $OPTION <cidr>."
             }
-            val values =
-                recorded
-                    ?: (
-                        listOf(state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR, Constants.K3s.CLUSTER_CIDR) +
-                            state.extraClientNetworks
-                    )
-            return ClientNetworks(values.map(::parseRecorded).distinct())
+            val values = recorded ?: builtNetworks(state)
+            return ClientNetworks(values.map { parse(it, ::recordedNetworkError) }.distinct())
+        }
+
+        /** The networks easy-db-lab built, for a state that records none; refused anywhere else. */
+        private fun builtNetworks(state: ClusterState): List<String> {
+            val contract = ClusterContract.of(state)
+            check(contract.clientNetworkOrigin == ClientNetworkOrigin.BuiltNetworks) {
+                "state.json records no client networks, and easy-db-lab does not know the networks of " +
+                    "${contract.environment.displayName}, so the database kits would trust no client. " +
+                    "Run init again with $OPTION <cidr> for each network the clients are in (the node network and the pod network)."
+            }
+            return listOf(state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR, Constants.K3s.CLUSTER_CIDR) + state.extraClientNetworks
         }
 
         /**
-         * A network `state.json` records; a value that does not parse was edited by hand or a bad [OPTION].
-         * The parse reason is in the message, so the cause is not chained: the user sees one line.
+         * [value] as an IPv4 network, or the exception [error] builds from it and the parse failure's
+         * reason. The reason is in the message, so the cause is not chained: the user sees one line.
          */
-        private fun parseRecorded(value: String): Ipv4Cidr =
-            Ipv4Cidr.parse(value).getOrElse { cause ->
-                throw IllegalStateException(
-                    "state.json records client network '$value', which is not an IPv4 network (${cause.message}). " +
-                        "Fix it in state.json, or run init again with a valid $OPTION <cidr>.",
-                )
-            }
+        private fun parse(
+            value: String,
+            error: (value: String, reason: String?) -> RuntimeException,
+        ): Ipv4Cidr = Ipv4Cidr.parse(value).getOrElse { cause -> throw error(value, cause.message) }
+
+        /** A network `state.json` records that does not parse: edited by hand, or a bad [OPTION]. */
+        private fun recordedNetworkError(
+            value: String,
+            reason: String?,
+        ) = IllegalStateException(
+            "state.json records client network '$value', which is not an IPv4 network ($reason). " +
+                "Fix it in state.json, or run init again with a valid $OPTION <cidr>.",
+        )
+
+        /** A pod CIDR or InternalIP a node reports that is neither IPv4 nor IPv6: the probe misread it. */
+        private fun probedNetworkError(
+            value: String,
+            reason: String?,
+        ) = IllegalArgumentException(
+            "A node reports client network '$value', which is not an IPv4 network ($reason). " +
+                "Give the networks with $OPTION <cidr>.",
+        )
 
         /**
          * The networks of a cluster easy-db-lab did not build: each node's pod CIDRs and its
@@ -89,9 +114,9 @@ data class ClientNetworks(
             overrides: List<Ipv4Cidr>,
         ): ClientNetworks {
             // A ':' only ever appears in IPv6, so it is enough to set those aside: everything else
-            // must parse as IPv4 in parseProbed, which fails with a clear message when it does not.
+            // must parse as IPv4, which fails with a clear message when it does not.
             val (ipv6, ipv4) = nodes.flatMap { node -> node.podCidrs + node.internalIps }.partition { it.contains(':') }
-            val cidrs = (ipv4.map(::parseProbed) + overrides).distinct()
+            val cidrs = (ipv4.map { parse(it, ::probedNetworkError) } + overrides).distinct()
             require(cidrs.isNotEmpty()) {
                 val skipped =
                     when (ipv6.isEmpty()) {
@@ -109,18 +134,6 @@ data class ClientNetworks(
          * its pods are then trusted only through an [OPTION] network.
          */
         fun reportsNoPodCidr(nodes: List<ProbedNode>): Boolean = nodes.flatMap { it.podCidrs }.none { ':' !in it }
-
-        /**
-         * A pod CIDR or InternalIP a node reports; one that is not IPv4 or IPv6 was misread. The parse
-         * reason is in the message, so the cause is not chained: the user sees one line.
-         */
-        private fun parseProbed(value: String): Ipv4Cidr =
-            Ipv4Cidr.parse(value).getOrElse { cause ->
-                throw IllegalArgumentException(
-                    "A node reports client network '$value', which is not an IPv4 network (${cause.message}). " +
-                        "Give the networks with $OPTION <cidr>.",
-                )
-            }
     }
 }
 

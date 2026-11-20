@@ -1174,8 +1174,10 @@ value are one set, and a node must carry every label in it. Giving a role twice 
 A passwordless database (ClickHouse's `default` user, Postgres's `pg_hba` trust lines) accepts
 clients only from the environment's networks: the VPC CIDR and the K3s cluster CIDR
 (`Constants.K3s.CLUSTER_CIDR`, passed to K3s as `--cluster-cidr`) on the nodes easy-db-lab builds,
-each node's pod CIDR and InternalIP on a cluster it did not build, plus every
-`init --client-network <cidr>`. Templates take `__CLIENT_NETWORKS_JSON__` (a JSON list of CIDRs)
+each node's pod CIDR and InternalIP on a cluster it did not build (every node's InternalIP, in a
+role or not, since NodePort traffic can be SNATed from any node), plus every
+`init --client-network <cidr>`. A local workspace (`init --local`) has only its `--client-network`
+values; with none recorded, kit variables fail, naming the option, rather than trust the VPC default. Templates take `__CLIENT_NETWORKS_JSON__` (a JSON list of CIDRs)
 and `__CLIENT_NETWORKS_HBA_JSON__` (one `host all all <cidr> trust` line each). Never hard-code
 `10.0.0.0/8`.
 

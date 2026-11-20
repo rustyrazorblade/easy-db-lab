@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 
 class ClientNetworksTest {
     private fun cidr(value: String) = Ipv4Cidr.parse(value).getOrThrow()
@@ -77,6 +80,42 @@ class ClientNetworksTest {
         assertThatThrownBy { ClientNetworks.parseOption("10.0.0.1/8") }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("10.0.0.1/8")
+    }
+
+    /**
+     * A K3s in Docker or brought cluster's networks are not the AWS VPC's: with none recorded, falling
+     * back to the VPC default would trust a network the cluster may not use and refuse its real ones.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environmentsWithoutBuiltNetworks")
+    fun `with no networks recorded, an environment easy-db-lab did not network fails, naming it and the option`(environment: Environment) {
+        val state = state(cidr = "172.16.0.0/16").apply { this.environment = environment }
+
+        assertThatThrownBy { ClientNetworks.from(state) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(environment.displayName)
+            .hasMessageContaining(ClientNetworks.OPTION)
+            .hasMessageNotContaining("172.16.0.0/16")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environmentsWithoutBuiltNetworks")
+    fun `the networks an environment easy-db-lab did not network records are used as they are`(environment: Environment) {
+        val state = state(clientNetworks = listOf("172.18.0.0/16")).apply { this.environment = environment }
+
+        assertThat(ClientNetworks.from(state).cidrs.map { it.value }).containsExactly("172.18.0.0/16")
+    }
+
+    /** A /1 to /7 option is warned about by `init` but accepted here; only a /0 is refused. */
+    @Test
+    fun `a slash 1 to slash 7 option is accepted as very wide, and only slash 0 is refused`() {
+        listOf("128.0.0.0/1", "8.0.0.0/6", "10.0.0.0/7").forEach { value ->
+            assertThat(ClientNetworks.parseOption(value)).satisfies({
+                assertThat(it.value).isEqualTo(value)
+                assertThat(it.isVeryWideClientNetwork).isTrue()
+            })
+        }
+        assertThatThrownBy { ClientNetworks.parseOption("0.0.0.0/0") }.isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
@@ -162,5 +201,10 @@ class ClientNetworksTest {
 
         assertThat(networks.toJson()).isEqualTo("""["172.16.0.0/16","10.42.0.0/16"]""")
         assertThat(networks.toHbaJson()).isEqualTo("""["host all all 172.16.0.0/16 trust","host all all 10.42.0.0/16 trust"]""")
+    }
+
+    private companion object {
+        @JvmStatic
+        fun environmentsWithoutBuiltNetworks(): List<Environment> = listOf(Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
     }
 }

@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.environment.ClientNetworkOrigin
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
@@ -574,11 +575,13 @@ class Init :
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
         val clusterState =
-            buildClusterState(capabilities).copy(
-                roleSelectors = roleSelectors,
-                clientNetworks = probedClientNetworks,
-                extraClientNetworks = extraClientNetworks,
-            )
+            buildClusterState(capabilities).let { built ->
+                built.copy(
+                    roleSelectors = roleSelectors,
+                    clientNetworks = probedClientNetworks ?: unbuiltClientNetworks(built, extraClientNetworks),
+                    extraClientNetworks = extraClientNetworks,
+                )
+            }
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
@@ -644,10 +647,29 @@ class Init :
             .forEach { cidr ->
                 eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount, Event.Setup.ClientNetworkSource.NODES))
             }
+        val contract = ClusterContract.of(clusterState)
+        if (contract.clientNetworkOrigin == ClientNetworkOrigin.Recorded && clusterState.clientNetworks == null) {
+            eventBus.emit(Event.Setup.NoClientNetworksRecorded(contract.environment.displayName))
+            return
+        }
         val recorded = ClientNetworks.from(clusterState).cidrs.map { it.value }
         eventBus.emit(Event.Setup.ClientNetworksRecorded(recorded))
         if (probe?.noPodCidr == true) eventBus.emit(Event.Setup.NoPodCidrClientNetworks(recorded))
     }
+
+    /**
+     * The client networks to record for [built] when no cluster was probed. easy-db-lab knows the
+     * networks of the nodes it builds and records none ([ClientNetworks.from] derives them); anywhere
+     * else (K3s in Docker, until its provisioner knows the Docker and pod networks) only the
+     * `--client-network` values are known, so they are recorded, or nothing when none was given.
+     */
+    private fun unbuiltClientNetworks(
+        built: ClusterState,
+        extraClientNetworks: List<String>,
+    ): List<String>? =
+        extraClientNetworks.takeIf {
+            it.isNotEmpty() && ClusterContract.of(built).clientNetworkOrigin == ClientNetworkOrigin.Recorded
+        }
 
     /**
      * Fails before anything is cleaned or written when an option is given without the one it needs:

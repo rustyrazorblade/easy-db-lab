@@ -6219,6 +6219,23 @@ sealed interface Event {
                     "--client-network <VPC CIDR>."
         }
 
+        /**
+         * `init` recorded no client network for [environment], whose node and pod networks easy-db-lab
+         * did not build and does not know, because no `--client-network` was given. Kit variables, which
+         * include the client networks, fail to render until one is, rather than trust the AWS VPC default,
+         * which such a cluster may not use.
+         */
+        @Serializable
+        @SerialName("Setup.NoClientNetworksRecorded")
+        data class NoClientNetworksRecorded(
+            val environment: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Warning: no client networks were recorded, because easy-db-lab does not know the networks of " +
+                    "$environment. Kits will not install until you run init again with --client-network <cidr> " +
+                    "for the node network and the pod network."
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {

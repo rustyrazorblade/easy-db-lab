@@ -41,3 +41,15 @@ enum class NetworkMode {
     /** With no tunnel: the cluster is reachable from this machine as it is. */
     Direct,
 }
+
+/** Where the networks a passwordless database kit accepts clients from come from (`ClientNetworks`). */
+enum class ClientNetworkOrigin {
+    /** The networks easy-db-lab built: the VPC CIDR and the K3s cluster CIDR, known without asking the cluster. */
+    BuiltNetworks,
+
+    /**
+     * Only what `state.json` records: the networks read from the cluster's nodes, or the `--client-network`
+     * values. The node network is not known until the cluster exists.
+     */
+    Recorded,
+}

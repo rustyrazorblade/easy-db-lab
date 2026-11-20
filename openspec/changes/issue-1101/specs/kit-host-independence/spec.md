@@ -59,7 +59,13 @@ A kit step that connects to a node over SSH SHALL run only when `EDL_NODE_SSH` r
 
 ### Requirement: Database kits allow the environment's client networks
 
-ClickHouse's `default` user networks and Postgres's `pg_hba` trust lines SHALL list the environment's client networks, not a fixed `10.0.0.0/8`. On AWS these SHALL be the VPC CIDR and the K3s cluster CIDR (`Constants.K3s.CLUSTER_CIDR`, passed explicitly to K3s). Elsewhere they SHALL be probed at `init` from the nodes' pod CIDRs and InternalIPs, plus each `init --client-network <cidr>`, before anything is cleaned or written, whenever `init` is given the API of a cluster the user brings (the `init --kubeconfig` option that supplies it is #1082). The set SHALL be recorded in state.
+ClickHouse's `default` user networks and Postgres's `pg_hba` trust lines SHALL list the environment's client networks, not a fixed `10.0.0.0/8`. On AWS these SHALL be the VPC CIDR and the K3s cluster CIDR (`Constants.K3s.CLUSTER_CIDR`, passed explicitly to K3s). Elsewhere they SHALL be probed at `init` from the nodes' pod CIDRs and InternalIPs, plus each `init --client-network <cidr>`, before anything is cleaned or written, whenever `init` is given the API of a cluster the user brings (the `init --kubeconfig` option that supplies it is #1082). The set SHALL be recorded in state. The probe SHALL trust every node's InternalIP, including nodes in no role, because NodePort traffic can be SNATed from any node. In a K3s in Docker workspace (`init --local`) the recorded set SHALL be exactly the `--client-network` values. Only an environment whose networks easy-db-lab builds (the cluster contract's `clientNetworkOrigin`, EC2 only) SHALL derive them from the VPC CIDR; any other state that records no client networks SHALL fail to render kit variables, naming `--client-network`, and `init` SHALL warn (`Setup.NoClientNetworksRecorded`) when it records none.
+
+#### Scenario: A local workspace never trusts the VPC default
+- **GIVEN** `init --local` with no `--client-network`
+- **WHEN** a kit's variables are rendered
+- **THEN** rendering fails naming `--client-network`, and `10.0.0.0/16` is trusted nowhere
+- **AND** with `--client-network 172.18.0.0/16` the client networks are exactly `172.18.0.0/16`
 
 #### Scenario: ClickHouse allows the AWS VPC and pod CIDRs
 - **GIVEN** an AWS cluster with `init --cidr 172.16.0.0/16`

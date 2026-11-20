@@ -236,6 +236,7 @@ class ClusterContractTest {
                         hosting = ObservabilityHosting.AWS,
                         namespace = "default",
                         recordedDatacenter = "us-east-1",
+                        clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
                     ),
                 ),
                 Arguments.of(
@@ -258,6 +259,7 @@ class ClusterContractTest {
                             ),
                         namespace = "default",
                         recordedDatacenter = "dc1",
+                        clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     ),
                 ),
                 Arguments.of(
@@ -280,6 +282,7 @@ class ClusterContractTest {
                             ),
                         namespace = "easy-db-lab",
                         recordedDatacenter = "dc1",
+                        clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     ),
                 ),
             )

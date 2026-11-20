@@ -23,22 +23,18 @@ import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.environment.ClientNetworkOrigin
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
-import com.rustyrazorblade.easydblab.configuration.isVeryWideClientNetwork
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.network.CidrBlock
-import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.AbsentCapabilityReport
 import com.rustyrazorblade.easydblab.services.ClientNetworkProbe
-import com.rustyrazorblade.easydblab.services.ClientNetworkProbeResult
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.LiveInfrastructureLookup
 import com.rustyrazorblade.easydblab.services.ObservabilityStage
@@ -565,23 +561,13 @@ class Init :
         // Parsed before anything is cleaned or written, so a bad override or mapping leaves the directory as it was.
         val capabilities = effectiveCapabilities()
         val roleSelectors = RoleSelectors.base(nodeOrigin).withMappings(RoleSelectors.parse(roleNodes))
-        val extraClients = clientNetworks.map(ClientNetworks::parseOption)
-        val extraClientNetworks = extraClients.map { it.value }
         // Probed before anything is cleaned or written too: a cluster that reports no network leaves the directory as it was.
-        val probe = broughtCluster?.let { api -> clientNetworkProbe.probe(api, extraClients) }
-        val probedClientNetworks = probe?.networks?.cidrs?.map { it.value }
+        val clients = InitClientNetworks.resolve(clientNetworks, broughtCluster) { clientNetworkProbe }
 
         if (!clean) checkExistingFiles()
         // Built before --clean runs, so a failure here (an unknown instance type, an unsupported Docker
         // architecture) leaves the directory as it was.
-        val clusterState =
-            buildClusterState(capabilities).let { built ->
-                built.copy(
-                    roleSelectors = roleSelectors,
-                    clientNetworks = probedClientNetworks ?: unbuiltClientNetworks(built, extraClientNetworks),
-                    extraClientNetworks = extraClientNetworks,
-                )
-            }
+        val clusterState = clients.applyTo(buildClusterState(capabilities).copy(roleSelectors = roleSelectors))
         if (clean) {
             refuseLiveInfrastructure()
             eventBus.emit(Event.Setup.CleaningExistingConfig)
@@ -598,7 +584,7 @@ class Init :
         clusterStateManager.save(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
-        reportClientNetworks(clusterState, extraClients, probe)
+        clients.report(clusterState, eventBus)
 
         // Only set VPC ID if user explicitly provided one via --vpc
         // Otherwise, VPC will be created during 'up'
@@ -623,53 +609,6 @@ class Init :
             eventBus.emit(Event.Setup.InitNextSteps)
         }
     }
-
-    /**
-     * Tells the user which networks the passwordless database kits will trust ([Event.Setup.ClientNetworksRecorded]),
-     * after warning about each very wide network it records ([Event.Setup.WideClientNetwork]): one of
-     * [extraClients], or one the [probe] of a brought cluster read from its nodes. Then, when the probed
-     * nodes reported no pod CIDR, it warns that pod clients may be refused
-     * ([Event.Setup.NoPodCidrClientNetworks]). Neither warning fails `init`.
-     */
-    private fun reportClientNetworks(
-        clusterState: ClusterState,
-        extraClients: List<Ipv4Cidr>,
-        probe: ClientNetworkProbeResult?,
-    ) {
-        extraClients.filter { it.isVeryWideClientNetwork }.forEach { cidr ->
-            eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount, Event.Setup.ClientNetworkSource.OPTION))
-        }
-        probe
-            ?.networks
-            ?.cidrs
-            .orEmpty()
-            .filter { it.isVeryWideClientNetwork && it !in extraClients }
-            .forEach { cidr ->
-                eventBus.emit(Event.Setup.WideClientNetwork(cidr.value, cidr.addressCount, Event.Setup.ClientNetworkSource.NODES))
-            }
-        val contract = ClusterContract.of(clusterState)
-        if (contract.clientNetworkOrigin == ClientNetworkOrigin.Recorded && clusterState.clientNetworks == null) {
-            eventBus.emit(Event.Setup.NoClientNetworksRecorded(contract.environment.displayName))
-            return
-        }
-        val recorded = ClientNetworks.from(clusterState).cidrs.map { it.value }
-        eventBus.emit(Event.Setup.ClientNetworksRecorded(recorded))
-        if (probe?.noPodCidr == true) eventBus.emit(Event.Setup.NoPodCidrClientNetworks(recorded))
-    }
-
-    /**
-     * The client networks to record for [built] when no cluster was probed. easy-db-lab knows the
-     * networks of the nodes it builds and records none ([ClientNetworks.from] derives them); anywhere
-     * else (K3s in Docker, until its provisioner knows the Docker and pod networks) only the
-     * `--client-network` values are known, so they are recorded, or nothing when none was given.
-     */
-    private fun unbuiltClientNetworks(
-        built: ClusterState,
-        extraClientNetworks: List<String>,
-    ): List<String>? =
-        extraClientNetworks.takeIf {
-            it.isNotEmpty() && ClusterContract.of(built).clientNetworkOrigin == ClientNetworkOrigin.Recorded
-        }
 
     /**
      * Fails before anything is cleaned or written when an option is given without the one it needs:

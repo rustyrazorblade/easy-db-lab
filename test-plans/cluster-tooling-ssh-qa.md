@@ -39,8 +39,9 @@ Expect: `up` installs Cilium through helm on the control node and finishes with 
 ### 2. Cassandra start, 3 UN
 
 ```bash
+$EDB cassandra use 5.0
 $EDB cassandra start
-$EDB cassandra nodetool status
+$EDB cassandra nt status
 ```
 
 Expect: three `UN` lines.
@@ -73,72 +74,86 @@ $EDB memcached stop
 Expect: `start` waits for the deployment to be Available. `stop` looks the objects up by
 `easydblab/kit=memcached` and deletes exactly those, then returns once the pods are gone.
 
-### 5. Typed-steps QA kit (manifest-url, kustomize, values file, set-based selector)
+### 5. Typed-steps QA kit (namespace, manifest-url, kustomize, values file, set-based selector)
+
+The kit lives next to this plan, in `test-plans/cluster-tooling-ssh-qa/tooling-qa/`. Register its
+parent as a kit source by absolute path, so `kit install tooling-qa` takes the named path and runs
+the kit's `install:` steps. `kit install --from` only scaffolds and never runs them. `REPO` is the
+absolute path of the checkout that holds this plan.
 
 ```bash
-$EDB kit install --from test-plans/cluster-tooling-ssh-qa/kit --kit tooling-qa --size 1Gi
+$EDB kit source add tooling-qa-plan "$REPO/test-plans/cluster-tooling-ssh-qa"
+$EDB kit install tooling-qa
 $EDB tooling-qa start
 $EDB tooling-qa status
-ssh -F "$(dirname "$EDB")/sshConfig" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm get values tooling-qa-podinfo -n tooling-qa'
-$EDB tooling-qa stop
-ssh -F "$(dirname "$EDB")/sshConfig" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name'
-$EDB tooling-qa uninstall
+"$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get hpa -n default podinfo -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm get values tooling-qa-podinfo -n tooling-qa'
 ```
 
 Expect: install runs helm-repo, namespace (one `kubectl apply -f /tmp/easydblab-input-*.yaml`) and
-manifest-url. `start` installs podinfo with the values file (replicaCount 2) and
+manifest-url (`hpa/podinfo`). `start` installs podinfo with the values file (replicaCount 2) and
 `ui.message=tooling qa`, applies the kustomization, applies the three ConfigMaps, and both waits
-pass. `status` reports Running from the helm release. After `stop`, only `tooling-qa-kept`
-remains: the set-based selector `tooling-qa in (selected, other)` reached kubectl as one argument.
-`uninstall` deletes the namespace.
+pass. `status` (the kit status command: `helm status` of the runtime release, then its pods) reports
+`Running (2/2 pods ready)`.
 
 ### 6. Deliberate kubectl failure
 
-Add a stop step that deletes an unknown kind with `ignore-not-found: false`, then run `stop`:
+The kit's `backup` phase deletes an unknown kind with `ignore-not-found: false`:
 
 ```bash
-KIT_DIR="$(dirname "$EDB")/tooling-qa"
-printf '  - type: delete\n    kind: nosuchkind\n    name: x\n    namespace: default\n    ignore-not-found: false\n' > /tmp/edbl-1078-bad-step.yaml
-```
-
-Insert that block at the end of the `stop:` list in `$KIT_DIR/kit.yaml`, then:
-
-```bash
-$EDB tooling-qa stop; echo "exit=$?"
+$EDB tooling-qa backup; echo "exit=$?"
 ```
 
 Expect: a non-zero exit, and the message
 `kubectl delete nosuchkind/x -n default failed on control0 (<ip>) with exit status 1` followed by
 `stderr:` and kubectl's `the server doesn't have a resource type "nosuchkind"`.
 
-### 7. No input files left on the control node
+### 7. Stop, uninstall, and the selector
 
 ```bash
-ssh -F "$(dirname "$EDB")/sshConfig" control0 'ls /tmp/easydblab-input-* 2>/dev/null | wc -l'
+$EDB tooling-qa stop
+"$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm list -A'
+$EDB tooling-qa uninstall
+"$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get ns tooling-qa'
+$EDB kit source remove tooling-qa-plan
+```
+
+Expect: after `stop`, only `configmap/tooling-qa-kept` remains: the set-based selector
+`tooling-qa in (selected, other)` reached kubectl as one argument. The `tooling-qa-podinfo`
+release is gone. `uninstall` deletes the namespace (`NotFound`, or `Terminating` for a short time).
+
+### 8. No input files left on the control node
+
+```bash
+"$(dirname "$EDB")/bin/ssh" control0 'ls /tmp/easydblab-input-* 2>/dev/null | wc -l'
 ```
 
 Expect: `0`.
 
-### 8. Grafana reachable
+### 9. Grafana reachable
+
+The workspace `bin/curl` wrapper resolves the network mode and the tunnel itself.
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" --socks5-hostname 127.0.0.1:"$(grep EDL_SOCKS_PORT "$(dirname "$EDB")/.socks5-proxy.env" | cut -d= -f2)" http://control0:3000/api/health
+"$(dirname "$EDB")/bin/curl" -s -o /dev/null -w "%{http_code}\n" http://control0:3000/api/health
 ```
 
 Expect: HTTP 200.
 
-### 9. Tear down
+### 10. Tear down
 
-Record the cluster id before `down`, then check that nothing tagged with it is left:
+Take the cluster id (`CLUSTER_ID`) from `$EDB status` before `down`, then check that nothing
+tagged with it is left:
 
 ```bash
-CLUSTER_ID=$(jq -r .clusterId "$(dirname "$EDB")/state.json")
+$EDB status
 $EDB down --auto-approve; echo "exit=$?"
 aws ec2 describe-instances --profile easy-db-lab --region us-west-2 \
-  --filters "Name=tag:ClusterId,Values=$CLUSTER_ID" "Name=instance-state-name,Values=pending,running,stopping" \
+  --filters "Name=tag:ClusterId,Values=$CLUSTER_ID" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
   --query 'Reservations[].Instances[].InstanceId' --output text
 aws ec2 describe-vpcs --profile easy-db-lab --region us-west-2 \
   --filters "Name=tag:ClusterId,Values=$CLUSTER_ID" --query 'Vpcs[].VpcId' --output text
+aws ec2 describe-security-groups --profile easy-db-lab --region us-west-2 \
+  --filters "Name=tag:ClusterId,Values=$CLUSTER_ID" --query 'SecurityGroups[].GroupId' --output text
 ```
 
-Expect: `exit=0`, and no instances, VPC or security groups left for `edbl-1078-qa`.
+Expect: `exit=0`, and no instances, VPC or security groups left for the cluster id.

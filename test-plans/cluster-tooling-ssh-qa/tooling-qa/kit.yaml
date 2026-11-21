@@ -11,6 +11,8 @@ runtime:
   type: helm
   release: tooling-qa-podinfo
   namespace: tooling-qa
+  # podinfo labels its pods with app.kubernetes.io/name, not the default app.kubernetes.io/instance.
+  selector: app.kubernetes.io/name=tooling-qa-podinfo
 
 install:
   - type: helm-repo
@@ -73,6 +75,16 @@ stop:
   - type: helm-uninstall
     release: tooling-qa-podinfo
     namespace: tooling-qa
+
+# The deliberate failure for step 6: deleting an unknown kind with ignore-not-found off makes
+# kubectl exit 1, so the run shows ClusterToolFailedException's message. It sits in the backup
+# phase only because that is a typed phase the QA run can call on its own.
+backup:
+  - type: delete
+    kind: nosuchkind
+    name: x
+    namespace: default
+    ignore-not-found: false
 
 uninstall:
   - type: delete

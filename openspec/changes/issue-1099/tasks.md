@@ -38,9 +38,9 @@
 
 ## 7. Runtime image
 
-- [ ] 7.1 `docker/cassandra-runtime/Dockerfile`: `eclipse-temurin:<N>-jre` for 8, 11, 17 and 21; curl, python3, procps; yq at the `install_yq.sh` version; uid 999
-- [ ] 7.2 Publish job in `.github/workflows/publish-container.yml` for amd64 and arm64, failing when a platform is missing
-- [ ] 7.3 Pin the image tag in `Constants`
+- [x] 7.1 `docker/cassandra-runtime/Dockerfile`: `eclipse-temurin:<N>-jre` for 8, 11, 17 and 21; curl, python3, procps; yq at the `install_yq.sh` version; uid 999
+- [x] 7.2 Publish job in `.github/workflows/publish-container.yml` for amd64 and arm64, failing when a platform is missing
+- [x] 7.3 Pin the image tag in `Constants`
 
 ## 8. Kit resources and scripts
 

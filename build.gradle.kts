@@ -528,6 +528,7 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testPyroscopeAgentPublished",
+        "testCassandraRuntimePlatforms",
         "testKitShellLib",
         "testCassandraPodsStart",
         "testClickhouseBenchmarkReport",
@@ -894,6 +895,15 @@ tasks.register<Exec>("testPyroscopeAgentPublished") {
     description = "Unit-test the Pyroscope agent image publish check"
     workingDir = file(".")
     commandLine = listOf("bash", ".github/pyroscope-agent/image-published.test.sh")
+}
+
+// Unit-test the publish-cassandra-runtime job's check that a pushed tag holds both linux/amd64
+// and linux/arm64. docker is stubbed; no Docker, no network.
+tasks.register<Exec>("testCassandraRuntimePlatforms") {
+    group = "Verification"
+    description = "Unit-test the cassandra-runtime image platform check"
+    workingDir = file(".")
+    commandLine = listOf("bash", ".github/cassandra-runtime/platforms-present.test.sh")
 }
 
 // Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,

@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -23,8 +25,10 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.MountableFile
 import java.io.File
+import java.io.IOException
 import java.net.URLEncoder
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -55,6 +59,13 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val OUTAGE: Duration = Duration.ofSeconds(150)
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
+        val PUSH_POLL: Duration = Duration.ofMillis(500)
+
+        /** The service the readiness push stores under; the CPU queries read only [SERVICE]. */
+        const val READINESS_SERVICE = "agent-replay-readiness"
+
+        /** What [awaitAcceptsPushes] records for a stored push; any other answer is the server's reply. */
+        const val PUSH_STORED = "stored"
 
         val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
 
@@ -185,11 +196,13 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         docker.createVolumeCmd().withName(volume).exec()
         val first = startPyroscope()
+        awaitAcceptsPushes(first)
         val jvm = startProfiledJvm()
         awaitUntil { cpuTicks(first, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
 
         val down = nowSecond()
-        ObservabilityBackends.stopGracefully(first)
+        // Stopping removes the container; its log, shutdown included, holds any push it refused.
+        val firstServerLog = ObservabilityBackends.stopGracefully(first)
         containers.remove(first)
         Thread.sleep(maxOf(0L, (down + OUTAGE.seconds - nowSecond()) * MILLIS_PER_SECOND))
         val restarted = nowSecond()
@@ -220,7 +233,12 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
             .isPositive()
         val dropped = droppedUploads(jvm.logs)
         val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
-        assertThat(other).describedAs("uploads the agent dropped; JVM log:\n${jvm.logs}").isEmpty()
+        assertThat(other)
+            .describedAs(
+                "uploads the agent dropped; JVM log:\n${jvm.logs}\n" +
+                    "first server log tail:\n${firstServerLog.takeLast(SERVER_LOG_TAIL_CHARS)}\n" +
+                    "restarted server log tail:\n${second.logs.takeLast(SERVER_LOG_TAIL_CHARS)}",
+            ).isEmpty()
         assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
     }
 
@@ -240,6 +258,41 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
             (status != null && status != HTTP_TOO_MANY_REQUESTS && status < HTTP_SERVER_ERROR) || GAVE_UP in line
         }
 
+    /**
+     * Waits until [pyroscope] stores a push, and fails with the last answer and the server's log if
+     * it never does. A first start on an empty volume refuses pushes for a few seconds after `/ready`
+     * passes (design 991, "Start has a second window"). The design covers only queued profiles there;
+     * nothing in a cluster holds an agent back until the server accepts pushes, so an agent that
+     * starts inside that window can lose its first snapshot. That gap is not what this test measures:
+     * the agent here starts after the window, so a refused first snapshot is never counted as a loss
+     * the outage caused.
+     */
+    private fun awaitAcceptsPushes(pyroscope: GenericContainer<*>) {
+        val last =
+            pollUntil(
+                operationName = "first Pyroscope server stores a push",
+                maxAttempts = Int.MAX_VALUE,
+                interval = PUSH_POLL,
+                deadline = Instant.now().plus(WAIT),
+                isTransient = { false },
+                done = { it == PUSH_STORED },
+            ) {
+                try {
+                    val response =
+                        ObservabilityBackends.pushFolded(pyroscope, TENANT, "$READINESS_SERVICE{}", "main;ready 1\n", POLL)
+                    if (response.statusCode() == HTTP_OK) PUSH_STORED else "${response.statusCode()} ${response.body()}"
+                } catch (e: IOException) {
+                    // The port is not open yet, or the request timed out; an interrupt is not caught.
+                    "no answer: ${e.messageOrString()}"
+                }
+            }
+        assertThat(last)
+            .describedAs(
+                "the first Pyroscope server's answer to the last push; server log tail:\n" +
+                    pyroscope.logs.takeLast(SERVER_LOG_TAIL_CHARS),
+            ).isEqualTo(PUSH_STORED)
+    }
+
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND
 
     private fun awaitUntil(condition: () -> Boolean) {
@@ -255,6 +308,7 @@ private const val HTTP_OK = 200
 private const val HTTP_TOO_MANY_REQUESTS = 429
 private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1000L
+private const val SERVER_LOG_TAIL_CHARS = 30_000
 private const val GAVE_UP = "Gave up uploading"
 private const val EMPTY_RING = "empty ring"
 private const val UPLOAD_ERROR = "Error uploading snapshot: "

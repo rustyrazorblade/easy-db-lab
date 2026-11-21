@@ -116,31 +116,31 @@ class DefaultObservabilityStackService(
             // A selector no node matches would leave every backend Pending until the rollout wait times out.
             placementCheck.require(hosting.placement)
 
+            // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
+            // not, so prepare them only in local mode, and only where state lives on the node. The
+            // node is resolved before anything else, so a state with no control node fails naming
+            // the host directories before the compactor's preparation reaches a node.
+            val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
+            val backendNode = if (onNodeState) stateNode(clusterState) else null
+            // Grafana is local-mode only. Rendered and checked before anything is written, so a
+            // dashboard that cannot become a ConfigMap fails the deploy naming the files, with the
+            // cluster untouched.
+            val grafanaRelease = if (telemetryRedirect == null) grafana.prepare(clusterState, hosting) else null
+
             val clusterConfig = createClusterConfigMap(reading)
             val collector = Stage("OTel Collector", manifests.coreCollector.resources(reading))
 
-            // The local backends and Grafana are local-mode only. The Pyroscope server directory and
-            // dashboard upload hang off those, so they are guarded the same way.
             reportPlacement(hosting)
             // Gated before any resource is built: building the account compactor's prepares the
             // control node over SSH, which an environment without it must never attempt.
             val runnable = applyCapabilityGate(ObservabilityStage.declared(telemetryRedirect), contract.nodeCapabilities)
-
-            // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
-            // not, so prepare them only in local mode, and only where state lives on the node. The
-            // node is resolved before any stage is built, so a state with no control node fails
-            // naming the host directories before the compactor's preparation reaches a node.
-            val onNodeState = telemetryRedirect == null && hosting.storage == BackendStorage.HostPath
-            val backendNode = if (onNodeState) stateNode(clusterState) else null
             val stages = buildStages(runnable, clusterState, hosting)
             backendNode?.let { stateDirectories.prepareBackends(it) }
 
             val appliedResources = applyHashed(collector, stages, clusterConfig)
 
             backendNode?.let { stateDirectories.prepareGrafana(it) }
-            if (telemetryRedirect == null) {
-                grafana.deploy(clusterState, hosting)
-            }
+            grafanaRelease?.let { grafana.apply(it) }
 
             awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect), readyTimeoutSeconds(clusterState))
         }

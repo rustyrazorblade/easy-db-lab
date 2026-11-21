@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -26,6 +27,8 @@ import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
@@ -45,6 +48,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
@@ -67,7 +71,6 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
@@ -79,6 +82,9 @@ import org.mockito.kotlin.reset
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
 import java.nio.file.Files
 
 /**
@@ -176,7 +182,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.prepare(any(), any(), any(), any())).thenReturn(Result.success(EMPTY_GRAFANA_RELEASE))
+        whenever(mockDashboardService.apply(any())).thenReturn(Result.success(Unit))
 
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
 
@@ -184,7 +191,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     /** The service under test, reading its contract from [contractSource]. */
-    private fun serviceWith(contractSource: ClusterContractSource): DefaultObservabilityStackService =
+    private fun serviceWith(
+        contractSource: ClusterContractSource,
+        grafana: GrafanaStage = GrafanaStage(mockDashboardService, DashboardInstallContextFactory(sharedStoreTenants())),
+    ): DefaultObservabilityStackService =
         DefaultObservabilityStackService(
             mockK8sService,
             mockRemoteOps,
@@ -200,7 +210,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                     agentJar = { agentJar },
                 ),
             ),
-            GrafanaStage(mockDashboardService, DashboardInstallContextFactory(sharedStoreTenants())),
+            grafana,
             ConfigChangeReport(mockK8sService, getKoin().get()),
         )
 
@@ -573,7 +583,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
         // The documents front and its proxy read the account bucket, never the data bucket.
-        verify(mockDashboardService).deploy(anyOrNull(), context.capture(), eq("easy-db-lab-test"), any())
+        verify(mockDashboardService).prepare(context.capture(), eq("easy-db-lab-test"), any(), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
@@ -581,6 +591,30 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val commands = remoteCommands()
         assertThat(commands).anyMatch { it.contains("/mnt/db1/pyroscope") }
         assertThat(commands).anyMatch { it.contains(GrafanaManifestBuilder.GRAFANA_DATA_PATH) }
+    }
+
+    /** A browser reaches Pyroscope through the SOCKS tunnel, which resolves names on the control node, not `.svc`. */
+    @Test
+    fun `under NodePorts the dashboards link Pyroscope at the control node's private IP and NodePort`() {
+        hosting = { ObservabilityHosting.AWS.copy(publishing = ServicePublishing.NodePorts) }
+
+        service.deploy().getOrThrow()
+
+        verify(mockDashboardService).prepare(
+            any(),
+            any(),
+            any(),
+            eq("http://${controlNode.privateIp}:${Constants.K8s.PYROSCOPE_NODE_PORT}"),
+        )
+    }
+
+    @Test
+    fun `under ClusterIp the dashboards link Pyroscope at its Service DNS name`() {
+        hosting = { ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp) }
+
+        service.deploy().getOrThrow()
+
+        verify(mockDashboardService).prepare(any(), any(), any(), eq("http://pyroscope.default.svc:4040"))
     }
 
     @Test
@@ -724,7 +758,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
+        verify(mockDashboardService, never()).prepare(any(), any(), any(), any())
+        verify(mockDashboardService, never()).apply(any())
 
         // No backend or Grafana directory is prepared: they do not exist here. The only SSH work
         // is the account compactor's, which runs on every cluster.
@@ -770,7 +805,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
 
         val hosting = argumentCaptor<ObservabilityHosting>()
-        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), hosting.capture())
+        verify(mockDashboardService).prepare(any(), any(), hosting.capture(), any())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
     }
 
@@ -967,7 +1002,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
+        order.verify(mockDashboardService).apply(any())
         order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }
@@ -997,6 +1032,39 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val workloads = argumentCaptor<List<WorkloadRef>>()
         verify(mockK8sService, atLeastOnce()).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.allValues.flatten()).doesNotContain(WorkloadRef(WorkloadKind.Deployment, "grafana"))
+    }
+
+    /**
+     * A dashboard that cannot become a ConfigMap is found before the stack touches the cluster: the
+     * collector, the backends, `cluster-config` and the datasources stay as they were.
+     */
+    @Test
+    fun `a dashboard that cannot be delivered fails the deploy before anything is applied, naming the files`() {
+        val s3 = mock<S3Client>()
+        whenever(s3.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(GetBucketLocationResponse.builder().locationConstraint("eu-west-1").build())
+        val eventBus = getKoin().get<EventBus>()
+        val realGrafana =
+            DefaultGrafanaDeployService(
+                mockK8sService,
+                GrafanaManifestBuilder(getKoin().get()),
+                GrafanaDashboardTreeWriter(GrafanaDashboardCatalog.discover("grafana-catalog-fixtures/clashing-names")),
+                eventBus,
+                ConfigChangeReport(mockK8sService, eventBus),
+                BucketRegion(s3),
+            )
+        val clashing =
+            serviceWith(
+                fixedContract({ capabilities }, { hosting(mockClusterStateManager.load()) }),
+                GrafanaStage(realGrafana, DashboardInstallContextFactory(sharedStoreTenants())),
+            )
+
+        val result = clashing.deploy()
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("a-b/c.json").hasMessageContaining("a/b-c.json")
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any<HasMetadata>())
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
     }
 
     /**

@@ -21,11 +21,8 @@ import org.koin.core.component.inject
 import org.koin.core.module.Module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
-import org.mockito.kotlin.argThat
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -357,84 +354,4 @@ class DefaultRemoteOperationsServiceTest :
             getKoin().get<SSHConnectionProvider>(),
             RetryConfig.from<Any>(DefaultRemoteOperationsService.defaultRetryConfig).waitDuration(Duration.ofMillis(1)).build(),
         )
-
-    /** Stubs the staging command to return a fixed path and every other command to succeed silently. */
-    private fun stubStaging(): String {
-        val staging = "/mnt/db1/grafana/dashboards.staging.k3Xq9z"
-        whenever(mockSSHClient.executeRemoteCommand(any(), anyOrNull(), any())).thenReturn(Response(""))
-        whenever(mockSSHClient.executeRemoteCommand(argThat { startsWith("d=\$(sudo mktemp") }, anyOrNull(), any()))
-            .thenReturn(Response("$staging\n"))
-        return staging
-    }
-
-    @Test
-    fun `replaceDirectory stages beside the target, uploads, then renames the tree into place as the owner`(
-        @TempDir localDir: File,
-    ) {
-        // Staging must sit on the same filesystem as the target so the final mv is a rename, and
-        // the old tree is moved aside rather than removed first, so a reader of the target never
-        // sees an empty or half-written directory.
-        val staging = stubStaging()
-
-        service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472")
-
-        val commands = argumentCaptor<String>()
-        val order = inOrder(mockSSHClient)
-        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), anyOrNull(), any())
-        order.verify(mockSSHClient).uploadDirectory(localDir, staging)
-        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), anyOrNull(), any())
-        verify(mockSSHClient, times(2)).executeRemoteCommand(any(), anyOrNull(), any())
-
-        assertThat(commands.firstValue).isEqualTo(
-            "d=\$(sudo mktemp -d -p /mnt/db1/grafana dashboards.staging.XXXXXX) && " +
-                "sudo chown \"\$(id -un)\" \"\$d\" && echo \"\$d\"",
-        )
-        assertThat(commands.secondValue).isEqualTo(
-            "sudo rm -rf /mnt/db1/grafana/dashboards.old && " +
-                "if sudo test -e /mnt/db1/grafana/dashboards; then " +
-                "sudo mv -T /mnt/db1/grafana/dashboards /mnt/db1/grafana/dashboards.old; fi && " +
-                "sudo mv -T $staging /mnt/db1/grafana/dashboards && " +
-                "sudo chown -R 472:472 /mnt/db1/grafana/dashboards && " +
-                "sudo rm -rf /mnt/db1/grafana/dashboards.old",
-        )
-    }
-
-    @Test
-    fun `replaceDirectory removes the staging directory and never swaps when the upload fails`(
-        @TempDir localDir: File,
-    ) {
-        val staging = stubStaging()
-        doAnswer { error("sftp failed") }.whenever(mockSSHClient).uploadDirectory(localDir, staging)
-        // One attempt: the retry that wraps the upload is exercised elsewhere and only adds waits here.
-        val service =
-            DefaultRemoteOperationsService(
-                mockSSHConnectionProvider,
-                RetryConfig.custom<Any>().maxAttempts(1).build(),
-            )
-
-        assertThatThrownBy { service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472") }
-            .hasMessage("sftp failed")
-
-        verify(mockSSHClient).executeRemoteCommand(eq("sudo rm -rf $staging"), anyOrNull(), any())
-        verify(mockSSHClient, never()).executeRemoteCommand(argThat { contains("mv ") }, anyOrNull(), any())
-    }
-
-    @Test
-    fun `replaceDirectory reports the upload failure and keeps a failed cleanup as suppressed`(
-        @TempDir localDir: File,
-    ) {
-        val staging = stubStaging()
-        doAnswer { error("sftp failed") }.whenever(mockSSHClient).uploadDirectory(localDir, staging)
-        whenever(mockSSHClient.executeRemoteCommand(eq("sudo rm -rf $staging"), anyOrNull(), any()))
-            .thenThrow(IllegalStateException("rm failed"))
-        val service =
-            DefaultRemoteOperationsService(
-                mockSSHConnectionProvider,
-                RetryConfig.custom<Any>().maxAttempts(1).build(),
-            )
-
-        assertThatThrownBy { service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472") }
-            .hasMessage("sftp failed")
-            .satisfies({ failure -> assertThat(failure.suppressed.map { it.message }).contains("rm failed") })
-    }
 }

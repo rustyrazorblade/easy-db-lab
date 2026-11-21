@@ -351,13 +351,6 @@ abstract class UpTestFixture : BaseKoinTest() {
                 remoteDir: String,
             ) = Unit
 
-            override fun replaceDirectory(
-                host: Host,
-                localDir: File,
-                remoteDir: String,
-                owner: String,
-            ) = Unit
-
             override fun download(
                 host: Host,
                 remote: String,

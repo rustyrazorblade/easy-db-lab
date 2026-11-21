@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import kotlinx.serialization.Serializable
 
@@ -82,3 +84,27 @@ fun nodeLocalProfilesRelay(): String = "http://127.0.0.1:${Constants.K8s.ALLOY_R
  * @param nodeIp private address of a cluster node (any node serves a NodePort; the control node by convention).
  */
 fun pyroscopeNodePortUrl(nodeIp: String): String = "http://$nodeIp:${Constants.K8s.PYROSCOPE_NODE_PORT}"
+
+/**
+ * The Pyroscope UI address a browser opens from the dashboards' "Pyroscope UI" link.
+ *
+ * Under [ServicePublishing.NodePorts] it is the control node's private IP at the Pyroscope NodePort:
+ * a browser going through the SOCKS tunnel resolves names on the control node, which does not know
+ * `.svc` names. Otherwise it is the Pyroscope Service ([BackendEndpoints.pyroscope]).
+ *
+ * @throws IllegalStateException under [ServicePublishing.NodePorts] when [controlHost] is null
+ */
+fun pyroscopeBrowserUrl(
+    publishing: ServicePublishing,
+    controlHost: ClusterHost?,
+): String =
+    when (publishing) {
+        ServicePublishing.NodePorts ->
+            pyroscopeNodePortUrl(
+                checkNotNull(controlHost) {
+                    "The dashboards' Pyroscope UI link needs the control node's private IP, " +
+                        "but the cluster state has no control node."
+                }.privateIp,
+            )
+        ServicePublishing.ClusterIp -> BackendEndpoints.pyroscope()
+    }

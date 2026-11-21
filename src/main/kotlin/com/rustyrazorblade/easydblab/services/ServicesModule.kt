@@ -57,6 +57,7 @@ import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.Fabric8ControlPlaneConnector
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.cassandraversions.AxonOpsAgents
+import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraArtifactContributor
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraInstaller
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraNodeRestorer
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraTarballResolver
@@ -290,6 +291,8 @@ val servicesModule =
         single { CassandraVersionResolver(get()) }
         // The cassandra-pods kit's tarball: the same resolver, plus the sha256 from each source
         single { CassandraTarballResolver(get(), get(), TarballDigests(PublicHttp())) }
+        // Kit variable contributors, by the name a kit.yaml lists (Constants.Kit.Contributors)
+        factoryOf(::CassandraArtifactContributor) bind KitVariableContributor::class
         // The one install path of cassandra install, cassandra use and the node restorer
         single { CassandraInstaller(get(), get(), get(), get()) }
         single { CassandraNodeRestorer(get(), get(), get()) }

@@ -31,10 +31,10 @@
 
 ## 6. CassandraArtifactContributor
 
-- [ ] 6.1 Resolves `--version`/`--build`/`--java` to the artifact env (`EDL_TARBALL_URL`, `EDL_TARBALL_FALLBACK_URL`, `EDL_TARBALL_SHA256`, `EDL_CASSANDRA_BUILD`, the runtime image tag), and writes `resolved-artifact.env`, the placement patch, `cassandra-rackdc.properties`, and the common patch when the workspace has none. Registered in Koin
-- [ ] 6.2 With `--image`, skip resolution. Refuse `--build` together with `--image`. Every failure names its source and happens before any resource
-- [ ] 6.3 Memory and CPU defaults: 75% of `DB_NODE_ALLOCATABLE_MIB` or `3Gi`; `--cpus` = allocatable minus 1, at least 1
-- [ ] 6.4 Tests with a fake `VersionSources`: `--build` never resolves from ASF, `--image` skips resolution, a missing digest fails, the build/image conflict is refused, and the memory and CPU defaults per environment
+- [x] 6.1 Resolves `--version`/`--build`/`--java` to the artifact env (`EDL_TARBALL_URL`, `EDL_TARBALL_FALLBACK_URL`, `EDL_TARBALL_SHA256`, `EDL_CASSANDRA_BUILD`, the runtime image tag), and writes `resolved-artifact.env`, the placement patch, `cassandra-rackdc.properties`, and the common patch when the workspace has none. Registered in Koin
+- [x] 6.2 With `--image`, skip resolution. Refuse `--build` together with `--image`. Every failure names its source and happens before any resource
+- [x] 6.3 Memory and CPU defaults: 75% of `DB_NODE_ALLOCATABLE_MIB` or `3Gi`; `--cpus` = allocatable minus 1, at least 1
+- [x] 6.4 Tests with a fake `VersionSources`: `--build` never resolves from ASF, `--image` skips resolution, a missing digest fails, the build/image conflict is refused, and the memory and CPU defaults per environment
 
 ## 7. Runtime image
 

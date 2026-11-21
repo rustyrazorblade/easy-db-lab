@@ -1329,6 +1329,27 @@ object Constants {
 
             /** The `cassandra-runtime` revision the kit runs; bump with the Dockerfile. */
             const val RUNTIME_IMAGE_REVISION = "1"
+
+            /** The resolved artifact, as sourceable `KEY='value'` lines in the kit directory, for the scripts. */
+            const val ARTIFACT_FILE = "resolved-artifact.env"
+
+            /** The kit's placement patch in the kit directory, merged after the workspace `cassandra.patch.yaml`. */
+            const val PLACEMENT_FILE = "placement.patch.yaml"
+
+            /** The gossiping snitch's DC and rack, in the kit directory. */
+            const val RACKDC_FILE = "cassandra-rackdc.properties"
+
+            /** Every pod's rack until #1097 places pods per rack. */
+            const val RACK = "rack1"
+
+            /** Pod 0's stable name through the headless gossip Service: the seed of every pod. */
+            const val SEED_DNS = "cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local"
+
+            /** `--memory` where pods are not Guaranteed: where the kit README says testing stopped. */
+            const val DEFAULT_MEMORY = "3Gi"
+
+            /** `--memory` on Guaranteed nodes, as a percentage of the smallest db node's allocatable memory. */
+            const val GUARANTEED_MEMORY_PERCENT = 75
         }
 
         object Presto {

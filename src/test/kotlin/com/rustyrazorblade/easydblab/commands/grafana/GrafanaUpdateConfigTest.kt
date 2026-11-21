@@ -40,6 +40,7 @@ import com.rustyrazorblade.easydblab.services.realStageManifests
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
@@ -256,6 +257,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
     @Test
     fun `execute fails when applyResource fails`() {
+        val denied = KubernetesClientException("server side apply failed", 403, null)
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
@@ -268,13 +270,15 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any<HasMetadata>()))
-            .thenReturn(Result.failure(RuntimeException("server side apply failed")))
+            .thenReturn(Result.failure(denied))
 
         val command = GrafanaUpdateConfig()
 
+        // The Fabric8 failure must survive as the cause, so the Kubernetes handler can describe it.
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("server side apply failed")
+            .hasRootCause(denied)
     }
 
     @Test

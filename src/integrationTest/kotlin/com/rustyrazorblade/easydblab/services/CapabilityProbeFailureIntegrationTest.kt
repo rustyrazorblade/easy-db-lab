@@ -4,10 +4,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesErrorHandler
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Status
 import io.fabric8.kubernetes.api.model.StatusBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization
@@ -16,6 +18,7 @@ import io.fabric8.mockwebserver.http.RecordedRequest
 import io.fabric8.mockwebserver.utils.ResponseProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
 
@@ -115,7 +118,7 @@ class CapabilityProbeFailureIntegrationTest {
     private fun probePod(capability: NodeCapability) = "${Constants.Capabilities.PROBE_POD_PREFIX}-${capability.serialName}"
 
     @Test
-    fun `a forbidden namespace read fails the probe, naming the namespace, the server message and cluster-admin`() {
+    fun `a forbidden namespace read fails the probe naming the namespace, and keeps the 403 for the Kubernetes handler`() {
         server
             .expect()
             .get()
@@ -125,11 +128,13 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "namespaces \"$NAMESPACE\" is forbidden: user cannot get"),
             ).always()
 
-        assertThatThrownBy { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+
+        assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
             .hasMessageContaining("user cannot get")
-            .hasMessageContaining("cluster-admin")
+        assertForbiddenCauseNeedsClusterAdmin(thrown)
     }
 
     @Test
@@ -170,7 +175,7 @@ class CapabilityProbeFailureIntegrationTest {
     }
 
     @Test
-    fun `a forbidden ServiceAccount create fails the probe with the server message`() {
+    fun `a forbidden ServiceAccount create fails the probe with the server message, keeping the 403`() {
         server
             .expect()
             .post()
@@ -180,12 +185,21 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "serviceaccounts is forbidden: user cannot create"),
             ).always()
 
-        assertThatThrownBy { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+
+        assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
             .hasMessageContaining("creating the default ServiceAccount")
             .hasMessageContaining("user cannot create")
-            .hasMessageContaining("cluster-admin")
+        assertForbiddenCauseNeedsClusterAdmin(thrown)
+    }
+
+    /** The probe leaves the cluster-admin explanation to the Kubernetes handler, which reads the kept 403. */
+    private fun assertForbiddenCauseNeedsClusterAdmin(thrown: Throwable) {
+        val forbidden = thrown.cause as KubernetesClientException
+        assertThat(forbidden.code).isEqualTo(Constants.HttpStatus.FORBIDDEN)
+        assertThat(KubernetesErrorHandler().describe(forbidden)?.remedy).contains("cluster-admin")
     }
 
     @Test

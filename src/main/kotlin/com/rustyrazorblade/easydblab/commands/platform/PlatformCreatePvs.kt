@@ -65,7 +65,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
                     Event.Platform.CreatingPvs(kit = kit, nodeType = nodeType, count = targetHosts.size, size = size),
                 )
                 runCatching { kitStorageProvisioner.provision(volumes, storage, clusterState) }
-                    .getOrElse { exception -> error("Failed to create PVs for $kit: ${exception.message}") }
+                    .getOrElse { exception -> throw IllegalStateException("Failed to create PVs for $kit: ${exception.message}", exception) }
                 eventBus.emit(Event.Platform.PvsCreated(kit = kit, count = targetHosts.size))
             }
             // The cluster provisions the volumes; the provisioner only refuses a class that would

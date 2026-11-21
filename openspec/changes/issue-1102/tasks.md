@@ -21,8 +21,8 @@
 
 ## 5. Keep causes
 
-- [ ] 5.1 Keep the Fabric8 cause at `UpPostSteps.kt`, `GrafanaUpdateConfig.kt`, `ObservabilityStackService.kt` (5 sites), `KitStorageResolver.kt`, `PlacementCheck.kt`, `ObservabilityDeployInputs.kt`, `PlatformCreatePvs.kt`, `StressLogs.kt`
-- [ ] 5.2 `CapabilityProbeService`: delete `explain`, keep the baseline Pod's exception as the cause; update its tests
+- [x] 5.1 Keep the Fabric8 cause at `UpPostSteps.kt`, `GrafanaUpdateConfig.kt`, `ObservabilityStackService.kt` (5 sites), `KitStorageResolver.kt`, `PlacementCheck.kt`, `ObservabilityDeployInputs.kt`, `PlatformCreatePvs.kt`, `StressLogs.kt`
+- [x] 5.2 `CapabilityProbeService`: delete `explain`, keep the baseline Pod's exception as the cause; update its tests
 
 ## 6. No retry of 401/403
 

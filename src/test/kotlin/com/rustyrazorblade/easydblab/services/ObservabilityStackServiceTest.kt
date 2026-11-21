@@ -43,6 +43,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.CompactorAgentInstaller
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -53,6 +54,7 @@ import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
 import io.fabric8.kubernetes.client.dsl.MixedOperation
@@ -1213,5 +1215,66 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                     )
                 }
             }
+
+        @JvmStatic
+        fun kubernetesCallFailures(): List<Arguments> =
+            listOf(
+                Arguments.of(
+                    "rollout wait",
+                    { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(k8s.waitForRollouts(any(), any(), any())).thenReturn(Result.failure(e))
+                    },
+                ),
+                Arguments.of(
+                    "pods ready",
+                    { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(k8s.waitForPodsReady(any())).thenReturn(Result.failure(e))
+                    },
+                ),
+                Arguments.of(
+                    "apply",
+                    { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(k8s.applyResource(any<HasMetadata>())).thenReturn(Result.failure(e))
+                    },
+                ),
+                Arguments.of(
+                    "cluster-config",
+                    { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(k8s.createConfigMap(any(), any(), any(), any())).thenReturn(Result.failure(e))
+                    },
+                ),
+                Arguments.of(
+                    "placement node listing",
+                    { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(k8s.nodesMatching(any())).thenReturn(Result.failure(e))
+                    },
+                ),
+                Arguments.of(
+                    "grafana deploy",
+                    { _: K8sService, grafana: GrafanaDeployService, e: KubernetesClientException ->
+                        whenever(grafana.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.failure(e))
+                    },
+                ),
+            )
+    }
+
+    /**
+     * Every Kubernetes call the deploy wraps keeps the Fabric8 failure as the cause, so the
+     * Kubernetes error handler can name the denied request instead of the user seeing a rebuilt
+     * message-only exception.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("kubernetesCallFailures")
+    fun `a Kubernetes failure keeps the Fabric8 exception as the cause`(
+        call: String,
+        fail: (K8sService, GrafanaDeployService, KubernetesClientException) -> Unit,
+    ) {
+        val denied = KubernetesClientException("forbidden", 403, null)
+        fail(mockK8sService, mockDashboardService, denied)
+
+        val failure = service.deploy().exceptionOrNull()
+
+        assertThat(failure).describedAs(call).isNotNull
+        assertThat(failure?.causeChain()).describedAs(call).contains(denied)
     }
 }

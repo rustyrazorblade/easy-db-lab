@@ -56,7 +56,7 @@ class GrafanaStage(
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
             ).getOrElse { exception ->
-                error("Failed to upload dashboards: ${exception.message}")
+                throw IllegalStateException("Failed to upload dashboards: ${exception.message}", exception)
             }
     }
 }

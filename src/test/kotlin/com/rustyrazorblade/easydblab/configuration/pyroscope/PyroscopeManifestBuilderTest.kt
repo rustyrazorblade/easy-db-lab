@@ -5,8 +5,12 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -227,6 +231,29 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(pattern.containsMatchIn("$shutdown\n")).describedAs("the refusal with a trailing newline").isTrue()
         assertThat(pattern.containsMatchIn(parseError)).describedAs("a parse error naming the phrase").isFalse()
         assertThat(pattern.containsMatchIn(laterPhrase)).describedAs("the gRPC error not at the body's end").isFalse()
+    }
+
+    @Test
+    fun `a change to the front's config rolls the server pod`() {
+        fun hashWith(frontConfig: String): String? {
+            val resources =
+                builder.buildServerResources().map { resource ->
+                    if (resource is ConfigMap && PyroscopeManifestBuilder.FRONT_CONFIG_KEY in resource.data.orEmpty()) {
+                        ConfigMapBuilder(resource).addToData(PyroscopeManifestBuilder.FRONT_CONFIG_KEY, frontConfig).build()
+                    } else {
+                        resource
+                    }
+                }
+            return ConfigHashAnnotator
+                .annotate(resources)
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
+        }
+        val rendered = builder.buildFrontConfig()
+
+        assertThat(hashWith(rendered)).isEqualTo(hashWith(rendered))
+        assertThat(hashWith("$rendered\n# changed\n")).isNotEqualTo(hashWith(rendered))
     }
 
     @Test

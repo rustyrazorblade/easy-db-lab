@@ -14,10 +14,8 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
-import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.runCatchingException
-import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.io.FileUtils
 import org.koin.core.component.KoinComponent
@@ -26,14 +24,17 @@ import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import java.io.File
 import java.time.Duration
+import java.util.UUID
 import kotlin.io.path.createTempDirectory
 import kotlin.system.exitProcess
 
 /**
  * Builds one AMI from the Packer templates in [directory], running Packer in a container.
  *
- * A build that loses its SSH session to the builder runs again on a new builder (see
- * [PackerBuildAttempts]); a failed build's builder is diagnosed and torn down unless kept.
+ * Each build has its own id, carried on everything it launches, and runs on a [BuildSite] in its
+ * own region. A build that loses its SSH session to the builder runs again on a new builder (see
+ * [PackerBuildAttempts]); a failed build's builders are torn down unless kept, and only this
+ * build's builders are ever touched.
  */
 class Packer(
     val context: Context,
@@ -44,10 +45,9 @@ class Packer(
     private val packerImage: PackerImage by inject { parametersOf(imageDocker) }
     private val eventBus: EventBus by inject()
     private val user: User by inject()
+    private val buildSites: BuildSites by inject()
 
-    // Used on build failure to capture diagnostics from, and tear down, the kept instance.
-    private val vpcService: VpcService by inject()
-    private val ec2InstanceService: EC2InstanceService by inject()
+    // Used on the last failed attempt to capture diagnostics from its builders.
     private val remoteOps: RemoteOperationsService by inject()
 
     private val awsCredentialsManager: AWSCredentialsManager by inject()
@@ -62,28 +62,30 @@ class Packer(
          *
          * Under the `ssm` SSH transport Packer reaches the builder through Session Manager instead of
          * the instance's public IP, so a network that blocks outbound port 22 can still build AMIs.
-         * Every build bounds its SSH stream with a keepalive and a read/write timeout.
+         * Every build bounds its SSH stream with a keepalive and a read/write timeout, and tags what
+         * it launches with the build's id besides the marker tags.
          *
+         * @param keyPairName the key pair in the build region the builder launches with; its private key is the profile's
          * @param releaseVersion the version to stamp a release build with, or null for a timestamped build
          */
         internal fun buildCommand(
-            name: String,
-            region: String,
+            build: PackerBuild,
             arch: Arch,
             user: User,
+            keyPairName: String,
             releaseVersion: String?,
         ): List<String> =
             buildList {
                 add("build")
                 // Always keep the instance on failure so we can capture diagnostics from it
-                // before deciding whether to tear it down (see handleBuildFailure).
+                // before deciding whether to tear it down (see cleanUp).
                 add("-on-error=abort")
-                addVar("region", region)
+                addVar("region", build.region)
                 addVar("arch", arch.type)
                 addVar("s3_bucket", user.s3Bucket)
-                // Build with the user's own AWS keypair so an instance left up via --keep-on-error
-                // can be SSH'd into with ${profileDir}/secret.pem.
-                addVar("ssh_keypair_name", user.keyName)
+                // Build with a key pair holding the user's own key so an instance left up via
+                // --keep-on-error can be SSH'd into with ${profileDir}/secret.pem.
+                addVar("ssh_keypair_name", keyPairName)
                 addVar("ssh_private_key_file", Constants.Paths.SSH_KEY_MOUNT)
                 if (user.sshTransport == SshTransport.Ssm) {
                     addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
@@ -93,9 +95,17 @@ class Packer(
                 addVar("ssh_keep_alive_interval", Constants.Packer.SSH_KEEP_ALIVE_INTERVAL)
                 addVar("ssh_read_write_timeout", Constants.Packer.SSH_READ_WRITE_TIMEOUT)
                 releaseVersion?.let { addVar("release_version", it) }
-                addVar("marker_tags", hclMap(Constants.Vpc.MARKER_TAGS))
-                add(name)
+                addVar("marker_tags", hclMap(Constants.Vpc.MARKER_TAGS + (Constants.Packer.BUILD_ID_TAG_KEY to build.buildId)))
+                add(build.template)
             }
+
+        /** A new build id: enough random hex that concurrent builds never share one. */
+        internal fun newBuildId(): String =
+            UUID
+                .randomUUID()
+                .toString()
+                .replace("-", "")
+                .take(Constants.Packer.BUILD_ID_LENGTH)
 
         /**
          * An HCL map literal for a `-var` of type `map(string)`, e.g. `{"a" = "1", "b" = "2"}`.
@@ -118,7 +128,6 @@ class Packer(
         }
     }
 
-    // todo include the region defined in the profile
     fun build(
         name: String,
         buildArgs: BuildArgsMixin,
@@ -135,81 +144,88 @@ class Packer(
     ) {
         require(name.isNotBlank()) { "Build name cannot be blank" }
         require(region.isNotBlank()) { "Build region cannot be blank" }
-
-        val keepUp = keepOnError || keepOnErrorFromEnv()
-
         require(user.keyName.isNotEmpty() && secretKeyFile.exists()) {
             "AWS keypair not configured (key: '${user.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
         }
 
-        // A release build uses the release version as the image version and makes the AMI public.
-        val command =
-            buildCommand(
-                name = name,
+        val build =
+            PackerBuild(
+                template = name,
+                buildId = newBuildId(),
                 region = region,
-                arch = arch,
-                user = user,
-                releaseVersion = if (isRelease) context.version.toString() else null,
+                maxAttempts = Constants.Packer.MAX_BUILD_ATTEMPTS,
+                keepOnError = keepOnError || keepOnErrorFromEnv(),
             )
-
         val packerDir = packerDirectory()
         // Resolved first, so a failed image build stops before Packer launches any instance.
         val image = packerImage.ensure(user.sshTransport)
-        val logs = PackerLogs(File(context.profileDir, Constants.Packer.HOST_LOGS_DIR))
-        val maxAttempts = Constants.Packer.MAX_BUILD_ATTEMPTS
+        val releaseVersion = if (isRelease) context.version.toString() else null
         val outcome =
-            PackerBuildAttempts(maxAttempts).run(
-                build = { attempt -> runAttempt(image, command, packerDir, logs.newAttempt(name, attempt)) },
-                // The builder of an attempt that would run again is always torn down; only the last
-                // failed builder is kept for --keep-on-error.
-                cleanUp = { _, _, retryWanted -> handleBuildFailure(keepUp && !retryWanted) },
-                report = { attempt, failed, willRetry, cleanup ->
-                    eventBus.emit(
-                        Event.Ami.BuildAttemptFailed(
-                            template = name,
-                            attempt = attempt,
-                            maxAttempts = maxAttempts,
-                            sessionDropped = failed.failure is PackerFailure.SessionDropped,
-                            willRetry = willRetry,
-                            reason = failed.failure.reason,
-                            logPath = failed.logFile.absolutePath,
-                            builderNotCleared = (cleanup as? BuilderCleanup.Unresolved)?.reason,
-                        ),
-                    )
-                },
-            )
+            buildSites.open(region, build.buildId).use { site ->
+                // A release build uses the release version as the image version and makes the AMI public.
+                val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
+                runAttempts(build, site) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
+            }
         when (outcome) {
             is PackerBuildOutcome.Succeeded -> logger.info { "Packer build succeeded" }
             is PackerBuildOutcome.Failed -> exitProcess(1)
         }
     }
 
+    /** Runs the attempts of [build] on [site], each through [attemptRun] with its own log file. */
+    private fun runAttempts(
+        build: PackerBuild,
+        site: BuildSite,
+        attemptRun: (attempt: Int, logFile: File) -> PackerBuildOutcome,
+    ): PackerBuildOutcome {
+        println("AMI build ${build.template}: build id ${build.buildId}, region ${build.region}.")
+        val logs = PackerLogs(File(context.profileDir, Constants.Packer.HOST_LOGS_DIR))
+        return PackerBuildAttempts(build.keepOnError, build.maxAttempts).run(
+            build = { attempt -> attemptRun(attempt, logs.newAttempt(build.template, build.buildId, attempt)) },
+            cleanUp = { attempt, failed, plan ->
+                // The header comes first, so the cleanup's own lines read as part of this attempt.
+                println(attemptHeader(build, attempt, failed, plan))
+                cleanUp(site, plan)
+            },
+            report = { attempt, failed, willRetry, cleanup ->
+                eventBus.emit(PackerAttempt.failedEvent(build, attempt, failed, willRetry, cleanup))
+            },
+        )
+    }
+
+    private fun attemptHeader(
+        build: PackerBuild,
+        attempt: Int,
+        failed: PackerBuildOutcome.Failed,
+        plan: CleanupPlan,
+    ): String {
+        val why =
+            when (failed.failure) {
+                is PackerFailure.SessionDropped -> "lost its SSH session to the build instance"
+                is PackerFailure.BuildError -> "failed"
+            }
+        val next =
+            when {
+                plan.inspect -> "Capturing diagnostics from its build instance."
+                else -> "Tearing down its build instance before the next attempt."
+            }
+        return "==== AMI build ${build.template} attempt $attempt of ${build.maxAttempts} $why. $next"
+    }
+
     /**
-     * Runs one `packer build` in a new container, with its debug log at [logFile], and classifies a
-     * failure from that log. A failure to run the container at all (the Docker daemon, or a build
-     * that outlived [Constants.Packer.BUILD_TIMEOUT_MINUTES]) is a build error, never retried.
+     * Runs one `packer build` in a new container, with its debug log at [logFile], and classifies the
+     * result ([PackerAttempt.outcome]). An interrupt is a request to stop, so it propagates.
      */
     private fun runAttempt(
         image: String,
         command: List<String>,
         packerDir: File,
         logFile: File,
-    ): PackerBuildOutcome =
-        runCatchingException { execute(image, command, packerDir, logFile) }
-            .fold(
-                onSuccess = { result ->
-                    when {
-                        result.isSuccess -> PackerBuildOutcome.Succeeded
-                        else -> PackerBuildOutcome.Failed(PackerFailure.fromLog(readLog(logFile)), logFile)
-                    }
-                },
-                onFailure = { error ->
-                    logger.error(error) { "Packer container failed" }
-                    PackerBuildOutcome.Failed(PackerFailure.BuildError(error.messageOrString()), logFile)
-                },
-            )
-
-    private fun readLog(logFile: File): String = if (logFile.exists()) logFile.readText() else ""
+    ): PackerBuildOutcome {
+        val run = runCatchingInterruptibly { execute(image, command, packerDir, logFile) }
+        run.onFailure { logger.error(it) { "Packer container failed" } }
+        return PackerAttempt.outcome(run, logFile)
+    }
 
     /**
      * Whether the EASY_DB_LAB_BUILD_KEEP_ON_FAILURE env var is set to a truthy value. Lets builds
@@ -218,57 +234,38 @@ class Packer(
     private fun keepOnErrorFromEnv(): Boolean =
         System.getenv(Constants.Environment.BUILD_KEEP_ON_FAILURE)?.lowercase() in setOf("1", "true", "yes", "on")
 
-    /** The packer VPC's instances, through [vpcService]. */
-    private val builderInstances =
-        object : BuilderInstances {
-            override fun list(): List<String> =
-                vpcService
-                    .findVpcByName(Constants.Vpc.PACKER_VPC_NAME)
-                    ?.let { vpcService.findInstancesInVpc(it) }
-                    .orEmpty()
-
-            override fun terminate(instanceIds: List<String>) = vpcService.terminateInstances(instanceIds)
-        }
-
     /**
-     * After a failed attempt, captures diagnostics from its builders (packer ran with
-     * -on-error=abort) and keeps or terminates them through [BuilderCleaner], whose answer decides
-     * whether the build may run again; then prints what became of them.
+     * After a failed attempt, captures diagnostics from its builders when the [plan] asks (packer ran
+     * with -on-error=abort), and keeps or terminates them through [BuilderCleaner], whose answer
+     * decides whether the build may run again. A kept builder gets its SSH lines here; the
+     * attempt's event reports every outcome.
      */
-    private fun handleBuildFailure(keepUp: Boolean): BuilderCleanup {
-        var ips: Map<String, String?> = emptyMap()
+    private fun cleanUp(
+        site: BuildSite,
+        plan: CleanupPlan,
+    ): BuilderCleanup {
+        var found: List<BuilderInstance> = emptyList()
         val cleanup =
-            BuilderCleaner(builderInstances).cleanUp(keepUp) { instanceIds ->
-                ips =
-                    runCatchingException {
-                        ec2InstanceService.describeInstances(instanceIds).associate { it.instanceId to it.publicIp }
-                    }.getOrDefault(emptyMap())
-                instanceIds.forEach { id -> ips[id]?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, id) } }
-            }
-        describe(cleanup, ips)?.let { println(it) }
+            BuilderCleaner(site.builders).cleanUp(
+                plan,
+                inspect = { builders ->
+                    found = builders
+                    builders.forEach { builder ->
+                        builder.publicIp?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, builder.id) }
+                    }
+                },
+                inspectFailed = { reason -> println("Could not capture diagnostics from the build instance: $reason") },
+            )
+        if (cleanup is BuilderCleanup.Kept) {
+            val ips = found.associate { it.id to it.publicIp }
+            println(
+                cleanup.instanceIds.joinToString("\n") { id ->
+                    "SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ips[id]?.takeIf { it.isNotBlank() } ?: "<instance-ip>"}"
+                },
+            )
+        }
         return cleanup
     }
-
-    /** What became of the builders, or null for an unresolved cleanup, which the attempt's event reports. */
-    private fun describe(
-        cleanup: BuilderCleanup,
-        ips: Map<String, String?>,
-    ): String? =
-        when (cleanup) {
-            is BuilderCleanup.NotFound -> "Build failed. The packer VPC holds no build instance to capture or clean up."
-            is BuilderCleanup.Terminated ->
-                "Build instance ${cleanup.instanceIds.joinToString(" ")} terminated (set --keep-on-error to keep it for debugging)."
-            is BuilderCleanup.Kept -> {
-                val ids = cleanup.instanceIds.joinToString(" ")
-                val sshLines =
-                    cleanup.instanceIds.joinToString("\n") { id ->
-                        "SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ips[id] ?: "<instance-ip>"}"
-                    }
-                "\nBuild instance $ids left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).\n" +
-                    "$sshLines\nTerminate when done: aws ec2 terminate-instances --instance-ids $ids"
-            }
-            is BuilderCleanup.Unresolved -> null
-        }
 
     /**
      * SSHes into the kept build instance and prints the most useful failure diagnostics.
@@ -283,15 +280,23 @@ class Packer(
                 "echo '--- /tmp/jdk-install.log (tail) ---'; tail -60 /tmp/jdk-install.log 2>/dev/null; " +
                 "echo '--- /var/log/apt/term.log (tail) ---'; sudo tail -100 /var/log/apt/term.log 2>/dev/null; " +
                 "echo '--- dmesg (tail) ---'; sudo dmesg 2>/dev/null | tail -40"
-        runCatching {
+        runCatchingInterruptibly {
             val host = Host(public = ip, private = "", alias = "packer-build", availabilityZone = "", instanceId = instanceId)
             val response = remoteOps.executeRemotely(host, cmd, output = false)
-            println("==== build instance diagnostics ($ip) ====")
-            println(response.text)
-            println("==========================================")
+            println(
+                """
+                |==== build instance diagnostics ($ip) ====
+                |${response.text}
+                |==========================================
+                """.trimMargin(),
+            )
         }.onFailure {
-            println("Could not auto-capture diagnostics from $ip (${it.message}).")
-            println("SSH in manually: ssh -i ${secretKeyFile.absolutePath} ubuntu@$ip")
+            println(
+                """
+                |Could not auto-capture diagnostics from $ip (${it.messageOrString()}).
+                |SSH in manually: ssh -i ${secretKeyFile.absolutePath} ubuntu@$ip
+                """.trimMargin(),
+            )
         }
     }
 

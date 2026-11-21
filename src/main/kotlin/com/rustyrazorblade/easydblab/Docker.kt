@@ -540,16 +540,19 @@ class Docker(
         log.info { "Starting container with command $command" }
 
         // Start container and wait for completion. The container is removed (forcibly, so one still
-        // running past maxWaitTime is stopped too) however the wait ends.
+        // running past maxWaitTime is stopped too) however the wait ends; when the wait failed, a
+        // failed cleanup is attached to its error instead of replacing it.
+        val cleanUp = {
+            ioManager.close()
+            executor.removeContainer(dockerContainer.id)
+        }
         val containerState =
-            try {
+            runCleaningUpOnFailure(cleanUp) {
                 executor
                     .startAndWaitForCompletion(dockerContainer.id, maxWaitTime)
                     .also { stateMonitor.reportFinalState(it, framesRead) }
-            } finally {
-                ioManager.close()
-                executor.removeContainer(dockerContainer.id)
             }
+        cleanUp()
 
         val returnCode = containerState.exitCodeLong?.toInt() ?: -1
         return if (returnCode == 0) {

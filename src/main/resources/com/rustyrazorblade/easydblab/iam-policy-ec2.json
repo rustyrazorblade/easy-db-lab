@@ -37,7 +37,8 @@
       "Sid": "EC2CreateKeyPairPermission",
       "Effect": "Allow",
       "Action": [
-        "ec2:CreateKeyPair"
+        "ec2:CreateKeyPair",
+        "ec2:ImportKeyPair"
       ],
       "Resource": "*"
     },

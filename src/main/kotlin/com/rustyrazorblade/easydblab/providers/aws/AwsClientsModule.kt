@@ -37,7 +37,7 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  * Koin module for the AWS adapter's SDK-facing bindings.
  *
  * Provides the region, the credentials provider, the SDK clients, [AccountIdentity], [IamRoles],
- * [RegionalS3Clients], [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
+ * [RegionalS3Clients], [RegionalEc2Clients], [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
  * [ProviderErrorHandler], and the SSM Session Manager transport bindings. Its only edges outside
  * `providers/aws` are `configuration`, `events` and `Context`; the bindings of `services/aws`
  * classes live in `AwsServicesModule`.
@@ -149,6 +149,9 @@ val awsClientsModule =
 
         // S3 clients for a region named at call time (the account bucket's region)
         single { RegionalS3Clients(get<AwsCredentialsProvider>()) }
+
+        // EC2 clients for a region named at call time (an AMI build's own region)
+        single { RegionalEc2Clients(get<AwsCredentialsProvider>()) }
 
         // Role policy set for the EC2 instance role
         single { InstanceRolePolicies(get()) }

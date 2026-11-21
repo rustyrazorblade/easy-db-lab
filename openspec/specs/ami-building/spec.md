@@ -20,7 +20,7 @@ The system MUST support building AMIs with multiple database versions and suppor
 #### Scenario: The builder instance and the AMI carry both marker tags
 - **GIVEN** an AMI build
 - **WHEN** Packer launches the builder instance and registers the AMI
-- **THEN** the builder instance, its volumes, the AMI and its snapshots all carry `easy_cass_lab=1` and `easy_db_lab=1`, which easy-db-lab passes to Packer from `Constants.Vpc.MARKER_TAGS`
+- **THEN** the builder instance, its volumes, the AMI and its snapshots all carry `easy_cass_lab=1` and `easy_db_lab=1`, which easy-db-lab passes to Packer from `Constants.Vpc.MARKER_TAGS`, and the build's own `easy_db_lab_build_id`
 
 #### Scenario: Multiple Cassandra versions still supported
 - **GIVEN** multiple Cassandra versions in the build config
@@ -98,15 +98,31 @@ that waits more than 2 minutes. The keepalive replies keep a live but quiet stre
 bound.
 
 A build whose SSH session to the builder was lost (the session ended, or the read/write timeout
-fired) SHALL be run again on a new builder instance, up to 3 attempts in total. Every instance in
-the packer VPC SHALL be terminated before the next attempt starts, even under `--keep-on-error`;
-when those instances cannot be listed or terminated, the build SHALL fail instead of starting a
-second builder beside one that may still run, and the failed attempt's report SHALL say why. A build
-that failed for any other reason, including an AWS API call that lost its own connection, SHALL NOT
-be retried. Each failed attempt SHALL be reported with
-its reason, whether it lost its session, whether another attempt follows, and the path of its
-Packer log. Each attempt's Packer log SHALL be kept in the profile directory, readable by its owner
-only.
+fired) SHALL be run again on a new builder instance, up to 3 attempts in total. Each build SHALL
+have its own build id, and everything it launches (the builder, its volumes, the AMI and its
+snapshots) SHALL carry it as the `easy_db_lab_build_id` tag beside the marker tags. A build's
+builders SHALL be only the live instances that carry its build id and the `easy_cass_lab=1` tag
+in the build region's packer VPC that easy-db-lab created; an instance of another build, or one
+outside that VPC, SHALL never be terminated or kept by it. A build's builders SHALL be terminated
+before the next attempt starts, even under `--keep-on-error`, which keeps only the last failed
+attempt's builders; when they cannot be listed or terminated, the build SHALL fail instead of
+starting a second builder beside one that may still run, and the failed attempt's report SHALL say
+why and how to find or terminate them. A build that failed for any other reason, including an AWS
+API call that lost its own connection or a Packer container that could not run, SHALL NOT be
+retried. Diagnostics SHALL be captured from the builders only after the last failed attempt.
+Each failed attempt SHALL be reported with its build id and region, its reason, whether it lost its
+session, whether another attempt follows, what became of its builders (with their instance ids),
+and the path of its Packer log, or that it wrote none. Each attempt's Packer log SHALL be kept in
+its own directory in the profile directory, named by the template, the time, the build id and the
+attempt; the directory and the log SHALL be readable by their owner only.
+
+The build SHALL run entirely in its build region (`--region`). The packer VPC, subnet and security
+group SHALL be ensured in that region by the build itself, and its builders SHALL be found and
+terminated there. When the build region is not the profile's region, the build SHALL import the
+profile's public key into the build region as a key pair of its own (named
+`easy-db-lab-build-<build id>`, carrying the marker tags and the build id), so a builder kept by
+`--keep-on-error` accepts the profile's private key, whose path the build prints; that key pair
+SHALL be deleted when the build ends.
 
 One `packer build` SHALL be bounded at 60 minutes. A Packer container still running at that point
 SHALL be stopped and removed, and the attempt SHALL fail without a retry.
@@ -127,19 +143,40 @@ SHALL be stopped and removed, and the attempt SHALL fail without a retry.
 
 - **GIVEN** an AMI build whose SSH session to the builder ended or timed out while a provisioner ran
 - **WHEN** the attempt fails
-- **THEN** its builder is terminated and the build runs again on a new builder instance
+- **THEN** its builder is terminated, without capturing diagnostics, and the build runs again on a new builder instance
 - **AND** the build fails after the third attempt that loses its session
+
+#### Scenario: Keep-on-error keeps only the last failed attempt's builder
+
+- **GIVEN** an AMI build run with `--keep-on-error`
+- **WHEN** an attempt loses its session and another attempt follows
+- **THEN** its builder is still terminated, and the report says it was terminated so the build can run again
+- **AND** the builder of the attempt that ends the build is left running, with its instance ids, the command to terminate them, and how to SSH in
+
+#### Scenario: Another build's builder survives
+
+- **GIVEN** two AMI builds in the same region, each with a builder in the packer VPC
+- **WHEN** one build cleans up after a failed attempt
+- **THEN** only the builder carrying its own build id is terminated or kept, and the other build's builder keeps running
+
+#### Scenario: A build outside the profile region runs there
+
+- **GIVEN** an AMI build whose `--region` is not the profile's region
+- **WHEN** the build starts
+- **THEN** the packer VPC, subnet and security group are ensured in the build region, and the profile's public key is imported there as the build's own key pair
+- **AND** a failed attempt's builders are found and terminated in the build region
+- **AND** the build's key pair is deleted when the build ends, whether it succeeded or failed
 
 #### Scenario: A builder that may still run stops the retry
 
 - **GIVEN** an AMI build whose SSH session to the builder was lost
 - **WHEN** the packer VPC's instances cannot be listed, or one of them cannot be terminated
 - **THEN** the build fails without another attempt
-- **AND** the failed attempt is reported with why its builder may still be running
+- **AND** the failed attempt is reported with why its builder may still be running, and how to find (by its build id) or terminate it
 
 #### Scenario: Other failures are not retried
 
-- **GIVEN** an AMI build whose provisioner exited non-zero, or that failed with an AWS or template error
+- **GIVEN** an AMI build whose provisioner exited non-zero, that failed with an AWS or template error, or whose Packer container could not run
 - **WHEN** the attempt fails
 - **THEN** the build fails at once without another attempt
 

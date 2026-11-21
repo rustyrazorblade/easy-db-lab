@@ -13,8 +13,9 @@ import java.util.stream.Stream
 /**
  * Tests for [PackerBuildAttempts]: a build that loses its SSH session runs again up to the attempt
  * limit once its builder is gone, any other failure ends the build at once, a builder that may
- * still be running stops the retry, and every failure is reported after its cleanup with whether
- * another attempt follows.
+ * still be running (or was kept) stops the retry, only the last failed attempt's builders are
+ * inspected or kept, and every failure is reported after its cleanup with whether another attempt
+ * follows.
  */
 class PackerBuildAttemptsTest {
     companion object {
@@ -22,118 +23,168 @@ class PackerBuildAttemptsTest {
         private val dropped = PackerBuildOutcome.Failed(PackerFailure.SessionDropped("EOF"), log)
         private val scriptFailed = PackerBuildOutcome.Failed(PackerFailure.BuildError("Script exited with non-zero exit status: 1"), log)
         private val terminated = BuilderCleanup.Terminated(listOf("i-1"))
+        private val kept = BuilderCleanup.Kept(listOf("i-1"))
         private val notFound = BuilderCleanup.NotFound
         private val lookupFailed = BuilderCleanup.LookupFailed("throttled")
         private val terminateFailed = BuilderCleanup.TerminateFailed(listOf("i-1", "i-2"), "denied")
 
+        /** Tear down without inspecting: the plan of an attempt that runs again. */
+        private val retryPlan = CleanupPlan(keep = false, inspect = false)
+
+        /** Inspect, then tear down: the last failed attempt without --keep-on-error. */
+        private val finalPlan = CleanupPlan(keep = false, inspect = true)
+
+        /** Inspect, then keep: the last failed attempt under --keep-on-error. */
+        private val keepPlan = CleanupPlan(keep = true, inspect = true)
+
         /**
-         * Each row: the outcomes the attempts return, the cleanup of each failed attempt, the
-         * expected result, and per failure the `retryWanted` cleanup was given and the reported
-         * `willRetry`.
+         * Each row: --keep-on-error, the attempt limit, the outcomes the attempts return, the
+         * cleanup of each failed attempt, the expected result, and per failure the plan the cleanup
+         * was given and the reported `willRetry`.
          */
         @JvmStatic
         fun sequences(): Stream<Case> =
             Stream.of(
-                row("first try succeeds", 3, listOf(PackerBuildOutcome.Succeeded), emptyList(), PackerBuildOutcome.Succeeded),
-                row(
+                Case("first try succeeds", false, 3, listOf(PackerBuildOutcome.Succeeded), emptyList(), PackerBuildOutcome.Succeeded),
+                Case(
                     "a drop then success",
+                    false,
                     3,
                     listOf(dropped, PackerBuildOutcome.Succeeded),
                     listOf(terminated),
                     PackerBuildOutcome.Succeeded,
-                    listOf(true to true),
+                    listOf(retryPlan to true),
                 ),
-                row(
+                Case(
                     "a drop with no builder found then success",
+                    false,
                     3,
                     listOf(dropped, PackerBuildOutcome.Succeeded),
                     listOf(notFound),
                     PackerBuildOutcome.Succeeded,
-                    listOf(true to true),
+                    listOf(retryPlan to true),
                 ),
-                row(
-                    "two drops then success",
-                    3,
-                    listOf(dropped, dropped, PackerBuildOutcome.Succeeded),
-                    listOf(terminated, terminated),
-                    PackerBuildOutcome.Succeeded,
-                    listOf(true to true, true to true),
-                ),
-                row(
+                Case(
                     "every attempt drops",
+                    false,
                     3,
                     listOf(dropped, dropped, dropped),
                     listOf(terminated, terminated, terminated),
                     dropped,
-                    listOf(true to true, true to true, false to false),
+                    listOf(retryPlan to true, retryPlan to true, finalPlan to false),
                 ),
-                row(
+                Case(
                     "a script failure is never retried",
+                    false,
                     3,
                     listOf(scriptFailed),
                     listOf(terminated),
                     scriptFailed,
-                    listOf(false to false),
+                    listOf(
+                        finalPlan to false,
+                    ),
                 ),
-                row(
+                Case(
                     "a script failure after a drop ends the build",
+                    false,
                     3,
                     listOf(dropped, scriptFailed),
                     listOf(terminated, terminated),
                     scriptFailed,
-                    listOf(true to true, false to false),
+                    listOf(retryPlan to true, finalPlan to false),
                 ),
-                row("one attempt allowed", 1, listOf(dropped), listOf(terminated), dropped, listOf(false to false)),
+                Case("one attempt allowed", false, 1, listOf(dropped), listOf(terminated), dropped, listOf(finalPlan to false)),
+            )
+
+        /** Rows under --keep-on-error, which keeps only the last failed attempt's builder. */
+        @JvmStatic
+        fun keepOnErrorSequences(): Stream<Case> =
+            Stream.of(
+                Case(
+                    "under keep-on-error a drop is still torn down and retried",
+                    true,
+                    3,
+                    listOf(dropped, PackerBuildOutcome.Succeeded),
+                    listOf(terminated),
+                    PackerBuildOutcome.Succeeded,
+                    listOf(retryPlan to true),
+                ),
+                Case(
+                    "under keep-on-error only the final failure is kept",
+                    true,
+                    3,
+                    listOf(dropped, scriptFailed),
+                    listOf(terminated, kept),
+                    scriptFailed,
+                    listOf(retryPlan to true, keepPlan to false),
+                ),
+                Case(
+                    "under keep-on-error the last drop is kept",
+                    true,
+                    2,
+                    listOf(dropped, dropped),
+                    listOf(terminated, kept),
+                    dropped,
+                    listOf(retryPlan to true, keepPlan to false),
+                ),
             )
 
         /** Rows where the failed builder may still be running, which stops the retry. */
         @JvmStatic
         fun unresolvedCleanups(): Stream<Case> =
             Stream.of(
-                row(
+                Case(
                     "a failed builder lookup stops the retry",
+                    false,
                     3,
                     listOf(dropped),
                     listOf(lookupFailed),
                     dropped,
-                    listOf(true to false),
+                    listOf(
+                        retryPlan to false,
+                    ),
                 ),
-                row(
+                Case(
                     "a failed terminate stops the retry",
+                    false,
                     3,
                     listOf(dropped),
                     listOf(terminateFailed),
                     dropped,
-                    listOf(true to false),
+                    listOf(
+                        retryPlan to false,
+                    ),
                 ),
-                row(
+                Case(
                     "a failed terminate after a good retry stops the next",
+                    false,
                     3,
                     listOf(dropped, dropped),
                     listOf(terminated, terminateFailed),
                     dropped,
-                    listOf(true to true, true to false),
+                    listOf(retryPlan to true, retryPlan to false),
+                ),
+                Case(
+                    "a builder kept while a retry is wanted stops the retry",
+                    true,
+                    3,
+                    listOf(dropped),
+                    listOf(kept),
+                    dropped,
+                    listOf(retryPlan to false),
                 ),
             )
-
-        private fun row(
-            name: String,
-            maxAttempts: Int,
-            outcomes: List<PackerBuildOutcome>,
-            cleanups: List<BuilderCleanup>,
-            expected: PackerBuildOutcome,
-            retryWantedAndWillRetry: List<Pair<Boolean, Boolean>> = emptyList(),
-        ): Case = Case(name, maxAttempts, outcomes, cleanups, expected, retryWantedAndWillRetry)
     }
 
     /** One attempt sequence and what [PackerBuildAttempts.run] must make of it. */
     data class Case(
         val name: String,
+        val keepOnError: Boolean,
         val maxAttempts: Int,
         val outcomes: List<PackerBuildOutcome>,
         val cleanups: List<BuilderCleanup>,
         val expected: PackerBuildOutcome,
-        val retryWantedAndWillRetry: List<Pair<Boolean, Boolean>>,
+        val planAndWillRetry: List<Pair<CleanupPlan, Boolean>> = emptyList(),
     ) {
         override fun toString(): String = name
     }
@@ -146,18 +197,18 @@ class PackerBuildAttemptsTest {
     )
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("sequences", "unresolvedCleanups")
+    @MethodSource("sequences", "keepOnErrorSequences", "unresolvedCleanups")
     fun `a build runs again only after a session drop whose builder is gone, within the limit`(case: Case) {
         val remaining = ArrayDeque(case.outcomes)
         val cleanupResults = ArrayDeque(case.cleanups)
-        val retryWanted = mutableListOf<Boolean>()
+        val plans = mutableListOf<CleanupPlan>()
         val reported = mutableListOf<Reported>()
 
         val result =
-            PackerBuildAttempts(case.maxAttempts, Duration.ZERO).run(
+            PackerBuildAttempts(case.keepOnError, case.maxAttempts, Duration.ZERO).run(
                 build = { remaining.removeFirst() },
-                cleanUp = { _, _, wanted ->
-                    retryWanted.add(wanted)
+                cleanUp = { _, _, plan ->
+                    plans.add(plan)
                     cleanupResults.removeFirst()
                 },
                 report = { attempt, _, willRetry, cleanup -> reported.add(Reported(attempt, willRetry, cleanup)) },
@@ -165,8 +216,8 @@ class PackerBuildAttemptsTest {
 
         assertThat(result).`as`(case.name).isEqualTo(case.expected)
         assertThat(remaining).`as`("builds left unrun").isEmpty()
-        assertThat(retryWanted).`as`("retryWanted per cleanup").isEqualTo(case.retryWantedAndWillRetry.map { it.first })
-        assertThat(reported.map { it.willRetry }).`as`("willRetry per failure").isEqualTo(case.retryWantedAndWillRetry.map { it.second })
+        assertThat(plans).`as`("plan per cleanup").isEqualTo(case.planAndWillRetry.map { it.first })
+        assertThat(reported.map { it.willRetry }).`as`("willRetry per failure").isEqualTo(case.planAndWillRetry.map { it.second })
         assertThat(reported.map { it.cleanup }).`as`("reported cleanups").isEqualTo(case.cleanups)
         assertThat(reported.map { it.attempt }).`as`("attempt numbers").isEqualTo((1..reported.size).toList())
     }
@@ -175,7 +226,7 @@ class PackerBuildAttemptsTest {
     @ValueSource(strings = ["the attempt", "its report"])
     fun `a throw ends the build without another attempt`(thrower: String) {
         var attempts = 0
-        val attemptsRunner = PackerBuildAttempts(3, Duration.ZERO)
+        val attemptsRunner = PackerBuildAttempts(keepOnError = false, maxAttempts = 3, delay = Duration.ZERO)
 
         assertThatThrownBy {
             attemptsRunner.run(
@@ -196,7 +247,7 @@ class PackerBuildAttemptsTest {
         val reported = mutableListOf<Reported>()
 
         val result =
-            PackerBuildAttempts(3, Duration.ZERO).run(
+            PackerBuildAttempts(keepOnError = false, maxAttempts = 3, delay = Duration.ZERO).run(
                 build = {
                     attempts++
                     dropped

@@ -5,12 +5,14 @@ on:
     paths:
       - "packer/**"
       - ".github/workflows/packer-lint.yml"
+      - "src/main/kotlin/com/rustyrazorblade/easydblab/containers/Packer.kt"
   push:
     branches:
       - main
     paths:
       - "packer/**"
       - ".github/workflows/packer-lint.yml"
+      - "src/main/kotlin/com/rustyrazorblade/easydblab/containers/Packer.kt"
   workflow_dispatch:
 
 permissions:
@@ -36,17 +38,29 @@ jobs:
           cd ../cassandra
           packer init .
 
-      # marker_tags is required and has no default. Packer.buildCommand passes the real tags from
-      # Constants.Vpc.MARKER_TAGS; validate only checks the type, so any map works here.
-      - name: Validate base.pkr.hcl
-        run: |
-          cd packer/base
-          packer validate -var 'marker_tags={"validate" = "1"}' .
+      # Packer validates a builder's private key file, so give it one.
+      - name: Create a throwaway SSH key
+        run: ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/secret.pem"
 
-      - name: Validate cassandra.pkr.hcl
+      # Every -var Packer.buildCommand passes (PackerBuildCommandTest checks this list against it),
+      # with an ssm build's ssh_interface and a release version, so an undeclared or mistyped
+      # variable fails here.
+      - name: Validate base.pkr.hcl and cassandra.pkr.hcl
         run: |
-          cd packer/cassandra
-          packer validate -var 'marker_tags={"validate" = "1"}' .
+          for template in base/base.pkr.hcl cassandra/cassandra.pkr.hcl; do
+            (cd "packer/$(dirname "$template")" && packer validate \
+              -var region=us-west-2 \
+              -var arch=amd64 \
+              -var s3_bucket=validate-bucket \
+              -var ssh_keypair_name=validate-key \
+              -var "ssh_private_key_file=$RUNNER_TEMP/secret.pem" \
+              -var ssh_interface=session_manager \
+              -var ssh_keep_alive_interval=10s \
+              -var ssh_read_write_timeout=2m \
+              -var release_version=1 \
+              -var 'marker_tags={"easy_cass_lab" = "1", "easy_db_lab" = "1", "easy_db_lab_build_id" = "validate"}' \
+              "$(basename "$template")")
+          done
 
   shellcheck:
     name: Lint Shell Scripts

@@ -410,6 +410,21 @@ object Constants {
         const val LOG_PATH_ENV = "PACKER_LOG_PATH"
         const val HOST_LOGS_DIR = "packer-logs"
         const val HOST_LOG_DIR_PERMISSIONS = "rwx------"
+        const val HOST_LOG_FILE_PERMISSIONS = "rw-------"
+        const val LOG_FILE_NAME = "packer.log"
+        const val LOG_DIR_TIMESTAMP_PATTERN = "yyyyMMdd-HHmmss"
+
+        // Tag key naming the one `packer build` run a builder, its volumes, the AMI and its
+        // snapshots belong to. The cleanup between attempts lists and terminates only the instances
+        // that carry this build's id, so concurrent builds never touch each other's builders.
+        const val BUILD_ID_TAG_KEY = "easy_db_lab_build_id"
+
+        // Hex characters of a random UUID used as a build id: unique enough across concurrent builds.
+        const val BUILD_ID_LENGTH = 12
+
+        // Prefix of the key pair a build in a region other than the profile's imports the profile's
+        // public key under, for that build only; the build id completes the name.
+        const val BUILD_KEY_PAIR_PREFIX = "easy-db-lab-build-"
 
         // Attempts per AMI build: a build whose SSH session to the builder dropped runs again, from a
         // new builder instance, up to this many times in total. Any other failure is not retried.

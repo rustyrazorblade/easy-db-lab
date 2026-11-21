@@ -1,18 +1,22 @@
 package com.rustyrazorblade.easydblab.containers
 
 import com.rustyrazorblade.easydblab.messageOrString
-import com.rustyrazorblade.easydblab.runCatchingException
-import io.github.oshai.kotlinlogging.KotlinLogging
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 
-private val log = KotlinLogging.logger {}
+/** One build instance of an AMI build: its id, and its public address when it has one. */
+data class BuilderInstance(
+    val id: String,
+    val publicIp: String?,
+)
 
 /**
- * The build instances an AMI build may have left behind: every instance in the packer VPC, which
- * holds nothing but builders. A port, so the cleanup decision is tested without a cloud.
+ * The build instances one AMI build left behind: the live instances in the build region's packer
+ * VPC that carry this build's id. A port, so the cleanup decision is tested without a cloud; an
+ * adapter is bound to one build's region and id (see [BuildSite.builders]).
  */
 interface BuilderInstances {
-    /** Every instance in the packer VPC; empty when that VPC does not exist. */
-    fun list(): List<String>
+    /** This build's live instances; empty when the packer VPC or such an instance does not exist. */
+    fun list(): List<BuilderInstance>
 
     /** Terminates [instanceIds]; throws when the provider refuses. */
     fun terminate(instanceIds: List<String>)
@@ -23,30 +27,36 @@ interface BuilderInstances {
  *
  * Its answer decides whether the build may run again (see [PackerBuildAttempts]): a failed lookup or
  * terminate is [BuilderCleanup.Unresolved], because a builder may still be running and a new
- * attempt must not launch beside it. Every instance found is terminated, not only the first, so a
- * builder left by an earlier run cannot hide the current one.
+ * attempt must not launch beside it. Every instance of the build is terminated, not only the
+ * first, and no instance of another build is touched: [instances] lists only this build's.
  */
 class BuilderCleaner(
     private val instances: BuilderInstances,
 ) {
     /**
-     * @param keepUp leave the builders running for --keep-on-error instead of terminating them
-     * @param inspect called with the builders found, before they are kept or terminated (diagnostics);
-     *   a throw from it is logged and the builders are still kept or terminated
+     * @param plan whether to inspect the builders first, and whether to keep them for
+     *   --keep-on-error instead of terminating them
+     * @param inspect called with the builders found, before they are kept or terminated
+     *   (diagnostics), when the plan asks for it; a throw from it is passed to [inspectFailed]
+     *   and the builders are still kept or terminated
+     * @param inspectFailed told why the inspection failed
      */
     fun cleanUp(
-        keepUp: Boolean,
-        inspect: (instanceIds: List<String>) -> Unit,
+        plan: CleanupPlan,
+        inspect: (builders: List<BuilderInstance>) -> Unit,
+        inspectFailed: (reason: String) -> Unit,
     ): BuilderCleanup {
-        val instanceIds =
-            runCatchingException { instances.list() }
+        val builders =
+            runCatchingInterruptibly { instances.list() }
                 .getOrElse { return BuilderCleanup.LookupFailed(it.messageOrString()) }
-        if (instanceIds.isEmpty()) return BuilderCleanup.NotFound
+        if (builders.isEmpty()) return BuilderCleanup.NotFound
         // Diagnostics never stop the teardown: a builder left up would block every retry.
-        runCatchingException { inspect(instanceIds) }
-            .onFailure { log.warn(it) { "Could not inspect build instances $instanceIds" } }
-        if (keepUp) return BuilderCleanup.Kept(instanceIds)
-        return runCatchingException { instances.terminate(instanceIds) }.fold(
+        if (plan.inspect) {
+            runCatchingInterruptibly { inspect(builders) }.onFailure { inspectFailed(it.messageOrString()) }
+        }
+        val instanceIds = builders.map { it.id }
+        if (plan.keep) return BuilderCleanup.Kept(instanceIds)
+        return runCatchingInterruptibly { instances.terminate(instanceIds) }.fold(
             onSuccess = { BuilderCleanup.Terminated(instanceIds) },
             onFailure = { BuilderCleanup.TerminateFailed(instanceIds, it.messageOrString()) },
         )

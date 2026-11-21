@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.MethodSource
 import java.util.stream.Stream
 
@@ -19,8 +20,9 @@ class PackerFailureTest {
         private fun errored(reason: String) =
             "2026/11/21 04:38:46 ui error: $ESC[1;31mBuild 'amazon-ebs.ubuntu' errored after 3 minutes 39 seconds: $reason$ESC[0m"
 
+        /** Failures where the SSH session or its stream was lost. */
         @JvmStatic
-        fun failures(): Stream<Arguments> =
+        fun sessionDrops(): Stream<Arguments> =
             Stream.of(
                 Arguments.of(
                     "a shell script whose session ended",
@@ -39,9 +41,32 @@ class PackerFailureTest {
                 ),
                 Arguments.of("an upload whose stream ended", errored("Error uploading script: unexpected EOF"), true),
                 Arguments.of("a bare EOF", errored("EOF"), true),
+                Arguments.of("an upload whose stream hit EOF", errored("Upload failed: EOF"), true),
+                Arguments.of("a script upload whose stream hit EOF", errored("Error uploading script: EOF"), true),
+                Arguments.of(
+                    "a refused local Session Manager port",
+                    errored("Error uploading script: dial tcp 127.0.0.1:8123: connect: connection refused"),
+                    true,
+                ),
+                Arguments.of("a failed SSH handshake", errored("ssh: handshake failed: EOF"), true),
                 Arguments.of("a reset connection", errored("Upload failed: write tcp: connection reset by peer"), true),
                 Arguments.of("a broken pipe", errored("Error chmodding script file to 0755 in remote machine: write: broken pipe"), true),
                 Arguments.of("a closed connection", errored("Upload failed: use of closed network connection"), true),
+            )
+
+        /** Failures that are not a lost session: a script, AWS or file error, and look-alikes. */
+        @JvmStatic
+        fun otherFailures(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of(
+                    "a refused AWS API connection",
+                    errored(
+                        "Error launching source instance: RequestError: send request failed caused by: " +
+                            "dial tcp 10.0.0.1:443: connect: connection refused",
+                    ),
+                    false,
+                ),
+                Arguments.of("an EOF that is not the whole error", errored("Bad source 'EOF-marker.sh': no such file or directory"), false),
                 Arguments.of(
                     "a script that exited non-zero",
                     errored("Script exited with non-zero exit status: 1. Allowed exit codes are: [0]"),
@@ -76,7 +101,7 @@ class PackerFailureTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("failures")
+    @MethodSource("sessionDrops", "otherFailures")
     fun `only a lost session is a session drop`(
         case: String,
         line: String,
@@ -111,6 +136,41 @@ class PackerFailureTest {
             """.trimIndent()
 
         assertThat(PackerFailure.fromLog(log)).isInstanceOf(PackerFailure.BuildError::class.java)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            "a drop, then a script failure | Script disconnected unexpectedly. | Script exited with non-zero exit status: 1 | false",
+            "a script failure, then a drop | Script exited with non-zero exit status: 1 | Script disconnected unexpectedly. | true",
+        ],
+    )
+    fun `the last build error decides the failure`(
+        case: String,
+        first: String,
+        last: String,
+        dropped: Boolean,
+    ) {
+        val failure = PackerFailure.fromLog(listOf(errored(first), errored(last)).joinToString("\n"))
+
+        assertThat(failure is PackerFailure.SessionDropped).`as`(case).isEqualTo(dropped)
+        assertThat(failure.reason).isEqualTo(last)
+    }
+
+    @Test
+    fun `an error's continuation lines stay in its reason`() {
+        val log =
+            listOf(
+                errored("Error waiting for AMI: operation error EC2: DescribeImages"),
+                "caused by: exceeded maximum number of attempts",
+                "",
+                "2026/11/21 04:38:46 ui: ",
+                "==> Wait completed after 3 minutes 39 seconds",
+            ).joinToString("\n")
+
+        assertThat(PackerFailure.fromLog(log).reason)
+            .isEqualTo("Error waiting for AMI: operation error EC2: DescribeImages\ncaused by: exceeded maximum number of attempts")
     }
 
     @Test

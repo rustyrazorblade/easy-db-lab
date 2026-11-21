@@ -44,17 +44,36 @@ sealed interface PackerFailure {
                 "connection reset by peer",
                 "broken pipe",
                 "use of closed network connection",
+                "handshake failed",
             )
 
-        /** Classifies a failed build from its debug [log], by the last `Build '...' errored` line. */
+        /**
+         * A refused connection to the local end of the Session Manager port forward: the plugin's
+         * listener on 127.0.0.1 went away with its session. A refused connection anywhere else is
+         * not the SSH stream's.
+         */
+        private val localForwardRefused = Regex("""127\.0\.0\.1:\d+: connect: connection refused""")
+
+        /** A line Packer's logger wrote itself, as opposed to the continuation of a multi-line message. */
+        private val timestamped = Regex("""^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} """)
+
+        /**
+         * Classifies a failed build from its debug [log], by the last `Build '...' errored` line. The
+         * reason keeps the lines that continue that error (a wrapped AWS error's `caused by:` lines),
+         * up to the next blank or timestamped line.
+         */
         fun fromLog(log: String): PackerFailure {
-            val reason =
-                log
-                    .lineSequence()
-                    .map { it.replace(ansiEscape, "").trimEnd() }
-                    .mapNotNull { buildErrored.find(it)?.groupValues?.get(1) }
-                    .lastOrNull()
-                    ?: return BuildError(NO_ERROR_RECORDED)
+            val lines = log.lines().map { it.replace(ansiEscape, "").trimEnd() }
+            val last = lines.indexOfLast { buildErrored.containsMatchIn(it) }
+            if (last < 0) return BuildError(NO_ERROR_RECORDED)
+            val first =
+                buildErrored
+                    .find(lines[last])
+                    ?.groupValues
+                    ?.get(1)
+                    .orEmpty()
+            val continuation = lines.drop(last + 1).takeWhile { it.isNotBlank() && !timestamped.containsMatchIn(it) }
+            val reason = (listOf(first) + continuation).joinToString("\n")
             return when {
                 isSessionLost(reason) -> SessionDropped(reason)
                 else -> BuildError(reason)
@@ -72,7 +91,9 @@ sealed interface PackerFailure {
             val lower = reason.lowercase()
             return when {
                 awsApiCall.any { it in lower } -> false
-                else -> lower == "eof" || sessionLost.any { it in lower }
+                lower == "eof" || lower.endsWith(": eof") -> true
+                localForwardRefused.containsMatchIn(lower) -> true
+                else -> sessionLost.any { it in lower }
             }
         }
     }

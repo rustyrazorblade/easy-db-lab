@@ -11,31 +11,36 @@ import java.time.format.DateTimeFormatter
 /**
  * Where each `packer build` attempt writes its debug log on the host.
  *
- * Every attempt gets its own directory under [root], so a retried build keeps the log of the attempt
- * that lost its session, and the log is what classifies the failure. The directory is readable by
- * its owner only: under the `ssm` transport the log holds the Session Manager session token.
+ * Every attempt gets its own directory under [root], named by the template, the time, the build id
+ * and the attempt, so a retried build keeps the log of the attempt that lost its session and two
+ * builds started in the same second never share one. Under the `ssm` transport the log holds the
+ * Session Manager session token, so the directory and the log file are readable by their owner
+ * only: the file is created owner-only before Packer opens it, and Packer appends to it.
  */
 class PackerLogs(
     private val root: File,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    private companion object {
-        val stamp: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC)
-        const val LOG_FILE_NAME = "packer.log"
-    }
+    private val stamp: DateTimeFormatter =
+        DateTimeFormatter.ofPattern(Constants.Packer.LOG_DIR_TIMESTAMP_PATTERN).withZone(ZoneOffset.UTC)
 
-    /** Creates the owner-only directory for [attempt] of the build of [template], and returns its log file. */
+    /**
+     * Creates the owner-only directory and the empty owner-only log file for [attempt] of the build
+     * [buildId] of [template], and returns the log file.
+     */
     fun newAttempt(
         template: String,
+        buildId: String,
         attempt: Int,
     ): File {
-        val name = "${template.substringBefore('.')}-${stamp.format(clock.instant())}-attempt-$attempt"
+        val name = "${template.substringBefore('.')}-${stamp.format(clock.instant())}-$buildId-attempt-$attempt"
         val dir = File(root, name)
         Files.createDirectories(root.toPath())
-        Files.createDirectory(
-            dir.toPath(),
-            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(Constants.Packer.HOST_LOG_DIR_PERMISSIONS)),
-        )
-        return File(dir, LOG_FILE_NAME)
+        Files.createDirectory(dir.toPath(), ownerOnly(Constants.Packer.HOST_LOG_DIR_PERMISSIONS))
+        val log = File(dir, Constants.Packer.LOG_FILE_NAME)
+        Files.createFile(log.toPath(), ownerOnly(Constants.Packer.HOST_LOG_FILE_PERMISSIONS))
+        return log
     }
+
+    private fun ownerOnly(permissions: String) = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(permissions))
 }

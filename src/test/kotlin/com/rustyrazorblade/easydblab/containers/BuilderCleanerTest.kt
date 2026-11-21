@@ -3,108 +3,141 @@ package com.rustyrazorblade.easydblab.containers
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
-import org.junit.jupiter.params.provider.ValueSource
 import java.util.stream.Stream
 
 /**
  * Tests that [BuilderCleaner] reports a builder as possibly still running whenever it cannot prove
- * otherwise (a failed listing or terminate), terminates every builder it finds, and keeps them only
- * when asked: the answer decides whether a second builder may launch.
+ * otherwise (a failed listing or terminate), inspects only when the plan asks and always before the
+ * teardown, terminates every builder it finds, and keeps them only when the plan says so: the answer
+ * decides whether a second builder may launch.
  */
 class BuilderCleanerTest {
-    /** Packer VPC instances whose listing and terminate can be made to fail. */
+    /** Packer VPC instances whose listing and terminate can be made to fail; every call goes to [calls]. */
     private class FakeInstances(
-        private val listed: Result<List<String>>,
-        private val terminateError: String? = null,
+        private val listed: Result<List<BuilderInstance>>,
+        private val terminateError: String?,
+        private val calls: MutableList<String>,
     ) : BuilderInstances {
-        val terminated = mutableListOf<List<String>>()
-
-        override fun list(): List<String> = listed.getOrThrow()
+        override fun list(): List<BuilderInstance> {
+            calls.add("list")
+            return listed.getOrThrow()
+        }
 
         override fun terminate(instanceIds: List<String>) {
+            calls.add("terminate ${instanceIds.joinToString(",")}")
             terminateError?.let { error(it) }
-            terminated.add(instanceIds)
         }
     }
 
-    /** One cleanup scenario and what it must answer. */
+    /** One cleanup scenario: what the cloud does, the plan, the answer and the ordered calls. */
     data class Case(
         val name: String,
-        val listed: Result<List<String>>,
-        val terminateError: String?,
-        val keepUp: Boolean,
+        val listed: Result<List<BuilderInstance>>,
+        val plan: CleanupPlan,
         val expected: BuilderCleanup,
-        val expectedTerminated: List<List<String>>,
+        val expectedCalls: List<String>,
+        val terminateError: String? = null,
+        val inspectError: String? = null,
     ) {
         override fun toString(): String = name
     }
 
     companion object {
-        private val two = listOf("i-1", "i-2")
+        private val one = listOf(BuilderInstance("i-1", "1.2.3.4"))
+        private val two = listOf(BuilderInstance("i-1", "1.2.3.4"), BuilderInstance("i-2", null))
+        private val twoIds = listOf("i-1", "i-2")
+        private val retry = CleanupPlan(keep = false, inspect = false)
+        private val final = CleanupPlan(keep = false, inspect = true)
+        private val keep = CleanupPlan(keep = true, inspect = true)
 
         @JvmStatic
         fun cases(): Stream<Case> =
             Stream.of(
-                Case("no packer VPC, or an empty one", Result.success(emptyList()), null, false, BuilderCleanup.NotFound, emptyList()),
+                Case(
+                    "no packer VPC, or no builder of this build",
+                    Result.success(emptyList()),
+                    final,
+                    BuilderCleanup.NotFound,
+                    listOf("list"),
+                ),
                 Case(
                     "a failed listing may hide a running builder",
                     Result.failure(IllegalStateException("throttled")),
-                    null,
-                    false,
+                    final,
                     BuilderCleanup.LookupFailed("throttled"),
-                    emptyList(),
+                    listOf("list"),
                 ),
                 Case(
-                    "one builder is terminated",
-                    Result.success(listOf("i-1")),
-                    null,
-                    false,
+                    "a retry tears down without inspecting",
+                    Result.success(one),
+                    retry,
                     BuilderCleanup.Terminated(listOf("i-1")),
-                    listOf(listOf("i-1")),
+                    listOf("list", "terminate i-1"),
                 ),
                 Case(
-                    "every builder is terminated, not only the first",
+                    "the final failure is inspected before every builder is terminated",
                     Result.success(two),
-                    null,
-                    false,
-                    BuilderCleanup.Terminated(two),
-                    listOf(two),
+                    final,
+                    BuilderCleanup.Terminated(twoIds),
+                    listOf("list", "inspect i-1,i-2", "terminate i-1,i-2"),
                 ),
                 Case(
                     "a refused terminate names every builder",
                     Result.success(two),
-                    "denied",
-                    false,
-                    BuilderCleanup.TerminateFailed(two, "denied"),
-                    emptyList(),
+                    retry,
+                    BuilderCleanup.TerminateFailed(twoIds, "denied"),
+                    listOf("list", "terminate i-1,i-2"),
+                    terminateError = "denied",
                 ),
-                Case("keep-on-error keeps every builder", Result.success(two), null, true, BuilderCleanup.Kept(two), emptyList()),
+            )
+
+        /** Rows where the inspection is asked for: the last failed attempt, kept or not. */
+        @JvmStatic
+        fun inspectedCases(): Stream<Case> =
+            Stream.of(
+                Case(
+                    "keep-on-error inspects and keeps every builder",
+                    Result.success(two),
+                    keep,
+                    BuilderCleanup.Kept(twoIds),
+                    listOf("list", "inspect i-1,i-2"),
+                ),
+                Case(
+                    "a failed inspection is reported and the builders still terminated",
+                    Result.success(two),
+                    final,
+                    BuilderCleanup.Terminated(twoIds),
+                    listOf("list", "inspect i-1,i-2", "inspect failed: ssh refused", "terminate i-1,i-2"),
+                    inspectError = "ssh refused",
+                ),
+                Case(
+                    "a failed inspection still keeps the builders",
+                    Result.success(two),
+                    keep,
+                    BuilderCleanup.Kept(twoIds),
+                    listOf("list", "inspect i-1,i-2", "inspect failed: ssh refused"),
+                    inspectError = "ssh refused",
+                ),
             )
     }
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("cases")
+    @MethodSource("cases", "inspectedCases")
     fun `a cleanup is resolved only when no builder can still be running`(case: Case) {
-        val instances = FakeInstances(case.listed, case.terminateError)
-        val inspected = mutableListOf<List<String>>()
+        val calls = mutableListOf<String>()
+        val instances = FakeInstances(case.listed, case.terminateError, calls)
 
-        val result = BuilderCleaner(instances).cleanUp(case.keepUp) { inspected.add(it) }
+        val result =
+            BuilderCleaner(instances).cleanUp(
+                case.plan,
+                inspect = { builders ->
+                    calls.add("inspect ${builders.joinToString(",") { it.id }}")
+                    case.inspectError?.let { error(it) }
+                },
+                inspectFailed = { reason -> calls.add("inspect failed: $reason") },
+            )
 
         assertThat(result).isEqualTo(case.expected)
-        assertThat(instances.terminated).`as`("terminate calls").isEqualTo(case.expectedTerminated)
-        val found = case.listed.getOrDefault(emptyList())
-        assertThat(inspected).`as`("builders inspected before teardown").isEqualTo(listOfNotNull(found.takeIf { it.isNotEmpty() }))
-    }
-
-    @ParameterizedTest(name = "keepUp={0}")
-    @ValueSource(booleans = [false, true])
-    fun `a failed inspection still keeps or terminates every builder`(keepUp: Boolean) {
-        val two = listOf("i-1", "i-2")
-        val instances = FakeInstances(Result.success(two))
-
-        val result = BuilderCleaner(instances).cleanUp(keepUp) { error("ssh refused") }
-
-        assertThat(result).isEqualTo(if (keepUp) BuilderCleanup.Kept(two) else BuilderCleanup.Terminated(two))
-        assertThat(instances.terminated).isEqualTo(if (keepUp) emptyList() else listOf(two))
+        assertThat(calls).`as`("ordered calls").isEqualTo(case.expectedCalls)
     }
 }

@@ -1,7 +1,10 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
@@ -123,5 +126,27 @@ class ProfilingConfigTest {
     fun `tolerates a malformed desired-state document`() {
         assertThat(parseProfilingConfig("{")).isNull()
         assertThat(parseProfilingConfig("")).isNull()
+    }
+
+    @Test
+    fun `the browser reaches Pyroscope on the control node's NodePort where NodePorts are published`() {
+        val control = ClusterHost(publicIp = "54.1.2.3", privateIp = "10.0.1.5", alias = "control0", availabilityZone = "us-west-2a")
+
+        assertThat(pyroscopeBrowserUrl(ServicePublishing.NodePorts, control))
+            .isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_NODE_PORT}")
+    }
+
+    @Test
+    fun `NodePort publishing with no control node fails, naming the need`() {
+        assertThatThrownBy { pyroscopeBrowserUrl(ServicePublishing.NodePorts, null) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("control node")
+            .hasMessageContaining("Pyroscope")
+    }
+
+    @Test
+    fun `without NodePorts the browser link names the Pyroscope Service`() {
+        assertThat(pyroscopeBrowserUrl(ServicePublishing.ClusterIp, null))
+            .isEqualTo("http://pyroscope.default.svc:${Constants.K8s.PYROSCOPE_PORT}")
     }
 }

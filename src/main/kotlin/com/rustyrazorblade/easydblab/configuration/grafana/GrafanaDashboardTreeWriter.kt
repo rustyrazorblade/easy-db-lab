@@ -2,16 +2,13 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import java.nio.file.Path
-import kotlin.io.path.createDirectories
-import kotlin.io.path.writeText
 
 /**
- * Lays the core dashboard tree out on a local filesystem, ready to be copied to the control
- * node.
+ * Renders the core dashboard tree in memory, ready to become ConfigMaps
+ * ([GrafanaDashboardConfigMaps]).
  *
- * Every catalog entry is written at `<root>/<folder>/<file>.json`, the layout Grafana's file
- * provider turns into one folder per directory. Each JSON is read from the classpath, `__PYROSCOPE_URL__`
+ * Every catalog entry is keyed by `<folder>/<file>.json`, the layout Grafana's file provider turns
+ * into one folder per directory. Each JSON is read from the classpath, `__PYROSCOPE_URL__`
  * becomes the cluster's Pyroscope URL in whichever dashboards carry it, and the result goes through
  * the install-time pass, [DashboardDefaults], for the cluster being installed. Nothing else is
  * touched, and no `TemplateService` is involved: dashboards carry Grafana built-ins like
@@ -22,29 +19,6 @@ import kotlin.io.path.writeText
 class GrafanaDashboardTreeWriter(
     private val catalog: GrafanaDashboardCatalog,
 ) {
-    /**
-     * Writes every dashboard under [root].
-     *
-     * @param root Directory to write the tree into; created if absent
-     * @param pyroscopeUrl Value substituted for `__PYROSCOPE_URL__`
-     * @param context The cluster the dashboards are installed on, for [DashboardDefaults]
-     * @return Number of files written
-     * @throws IllegalStateException if a catalog entry is not on the classpath
-     */
-    fun writeTo(
-        root: Path,
-        pyroscopeUrl: String,
-        context: DashboardInstallContext,
-    ): Int {
-        val tree = render(pyroscopeUrl, context)
-        tree.forEach { (relativePath, json) ->
-            val target = root.resolve(relativePath)
-            target.parent.createDirectories()
-            target.writeText(json)
-        }
-        return tree.size
-    }
-
     /**
      * Every dashboard rendered, keyed by its path relative to the tree root, in catalog order.
      *

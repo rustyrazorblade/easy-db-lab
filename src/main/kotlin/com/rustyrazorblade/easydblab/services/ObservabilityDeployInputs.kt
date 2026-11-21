@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.region
+import com.rustyrazorblade.easydblab.profiling.pyroscopeBrowserUrl
 
 /**
  * What one observability stack deploy reads about the cluster, read once at its start so every stage
@@ -38,25 +39,35 @@ class ObservabilityDeployInputs(
 /**
  * Grafana's part of a deploy: its datasources for every tenant in the shared store, the dashboards
  * with this cluster's install-time pass, and its K8s resources ([GrafanaDeployService]).
+ *
+ * Split in two so the stack deploy can [prepare] before it writes anything, and a dashboard that
+ * cannot be delivered fails the deploy with the cluster untouched; [apply] runs in Grafana's place
+ * in the stack order.
  */
 class GrafanaStage(
     private val grafanaDeployService: GrafanaDeployService,
     private val installContextFactory: DashboardInstallContextFactory,
 ) {
-    /** Deploys Grafana for [clusterState] placed by [hosting]; fails the deploy if it cannot. */
-    fun deploy(
+    /** Renders and checks Grafana for [clusterState] placed by [hosting]; writes nothing, fails the deploy if it cannot. */
+    fun prepare(
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
-    ) {
+    ): GrafanaRelease =
         grafanaDeployService
-            .deploy(
-                // Null on a cluster the operator brought; only the dashboard tree copy needs it.
-                clusterState.getControlHost(),
+            .prepare(
                 installContextFactory.forCluster(clusterState),
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
+                // The control host is null on a cluster the operator brought, which publishes no NodePorts.
+                pyroscopeBrowserUrl(hosting.publishing, clusterState.getControlHost()),
             ).getOrElse { exception ->
-                throw IllegalStateException("Failed to upload dashboards: ${exception.message}", exception)
+                throw IllegalStateException("Failed to deploy Grafana: ${exception.message}", exception)
             }
+
+    /** Applies [release]; fails the deploy if it cannot. */
+    fun apply(release: GrafanaRelease) {
+        grafanaDeployService.apply(release).getOrElse { exception ->
+            throw IllegalStateException("Failed to deploy Grafana: ${exception.message}", exception)
+        }
     }
 }

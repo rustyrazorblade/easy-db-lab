@@ -179,6 +179,18 @@ interface K8sStorageOperations {
         labels: Map<String, String>,
     ): Result<Unit>
 
+    /**
+     * Deletes every ConfigMap in [namespace] whose labels match all of [labels] and whose name is
+     * not in [keep], emitting `K8s.ConfigMapDeleted` for each.
+     *
+     * @return the names deleted
+     */
+    fun pruneConfigMaps(
+        namespace: String,
+        labels: Map<String, String>,
+        keep: Set<String>,
+    ): Result<List<String>>
+
     fun createLocalPersistentVolumes(config: PersistentVolumeConfig): Result<Unit>
 
     fun deleteLocalPersistentVolumes(dbName: String): Result<Unit>

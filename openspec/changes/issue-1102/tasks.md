@@ -11,8 +11,8 @@
 
 ## 3. Handler
 
-- [ ] 3.1 `KubernetesErrorHandler` tests on `KubernetesClientException` built from real `Status` objects (no mocks): every claimed case and kind, fallback to URI getters and HTTP method, null status, 404/409/422 and code-0 transport not claimed, wrapped in `IllegalStateException`/`CompletionException` through the reporter
-- [ ] 3.2 Implement the handler; bind it in `kubernetesModule` as `ProviderErrorHandler`
+- [x] 3.1 `KubernetesErrorHandler` tests on `KubernetesClientException` built from real `Status` objects (no mocks): every claimed case and kind, fallback to URI getters and HTTP method, null status, 404/409/422 and code-0 transport not claimed, wrapped in `IllegalStateException`/`CompletionException` through the reporter
+- [x] 3.2 Implement the handler; bind it in `kubernetesModule` as `ProviderErrorHandler`
 
 ## 4. Exec plugin check
 

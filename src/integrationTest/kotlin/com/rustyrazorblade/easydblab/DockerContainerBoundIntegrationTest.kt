@@ -72,14 +72,16 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         val watcher =
             thread(isDaemon = true) {
                 try {
-                    while (!seenRunning.get()) {
+                    while (!seenRunning.get() && !Thread.currentThread().isInterrupted) {
                         if (containersRunning(marker).any { it.state == "running" }) seenRunning.set(true)
                         Thread.sleep(POLL_MILLIS)
                     }
                 } catch (_: InterruptedException) {
                     // The wait ended; the test stops watching.
                 } catch (e: Exception) {
-                    watcherFailure.set(e)
+                    // An interrupt can surface wrapped (an InterruptedIOException cause); only a
+                    // failure while still watching is the watcher's own.
+                    if (!Thread.currentThread().isInterrupted) watcherFailure.set(e)
                 }
             }
 

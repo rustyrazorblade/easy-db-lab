@@ -22,7 +22,9 @@ import java.net.URISyntaxException
  * cluster state exists. The facts come from the server's message (the RBAC verb and the principal
  * it evaluated); when the message does not match, they come from the request URI and the HTTP
  * method of Fabric8's failure message. Any other answer (404, 409, a 422 that is not an admission
- * denial, a transport failure with code 0) is left to the cause-chain error.
+ * denial, a transport failure with code 0) is left to the cause-chain error. It also claims
+ * [ExecPluginNotFoundException], a kubeconfig exec plugin that [ExecPluginCheck] could not find, as
+ * `credentials`.
  *
  * The detail is the server's status message, never the request URI, whose query could carry a
  * token.
@@ -31,6 +33,13 @@ class KubernetesErrorHandler : ProviderErrorHandler {
     override fun describe(error: Throwable): ErrorDescription? =
         when (error) {
             is KubernetesClientException -> describeApiFailure(error)
+            is ExecPluginNotFoundException ->
+                ErrorDescription(
+                    provider = PROVIDER,
+                    kind = ProviderErrorKind.CREDENTIALS,
+                    detail = error.message.orEmpty(),
+                    remedy = error.installHint ?: "Install ${error.plugin}, or put it on PATH, then run the command again.",
+                )
             else -> null
         }
 

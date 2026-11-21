@@ -16,8 +16,8 @@
 
 ## 4. Exec plugin check
 
-- [ ] 4.1 `ExecPluginCheck` tests with `@TempDir` kubeconfig and injected `PATH`: missing bare plugin, install hint, relative path present and missing, plugin present, no exec user
-- [ ] 4.2 Implement `ExecPluginCheck` and `ExecPluginNotFoundException`; call it from `KubeApi.loadConfig()`; handler claims the exception as `credentials`
+- [x] 4.1 `ExecPluginCheck` tests with `@TempDir` kubeconfig and injected `PATH`: missing bare plugin, install hint, relative path present and missing, plugin present, no exec user
+- [x] 4.2 Implement `ExecPluginCheck` and `ExecPluginNotFoundException`; call it from `KubeApi.loadConfig()`; handler claims the exception as `credentials`
 
 ## 5. Keep causes
 

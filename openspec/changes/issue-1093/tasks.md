@@ -23,7 +23,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 3. One delivery path
 
-- [ ] 3.1 Add `pyroscopeBrowserUrl(publishing, controlHost)` to `profiling/ProfilingConfig.kt`, with a unit test:
+- [x] 3.1 Add `pyroscopeBrowserUrl(publishing, controlHost)` to `profiling/ProfilingConfig.kt`, with a unit test:
   - `NodePorts` gives the private IP and NodePort;
   - `NodePorts` with no control node fails, naming the need;
   - `ClusterIp` gives the Service DNS URL.

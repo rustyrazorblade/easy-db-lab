@@ -7,7 +7,6 @@ import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import io.fabric8.kubernetes.client.readiness.Readiness
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
@@ -48,6 +47,7 @@ object SharedK3s {
     const val WEB_SERVER_IMAGE = Constants.Grafana.Documents.WEB_SERVER_IMAGE
 
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+    private const val SERVICE_ACCOUNT_POLL_MILLIS = 250L
     private const val LOG_TAIL_CHARS = 6000
     private const val CONTROL_PLANE_LOG_TAIL_CHARS = 20_000
     private val ORPHAN_CGROUP_NOISE = listOf("orphaned pod cgroup", "Failed to kill all the processes attached to cgroup")
@@ -162,13 +162,7 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
-            try {
-                client
-                    .serviceAccounts()
-                    .inNamespace(name)
-                    .withName("default")
-                    .waitUntilCondition({ it != null }, NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            } catch (e: KubernetesClientTimeoutException) {
+            if (!awaitDefaultServiceAccount(client, name)) {
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
                     "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
@@ -183,10 +177,32 @@ object SharedK3s {
                         }.getOrElse {
                             "cluster diagnostics unavailable: ${it.messageOrString()}"
                         }}\nK3s log tail, without orphaned pod cgroup lines:\n${controlPlaneLogTail()}",
-                    e,
                 )
             }
         }
+    }
+
+    /**
+     * Reads [namespace]'s `default` ServiceAccount directly until it exists, for at most
+     * [NAMESPACE_READY_TIMEOUT_SECONDS]. Each read is a plain GET, not a watch: in CI an informer's
+     * watch on this account sometimes never delivered the ADDED event, and the wait timed out with
+     * the account in place since the second the wait began.
+     */
+    private fun awaitDefaultServiceAccount(
+        client: KubernetesClient,
+        namespace: String,
+    ): Boolean {
+        val account =
+            client
+                .serviceAccounts()
+                .inNamespace(namespace)
+                .withName("default")
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(NAMESPACE_READY_TIMEOUT_SECONDS)
+        while (System.nanoTime() < deadline) {
+            if (account.get() != null) return true
+            Thread.sleep(SERVICE_ACCOUNT_POLL_MILLIS)
+        }
+        return account.get() != null
     }
 
     /**

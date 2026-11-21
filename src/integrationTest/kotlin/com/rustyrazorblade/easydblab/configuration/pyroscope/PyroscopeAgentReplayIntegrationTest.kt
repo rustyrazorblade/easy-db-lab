@@ -23,7 +23,11 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.MountableFile
 import java.io.File
+import java.net.URI
 import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.UUID
 
@@ -55,6 +59,10 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val OUTAGE: Duration = Duration.ofSeconds(150)
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
+        val PUSH_POLL: Duration = Duration.ofMillis(500)
+
+        /** The service the readiness push stores under; the CPU queries read only [SERVICE]. */
+        const val READINESS_SERVICE = "agent-replay-readiness"
 
         val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
 
@@ -77,6 +85,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
 
     private val s3 = SharedLocalStack.s3Client()
     private val docker = DockerClientFactory.instance().client()
+    private val http: HttpClient = HttpClient.newHttpClient()
     private val bucket = "pyroscope-agent-replay-${UUID.randomUUID().toString().take(8)}"
     private val volume = "pyroscope-replay-${UUID.randomUUID().toString().take(8)}"
     private val network: Network = Network.newNetwork()
@@ -185,10 +194,13 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         docker.createVolumeCmd().withName(volume).exec()
         val first = startPyroscope()
+        awaitAcceptsPushes(first)
         val jvm = startProfiledJvm()
         awaitUntil { cpuTicks(first, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
 
         val down = nowSecond()
+        // Stopping removes the container and its log; a push the first server refused is in it.
+        val firstServerLog = first.logs
         ObservabilityBackends.stopGracefully(first)
         containers.remove(first)
         Thread.sleep(maxOf(0L, (down + OUTAGE.seconds - nowSecond()) * MILLIS_PER_SECOND))
@@ -220,7 +232,12 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
             .isPositive()
         val dropped = droppedUploads(jvm.logs)
         val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
-        assertThat(other).describedAs("uploads the agent dropped; JVM log:\n${jvm.logs}").isEmpty()
+        assertThat(other)
+            .describedAs(
+                "uploads the agent dropped; JVM log:\n${jvm.logs}\n" +
+                    "first server log tail:\n${firstServerLog.takeLast(SERVER_LOG_TAIL_CHARS)}\n" +
+                    "restarted server log tail:\n${second.logs.takeLast(SERVER_LOG_TAIL_CHARS)}",
+            ).isEmpty()
         assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
     }
 
@@ -240,6 +257,36 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
             (status != null && status != HTTP_TOO_MANY_REQUESTS && status < HTTP_SERVER_ERROR) || GAVE_UP in line
         }
 
+    /**
+     * Waits until [pyroscope] stores a push. A first start on an empty volume refuses pushes for a
+     * few seconds after `/ready` passes (design 991, "Start has a second window"); no agent runs
+     * against a new server in a cluster, so the agent here must not start inside that window either,
+     * or its first snapshot is refused and counted as a loss the outage did not cause.
+     */
+    private fun awaitAcceptsPushes(pyroscope: GenericContainer<*>) {
+        val name = URLEncoder.encode("$READINESS_SERVICE{}", Charsets.UTF_8)
+        val url = "${ObservabilityBackends.baseUrl(pyroscope, PyroscopeManifestBuilder.SERVER_PORT)}/ingest?name=$name&format=folded"
+        val push = {
+            runCatching {
+                http
+                    .send(
+                        HttpRequest
+                            .newBuilder(URI(url))
+                            .header(Constants.Observability.TENANT_HEADER, TENANT)
+                            .timeout(POLL)
+                            .POST(HttpRequest.BodyPublishers.ofString("main;ready 1\n"))
+                            .build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    ).statusCode() == HTTP_OK
+            }.getOrDefault(false)
+        }
+        val deadline = System.nanoTime() + WAIT.toNanos()
+        while (!push() && System.nanoTime() < deadline) {
+            Thread.sleep(PUSH_POLL.toMillis())
+        }
+        assertThat(push()).describedAs("the first Pyroscope server stored a push").isTrue()
+    }
+
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND
 
     private fun awaitUntil(condition: () -> Boolean) {
@@ -255,6 +302,7 @@ private const val HTTP_OK = 200
 private const val HTTP_TOO_MANY_REQUESTS = 429
 private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1000L
+private const val SERVER_LOG_TAIL_CHARS = 30_000
 private const val GAVE_UP = "Gave up uploading"
 private const val EMPTY_RING = "empty ring"
 private const val UPLOAD_ERROR = "Error uploading snapshot: "

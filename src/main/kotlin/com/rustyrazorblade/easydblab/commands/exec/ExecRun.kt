@@ -147,12 +147,16 @@ class ExecRun : PicoBaseCommand() {
         }
 
     /**
-     * Why [failure] failed, for the host's error event. A failed remote command already printed its
-     * stdout and stderr, tagged with the host, while it ran, so only its summary is repeated here.
+     * Why [failure] failed, for the host's error event. A remote command that [streamed] its output
+     * already printed its stdout and stderr, tagged with the host, while it ran, so only its summary
+     * is repeated; one that did not stream (the unit stop) reports its output here, its only place.
      */
-    private fun reason(failure: Exception): String =
-        when (failure) {
-            is RemoteCommandFailedException -> failure.summary
+    private fun reason(
+        failure: Exception,
+        streamed: Boolean = true,
+    ): String =
+        when {
+            failure is RemoteCommandFailedException && streamed -> failure.summary
             else -> failure.message ?: failure::class.simpleName ?: "Unknown error"
         }
 
@@ -198,7 +202,7 @@ class ExecRun : PicoBaseCommand() {
                 "out=\$(sudo systemctl stop $systemdUnit 2>&1) || ! systemctl is-active --quiet $systemdUnit" +
                     " || { echo \"\$out\" >&2; false; }"
             hostFailure { remoteOps.executeRemotely(host, stop, output = false, secret = false) }?.let {
-                val why = it.message ?: it::class.simpleName ?: "Unknown error"
+                val why = reason(it, streamed = false)
                 eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: $why"))
             }
         } finally {

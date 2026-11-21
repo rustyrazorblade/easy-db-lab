@@ -1,7 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesDenials
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -71,5 +76,24 @@ class StorageClassRetainCheckTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Could not read StorageClass x")
             .hasMessageContaining("forbidden")
+    }
+
+    @Test
+    fun `a forbidden StorageClass read keeps the 403, so it is reported as Kubernetes permission-denied`() {
+        val denial =
+            KubernetesDenials.forbidden(
+                "GET",
+                "/apis/storage.k8s.io/v1/storageclasses/x",
+                "storageclasses.storage.k8s.io \"x\" is forbidden: User \"alice\" cannot get resource \"storageclasses\" " +
+                    "in API group \"storage.k8s.io\" at the cluster scope",
+            )
+        whenever(k8sService.storageClassReclaimPolicy("x")).thenReturn(Result.failure(denial))
+
+        val thrown = catchThrowable { check.require("x", RetainedData.KitData) }
+
+        assertThat(thrown).hasMessageContaining("Could not read StorageClass x").hasCause(denial)
+        val event = KubernetesDenials.reported(thrown) as Event.Command.ProviderError
+        assertThat(event.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(event.request?.resource).isEqualTo("storageclasses")
     }
 }

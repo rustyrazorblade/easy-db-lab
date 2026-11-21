@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.services.StressJobService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -103,6 +104,7 @@ class StressStatusTest : BaseKoinTest() {
 
     @Test
     fun `execute should fail when listJobs fails`() {
+        val denied = KubernetesClientException("Failed to list jobs", 403, null)
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
@@ -115,14 +117,15 @@ class StressStatusTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockStressJobService.listJobs())
-            .thenReturn(Result.failure(RuntimeException("Failed to list jobs")))
+            .thenReturn(Result.failure(denied))
 
         val command = StressStatus()
 
         // When/Then
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Failed to")
+            .hasMessageContaining("Failed to get stress jobs")
+            .hasRootCause(denied)
     }
 
     @Test

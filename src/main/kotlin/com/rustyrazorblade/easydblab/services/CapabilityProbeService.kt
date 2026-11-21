@@ -61,7 +61,7 @@ class CapabilityProbeService(
             ensureNamespace(client, namespace)
             when (val baseline = submit(client, CapabilityProbePods.baseline(namespace))) {
                 null -> Unit
-                else -> fail(namespace, "the restricted baseline Pod was rejected: ${baseline.message}")
+                else -> fail(namespace, "the restricted baseline Pod was rejected: ${baseline.message}", baseline.exception)
             }
             val refused =
                 CapabilityProbePods
@@ -70,7 +70,8 @@ class CapabilityProbeService(
                         submit(client, pod)?.let { rejection ->
                             when (val outcome = ProbeRejection.classify(rejection.code, rejection.message)) {
                                 is ProbeRejection.Refused -> capability to outcome.note
-                                is ProbeRejection.Unexpected -> fail(namespace, "probing ${capability.serialName}: ${outcome.message}")
+                                is ProbeRejection.Unexpected ->
+                                    fail(namespace, "probing ${capability.serialName}: ${outcome.message}", rejection.exception)
                             }
                         }
                     }.toMap()
@@ -78,10 +79,11 @@ class CapabilityProbeService(
             ProbeResult(NodeCapabilities(admitted), refused)
         }
 
-    /** The API server's answer to a rejected request. */
+    /** The API server's answer to a rejected request, and the exception that carried it. */
     private data class Rejection(
         val code: Int,
         val message: String,
+        val exception: KubernetesClientException,
     )
 
     /** Submits [pod] as a dry run; null when admitted. */
@@ -98,7 +100,7 @@ class CapabilityProbeService(
                 .create()
             null
         } catch (e: KubernetesClientException) {
-            Rejection(e.code, e.status?.message ?: e.message.orEmpty())
+            Rejection(e.code, e.serverMessage(), e)
         }
 
     private fun ensureNamespace(
@@ -109,7 +111,7 @@ class CapabilityProbeService(
             try {
                 client.namespaces().withName(namespace).get()
             } catch (e: KubernetesClientException) {
-                fail(namespace, "reading the namespace: ${explain(e)}")
+                fail(namespace, "reading the namespace: ${e.serverMessage()}", e)
             }
         if (existing == null) {
             createIfAbsent(namespace, "creating the namespace") {
@@ -159,25 +161,23 @@ class CapabilityProbeService(
         try {
             create()
         } catch (e: KubernetesClientException) {
-            if (e.code != Constants.HttpStatus.CONFLICT) fail(namespace, "$step: ${explain(e)}")
+            if (e.code != Constants.HttpStatus.CONFLICT) fail(namespace, "$step: ${e.serverMessage()}", e)
         }
     }
 
-    /** The API server's message for [e], pointing at the cluster-admin requirement on a 403. */
-    private fun explain(e: KubernetesClientException): String {
-        val message = e.status?.message ?: e.message.orEmpty()
-        return when (e.code) {
-            Constants.HttpStatus.FORBIDDEN ->
-                "$message. The capability probe needs cluster-admin on this cluster, to read and create the namespace " +
-                    "and its default ServiceAccount"
-            else -> message
-        }
-    }
+    /** The API server's own message, without Fabric8's request prefix. */
+    private fun KubernetesClientException.serverMessage(): String = status?.message ?: message.orEmpty()
 
+    /**
+     * Fails naming [namespace] and [reason], keeping the Fabric8 [cause] so the Kubernetes error
+     * handler describes it: a 403 there names the denied request and the cluster-admin requirement,
+     * and a Pod Security rejection of the baseline names its level and violations.
+     */
     private fun fail(
         namespace: String,
         reason: String,
-    ): Nothing = error("The capability probe failed in namespace '$namespace': $reason")
+        cause: KubernetesClientException,
+    ): Nothing = throw IllegalStateException("The capability probe failed in namespace '$namespace': $reason", cause)
 
     private companion object {
         const val DEFAULT_SERVICE_ACCOUNT = "default"

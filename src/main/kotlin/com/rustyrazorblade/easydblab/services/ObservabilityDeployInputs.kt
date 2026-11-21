@@ -61,13 +61,13 @@ class GrafanaStage(
                 // The control host is null on a cluster the operator brought, which publishes no NodePorts.
                 pyroscopeBrowserUrl(hosting.publishing, clusterState.getControlHost()),
             ).getOrElse { exception ->
-                error("Failed to deploy Grafana: ${exception.message}")
+                throw IllegalStateException("Failed to deploy Grafana: ${exception.message}", exception)
             }
 
     /** Applies [release]; fails the deploy if it cannot. */
     fun apply(release: GrafanaRelease) {
         grafanaDeployService.apply(release).getOrElse { exception ->
-            error("Failed to deploy Grafana: ${exception.message}")
+            throw IllegalStateException("Failed to deploy Grafana: ${exception.message}", exception)
         }
     }
 }

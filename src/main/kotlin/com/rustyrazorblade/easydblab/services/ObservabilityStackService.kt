@@ -150,7 +150,9 @@ class DefaultObservabilityStackService(
         if (workloads.isEmpty()) return
         k8sService
             .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-            .getOrElse { exception -> error("$workloads did not finish rolling out: ${exception.messageOrString()}") }
+            .getOrElse { exception ->
+                throw IllegalStateException("$workloads did not finish rolling out: ${exception.messageOrString()}", exception)
+            }
     }
 
     /**
@@ -230,12 +232,12 @@ class DefaultObservabilityStackService(
         k8sService
             .waitForRollouts(workloads, DEFAULT_NAMESPACE, timeoutSeconds)
             .getOrElse { exception ->
-                error("Observability stack did not finish rolling out: ${exception.messageOrString()}")
+                throw IllegalStateException("Observability stack did not finish rolling out: ${exception.messageOrString()}", exception)
             }
         k8sService
             .waitForPodsReady(timeoutSeconds)
             .getOrElse { exception ->
-                error("Observability stack did not become ready: ${exception.messageOrString()}")
+                throw IllegalStateException("Observability stack did not become ready: ${exception.messageOrString()}", exception)
             }
     }
 
@@ -276,7 +278,10 @@ class DefaultObservabilityStackService(
         eventBus.emit(Event.Grafana.LabelResourcesApplying(stage.label))
         for (resource in stage.resources) {
             k8sService.applyResource(resource).getOrElse { exception ->
-                error("Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.messageOrString()}")
+                throw IllegalStateException(
+                    "Failed to apply ${stage.label} ${resource.kind}/${resource.metadata?.name}: ${exception.messageOrString()}",
+                    exception,
+                )
             }
         }
         eventBus.emit(Event.Grafana.LabelResourcesApplied(stage.label))
@@ -316,7 +321,7 @@ class DefaultObservabilityStackService(
                 // ship unlabeled and two DCs become indistinguishable on one Grafana — so fail
                 // fast rather than report a successful `up` over a broken identity mechanism.
                 eventBus.emit(Event.Provision.ClusterConfigMapFailed(exception.messageOrString()))
-                error("Failed to create cluster-config ConfigMap: ${exception.messageOrString()}")
+                throw IllegalStateException("Failed to create cluster-config ConfigMap: ${exception.messageOrString()}", exception)
             }
         return configData
     }

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.output.RecordingNodeOutput
 import com.rustyrazorblade.easydblab.services.StressJobService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -180,6 +181,7 @@ class StressLogsTest : BaseKoinTest() {
 
     @Test
     fun `execute should fail when getPodsForJob fails`() {
+        val denied = KubernetesClientException("Failed to get pods", 403, null)
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
@@ -192,7 +194,7 @@ class StressLogsTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockStressJobService.getPodsForJob(any()))
-            .thenReturn(Result.failure(RuntimeException("Failed to get pods")))
+            .thenReturn(Result.failure(denied))
 
         val command = StressLogs()
         command.jobName = "stress-test-1234567890"
@@ -201,5 +203,6 @@ class StressLogsTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Failed to get pods")
+            .hasRootCause(denied)
     }
 }

@@ -107,7 +107,7 @@ class StressStart : PicoBaseCommand() {
                     when (e) {
                         // The service already reported the pod, the image and the kubelet's message.
                         is ImagePullFailedException -> throw CommandFailedException("Stress job $fullJobName did not start")
-                        else -> error("Failed to create job: ${e.message}")
+                        else -> throw IllegalStateException("Failed to create job: ${e.message}", e)
                     }
                 }
 

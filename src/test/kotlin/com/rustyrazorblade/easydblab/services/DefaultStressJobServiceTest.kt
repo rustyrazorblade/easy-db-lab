@@ -16,10 +16,13 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.causeChain
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.api.model.batch.v1.Job
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -759,6 +762,28 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
             .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
         verify(k8sService, times(4)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `a 403 listing the job's pods fails the wait after one look, keeping the denial`() {
+        val denied = KubernetesClientException("pods is forbidden", 403, null)
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.failure(denied))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()?.causeChain()).contains(denied)
+        verify(k8sService, times(1)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `a missing exec auth plugin fails the wait after one look, keeping the plugin failure`() {
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", null)
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.failure(missing))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()?.causeChain()).contains(missing)
+        verify(k8sService, times(1)).getPodsForJob(any(), any())
     }
 
     @Test

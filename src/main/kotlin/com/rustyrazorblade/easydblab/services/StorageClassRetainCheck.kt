@@ -62,7 +62,7 @@ class StorageClassRetainCheck(
     ) {
         val policy =
             k8sService.storageClassReclaimPolicy(storageClass).getOrElse { exception ->
-                error("Could not read StorageClass $storageClass: ${exception.message}")
+                throw IllegalStateException("Could not read StorageClass $storageClass: ${exception.message}", exception)
             }
         when (policy) {
             RETAIN -> Unit

@@ -12,13 +12,16 @@ import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.io.FileUtils
 import org.koin.core.component.KoinComponent
+import org.koin.core.component.get
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 import java.io.File
@@ -26,12 +29,19 @@ import java.time.Duration
 import kotlin.io.path.createTempDirectory
 import kotlin.system.exitProcess
 
+/**
+ * Builds one AMI from the Packer templates in [directory], running Packer in a container.
+ *
+ * A build that loses its SSH session to the builder runs again on a new builder (see
+ * [PackerBuildAttempts]); a failed build's builder is diagnosed and torn down unless kept.
+ */
 class Packer(
     val context: Context,
     var directory: String,
 ) : KoinComponent {
-    private val docker: Docker by inject { parametersOf(context) }
-    private val packerImage: PackerImage by inject { parametersOf(docker) }
+    // Builds or pulls the Packer image; each build attempt then runs in a Docker of its own (execute).
+    private val imageDocker: Docker by inject { parametersOf(context) }
+    private val packerImage: PackerImage by inject { parametersOf(imageDocker) }
     private val eventBus: EventBus by inject()
     private val user: User by inject()
 
@@ -47,13 +57,12 @@ class Packer(
     private val logger = KotlinLogging.logger {}
 
     companion object {
-        private const val PACKER_TIMEOUT_MINUTES = 60L
-
         /**
          * The `packer build` arguments for one AMI build.
          *
          * Under the `ssm` SSH transport Packer reaches the builder through Session Manager instead of
          * the instance's public IP, so a network that blocks outbound port 22 can still build AMIs.
+         * Every build bounds its SSH stream with a keepalive and a read/write timeout.
          *
          * @param releaseVersion the version to stamp a release build with, or null for a timestamped build
          */
@@ -79,6 +88,10 @@ class Packer(
                 if (user.sshTransport == SshTransport.Ssm) {
                     addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
                 }
+                // Keepalive replies keep a quiet script's stream busy, and the read/write timeout
+                // ends a stream that carries nothing, so a dead session fails instead of hanging.
+                addVar("ssh_keep_alive_interval", Constants.Packer.SSH_KEEP_ALIVE_INTERVAL)
+                addVar("ssh_read_write_timeout", Constants.Packer.SSH_READ_WRITE_TIMEOUT)
                 releaseVersion?.let { addVar("release_version", it) }
                 addVar("marker_tags", hclMap(Constants.Vpc.MARKER_TAGS))
                 add(name)
@@ -139,21 +152,64 @@ class Packer(
                 releaseVersion = if (isRelease) context.version.toString() else null,
             )
 
-        // refactor to exit with status 1 if the Result is failure
-        // Spread operator is required to pass array to vararg parameter
-        @Suppress("SpreadOperator")
-        val result = execute(*command.toTypedArray())
-        when {
-            result.isFailure -> {
-                logger.error { "Packer build failed: ${result.exceptionOrNull()}" }
-                handleBuildFailure(keepUp)
-                exitProcess(1)
-            }
-            result.isSuccess -> {
-                logger.info { "Packer build succeeded" }
-            }
+        val packerDir = packerDirectory()
+        // Resolved first, so a failed image build stops before Packer launches any instance.
+        val image = packerImage.ensure(user.sshTransport)
+        val logs = PackerLogs(File(context.profileDir, Constants.Packer.HOST_LOGS_DIR))
+        val maxAttempts = Constants.Packer.MAX_BUILD_ATTEMPTS
+        val outcome =
+            PackerBuildAttempts(maxAttempts).run(
+                build = { attempt -> runAttempt(image, command, packerDir, logs.newAttempt(name, attempt)) },
+                // The builder of an attempt that would run again is always torn down; only the last
+                // failed builder is kept for --keep-on-error.
+                cleanUp = { _, _, retryWanted -> handleBuildFailure(keepUp && !retryWanted) },
+                report = { attempt, failed, willRetry, cleanup ->
+                    eventBus.emit(
+                        Event.Ami.BuildAttemptFailed(
+                            template = name,
+                            attempt = attempt,
+                            maxAttempts = maxAttempts,
+                            sessionDropped = failed.failure is PackerFailure.SessionDropped,
+                            willRetry = willRetry,
+                            reason = failed.failure.reason,
+                            logPath = failed.logFile.absolutePath,
+                            builderNotCleared = (cleanup as? BuilderCleanup.Unresolved)?.reason,
+                        ),
+                    )
+                },
+            )
+        when (outcome) {
+            is PackerBuildOutcome.Succeeded -> logger.info { "Packer build succeeded" }
+            is PackerBuildOutcome.Failed -> exitProcess(1)
         }
     }
+
+    /**
+     * Runs one `packer build` in a new container, with its debug log at [logFile], and classifies a
+     * failure from that log. A failure to run the container at all (the Docker daemon, or a build
+     * that outlived [Constants.Packer.BUILD_TIMEOUT_MINUTES]) is a build error, never retried.
+     */
+    private fun runAttempt(
+        image: String,
+        command: List<String>,
+        packerDir: File,
+        logFile: File,
+    ): PackerBuildOutcome =
+        runCatchingException { execute(image, command, packerDir, logFile) }
+            .fold(
+                onSuccess = { result ->
+                    when {
+                        result.isSuccess -> PackerBuildOutcome.Succeeded
+                        else -> PackerBuildOutcome.Failed(PackerFailure.fromLog(readLog(logFile)), logFile)
+                    }
+                },
+                onFailure = { error ->
+                    logger.error(error) { "Packer container failed" }
+                    PackerBuildOutcome.Failed(PackerFailure.BuildError(error.messageOrString()), logFile)
+                },
+            )
+
+    private fun readLog(logFile: File): String = if (logFile.exists()) logFile.readText() else ""
 
     /**
      * Whether the EASY_DB_LAB_BUILD_KEEP_ON_FAILURE env var is set to a truthy value. Lets builds
@@ -162,47 +218,57 @@ class Packer(
     private fun keepOnErrorFromEnv(): Boolean =
         System.getenv(Constants.Environment.BUILD_KEEP_ON_FAILURE)?.lowercase() in setOf("1", "true", "yes", "on")
 
+    /** The packer VPC's instances, through [vpcService]. */
+    private val builderInstances =
+        object : BuilderInstances {
+            override fun list(): List<String> =
+                vpcService
+                    .findVpcByName(Constants.Vpc.PACKER_VPC_NAME)
+                    ?.let { vpcService.findInstancesInVpc(it) }
+                    .orEmpty()
+
+            override fun terminate(instanceIds: List<String>) = vpcService.terminateInstances(instanceIds)
+        }
+
     /**
-     * On build failure, capture diagnostics from the kept instance (packer ran with
-     * -on-error=abort) and surface them, then tear the instance down — unless [keepUp] is set
-     * (--keep-on-error / env), in which case it is left running for manual debugging.
-     *
-     * Best-effort: any failure resolving/SSHing/terminating the instance degrades gracefully to
-     * printing manual SSH instructions, so a build failure is never made worse.
+     * After a failed attempt, captures diagnostics from its builders (packer ran with
+     * -on-error=abort) and keeps or terminates them through [BuilderCleaner], whose answer decides
+     * whether the build may run again; then prints what became of them.
      */
-    private fun handleBuildFailure(keepUp: Boolean) {
-        val instanceId =
-            runCatching {
-                val vpcId = vpcService.findVpcByName(Constants.Vpc.PACKER_VPC_NAME) ?: return@runCatching null
-                // The packer VPC only ever holds the in-flight build instance.
-                vpcService.findInstancesInVpc(vpcId).firstOrNull()
-            }.getOrNull()
-
-        if (instanceId == null) {
-            println("Build failed. Could not locate the build instance to capture/clean up.")
-            return
-        }
-
-        val ip = runCatching { ec2InstanceService.describeInstances(listOf(instanceId)).firstOrNull()?.publicIp }.getOrNull()
-        if (!ip.isNullOrBlank()) {
-            captureAndPrintDiagnostics(ip, instanceId)
-        }
-
-        if (keepUp) {
-            println(
-                """
-
-                Build instance $instanceId left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).
-                SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ip ?: "<instance-ip>"}
-                Terminate when done: aws ec2 terminate-instances --instance-ids $instanceId
-                """.trimIndent(),
-            )
-        } else {
-            runCatching { vpcService.terminateInstances(listOf(instanceId)) }
-                .onSuccess { println("Build instance $instanceId terminated (set --keep-on-error to keep it for debugging).") }
-                .onFailure { println("WARNING: failed to terminate build instance $instanceId: ${it.message}") }
-        }
+    private fun handleBuildFailure(keepUp: Boolean): BuilderCleanup {
+        var ips: Map<String, String?> = emptyMap()
+        val cleanup =
+            BuilderCleaner(builderInstances).cleanUp(keepUp) { instanceIds ->
+                ips =
+                    runCatchingException {
+                        ec2InstanceService.describeInstances(instanceIds).associate { it.instanceId to it.publicIp }
+                    }.getOrDefault(emptyMap())
+                instanceIds.forEach { id -> ips[id]?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, id) } }
+            }
+        describe(cleanup, ips)?.let { println(it) }
+        return cleanup
     }
+
+    /** What became of the builders, or null for an unresolved cleanup, which the attempt's event reports. */
+    private fun describe(
+        cleanup: BuilderCleanup,
+        ips: Map<String, String?>,
+    ): String? =
+        when (cleanup) {
+            is BuilderCleanup.NotFound -> "Build failed. The packer VPC holds no build instance to capture or clean up."
+            is BuilderCleanup.Terminated ->
+                "Build instance ${cleanup.instanceIds.joinToString(" ")} terminated (set --keep-on-error to keep it for debugging)."
+            is BuilderCleanup.Kept -> {
+                val ids = cleanup.instanceIds.joinToString(" ")
+                val sshLines =
+                    cleanup.instanceIds.joinToString("\n") { id ->
+                        "SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ips[id] ?: "<instance-ip>"}"
+                    }
+                "\nBuild instance $ids left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).\n" +
+                    "$sshLines\nTerminate when done: aws ec2 terminate-instances --instance-ids $ids"
+            }
+            is BuilderCleanup.Unresolved -> null
+        }
 
     /**
      * SSHes into the kept build instance and prints the most useful failure diagnostics.
@@ -229,46 +295,51 @@ class Packer(
         }
     }
 
-    private fun execute(vararg commands: String): Result<String> {
-        require(commands.isNotEmpty()) { "Commands cannot be empty" }
-
-        // Resolved first, so a failed image build stops before Packer launches any instance.
-        val image = packerImage.ensure(user.sshTransport)
-
-        val args = commands.toMutableList()
-
-        val localPackerPath = context.packerHome + directory
-
+    /** A copy of this build's packer directory, which every attempt mounts read-only. */
+    private fun packerDirectory(): File {
         require(directory.isNotBlank()) { "Directory cannot be blank" }
-
+        val localPackerPath = context.packerHome + directory
         if (!File(localPackerPath).exists()) {
             eventBus.emit(Event.Docker.PackerDirectoryNotFound(localPackerPath))
             exitProcess(1)
         }
-
         val tempDir = createTempDirectory().toFile()
         FileUtils.copyDirectory(File(localPackerPath), tempDir)
         logger.info { "Copied packer files from $localPackerPath to $tempDir" }
+        return tempDir
+    }
 
-        logger.info { "Mounting $tempDir to $containerWorkingDir, starting with $args" }
+    /**
+     * Runs [command] in a new Packer container, so no attempt inherits another's mounts, with
+     * Packer's debug log written to [logFile] on the host.
+     */
+    private fun execute(
+        image: String,
+        command: List<String>,
+        packerDir: File,
+        logFile: File,
+    ): Result<String> {
+        require(command.isNotEmpty()) { "Commands cannot be empty" }
+        logger.info { "Mounting $packerDir to $containerWorkingDir, starting with $command" }
 
-        // mount credentials
-        // get the main process and go up a directory
-        val packerDir = VolumeMapping(tempDir.absolutePath, containerWorkingDir, AccessMode.ro)
         val creds = Constants.Paths.CREDENTIALS_MOUNT
-
-        // Packer builds can take 30+ minutes, especially when building from source
-        val packerTimeout = Duration.ofMinutes(PACKER_TIMEOUT_MINUTES)
+        val containerLog = "${Constants.Packer.CONTAINER_LOG_DIR}/${logFile.name}"
+        val docker: Docker = get { parametersOf(context) }
 
         return docker
-            .addVolume(packerDir)
-            .addVolume(
-                VolumeMapping(awsCredentialsManager.credentialsPath, creds, AccessMode.ro),
-            )
+            .addVolume(VolumeMapping(packerDir.absolutePath, containerWorkingDir, AccessMode.ro))
+            .addVolume(VolumeMapping(awsCredentialsManager.credentialsPath, creds, AccessMode.ro))
             // Mount the user's private key so packer authenticates with their keypair
-            .addVolume(
-                VolumeMapping(secretKeyFile.absolutePath, Constants.Paths.SSH_KEY_MOUNT, AccessMode.ro),
-            ).addEnv("${Constants.AWS.SHARED_CREDENTIALS_FILE_ENV}=$creds")
-            .runContainer(image, args, containerWorkingDir, packerTimeout)
+            .addVolume(VolumeMapping(secretKeyFile.absolutePath, Constants.Paths.SSH_KEY_MOUNT, AccessMode.ro))
+            .addVolume(VolumeMapping(logFile.parentFile.absolutePath, Constants.Packer.CONTAINER_LOG_DIR, AccessMode.rw))
+            .addEnv("${Constants.AWS.SHARED_CREDENTIALS_FILE_ENV}=$creds")
+            // Setting the path alone turns Packer's debug log on.
+            .addEnv("${Constants.Packer.LOG_PATH_ENV}=$containerLog")
+            .runContainer(
+                image,
+                command.toMutableList(),
+                containerWorkingDir,
+                Duration.ofMinutes(Constants.Packer.BUILD_TIMEOUT_MINUTES),
+            )
     }
 }

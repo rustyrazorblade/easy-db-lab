@@ -90,6 +90,59 @@ SHALL NOT need to install anything beyond what the `ssm` transport already requi
 - **WHEN** the SSM-capable Packer image is built and its Session Manager plugin cannot run
 - **THEN** the image build fails with the plugin's error before any builder instance is launched
 
+### Requirement: AMI builds survive a lost SSH session
+
+An AMI build MUST NOT hang on an SSH stream to its builder that carries no data. Under every SSH
+transport, Packer SHALL send an SSH keepalive every 10 seconds and SHALL fail any SSH read or write
+that waits more than 2 minutes. The keepalive replies keep a live but quiet stream inside that
+bound.
+
+A build whose SSH session to the builder was lost (the session ended, or the read/write timeout
+fired) SHALL be run again on a new builder instance, up to 3 attempts in total. Every instance in
+the packer VPC SHALL be terminated before the next attempt starts, even under `--keep-on-error`;
+when those instances cannot be listed or terminated, the build SHALL fail instead of starting a
+second builder beside one that may still run, and the failed attempt's report SHALL say why. A build
+that failed for any other reason, including an AWS API call that lost its own connection, SHALL NOT
+be retried. Each failed attempt SHALL be reported with
+its reason, whether it lost its session, whether another attempt follows, and the path of its
+Packer log. Each attempt's Packer log SHALL be kept in the profile directory, readable by its owner
+only.
+
+One `packer build` SHALL be bounded at 60 minutes. A Packer container still running at that point
+SHALL be stopped and removed, and the attempt SHALL fail without a retry.
+
+#### Scenario: A quiet provisioner on a live session is not cut off
+
+- **GIVEN** an AMI build whose provisioner prints nothing for longer than the read/write timeout
+- **WHEN** the SSH session to the builder is live
+- **THEN** the keepalive replies keep the session inside the timeout and the build continues
+
+#### Scenario: A silent session fails within the bound
+
+- **GIVEN** an AMI build whose SSH stream to the builder stops carrying data while the session still shows as connected
+- **WHEN** a provisioner is running
+- **THEN** the attempt fails within the read/write timeout instead of hanging
+
+#### Scenario: A lost session is retried on a new builder
+
+- **GIVEN** an AMI build whose SSH session to the builder ended or timed out while a provisioner ran
+- **WHEN** the attempt fails
+- **THEN** its builder is terminated and the build runs again on a new builder instance
+- **AND** the build fails after the third attempt that loses its session
+
+#### Scenario: A builder that may still run stops the retry
+
+- **GIVEN** an AMI build whose SSH session to the builder was lost
+- **WHEN** the packer VPC's instances cannot be listed, or one of them cannot be terminated
+- **THEN** the build fails without another attempt
+- **AND** the failed attempt is reported with why its builder may still be running
+
+#### Scenario: Other failures are not retried
+
+- **GIVEN** an AMI build whose provisioner exited non-zero, or that failed with an AWS or template error
+- **WHEN** the attempt fails
+- **THEN** the build fails at once without another attempt
+
 ### Requirement: Base AMI JDKs
 
 The base AMI SHALL install OpenJDK 8, 11, 17, 21, and 25, each with its debug-symbol package.  The node default JDK SHALL stay 11.

@@ -194,9 +194,8 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         awaitUntil { cpuTicks(first, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
 
         val down = nowSecond()
-        // Stopping removes the container and its log; a push the first server refused is in it.
-        val firstServerLog = first.logs
-        ObservabilityBackends.stopGracefully(first)
+        // Stopping removes the container; its log, shutdown included, holds any push it refused.
+        val firstServerLog = ObservabilityBackends.stopGracefully(first)
         containers.remove(first)
         Thread.sleep(maxOf(0L, (down + OUTAGE.seconds - nowSecond()) * MILLIS_PER_SECOND))
         val restarted = nowSecond()

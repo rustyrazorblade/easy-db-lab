@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.providers.docker
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
 import com.rustyrazorblade.easydblab.kernel.causeChain
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 
 /**
@@ -20,8 +19,6 @@ import io.github.resilience4j.retry.RetryConfig
  * matches on the daemon's message rather than on an exception type.
  */
 object DockerBuildRetry {
-    private val log = KotlinLogging.logger {}
-
     /** Three attempts with exponential backoff (1s, 2s), retrying only a lost content lease. */
     fun <T> config(): RetryConfig =
         RetryConfig
@@ -29,11 +26,8 @@ object DockerBuildRetry {
             .maxAttempts(Constants.Retry.MAX_DOCKER_RETRIES)
             .intervalFunction { attemptCount ->
                 Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
-            }.retryOnException { throwable ->
-                isLeaseLost(throwable).also { lost ->
-                    if (lost) log.warn { "Docker build lost its content lease - will retry: ${throwable.message}" }
-                }
-            }.build()
+            }.retryOnException(::isLeaseLost)
+            .build()
 
     /**
      * Whether the daemon's error, below the project [DockerException] that `Docker.buildImage`

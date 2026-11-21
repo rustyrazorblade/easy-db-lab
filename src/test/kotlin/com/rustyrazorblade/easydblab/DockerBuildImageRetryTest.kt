@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -114,14 +115,19 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     fun `a build that fails on every attempt reports the last attempt's output`() {
         val client = ScriptedBuildClient(List(Constants.Retry.MAX_DOCKER_RETRIES) { leaseLost() })
 
-        assertThatThrownBy { build(client) }
+        val failure = catchThrowable { build(client) }
+
+        assertThat(failure)
             .isInstanceOf(DockerException::class.java)
-            .hasMessageContaining("attempt ${Constants.Retry.MAX_DOCKER_RETRIES}")
-            .hasMessageNotContaining("attempt 1")
             .hasRootCauseMessage(leaseLost().message)
+        assertThat(ATTEMPT_LINE.findAll(failure.message.orEmpty()).map { it.value }.toList())
+            .containsExactly("attempt ${Constants.Retry.MAX_DOCKER_RETRIES}")
     }
 
     companion object {
+        /** The line each scripted build attempt prints first, as a whole word. */
+        private val ATTEMPT_LINE = Regex("""\battempt \d+\b""")
+
         /** What docker-java raises when containerd's lease for a build was deleted under it (Docker 29). */
         fun leaseLost() =
             DockerClientException(

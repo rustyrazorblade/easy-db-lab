@@ -439,7 +439,15 @@ class Docker(
         val contextDir = createTempDirectory("easy-db-lab-image-").toFile()
         try {
             File(contextDir, "Dockerfile").writeText(dockerfile)
-            val retry = Retry.of("docker-build-$imageTag", buildRetryConfig)
+            val retry =
+                Retry.of("docker-build-$imageTag", buildRetryConfig).also {
+                    it.eventPublisher.onRetry { event ->
+                        log.warn {
+                            "Docker build of $imageTag lost its content lease - retrying " +
+                                "(attempt ${event.numberOfRetryAttempts + 1}): ${event.lastThrowable?.message}"
+                        }
+                    }
+                }
             // The project DockerException is checked, so only the checked decorator retries it.
             Retry.decorateCheckedRunnable(retry) { buildOnce(contextDir, imageTag) }.run()
         } finally {

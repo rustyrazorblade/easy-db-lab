@@ -445,15 +445,20 @@ object ObservabilityBackends {
      * removed. Its Service name keeps resolving until the process exits. Kubernetes removes a
      * terminating pod's endpoint at the same time as it signals the pod, not before, so a client can
      * still reach a backend that is shutting down; this is the harsher end of that race.
+     *
+     * Returns the container's whole log, read after it exited and before it is removed, so what it
+     * logged while shutting down is in it.
      */
-    fun stopGracefully(container: GenericContainer<*>) {
+    fun stopGracefully(container: GenericContainer<*>): String {
         DockerClientFactory
             .instance()
             .client()
             .stopContainerCmd(container.containerId)
             .withTimeout(GRACE.toSeconds().toInt())
             .exec()
+        val log = container.logs
         container.stop()
+        return log
     }
 
     /** The base URL of [container]'s HTTP port [port] on the Docker host. */

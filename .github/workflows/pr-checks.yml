@@ -12,8 +12,8 @@ permissions:
   checks: write
 
 jobs:
-  # Decides whether test and quality run.  Classic branch protection on main
-  # lists both as required checks, so the workflow itself always runs: a job
+  # Decides whether test, quality and openspec run.  Classic branch protection
+  # on main lists test and quality as required checks, so the workflow itself always runs: a job
   # that `if` skips reports "skipped", which a required check accepts, while a
   # workflow that paths-ignore skips reports nothing and blocks the merge.
   #

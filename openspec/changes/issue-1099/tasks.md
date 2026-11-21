@@ -7,8 +7,8 @@
 
 ## 2. Config patch builders in Kotlin
 
-- [ ] 2.1 `configuration/cassandra/CassandraPlacement` (sealed `Vm`, `Pods`) and `CassandraConfigPatch.common` / `placement`, with KDoc
-- [ ] 2.2 `WriteConfig` becomes a thin caller and writes the same file as today. `CassandraConfigPatchTest`: each placement produces exactly its own seeds, directories, snitch and native port, and `common` carries `cluster_name`, `num_tokens`, the concurrency settings and `trickle_fsync`
+- [x] 2.1 `configuration/cassandra/CassandraPlacement` (sealed `Vm`, `Pods`) and `CassandraConfigPatch.common` / `placement`, with KDoc
+- [x] 2.2 `WriteConfig` becomes a thin caller and writes the same file as today. `CassandraConfigPatchTest`: each placement produces exactly its own seeds, directories, snitch and native port, and `common` carries `cluster_name`, `num_tokens`, the concurrency settings and `trickle_fsync`
 
 ## 3. Tarball artifact resolution
 

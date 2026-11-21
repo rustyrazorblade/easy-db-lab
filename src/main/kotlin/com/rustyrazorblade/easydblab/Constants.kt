@@ -1698,6 +1698,27 @@ object Constants {
         const val DEFAULT_FLAMEGRAPH_FORMAT = "html"
     }
 
+    /** The values the cassandra.yaml patches carry (`configuration/cassandra/CassandraConfigPatch`). */
+    object CassandraConfig {
+        /** The token count `write-config` defaults to. */
+        const val DEFAULT_TOKENS = 4
+
+        const val CONCURRENT_READS = 64
+        const val CONCURRENT_WRITES = 64
+
+        const val SEED_PROVIDER_CLASS = "org.apache.cassandra.locator.SimpleSeedProvider"
+
+        /** A db node's data disk, mounted by the AMI. */
+        const val VM_DATA_ROOT = "/mnt/db1/cassandra"
+        const val VM_SNITCH = "Ec2Snitch"
+
+        /** A kit pod's claim. */
+        const val POD_DATA_ROOT = "/var/lib/cassandra"
+
+        /** The kit's snitch; the DC and rack come from `cassandra-rackdc.properties`. */
+        const val POD_SNITCH = "GossipingPropertyFileSnitch"
+    }
+
     // Cassandra node configuration
     object Cassandra {
         /** What to use for a Cassandra version switch or install where there are no AWS nodes to SSH into. */

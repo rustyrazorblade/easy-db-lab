@@ -26,7 +26,7 @@
 
 ## 6. No retry of 401/403
 
-- [ ] 6.1 Pass `isTransient = { !it.isKubernetesAuthRejection() }` at the polls in `DefaultK8sNamespaceOperations`, `StressJobService`, `BackendWorkloads`, `TelemetrySenders`; test that a 403 fails after one attempt
+- [x] 6.1 Pass `isTransient = { !it.isKubernetesAuthRejection() }` at the polls in `DefaultK8sNamespaceOperations`, `StressJobService`, `BackendWorkloads`, `TelemetrySenders`; test that a 403 fails after one attempt
 
 ## 7. Integration
 

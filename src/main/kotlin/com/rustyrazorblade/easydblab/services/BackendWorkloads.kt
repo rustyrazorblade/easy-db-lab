@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kubernetes.isKubernetesAuthRejection
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -74,7 +75,13 @@ class K8sBackendWorkloads(
         done: (List<Pod>) -> Boolean,
     ) {
         val attempts = (timeout.toMillis() / pollInterval.toMillis()).toInt().coerceAtLeast(1) + 1
-        val config = RetryUtil.createPollUntilRetryConfig<List<Pod>>(attempts, pollInterval, done, Instant.now().plus(timeout))
+        val config = RetryUtil.createPollUntilRetryConfig<List<Pod>>(
+                attempts,
+                pollInterval,
+                done,
+                Instant.now().plus(timeout),
+                isTransient = { !it.isKubernetesAuthRejection() },
+            )
         val pods = Retry.decorateSupplier(Retry.of("await-$workload-$what", config)) { pods(client, workload) }.get()
         check(done(pods)) { "$workload was not $what within ${timeout.seconds}s" }
     }

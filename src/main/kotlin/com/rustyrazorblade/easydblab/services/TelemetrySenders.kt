@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kubernetes.isKubernetesAuthRejection
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -96,7 +97,13 @@ class K8sTelemetrySenders(
         onDeleteAccepted()
         // The shared deadline, not an attempt count, bounds the poll: the add-on's wait uses part of it.
         val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
-        val config = RetryUtil.createPollUntilRetryConfig(Int.MAX_VALUE, pollInterval, gone, budget.deadline)
+        val config = RetryUtil.createPollUntilRetryConfig(
+                Int.MAX_VALUE,
+                pollInterval,
+                gone,
+                budget.deadline,
+                isTransient = { !it.isKubernetesAuthRejection() },
+            )
         val pods = Retry.decorateSupplier(Retry.of("await-$name-gone", config)) { pods(client, name) }.get()
         check(gone(pods)) {
             val before = if (budget.waited.isEmpty()) "" else " (${budget.waited.joinToString()})"

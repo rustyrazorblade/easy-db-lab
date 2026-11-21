@@ -25,6 +25,14 @@ import java.time.Duration
 class K3sEmbeddedEtcdIntegrationTest {
     private companion object {
         const val DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
+
+        // Unless told, K3s takes its node IP, and with it etcd's advertised peer URL, from the
+        // interface of the default route. A container that Docker also attaches to its default
+        // bridge gets a bridge address there, and the address can change across a restart; etcd
+        // then refuses itself as "not a member" (CI stored 172.17.0.8 and came back on 172.17.0.5).
+        // An EC2 node has one private IP that a reboot keeps, so the node IP is pinned to the
+        // fixed address on the test's own network.
+        const val NODE_IP_DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/10-node-ip.yaml"
         const val DATA_DIR = "/var/lib/rancher/k3s"
         const val READY_TIMEOUT_SECONDS = 180L
         const val POLL_MILLIS = 2_000L
@@ -120,10 +128,13 @@ class K3sEmbeddedEtcdIntegrationTest {
                     cmd.withIpv4Address(containerIp)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
         container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
+        container.withCopyToContainer(Transferable.of("node-ip: $containerIp\n"), NODE_IP_DROP_IN_PATH)
 
         network.use { _ ->
             container.use {
                 it.start()
+
+                assertThat(it.nodeInternalIp()).withFailMessage(it.networkReport()).isEqualTo(containerIp)
 
                 assertThat(it.kubectl("get", "--raw", "/readyz?verbose")).contains("[+]etcd ok")
                 assertThat(it.kubectl("get", "nodes", "-l", "node-role.kubernetes.io/etcd=true", "-o", "name")).startsWith("node/")
@@ -134,11 +145,27 @@ class K3sEmbeddedEtcdIntegrationTest {
                 it.dockerClient.restartContainerCmd(it.containerId).exec()
                 assertThat(it.addressOn(network)).isEqualTo(containerIp)
                 it.awaitRestarted()
+                assertThat(it.nodeInternalIp()).withFailMessage(it.networkReport()).isEqualTo(containerIp)
 
                 assertThat(it.kubectl("get", "configmap", "survives-restart", "-o", "jsonpath={.data.k}")).isEqualTo("v")
             }
         }
     }
+
+    /** The node's InternalIP, the address K3s advertises etcd's peer URL on. */
+    private fun K3sContainer.nodeInternalIp(): String =
+        kubectl("get", "nodes", "-o", "jsonpath={.items[0].status.addresses[?(@.type=='InternalIP')].address}")
+
+    /** Every network Docker attached the container to, with its address there, for a failure message. */
+    private fun K3sContainer.networkReport(): String =
+        dockerClient
+            .inspectContainerCmd(containerId)
+            .exec()
+            .networkSettings
+            ?.networks
+            .orEmpty()
+            .entries
+            .joinToString(prefix = "container networks: ") { (name, settings) -> "$name=${settings.ipAddress}" }
 
     /** The container's IPv4 address on [network], as Docker reports it now. */
     private fun K3sContainer.addressOn(network: Network): String? =

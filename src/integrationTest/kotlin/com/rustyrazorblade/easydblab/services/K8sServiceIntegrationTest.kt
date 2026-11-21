@@ -34,7 +34,10 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
@@ -726,6 +729,73 @@ class K8sServiceIntegrationTest {
             assertThat(after).containsAllEntriesOf(before).containsEntry(key, "yes")
         } finally {
             unlabelNode(nodeName, listOf(key))
+        }
+    }
+
+    /**
+     * A deploy prunes the dashboard ConfigMaps it no longer renders: only maps carrying the prune
+     * label and missing from the kept set go, and each one deleted is reported.
+     */
+    @Test
+    @Order(28)
+    fun `pruneConfigMaps deletes only labelled maps not kept, and reports each one`() {
+        val label = mapOf("easydblab.test/prune" to "yes")
+        fun configMap(
+            name: String,
+            labels: Map<String, String>,
+        ) = ConfigMapBuilder()
+            .withNewMetadata()
+            .withName(name)
+            .withNamespace(DEFAULT_NAMESPACE)
+            .withLabels<String, String>(labels)
+            .endMetadata()
+            .addToData("k", "v")
+            .build()
+        val names = listOf("prune-gone", "prune-kept", "prune-unlabelled")
+        applyAndVerify(
+            listOf(
+                configMap("prune-gone", label),
+                configMap("prune-kept", label),
+                configMap("prune-unlabelled", emptyMap()),
+            ),
+        )
+        val deletedEvents = mutableListOf<String>()
+        val eventBus =
+            EventBus().apply {
+                addListener(
+                    object : EventListener {
+                        override fun onEvent(envelope: EventEnvelope) {
+                            (envelope.event as? Event.K8s.ConfigMapDeleted)?.let { deletedEvents += it.name }
+                        }
+
+                        override fun close() = Unit
+                    },
+                )
+            }
+        try {
+            val deleted =
+                DefaultK8sStorageOperations(WorkspaceK8s.provider(k3s.kubeConfigYaml), eventBus)
+                    .pruneConfigMaps(DEFAULT_NAMESPACE, label, keep = setOf("prune-kept"))
+                    .getOrThrow()
+
+            assertThat(deleted).containsExactly("prune-gone")
+            assertThat(deletedEvents).containsExactly("prune-gone")
+            val left =
+                client
+                    .configMaps()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .list()
+                    .items
+                    .map { it.metadata.name }
+            assertThat(left).contains("prune-kept", "prune-unlabelled").doesNotContain("prune-gone")
+        } finally {
+            names.forEach {
+                client
+                    .configMaps()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName(it)
+                    .delete()
+            }
         }
     }
 

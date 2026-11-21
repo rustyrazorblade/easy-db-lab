@@ -16,7 +16,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 2. Pruning
 
-- [ ] 2.1 Add `K8sService.pruneConfigMaps(namespace, labels, keep)` and implement it in `DefaultK8sStorageOperations`. It emits `K8s.ConfigMapDeleted` for each map it deletes. Test it against K3s TestContainers:
+- [x] 2.1 Add `K8sService.pruneConfigMaps(namespace, labels, keep)` and implement it in `DefaultK8sStorageOperations`. It emits `K8s.ConfigMapDeleted` for each map it deletes. Test it against K3s TestContainers:
   - a labelled map not in `keep` is deleted;
   - a labelled map in `keep` survives;
   - an unlabelled map survives.

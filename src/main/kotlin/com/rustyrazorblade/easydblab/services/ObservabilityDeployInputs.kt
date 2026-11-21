@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.region
+import com.rustyrazorblade.easydblab.profiling.pyroscopeBrowserUrl
 
 /**
  * What one observability stack deploy reads about the cluster, read once at its start so every stage
@@ -50,13 +51,13 @@ class GrafanaStage(
     ) {
         grafanaDeployService
             .deploy(
-                // Null on a cluster the operator brought; only the dashboard tree copy needs it.
-                clusterState.getControlHost(),
                 installContextFactory.forCluster(clusterState),
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
+                // The control host is null on a cluster the operator brought, which publishes no NodePorts.
+                pyroscopeBrowserUrl(hosting.publishing, clusterState.getControlHost()),
             ).getOrElse { exception ->
-                error("Failed to upload dashboards: ${exception.message}")
+                error("Failed to deploy Grafana: ${exception.message}")
             }
     }
 }

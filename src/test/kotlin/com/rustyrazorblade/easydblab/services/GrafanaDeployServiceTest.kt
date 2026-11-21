@@ -4,14 +4,12 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.TestDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaFront
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -31,14 +29,14 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
-import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
-import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.s3.S3Client
@@ -48,49 +46,37 @@ import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
 /**
  * Test suite for [DefaultGrafanaDeployService].
  *
- * Tests datasource ConfigMap creation and the upload workflow using the real
- * GrafanaManifestBuilder, the tree uploader (mocked) and K8sService (mocked).
+ * Uses the real [GrafanaManifestBuilder] and dashboard tree, with [K8sService] mocked at the
+ * cluster boundary: the dashboards travel as ConfigMaps on every storage mode, and the maps the
+ * deploy no longer renders are pruned after the Deployment is applied.
  */
 class GrafanaDeployServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var manifestBuilder: GrafanaManifestBuilder
-    private lateinit var mockTreeUploader: GrafanaDashboardTreeUploader
 
-    private val testControlHost =
-        ClusterHost(
-            publicIp = "54.123.45.67",
-            privateIp = "10.0.1.5",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-test123",
+    private val claimed =
+        ObservabilityHosting(
+            Placement.ANY_NODE,
+            BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
+            StoreCredentials.InstanceRole,
         )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single {
-                    mock<K8sService>().also {
-                        mockK8sService = it
-                    }
-                }
-
-                single {
-                    mock<GrafanaDashboardTreeUploader>().also {
-                        mockTreeUploader = it
-                    }
-                }
+                single { mock<K8sService>().also { mockK8sService = it } }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
-        mockTreeUploader = getKoin().get()
         val stateManager = mock<ClusterStateManager>()
         whenever(stateManager.load()).thenReturn(ClusterState(name = "test", s3Bucket = "easy-db-lab-test"))
         manifestBuilder = GrafanaManifestBuilder(TemplateService(stateManager, getKoin().get()))
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.pruneConfigMaps(any(), any(), any())).thenReturn(Result.success(emptyList()))
         whenever(mockK8sService.workloadConfigHashes(any(), any()))
             .thenReturn(Result.success(mapOf(WorkloadRef(WorkloadKind.Deployment, "grafana") to "running-hash")))
     }
@@ -109,16 +95,32 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         DefaultGrafanaDeployService(
             mockK8sService,
             manifestBuilder,
-            mockTreeUploader,
             GrafanaDashboardTreeWriter(TestDashboardCatalog.catalog),
             eventBus,
             ConfigChangeReport(mockK8sService, eventBus),
             BucketRegion(bucketInRegion("eu-west-1")),
         )
 
+    private fun deploy(
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+        tenant: String = "acme",
+        pyroscopeUrl: String = PYROSCOPE_URL,
+    ) = service().deploy(context(tenant), "acct-bucket", hosting, pyroscopeUrl)
+
+    private fun applied(): List<HasMetadata> {
+        val captor = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, atLeastOnce()).applyResource(captor.capture())
+        return captor.allValues
+    }
+
+    private fun dashboardMaps(resources: List<HasMetadata>) =
+        resources.filterIsInstance<ConfigMap>().filter {
+            it.metadata.labels[Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL] == Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL_VALUE
+        }
+
     @Test
     fun `Grafana reaches each backend by its Service DNS name, never localhost`() {
-        service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
+        service().createDatasourcesConfigMap(TenantSet.of("acme"))
 
         val data = argumentCaptor<Map<String, String>>()
         verify(mockK8sService).createConfigMap(any(), any(), data.capture(), any())
@@ -134,7 +136,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     @Test
     fun `createDatasourcesConfigMap calls k8sService with correct params`() {
-        val result = service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
+        val result = service().createDatasourcesConfigMap(TenantSet.of("acme"))
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
@@ -146,53 +148,99 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `deploy builds and applies all resources`() {
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
-
-        assertThat(result.isSuccess).isTrue()
-        verify(mockK8sService).createConfigMap(any(), eq("grafana-datasources"), any(), any())
-    }
-
-    @Test
-    fun `deploy puts the tree on the control node before the Grafana resources are applied`() {
-        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
-
-        val order = inOrder(mockTreeUploader, mockK8sService)
-        order.verify(mockTreeUploader).upload(eq(testControlHost), any())
-        order.verify(mockK8sService, times(4)).applyResource(any())
-    }
-
-    @Test
     fun `deploy fails when createDatasourcesConfigMap fails`() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
+        val result = deploy()
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
     }
 
     @Test
-    fun `deploy fails without touching K8s resources when the tree upload fails`() {
-        whenever(mockTreeUploader.upload(any(), any())).doThrow(IllegalStateException("sftp failed"))
-
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
-
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
-        verify(mockK8sService, never()).applyResource(any())
-    }
-
-    @Test
-    fun `deploy fails when applyResource fails`() {
+    fun `deploy fails when applyResource fails, and prunes nothing`() {
         whenever(mockK8sService.applyResource(any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val result = service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
+        val result = deploy()
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")
+        verify(mockK8sService, never()).pruneConfigMaps(any(), any(), any())
+    }
+
+    /**
+     * The dashboards travel the same way whatever stores Grafana's state: no SSH copy on a host
+     * path, and the same set of ConfigMaps as on a claim.
+     */
+    @Test
+    fun `the same dashboard ConfigMaps are applied on a host path and on a claim`() {
+        deploy(ObservabilityHosting.AWS).getOrThrow()
+        val onHostPath = dashboardMaps(applied()).associate { it.metadata.name to it.data }
+
+        clearInvocations(mockK8sService)
+        deploy(claimed).getOrThrow()
+        val onClaim = dashboardMaps(applied()).associate { it.metadata.name to it.data }
+
+        assertThat(onHostPath).isNotEmpty().hasSize(TestDashboardCatalog.catalog.dashboards.size).isEqualTo(onClaim)
+    }
+
+    /**
+     * Pruning before the Deployment would leave a live template naming a deleted map, and a new pod
+     * would hang in ContainerCreating. The prune keeps exactly the maps this deploy rendered.
+     */
+    @Test
+    fun `stale dashboard ConfigMaps are pruned by label after the Grafana Deployment is applied, keeping the rendered ones`() {
+        deploy().getOrThrow()
+
+        val rendered = dashboardMaps(applied()).map { it.metadata.name }.toSet()
+        val order = inOrder(mockK8sService)
+        order.verify(mockK8sService).applyResource(argThat { this is Deployment && metadata.name == "grafana" })
+        val keep = argumentCaptor<Set<String>>()
+        order.verify(mockK8sService).pruneConfigMaps(
+            eq("default"),
+            eq(mapOf(Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL to Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL_VALUE)),
+            keep.capture(),
+        )
+        assertThat(keep.firstValue).isEqualTo(rendered)
+    }
+
+    @Test
+    fun `a failed prune fails the deploy`() {
+        whenever(mockK8sService.pruneConfigMaps(any(), any(), any())).thenReturn(Result.failure(RuntimeException("list denied")))
+
+        val result = deploy()
+
+        assertThat(result.exceptionOrNull()?.message).contains("list denied")
+    }
+
+    @Test
+    fun `the Pyroscope URL it is given reaches the rendered profiling dashboard`() {
+        deploy(pyroscopeUrl = "http://10.9.8.7:31040").getOrThrow()
+
+        val pyroscopeLinks = dashboardMaps(applied()).flatMap { it.data.values }.filter { "Pyroscope UI" in it }
+        assertThat(pyroscopeLinks).isNotEmpty().allSatisfy { assertThat(it).contains("http://10.9.8.7:31040") }
+    }
+
+    @Test
+    fun `dashboard ConfigMaps are applied before the Deployment that mounts them`() {
+        deploy(claimed).getOrThrow()
+
+        val kinds = applied().map { "${it.kind}/${it.metadata.name}" }
+        assertThat(kinds.indexOfFirst { it.startsWith("ConfigMap/${Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX}") })
+            .isNotNegative()
+            .isLessThan(kinds.indexOf("Deployment/grafana"))
+    }
+
+    @Test
+    fun `deploy reports how many dashboards it rendered`() {
+        val emitted = recordEvents()
+
+        deploy().getOrThrow()
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.DashboardsRendered>())
+            .containsExactly(Event.Grafana.DashboardsRendered(TestDashboardCatalog.catalog.dashboards.size))
     }
 
     /**
@@ -202,16 +250,12 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
      */
     @Test
     fun `a datasource change rolls Grafana through its config hash`() {
-        val service = service()
+        deploy(tenant = "acme").getOrThrow()
+        deploy(tenant = "acme").getOrThrow()
+        deploy(tenant = "other").getOrThrow()
 
-        service.deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
-        service.deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
-        service.deploy(testControlHost, context("other"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
-
-        val deployments = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(12)).applyResource(deployments.capture())
         val hashes =
-            deployments.allValues.filterIsInstance<Deployment>().map {
+            applied().filterIsInstance<Deployment>().map {
                 it.spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
             }
         assertThat(hashes).hasSize(3).doesNotContainNull()
@@ -221,18 +265,9 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     @Test
     fun `deploy reports that Grafana rolls when its configuration differs from the running one`() {
-        val emitted = mutableListOf<Event>()
-        eventBus.addListener(
-            object : EventListener {
-                override fun onEvent(envelope: EventEnvelope) {
-                    emitted += envelope.event
-                }
+        val emitted = recordEvents()
 
-                override fun close() = Unit
-            },
-        )
-
-        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
+        deploy().getOrThrow()
 
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
             .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))
@@ -244,18 +279,17 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
      */
     @Test
     fun `the applied Grafana pod reads the account bucket in the bucket's own region`() {
-        service().deploy(testControlHost, context("acme"), "acct-bucket", ObservabilityHosting.AWS).getOrThrow()
+        deploy().getOrThrow()
 
-        val applied = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, times(4)).applyResource(applied.capture())
+        val resources = applied()
         val proxy =
-            applied.allValues
+            resources
                 .filterIsInstance<Deployment>()
                 .single()
                 .spec.template.spec.containers
                 .single { it.name == "documents-sigv4-proxy" }
         assertThat(proxy.args).containsSequence("--region", "eu-west-1").containsSequence("--host", "s3.eu-west-1.amazonaws.com")
-        val web = applied.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == GrafanaFront.CONFIGMAP_NAME }
+        val web = resources.filterIsInstance<ConfigMap>().single { it.metadata.name == GrafanaFront.CONFIGMAP_NAME }
         assertThat(web.data.values.single()).contains("/acct-bucket/reports/;")
     }
 
@@ -266,19 +300,11 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
      */
     @Test
     fun `the hosting passed to deploy reaches the applied Grafana Deployment`() {
-        val offAws =
-            ObservabilityHosting(
-                Placement.ANY_NODE,
-                BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
-                StoreCredentials.InstanceRole,
-            )
+        deploy(claimed).getOrThrow()
 
-        service().deploy(testControlHost, context("acme"), "acct-bucket", offAws).getOrThrow()
-
-        val applied = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(applied.capture())
+        val resources = applied()
         val pod =
-            applied.allValues
+            resources
                 .filterIsInstance<Deployment>()
                 .single()
                 .spec.template.spec
@@ -286,48 +312,25 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         assertThat(pod.tolerations.orEmpty()).isEmpty()
         assertThat(pod.volumes.mapNotNull { it.hostPath }).isEmpty()
         assertThat(pod.volumes.mapNotNull { it.persistentVolumeClaim?.claimName }).containsExactly("grafana-data")
-        val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
+        val kinds = resources.map { "${it.kind}/${it.metadata.name}" }
         assertThat(kinds.indexOf("PersistentVolumeClaim/grafana-data")).isNotNegative().isLessThan(kinds.indexOf("Deployment/grafana"))
     }
 
-    /**
-     * Where Grafana keeps its state on a claim there is no node directory to copy the tree into, and
-     * maybe no node to reach: the tree goes through the K8s API, as ConfigMaps the Deployment mounts.
-     */
-    @Test
-    fun `on a claim the dashboards reach Grafana as ConfigMaps it mounts, with no copy to a node`() {
-        val offAws =
-            ObservabilityHosting(
-                Placement.ANY_NODE,
-                BackendStorage.RetainedClaim("retained-class", Quantity("10Gi")),
-                StoreCredentials.InstanceRole,
-            )
+    private fun recordEvents(): List<Event> {
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
 
-        service().deploy(null, context("acme"), "acct-bucket", offAws).getOrThrow()
-
-        verify(mockTreeUploader, never()).upload(any(), any())
-        val applied = argumentCaptor<HasMetadata>()
-        verify(mockK8sService, atLeastOnce()).applyResource(applied.capture())
-        val trees =
-            applied.allValues.filterIsInstance<ConfigMap>().filter {
-                it.metadata.name.startsWith(
-                    Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX,
-                )
-            }
-        assertThat(trees).isNotEmpty()
-        val pyroscopeLinks = trees.flatMap { it.data.values }.filter { "Pyroscope UI" in it }
-        assertThat(pyroscopeLinks).isNotEmpty().allSatisfy { assertThat(it).contains("http://pyroscope.default.svc:4040") }
-        val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
-        assertThat(kinds.indexOfFirst { it.startsWith("ConfigMap/${Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX}") })
-            .isNotNegative()
-            .isLessThan(kinds.indexOf("Deployment/grafana"))
+                override fun close() = Unit
+            },
+        )
+        return emitted
     }
 
-    @Test
-    fun `on a host path with no control node the deploy fails naming the copy it needs the node for`() {
-        val result = service().deploy(null, context("acme"), "acct-bucket", ObservabilityHosting.AWS)
-
-        assertThat(result.exceptionOrNull()?.message).contains("control node")
-        verify(mockK8sService, never()).applyResource(any())
+    private companion object {
+        const val PYROSCOPE_URL = "http://pyroscope.default.svc:4040"
     }
 }

@@ -740,6 +740,7 @@ class K8sServiceIntegrationTest {
     @Order(28)
     fun `pruneConfigMaps deletes only labelled maps not kept, and reports each one`() {
         val label = mapOf("easydblab.test/prune" to "yes")
+
         fun configMap(
             name: String,
             labels: Map<String, String>,

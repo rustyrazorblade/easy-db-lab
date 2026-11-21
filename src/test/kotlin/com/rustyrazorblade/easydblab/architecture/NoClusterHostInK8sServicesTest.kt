@@ -120,13 +120,7 @@ class NoClusterHostInK8sServicesTest {
                 "$ROOT.services.K8sPodOperations",
             )
 
-        /**
-         * Classes that reach Kubernetes and also use a control host for SSH or its IP. Only shrinks.
-         * - `DefaultGrafanaDeployService` uploads the dashboard tree to the control node over SSH.
-         */
-        val ALLOW_LIST =
-            setOf(
-                "$ROOT.services.DefaultGrafanaDeployService",
-            )
+        /** Classes that reach Kubernetes and also use a control host for SSH or its IP. Only shrinks; empty now. */
+        val ALLOW_LIST = emptySet<String>()
     }
 }

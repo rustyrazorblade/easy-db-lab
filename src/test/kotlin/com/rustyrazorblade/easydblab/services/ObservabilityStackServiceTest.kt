@@ -67,7 +67,6 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
@@ -176,7 +175,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
 
@@ -573,7 +572,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
         // The documents front and its proxy read the account bucket, never the data bucket.
-        verify(mockDashboardService).deploy(anyOrNull(), context.capture(), eq("easy-db-lab-test"), any())
+        verify(mockDashboardService).deploy(context.capture(), eq("easy-db-lab-test"), any(), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
@@ -724,7 +723,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any(), any(), any())
 
         // No backend or Grafana directory is prepared: they do not exist here. The only SSH work
         // is the account compactor's, which runs on every cluster.
@@ -770,7 +769,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
 
         val hosting = argumentCaptor<ObservabilityHosting>()
-        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), hosting.capture())
+        verify(mockDashboardService).deploy(any(), any(), hosting.capture(), any())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
     }
 
@@ -967,7 +966,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
+        order.verify(mockDashboardService).deploy(any(), any(), any(), any())
         order.verify(mockK8sService).waitForRollouts(workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }

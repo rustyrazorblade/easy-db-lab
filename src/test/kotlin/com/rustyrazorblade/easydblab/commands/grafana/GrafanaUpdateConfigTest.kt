@@ -51,7 +51,6 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -201,7 +200,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
@@ -211,7 +210,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any<HasMetadata>())
-        verify(mockDashboardService).deploy(anyOrNull(), any(), any(), any())
+        verify(mockDashboardService).deploy(any(), any(), any(), any())
 
         // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
         verify(mockK8sService, never()).rolloutRestartDeployment(any(), any())
@@ -235,7 +234,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
@@ -291,20 +290,20 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(anyOrNull(), any(), any(), any()))
+        whenever(mockDashboardService.deploy(any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("Failed to upload dashboards")
+            .hasMessageContaining("Failed to deploy Grafana")
     }
 
     @Test
     fun `execute refuses on a telemetry-redirect cluster`() {
         // A redirect cluster has no local Grafana or backends to reconfigure, so the operator-facing
-        // reconfigure command must refuse rather than apply anything or upload dashboards.
+        // reconfigure command must refuse rather than apply anything or deploy dashboards.
         val redirectState =
             ClusterState(
                 name = "test-cluster",
@@ -329,6 +328,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .hasMessageContaining("telemetry-redirect")
 
         verify(mockK8sService, never()).applyResource(any<HasMetadata>())
-        verify(mockDashboardService, never()).deploy(anyOrNull(), any(), any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any(), any(), any())
     }
 }

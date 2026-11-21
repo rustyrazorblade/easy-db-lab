@@ -2824,22 +2824,13 @@ sealed interface Event {
             override fun toDisplayString(): String = "Preparing Grafana data directory..."
         }
 
+        /** The core dashboards were rendered into [count] ConfigMaps, about to be applied with Grafana. */
         @Serializable
-        @SerialName("Grafana.DashboardTreeUploading")
-        data class DashboardTreeUploading(
+        @SerialName("Grafana.DashboardsRendered")
+        data class DashboardsRendered(
             val count: Int,
-            val path: String,
         ) : Grafana {
-            override fun toDisplayString(): String = "Uploading $count Grafana dashboards to $path..."
-        }
-
-        @Serializable
-        @SerialName("Grafana.DashboardTreeUploaded")
-        data class DashboardTreeUploaded(
-            val count: Int,
-            val path: String,
-        ) : Grafana {
-            override fun toDisplayString(): String = "Installed $count Grafana dashboards under $path"
+            override fun toDisplayString(): String = "Rendered $count Grafana dashboards as ConfigMaps"
         }
 
         @Serializable

@@ -15,10 +15,8 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
-import java.io.File
 import java.nio.file.Files
 import kotlin.io.path.deleteExisting
-import kotlin.io.path.inputStream
 
 /**
  * Upload the cassandra.yaml fragment to all nodes and apply to cassandra.yaml.
@@ -58,7 +56,7 @@ class UpdateConfig : PicoBaseCommand() {
                 .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
                 .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
         require(versions.isNotEmpty()) { "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'" }
-        val missing = versions.filterValues { !File(context.workingDirectory, it.versionString).isDirectory }
+        val missing = versions.filterValues { !context.workspaceFile(it.versionString).isDirectory }
         check(missing.isEmpty()) {
             "No local config directory for " +
                 missing.entries.joinToString("; ") { (alias, v) -> "${v.versionString}, the version $alias runs" } +
@@ -111,14 +109,7 @@ class UpdateConfig : PicoBaseCommand() {
 
             // Upload files to the temporary directory first
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
-            remoteOps.uploadDirectory(
-                it,
-                context.workingDirectory
-                    .toPath()
-                    .resolve(resolvedVersion.localDir)
-                    .toFile(),
-                tempDir,
-            )
+            remoteOps.uploadDirectory(it, context.workspaceFile(resolvedVersion.versionString), tempDir)
 
             // Make sure the destination directory exists
             remoteOps.executeRemotely(it, "sudo mkdir -p ${resolvedVersion.conf}").text

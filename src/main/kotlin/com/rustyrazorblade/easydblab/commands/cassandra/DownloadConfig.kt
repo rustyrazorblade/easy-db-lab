@@ -48,7 +48,7 @@ class DownloadConfig : PicoBaseCommand() {
         targeted
             .map { it.toHost() }
             .map { host -> host to remoteOps.getRemoteVersion(host, version) }
-            .distinctBy { (_, resolved) -> resolved.localDir }
+            .distinctBy { (_, resolved) -> resolved.versionString }
             .forEach { (host, resolved) -> download(host, resolved) }
     }
 
@@ -63,16 +63,12 @@ class DownloadConfig : PicoBaseCommand() {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }
         // Resolved against the workspace, where every other command looks for it, not the JVM's cwd.
-        val localDir =
-            context.workingDirectory
-                .toPath()
-                .resolve(resolvedVersion.localDir)
-                .toFile()
+        val localDir = context.workspaceFile(resolvedVersion.versionString)
 
         // Never overwrite: the directory may hold the operator's own edits. Say so, because
         // otherwise the command finishes silently having changed nothing.
         if (localDir.exists()) {
-            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.localDir.toString()))
+            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.versionString))
         } else {
             localDir.mkdirs()
 

@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.nio.file.Path
 
 class VersionTest {
     @Test
@@ -13,7 +12,6 @@ class VersionTest {
         assertThat(version.path).isEqualTo(path)
         assertThat(version.versionString).isEqualTo("5.0")
         assertThat(version.conf).isEqualTo("/usr/local/cassandra/5.0/conf")
-        assertThat(version.localDir).isEqualTo(Path.of("5.0"))
     }
 
     @Test
@@ -24,7 +22,6 @@ class VersionTest {
         assertThat(version.path).isEqualTo("/usr/local/cassandra/5.0")
         assertThat(version.versionString).isEqualTo("5.0")
         assertThat(version.conf).isEqualTo("/usr/local/cassandra/5.0/conf")
-        assertThat(version.localDir).isEqualTo(Path.of("5.0"))
     }
 
     @Test
@@ -35,7 +32,6 @@ class VersionTest {
         assertThat(version.path).isEqualTo(remotePath)
         assertThat(version.versionString).isEqualTo("4.1.3")
         assertThat(version.conf).isEqualTo("/opt/cassandra/4.1.3/conf")
-        assertThat(version.localDir).isEqualTo(Path.of("4.1.3"))
     }
 
     @Test

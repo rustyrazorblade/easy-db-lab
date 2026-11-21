@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.exceptions.AwsTimeoutException
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
@@ -25,6 +26,7 @@ import software.amazon.awssdk.services.emr.model.Step
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStatus
 import software.amazon.awssdk.services.emr.model.StepSummary
+import java.nio.file.Path
 import java.time.Duration
 
 /**
@@ -35,6 +37,9 @@ import java.time.Duration
 class EMRSparkServiceJobWaitTest {
     private val emrClient: EmrClient = mock()
 
+    @TempDir
+    lateinit var logsDir: Path
+
     private fun service(jobWaitTimeout: Duration = Duration.ofSeconds(5)) =
         EMRSparkService(
             emrClient,
@@ -44,6 +49,7 @@ class EMRSparkServiceJobWaitTest {
             EventBus(),
             pollInterval = Duration.ZERO,
             jobWaitTimeout = jobWaitTimeout,
+            logsDir = logsDir,
         )
 
     private fun step(state: StepState): DescribeStepResponse =
@@ -108,7 +114,7 @@ class EMRSparkServiceJobWaitTest {
                 override fun close() = Unit
             },
         )
-        val service = EMRSparkService(emrClient, mock(), mock(), mock(), eventBus, pollInterval = Duration.ZERO)
+        val service = EMRSparkService(emrClient, mock(), mock(), mock(), eventBus, pollInterval = Duration.ZERO, logsDir = logsDir)
 
         assertThat(service.getJobStatus("j-1", "s-1").getOrThrow().state).isEqualTo(SparkJobState.UNKNOWN)
         looks = 0

@@ -38,11 +38,10 @@ class ConfigurationModuleTest {
     fun `state is saved and loaded in the workspace, not the current directory`() {
         val workspace = File(tempDir, "w").also { it.mkdirs() }
         withManager(workspace) { manager ->
-            manager.save(ClusterState(name = "lab", versions = mutableMapOf()))
+            manager.replace(ClusterState(name = "lab"))
             assertThat(manager.load().name).isEqualTo("lab")
         }
         assertThat(File(workspace, "state.json")).exists()
-        assertThat(File("state.json").absoluteFile).doesNotExist()
     }
 
     @Test

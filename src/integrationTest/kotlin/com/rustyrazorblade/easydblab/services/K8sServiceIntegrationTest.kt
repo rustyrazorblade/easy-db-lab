@@ -771,7 +771,7 @@ class K8sServiceIntegrationTest {
     fun `no database workload should set CPU or memory requests or limits`(
         @TempDir profileHome: File,
     ) {
-        val context = Context(profileHome)
+        val context = Context(profileHome, workingDirectory = profileHome)
         val resolver = InstallTemplateResolver(context, KitSourcesProvider(context))
         val dbKits =
             resolver

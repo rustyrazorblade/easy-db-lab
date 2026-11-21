@@ -1,6 +1,10 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -40,6 +44,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.StsException
+import java.io.File
 
 /**
  * The two production AWS modules wired together. Koin resolves bindings lazily and `getAll()`
@@ -70,7 +75,8 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
                         awsSecret = "s",
                     )
                 }
-                single<ClusterStateManager> { mock() }
+                // Never a mock: the real manager over the test workspace.
+                single { ClusterStateManager(File(tempDir, CLUSTER_STATE)) }
                 single<ObjectStore> { mock() }
                 single<LokiQueryService> { mock() }
                 single<com.rustyrazorblade.easydblab.services.ExternalIpService> { mock() }
@@ -97,6 +103,16 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
     fun `the AWS services resolve`() {
         assertThat(get<SparkService>()).isNotNull
         assertThat(get<CompactorLeaseReader>()).isNotNull
+    }
+
+    @Test
+    fun `EMR logs are saved under the workspace, not the current directory`() {
+        get<ClusterStateManager>().replace(ClusterState(name = "lab", s3Bucket = "bucket"))
+
+        val logs = get<SparkService>().downloadAllLogs("s-1").getOrThrow()
+
+        assertThat(logs).startsWith(get<Context>().workspaceFile(Constants.EMR.LOCAL_LOGS_DIR).toPath())
+        assertThat(logs.toFile()).isDirectory()
     }
 
     @Test

@@ -71,11 +71,6 @@ class InstallFileTest {
             remoteDir: String,
         ) = error("not used")
 
-        override fun uploadDirectory(
-            host: Host,
-            version: Version,
-        ) = error("not used")
-
         override fun replaceDirectory(
             host: Host,
             localDir: File,

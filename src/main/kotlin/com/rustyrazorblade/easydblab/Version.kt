@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import java.nio.file.Path
-
 /**
  * Represents a Cassandra version
  *
@@ -27,6 +25,4 @@ data class Version(
 
         fun fromRemotePath(path: String): Version = Version(path)
     }
-
-    val localDir: Path get() = Path.of(versionString)
 }

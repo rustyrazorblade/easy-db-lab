@@ -64,6 +64,17 @@ class CapabilityProbeFailureIntegrationTest {
             .withMessage(message)
             .build()
 
+    /**
+     * The message the API server writes when RBAC denies alice [verb] on [resource]; [subject] is
+     * the `<resource> ["<name>"]` it names first. Only this form is an RBAC denial to the handler.
+     */
+    private fun rbacDenial(
+        verb: String,
+        resource: String,
+        subject: String,
+    ): String =
+        "$subject is forbidden: User \"alice\" cannot $verb resource \"$resource\" in API group \"\" in the namespace \"$NAMESPACE\""
+
     private fun createNamespace() {
         server.createClient().use { client ->
             client
@@ -126,7 +137,7 @@ class CapabilityProbeFailureIntegrationTest {
             .withPath("/api/v1/namespaces/$NAMESPACE")
             .andReturn(
                 Constants.HttpStatus.FORBIDDEN,
-                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "namespaces \"$NAMESPACE\" is forbidden: user cannot get"),
+                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("get", "namespaces", "namespaces \"$NAMESPACE\"")),
             ).always()
 
         val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
@@ -134,7 +145,7 @@ class CapabilityProbeFailureIntegrationTest {
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
-            .hasMessageContaining("user cannot get")
+            .hasMessageContaining("User \"alice\" cannot get resource \"namespaces\"")
         assertForbiddenCauseNeedsClusterAdmin(thrown)
     }
 
@@ -183,7 +194,7 @@ class CapabilityProbeFailureIntegrationTest {
             .withPath("/api/v1/namespaces/$NAMESPACE/serviceaccounts")
             .andReturn(
                 Constants.HttpStatus.FORBIDDEN,
-                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "serviceaccounts is forbidden: user cannot create"),
+                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("create", "serviceaccounts", "serviceaccounts")),
             ).always()
 
         val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
@@ -192,7 +203,7 @@ class CapabilityProbeFailureIntegrationTest {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
             .hasMessageContaining("creating the default ServiceAccount")
-            .hasMessageContaining("user cannot create")
+            .hasMessageContaining("User \"alice\" cannot create resource \"serviceaccounts\"")
         assertForbiddenCauseNeedsClusterAdmin(thrown)
     }
 

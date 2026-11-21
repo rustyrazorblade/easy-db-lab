@@ -6,8 +6,8 @@
 
 ## 2. Parsers (test first, pure strings)
 
-- [ ] 2.1 `kubernetes/KubernetesDenial.kt` tests: RBAC namespaced, cluster scope, subresource, object name; `system:anonymous`; Pod Security with several violations and commas inside parentheses; webhook; ValidatingAdmissionPolicy; dry-run-not-supported not matched; unmatched text
-- [ ] 2.2 Implement `RbacDenial.parse`, `AdmissionRejection.parse`, `Throwable.isKubernetesAuthRejection()`
+- [x] 2.1 `kubernetes/KubernetesDenial.kt` tests: RBAC namespaced, cluster scope, subresource, object name; `system:anonymous`; Pod Security with several violations and commas inside parentheses; webhook; ValidatingAdmissionPolicy; dry-run-not-supported not matched; unmatched text
+- [x] 2.2 Implement `RbacDenial.parse`, `AdmissionRejection.parse`, `Throwable.isKubernetesAuthRejection()`
 
 ## 3. Handler
 

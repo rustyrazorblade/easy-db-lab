@@ -168,7 +168,7 @@ object SharedK3s {
                 ).create()
             val lastRead = awaitDefaultServiceAccount(client, name)
             if (lastRead !is ServiceAccountRead.Found) {
-                val lastReadFailure = (lastRead as? ServiceAccountRead.Unanswered)?.cause
+                val lastReadFailure = (lastRead as? ServiceAccountRead.ReadFailure)?.cause
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
                     "no default ServiceAccount in $name (the wait allows ${NAMESPACE_READY_TIMEOUT.toSeconds()}s); " +
@@ -202,22 +202,25 @@ object SharedK3s {
             override fun describe() = "absent"
         }
 
-        /** A read that failed and carries why; the report names it as the failure's cause. */
-        sealed interface Unanswered : ServiceAccountRead {
+        /**
+         * A read that threw, unanswered ([Failed]) or refused ([Rejected]); the report names its
+         * exception as the failure's cause.
+         */
+        sealed interface ReadFailure : ServiceAccountRead {
             val cause: KubernetesClientException
         }
 
         /** The read failed in a way the next read may not: a dropped connection or a 5xx. */
         data class Failed(
             override val cause: KubernetesClientException,
-        ) : Unanswered {
+        ) : ReadFailure {
             override fun describe() = "failed: ${cause.messageOrString()}"
         }
 
         /** The server refused the read (a 403, a bad request); every next read would fail the same way. */
         data class Rejected(
             override val cause: KubernetesClientException,
-        ) : Unanswered {
+        ) : ReadFailure {
             override fun describe() = "rejected (${cause.code}): ${cause.messageOrString()}"
         }
     }

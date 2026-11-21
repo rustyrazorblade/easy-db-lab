@@ -198,6 +198,15 @@ Path-filtered workflows run the Docker-backed script tests:
 
 Kover reports coverage on the PR, with an 80% floor overall and on changed files.
 
+### Docs-only PRs
+
+A PR that changes only the paths in the `paths-ignore` list of `pr-checks.yml` gets no `test` or `quality` run.  The list holds `openspec/**` and the root process docs (`WORKFLOW.md`, `README.md`, `CONTRIBUTING.md`, `DEVELOPERS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `history.md`).  Nothing in the build or the tests reads these paths.
+
+- `docs/`, `test-plans/`, `.claude/` and the root `CLAUDE.md` are not docs-only: unit tests read them.
+- Before you add a path to the list, check that no test or build task reads it.
+- If a PR changes `openspec/`, run `openspec validate --all` before the merge, and put the result in the PR.
+- Pushes to `main` always run the full suite.
+
 If a test fails, the `test` job uploads the `spec-flow-failures` artifact.  It lists each failing test ID, one per line, across both tiers.  Script tests appear as `scripts.<task>`; run one with `./gradlew <task>`.  Use it to find the failing tests with `gh run download`.
 
 ## Merge
@@ -210,7 +219,7 @@ The issue agent squash-merges its own PR when all of these are true:
 
 1. The five review lenses have no blocking findings.
 2. If the issue has `requires-aws`, the real AWS test passed and the PR holds the evidence.
-3. `test`, `quality` and `claude-review` are green.
+3. `test`, `quality` and `claude-review` are green.  A docs-only PR (see "Docs-only PRs") has no `test` or `quality` run; it needs `claude-review` green and roborev passed.
 
 Rules for the merge:
 

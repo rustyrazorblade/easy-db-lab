@@ -2,6 +2,20 @@ name: PR Checks
 
 on:
   pull_request:
+    # A PR that changes only these paths skips test and quality.  Nothing in
+    # the build or the tests reads them.  docs/, test-plans/, .claude/ and the
+    # root CLAUDE.md are NOT here: NoVictoriaReferencesTest and
+    # KitFlagsDocumentedTest read them.  Keep this list in step with
+    # WORKFLOW.md, "Docs-only PRs".  Pushes to main always run in full.
+    paths-ignore:
+      - 'openspec/**'
+      - 'WORKFLOW.md'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'DEVELOPERS.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'SECURITY.md'
+      - 'history.md'
   push:
     branches:
       - main

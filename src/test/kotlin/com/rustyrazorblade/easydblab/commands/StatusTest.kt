@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
@@ -34,6 +35,7 @@ import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -54,6 +56,7 @@ import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
+import java.time.Duration
 import java.time.Instant
 
 class StatusTest : BaseKoinTest() {
@@ -151,7 +154,27 @@ class StatusTest : BaseKoinTest() {
                 // hide the very rule these tests exercise.
                 single { WorkspaceKitScanner(get()) }
                 factory { ClusterStatusCollector() }
+                single {
+                    KitEndpointHost { selector, namespace ->
+                        podQueries += selector to namespace
+                        Result.success(listOf(webPodOnDb1))
+                    }
+                }
             },
+        )
+
+    /** Every (selector, namespace) a kit endpoint lookup asked the cluster for. */
+    private val podQueries = mutableListOf<Pair<String, String>>()
+
+    private val webPodOnDb1 =
+        KubernetesPod(
+            namespace = "default",
+            name = "web-0",
+            status = "Running",
+            ready = "1/1",
+            restarts = 0,
+            age = Duration.ofMinutes(1),
+            hostIp = "10.0.1.101",
         )
 
     @Test
@@ -401,6 +424,39 @@ class StatusTest : BaseKoinTest() {
         val output = capturedOutput()
         assertThat(output).contains("  ✓ broken\n    (endpoints unavailable: cannot read ${Constants.Kit.CONFIG_FILE})")
         assertThat(output.substringAfter("=== KITS ===")).contains("=== CASSANDRA VERSION ===")
+    }
+
+    // An endpoint served by one pod (#1224) is shown only at the node that runs its pod. With the
+    // proxy down the cluster API is never asked: the endpoint is unavailable with the proxy failure,
+    // and the NodePort endpoints, read from the cluster state, still show.
+
+    @Test
+    fun `a running kit's one-pod endpoint is shown only at the node that runs its pod`() {
+        setupBasicClusterState(runningKits = setOf("web"))
+        File(createWorkspaceDir("web"), Constants.Kit.CONFIG_FILE).writeText(ONE_POD_KIT)
+
+        Status().execute()
+
+        val kits = capturedOutput().substringAfter("=== KITS ===").substringBefore("=== CASSANDRA VERSION ===")
+        assertThat(kits).contains("10.0.1.101:8080", "10.0.1.100:30080").doesNotContain("10.0.1.100:8080")
+        assertThat(podQueries).containsExactly("app=web" to "default")
+    }
+
+    @Test
+    fun `with the proxy down a one-pod endpoint is unavailable with the proxy failure and no pod is asked for`() {
+        setupBasicClusterState(runningKits = setOf("web"))
+        File(createWorkspaceDir("web"), Constants.Kit.CONFIG_FILE).writeText(ONE_POD_KIT)
+        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections"))
+
+        assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
+
+        val kits = capturedOutput().substringAfter("=== KITS ===").substringBefore("=== CASSANDRA VERSION ===")
+        assertThat(kits)
+            .contains(
+                "(endpoints unavailable: ui: SOCKS proxy could not be established: port never began accepting connections; run 'web status')",
+                "10.0.1.100:30080",
+            ).doesNotContain(":8080")
+        assertThat(podQueries).isEmpty()
     }
 
     private fun installPackagedKit(name: String) {
@@ -703,5 +759,23 @@ class StatusTest : BaseKoinTest() {
                 outboundRules = emptyList(),
             )
         whenever(mockVpcService.describeSecurityGroup("sg-12345")).thenReturn(sgDetails)
+    }
+
+    private companion object {
+        /** A kit with one endpoint served by one pod (`ui`) and one NodePort endpoint (`api`), on db nodes. */
+        val ONE_POD_KIT =
+            """
+            name: web
+            endpoints:
+              - name: ui
+                node-type: db
+                port: 8080
+                type: http
+                pod-selector: app=${'$'}{KIT_NAME}
+              - name: api
+                node-type: db
+                port: 30080
+                type: http
+            """.trimIndent()
     }
 }

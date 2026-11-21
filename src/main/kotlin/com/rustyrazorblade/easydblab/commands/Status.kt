@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.server.AccessInfo
 import com.rustyrazorblade.easydblab.server.CassandraVersionInfo
 import com.rustyrazorblade.easydblab.server.ClusterInfo
 import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
+import com.rustyrazorblade.easydblab.server.KitAccess
 import com.rustyrazorblade.easydblab.server.NetworkingInfo
 import com.rustyrazorblade.easydblab.server.NodeInfo
 import com.rustyrazorblade.easydblab.server.NodesInfo
@@ -95,7 +96,7 @@ class Status :
             collector.collect(
                 clusterState,
                 includePods = false,
-                kubernetesReachable = proxyAvailability.failure() == null,
+                kubernetesUnreachable = proxyAvailability.failure()?.let { proxyFailureText(it) },
             )
         val status = report.response
 
@@ -111,7 +112,7 @@ class Status :
         displaySparkClusterSection(status.spark)
         displayOpenSearchSection(status.opensearch)
         displayS3BucketSection(status.s3, clusterState)
-        displayKitsSection()
+        displayKitsSection(report.kits)
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection(report) }
         displayObservabilitySection(status.accessInfo)
         displayS3ManagerSection(status.accessInfo)
@@ -153,10 +154,13 @@ class Status :
         eventBus.emit(
             Event.Status.SectionUnavailable(
                 sectionName,
-                "SOCKS proxy could not be established: ${proxyFailure.message}",
+                proxyFailureText(proxyFailure),
             ),
         )
     }
+
+    /** Why every section and kit endpoint that needs the private Kubernetes API is not shown. */
+    private fun proxyFailureText(proxyFailure: Throwable): String = "SOCKS proxy could not be established: ${proxyFailure.message}"
 
     /**
      * Display cluster overview section
@@ -354,19 +358,20 @@ class Status :
 
     /**
      * Display installed kits with a running indicator, and under each running kit the endpoints
-     * its `kit.yaml` declares (the NodePorts its Service exposes). A stopped kit shows none: its
+     * its `kit.yaml` declares, from the collected [kits]: each where it is served, and a line that
+     * says why when one is not (no pod serves it, or the proxy is down). A stopped kit shows none: its
      * server is gone even when other pods of the kit, such as ClickHouse Keeper, still run.
      * Reads [WorkspaceKitScanner], the same discovery rule dynamic subcommand registration uses.
      * Registration can still drop a discovered kit afterwards — on a name collision, or when
      * building its command group fails — so this listing may name a kit that has no subcommand.
      */
-    private fun displayKitsSection() {
+    private fun displayKitsSection(kits: List<KitAccess>) {
         val installedKits = workspaceKitScanner.discover().sortedBy { it.name }
 
         if (installedKits.isEmpty()) return
 
         val runningKits = clusterState.runningKits
-        val endpointsByKit = collector.runningKits(clusterState).associateBy { it.name }
+        val endpointsByKit = kits.associateBy { it.name }
         println()
         println("=== KITS ===")
         installedKits.forEach { kitDir ->

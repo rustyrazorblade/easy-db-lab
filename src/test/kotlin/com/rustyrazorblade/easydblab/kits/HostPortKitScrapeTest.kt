@@ -49,7 +49,7 @@ class HostPortKitScrapeTest : BaseKoinTest() {
 
         assertThat(fixture.config.endpoints)
             .isNotEmpty
-            .allSatisfy { assertThat(it.podSelector).isEqualTo(fixture.scrapeMetrics.single().podSelector) }
+            .allSatisfy { assertThat(it.servingPodSelector).isEqualTo(fixture.scrapeMetrics.single().podSelector) }
     }
 
     /**

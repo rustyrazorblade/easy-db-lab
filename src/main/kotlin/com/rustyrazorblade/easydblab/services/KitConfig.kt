@@ -47,9 +47,9 @@ sealed class KitMetrics {
 /**
  * A client endpoint a kit declares in `kit.yaml`: a port on the nodes of [nodeType].
  *
- * A NodePort endpoint answers on every node of its type, so it declares no [podSelector]. An
+ * A NodePort endpoint answers on every node of its type, so it declares no [servingPodSelector]. An
  * endpoint served by a `hostPort` on one pod answers only on the node that runs that pod; it names
- * the pod with [podSelector] (a label selector, `${KIT_NAME}` filled with the instance name), and
+ * the pod with [servingPodSelector] (a label selector, `${KIT_NAME}` filled with the instance name), and
  * [KitEndpointHost] resolves the node from the running pod instead of the first node of the type.
  */
 @Serializable
@@ -63,7 +63,7 @@ data class KitEndpoint(
     val path: String = "",
     val database: String = "",
     @SerialName("pod-selector")
-    val podSelector: String = "",
+    val servingPodSelector: String = "",
 ) {
     @Serializable
     enum class EndpointType {
@@ -91,6 +91,15 @@ data class KitEndpoint(
         @SerialName("kafka")
         KAFKA,
     }
+
+    /**
+     * True when one pod serves this endpoint on a `hostPort`, so only the node that runs that pod
+     * answers; false for a NodePort endpoint, which every node of [nodeType] answers.
+     */
+    val servedByOnePod: Boolean get() = servingPodSelector.isNotBlank()
+
+    /** [servingPodSelector] with `${KIT_NAME}` filled with the instance name [kitName]. */
+    fun servingPodSelectorFor(kitName: String): String = withKitName(servingPodSelector, kitName)
 
     /**
      * Formats a connection URL for this endpoint using [ip] as the host address.
@@ -165,7 +174,7 @@ data class KitRuntime(
     val release: String = "",
     val selector: String = "",
     val name: String = "",
-    val namespace: String = "default",
+    val namespace: String = Constants.K8s.NAMESPACE,
 ) {
     @Serializable
     enum class RuntimeType {
@@ -180,6 +189,11 @@ data class KitRuntime(
 
         @SerialName("pods")
         PODS,
+    }
+
+    companion object {
+        /** The namespace a kit with [runtime] runs its pods in; the default namespace when it has none. */
+        fun namespaceOf(runtime: KitRuntime?): String = runtime?.namespace ?: Constants.K8s.NAMESPACE
     }
 }
 
@@ -284,6 +298,9 @@ data class KitConfig(
             "Kit arg '${repeatableInstallArg?.flag}' is a top-level install arg and cannot be repeatable; declare it under commands"
         }
     }
+
+    /** The namespace the kit's pods run in: its runtime's, or the default namespace without a runtime. */
+    val namespace: String get() = KitRuntime.namespaceOf(runtime)
 
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }

@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.DomainState
@@ -59,6 +60,10 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
     private lateinit var stress: StressJobService
     private lateinit var remoteOps: RemoteOperationsService
 
+    /** What the kit endpoint host answers for every pod query, and every (selector, namespace) it was asked. */
+    private var kitPods: Result<List<KubernetesPod>> = Result.success(emptyList())
+    private val podQueries = mutableListOf<Pair<String, String>>()
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -70,6 +75,12 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
                 single<StressJobService> { stress }
                 single<RemoteOperationsService> { remoteOps }
                 single { WorkspaceKitScanner(get()) }
+                single {
+                    KitEndpointHost { selector, namespace ->
+                        podQueries += selector to namespace
+                        kitPods
+                    }
+                }
             },
         )
 
@@ -109,6 +120,29 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
     )
 
     private fun collector() = ClusterStatusCollector()
+
+    private val control = ClusterHost("54.0.0.2", "10.0.0.2", "control0", "us-west-2a", "i-c")
+
+    private val appHosts =
+        mapOf(
+            ServerType.Control to listOf(control),
+            ServerType.Stress to
+                listOf(
+                    ClusterHost("54.0.1.1", "10.0.1.1", "app0", "us-west-2a", "i-app0"),
+                    ClusterHost("54.0.1.2", "10.0.1.2", "app1", "us-west-2a", "i-app1"),
+                ),
+        )
+
+    private fun servingPod(hostIp: String) =
+        KubernetesPod(
+            namespace = "default",
+            name = "web-0",
+            status = "Running",
+            ready = "1/1",
+            restarts = 0,
+            age = Duration.ofMinutes(1),
+            hostIp = hostIp,
+        )
 
     private fun runningNode(id: String = "i-db0") = InstanceDetails(id, "running", "54.0.0.1", "10.0.0.1", "us-west-2a", "m5.large")
 
@@ -231,7 +265,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         ).thenReturn(Result.success(listOf(KubernetesJob("default", "job-1", "Running", "0/1", Duration.ofMinutes(90)))))
 
         val listed = collector().collect(state()).response.stressJobs
-        val unreachable = collector().collect(state(), kubernetesReachable = false)
+        val unreachable = collector().collect(state(), kubernetesUnreachable = "proxy down")
 
         assertThat(listed).isEqualTo(StressInfo(listOf(StressJobInfo("job-1", "Running", "0/1", "1h"))))
         assertThat(unreachable.response.stressJobs).isNull()
@@ -394,15 +428,62 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
             context.workingDirectory,
             "stopped",
         ).also { it.mkdirs() }.resolve(Constants.Kit.CONFIG_FILE).writeText("name: [broken\nendpoints: {")
-        val running = state().also { it.runningKits = setOf("zeta", "alpha", "never-installed") }
+        WorkspaceKubeconfig.file(context.workingDirectory).writeText("kubeconfig")
+        val running =
+            state(hosts = mapOf(ServerType.Control to listOf(control))).also {
+                it.runningKits =
+                    setOf("zeta", "alpha", "never-installed")
+            }
 
-        val kits = collector().runningKits(running)
+        val report = collector().collect(running)
+        val kits = report.kits
+        assertThat(checkNotNull(report.response.accessInfo).kits).isEqualTo(kits)
 
         assertThat(kits.map { it.name }).containsExactly("alpha", "zeta")
         assertThat(kits).allSatisfy {
             assertThat(it.endpoints).isEmpty()
             assertThat(it.endpointsUnavailable).isEqualTo(KitEndpointAddresses.UNREADABLE_DESCRIPTOR)
         }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        delimiter = '|',
+        value = [
+            "a pod serves on the second app node | 10.0.1.2 | | http://10.0.1.2:8080 | ",
+            "no pod serves                       |          | | | ui: no running, ready pod matches app=web in namespace default; run 'web status'",
+            "the proxy is down                   | 10.0.1.2 | proxy down | | ui: proxy down; run 'web status'",
+        ],
+    )
+    fun `a kit endpoint served by one pod is shown at the pod's node, or unavailable with the reason`(
+        case: String,
+        podHostIp: String?,
+        kubernetesUnreachable: String?,
+        expectedAddress: String?,
+        expectedUnavailable: String?,
+    ) {
+        WorkspaceKubeconfig.file(context.workingDirectory).writeText("kubeconfig")
+        File(context.workingDirectory, "web").also { it.mkdirs() }.resolve(Constants.Kit.CONFIG_FILE).writeText(
+            """
+            name: web
+            endpoints:
+              - name: ui
+                node-type: app
+                port: 8080
+                type: http
+                pod-selector: app=${'$'}{KIT_NAME}
+            """.trimIndent(),
+        )
+        kitPods = Result.success(listOfNotNull(podHostIp?.let { servingPod(it) }))
+        val running = state(hosts = appHosts).also { it.runningKits = setOf("web") }
+
+        val report = collector().collect(running, kubernetesUnreachable = kubernetesUnreachable)
+        val kit = report.kits.single()
+        assertThat(checkNotNull(report.response.accessInfo).kits).`as`(case).containsExactly(kit)
+
+        assertThat(kit.endpoints.map { it.address }).`as`(case).containsExactlyElementsOf(listOfNotNull(expectedAddress))
+        assertThat(kit.endpointsUnavailable).`as`(case).isEqualTo(expectedUnavailable)
+        assertThat(podQueries).`as`(case).isEqualTo(if (kubernetesUnreachable == null) listOf("app=web" to "default") else emptyList())
     }
 
     @Test

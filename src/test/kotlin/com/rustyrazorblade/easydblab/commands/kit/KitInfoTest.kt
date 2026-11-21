@@ -178,14 +178,14 @@ class KitInfoTest : BaseKoinTest() {
                             nodeType = "db",
                             port = 8080,
                             type = KitEndpoint.EndpointType.HTTP,
-                            podSelector = "app=mykit",
+                            servingPodSelector = "app=mykit",
                         ),
                     ),
             )
 
         val output = KitInfo.buildInfoText(config, emptyList(), hosts = dbHosts)
 
-        assertThat(output).contains("api  db  :8080 (on the node that runs its pod; see 'mykit status')  http")
+        assertThat(output).contains("api  db  :8080  http  (on the node that runs its pod; see 'mykit status')")
         assertThat(output).doesNotContain("10.0.2.1")
     }
 

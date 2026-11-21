@@ -1081,14 +1081,24 @@ endpoints:
 ```
 
 Every consumer of the endpoint then lists the pods that match the selector in the kit's
-runtime namespace and uses the node of a running, ready pod that is not being deleted:
+runtime namespace and uses the node of a running, ready pod that is not being deleted and runs on
+a node of the endpoint's node type. With several, the newest wins, so a client follows a rollout.
+When no pod serves the endpoint, every consumer says why: no node of the type, the pod query
+failed, no running and ready pod matches the selector in the namespace, or the matching pods run
+on nodes of another type.
 
-- `<kit> sql` connects to that node. When no such pod exists, it fails with a message that
-  names the endpoint, the selector and the namespace, and it does not try a connection.
+- `<kit> sql` connects to that node. When no pod serves, it says no statement ran, gives the
+  reason, does not try a connection, and exits non-zero.
 - A bench kit that targets this kit gets `TARGET_*` variables that name that node. When no pod
-  serves the endpoint, it gets no variables for it, and a warning is logged.
-- `<kit> status`, the endpoints `<kit> start` reports, and `status` list the endpoint only at
-  that node, and leave it out, with a logged warning, when no pod serves it.
+  serves the endpoint, the bench kit's phase fails before its script runs, naming the target kit,
+  the endpoint and the reason.
+- `<kit> status` lists the endpoint at that node, or prints `<endpoint>  not served: <reason>`.
+- `<kit> start` reports the endpoints it serves and, for each one no pod serves yet, the reason.
+- `status` lists the endpoint at that node, or prints
+  `(endpoints unavailable: <endpoint>: <reason>; run '<kit> status')` under the kit; the server's
+  `accessInfo.kits` entry carries the same text in `endpointsUnavailable`. When the SOCKS proxy
+  is down, `status` asks the cluster for no pods and gives the proxy failure as the reason; the
+  NodePort endpoints still show.
 - `kit info` reads no cluster API, so it lists the endpoint by its port and points at
   `<kit> status`.
 

@@ -95,7 +95,7 @@ class KitSqlCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                hosts = mapOf(ServerType.Stress to listOf(appHost)),
+                hosts = mapOf(ServerType.Stress to listOf(appHost, appHost.copy(privateIp = "10.0.1.11", alias = "app1"))),
             ),
         )
     }
@@ -172,7 +172,10 @@ class KitSqlCommandTest : BaseKoinTest() {
         val command =
             KitSqlCommand(
                 kitName = "presto2",
-                endpoint = jdbcEndpoint.copy(podSelector = "app.kubernetes.io/name=\${KIT_NAME},app.kubernetes.io/component=coordinator"),
+                endpoint =
+                    jdbcEndpoint.copy(
+                        servingPodSelector = "app.kubernetes.io/name=\${KIT_NAME},app.kubernetes.io/component=coordinator",
+                    ),
                 user = "easy-db-lab",
                 namespace = "analytics",
                 connectionFactory = { url, properties: Properties ->
@@ -187,6 +190,38 @@ class KitSqlCommandTest : BaseKoinTest() {
         assertThat(pods.queries)
             .containsExactly("app.kubernetes.io/name=presto2,app.kubernetes.io/component=coordinator" to "analytics")
         assertThat(urls).containsExactly("jdbc:presto://10.0.1.11:8080/cassandra")
+    }
+
+    @Test
+    fun `an endpoint no pod serves fails before any connection, naming the kit and endpoint, not as a failed statement`() {
+        var connectionAttempted = false
+        val command =
+            KitSqlCommand(
+                kitName = "presto2",
+                endpoint = jdbcEndpoint.copy(servingPodSelector = "app=\${KIT_NAME}"),
+                user = "easy-db-lab",
+                connectionFactory = { _, _ ->
+                    connectionAttempted = true
+                    mock()
+                },
+            )
+        command.statement = "SELECT 1"
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageNotContaining("SQL statement failed")
+            .hasMessageContaining("presto2", "JDBC")
+
+        assertThat(connectionAttempted).isFalse()
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains(
+                "No statement ran",
+                "presto2",
+                "'JDBC'",
+                "no running, ready pod matches app=presto2",
+                "'presto2 start'",
+                "'presto2 status'",
+            )
     }
 
     @Test

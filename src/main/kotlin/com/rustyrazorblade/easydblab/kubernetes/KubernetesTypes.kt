@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.Constants
 import java.time.Duration
 
 /**
@@ -44,7 +45,17 @@ data class KubernetesPod(
     val nodeName: String = "",
     val imagePullFailure: ImagePullFailure? = null,
     val hostIp: String = "",
-)
+) {
+    /**
+     * True when the pod can take traffic: phase Running and every one of its containers ready
+     * (`n/n` with n above zero). A terminating pod may still read ready, so callers that route
+     * traffic also check [terminating].
+     */
+    fun isReady(): Boolean {
+        val (readyCount, total) = ready.split("/").let { it.firstOrNull() to it.getOrNull(1) }
+        return status == Constants.K8s.POD_PHASE_RUNNING && readyCount != null && readyCount == total && readyCount != "0"
+    }
+}
 
 /**
  * Represents a workload pod (pod in a non-system namespace)

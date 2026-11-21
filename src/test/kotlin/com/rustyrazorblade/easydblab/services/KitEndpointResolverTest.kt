@@ -5,9 +5,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
 import java.time.Duration
 
@@ -358,13 +362,67 @@ class KitEndpointResolverTest {
         assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:presto://10.0.2.6:8080")
     }
 
-    @Test
-    fun `a pod-selector endpoint with no serving pod gets no TARGET vars instead of the first node`() {
-        val podResolver =
-            DefaultKitEndpointResolver(KitEndpointHost { _, _ -> Result.success(listOf(coordinator("10.0.2.6", ready = "0/1"))) })
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("unservedCases")
+    fun `a pod-selector endpoint no pod serves fails, naming the target, the endpoint, the selector and the reason`(
+        case: String,
+        pods: Result<List<KubernetesPod>>,
+        state: ClusterState?,
+        reason: String,
+    ) {
+        val podResolver = DefaultKitEndpointResolver(KitEndpointHost { _, _ -> pods })
 
-        val vars = podResolver.resolveTargetVars(prestoKit(), appHosts)
+        assertThatThrownBy { podResolver.resolveTargetVars(prestoKit(), state ?: appHosts) }
+            .`as`(case)
+            .isInstanceOfSatisfying(TargetEndpointNotServedException::class.java) { e ->
+                assertThat(e.targetKit).isEqualTo("presto")
+                assertThat(e.endpointName).isEqualTo("JDBC")
+                assertThat(e.reason).isEqualTo(reason)
+                assertThat(e.message).contains("'presto start'", "'presto status'")
+            }
+    }
 
-        assertThat(vars).doesNotContainKey("TARGET_JDBC_URL")
+    companion object {
+        private const val SELECTOR = "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
+
+        private fun pod(
+            hostIp: String,
+            ready: String = "1/1",
+        ) = KubernetesPod("analytics", "presto-coordinator-0", "Running", ready, 0, Duration.ofMinutes(1), hostIp = hostIp)
+
+        @JvmStatic
+        fun unservedCases(): List<Arguments> =
+            listOf(
+                Arguments.of(
+                    "the pod is not ready",
+                    Result.success(listOf(pod("10.0.2.6", ready = "0/1"))),
+                    null,
+                    "no running, ready pod matches $SELECTOR in namespace analytics",
+                ),
+                Arguments.of(
+                    "no pod",
+                    Result.success(emptyList<KubernetesPod>()),
+                    null,
+                    "no running, ready pod matches $SELECTOR in namespace analytics",
+                ),
+                Arguments.of(
+                    "the pod query fails",
+                    Result.failure<List<KubernetesPod>>(IllegalStateException("connection refused")),
+                    null,
+                    "cannot list the pods matching $SELECTOR in namespace analytics: connection refused",
+                ),
+                Arguments.of(
+                    "the pod runs on a node of another type",
+                    Result.success(listOf(pod("10.0.9.9"))),
+                    null,
+                    "the pods matching $SELECTOR in namespace analytics run on 10.0.9.9, which is not a node of type app",
+                ),
+                Arguments.of(
+                    "the cluster has no node of the type",
+                    Result.success(listOf(pod("10.0.2.6"))),
+                    ClusterState(name = "test-cluster", hosts = mutableMapOf()),
+                    "No app nodes found in cluster state. Is the cluster running?",
+                ),
+            )
     }
 }

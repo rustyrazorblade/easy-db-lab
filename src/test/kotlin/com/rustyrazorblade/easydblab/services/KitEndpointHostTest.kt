@@ -24,11 +24,6 @@ class KitEndpointHostTest {
                 ),
         )
 
-    private val plainEndpoint =
-        KitEndpoint(name = "JDBC", nodeType = "app", port = 8080, type = KitEndpoint.EndpointType.JDBC, scheme = "presto")
-
-    private val selectedEndpoint = plainEndpoint.copy(podSelector = "app=\${KIT_NAME},component=coordinator")
-
     /** Records the query it was asked, and answers with [answer]. */
     private class RecordingPods(
         private val answer: Result<List<KubernetesPod>>,
@@ -86,11 +81,46 @@ class KitEndpointHostTest {
         assertThat(host.exceptionOrNull()).hasMessageContaining("connection refused")
     }
 
-    @Test
-    fun `no node of the endpoint node type fails`() {
-        val host = KitEndpointHost(RecordingPods(Result.success(emptyList()))).resolve(plainEndpoint, "presto", "default", emptyMap())
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("endpoints")
+    fun `no node of the endpoint node type fails without asking for pods`(
+        case: String,
+        endpoint: KitEndpoint,
+    ) {
+        val pods = RecordingPods(Result.success(listOf(pod("presto-coordinator-x", hostIp = "10.0.1.11"))))
 
-        assertThat(host.exceptionOrNull()).hasMessageContaining("No app nodes")
+        val host = KitEndpointHost(pods).resolve(endpoint, "presto", "default", emptyMap())
+
+        assertThat(host.exceptionOrNull()).`as`(case).hasMessageContaining("No app nodes")
+        assertThat(pods.queries).`as`(case).isEmpty()
+    }
+
+    @Test
+    fun `a pod that serves on a node of another type is not used, and the reason says so`() {
+        val pods = RecordingPods(Result.success(listOf(pod("presto-coordinator-x", hostIp = "10.0.0.1"))))
+
+        val lookup = KitEndpointHost(pods).lookup(selectedEndpoint, "presto", "default", hosts)
+
+        assertThat(lookup).isEqualTo(
+            KitEndpointHost.Lookup.Unserved(
+                "the pods matching app=presto,component=coordinator in namespace default run on 10.0.0.1, which is not a node of type app",
+            ),
+        )
+    }
+
+    @Test
+    fun `of two serving pods the one on a node of the type is used, even when the other is newer`() {
+        val pods =
+            RecordingPods(
+                Result.success(
+                    listOf(
+                        pod("new", hostIp = "10.0.0.1", age = Duration.ofMinutes(1)),
+                        pod("old", hostIp = "10.0.1.10", age = Duration.ofMinutes(5)),
+                    ),
+                ),
+            )
+
+        assertThat(KitEndpointHost(pods).resolve(selectedEndpoint, "presto", "default", hosts).getOrThrow()).isEqualTo("10.0.1.10")
     }
 
     @ParameterizedTest(name = "{0}")
@@ -110,13 +140,14 @@ class KitEndpointHostTest {
             status: String = "Running",
             ready: String = "1/1",
             terminating: Boolean = false,
+            age: Duration = Duration.ZERO,
         ) = KubernetesPod(
             namespace = "default",
             name = name,
             status = status,
             ready = ready,
             restarts = 0,
-            age = Duration.ZERO,
+            age = age,
             terminating = terminating,
             hostIp = hostIp,
         )
@@ -137,10 +168,27 @@ class KitEndpointHostTest {
                     "10.0.1.11",
                 ),
                 Arguments.of(
-                    "two ready pods pick the first by name",
+                    "two ready pods, the newest (a rollout's new pod)",
+                    listOf(pod("b", "10.0.1.10", age = Duration.ofMinutes(10)), pod("z", "10.0.1.11", age = Duration.ofMinutes(1))),
+                    "10.0.1.11",
+                ),
+                Arguments.of(
+                    "two ready pods of the same age pick the first by name",
                     listOf(pod("z", "10.0.1.10"), pod("b", "10.0.1.11")),
                     "10.0.1.11",
                 ),
             )
+
+        @JvmStatic
+        fun endpoints(): List<Arguments> =
+            listOf(
+                Arguments.of("NodePort", plainEndpoint),
+                Arguments.of("served by one pod", selectedEndpoint),
+            )
+
+        private val plainEndpoint =
+            KitEndpoint(name = "JDBC", nodeType = "app", port = 8080, type = KitEndpoint.EndpointType.JDBC, scheme = "presto")
+
+        private val selectedEndpoint = plainEndpoint.copy(servingPodSelector = "app=\${KIT_NAME},component=coordinator")
     }
 }

@@ -16,7 +16,7 @@ import java.time.Duration
  * Tests how a kit's declared endpoints resolve to addresses: a NodePort endpoint once per host
  * of its node type, case-insensitive on the node type, and nothing (rather than an exception)
  * for a node type the cluster does not know; a `pod-selector` endpoint only at the node that
- * runs its serving pod, and not at all when no pod serves it (#1224).
+ * runs its serving pod, and otherwise as unserved with the reason (#1224).
  */
 class KitEndpointAddressesTest {
     @TempDir
@@ -36,7 +36,8 @@ class KitEndpointAddressesTest {
     @Test
     fun `an unknown node type resolves to no addresses instead of throwing`() {
         assertThat(KitEndpointAddresses.privateIps("bogus", hosts)).isEmpty()
-        assertThat(KitEndpointAddresses.resolve(config(endpoint("bogus")), "graph", hosts, noQueries)).isEmpty()
+        assertThat(KitEndpointAddresses.resolve(config(endpoint("bogus")), "graph", hosts, noQueries))
+            .isEqualTo(KitEndpointAddresses.Report(emptyList(), emptyList()))
     }
 
     @Test
@@ -60,12 +61,39 @@ class KitEndpointAddressesTest {
         endpoint: KitEndpoint,
         pods: Result<List<KubernetesPod>>,
         expected: List<String>,
+        unservedReason: String?,
     ) {
         val endpointHost = KitEndpointHost { _, _ -> pods }
 
-        val resolved = KitEndpointAddresses.resolve(config(endpoint), "graph", hosts, endpointHost)
+        val report = KitEndpointAddresses.resolve(config(endpoint), "graph", hosts, endpointHost)
 
-        assertThat(resolved.map { it.address }).`as`(case).containsExactlyElementsOf(expected)
+        assertThat(report.resolved.map { it.address }).`as`(case).containsExactlyElementsOf(expected)
+        assertThat(report.unresolved.map { it.reason }).`as`(case).containsExactlyElementsOf(listOfNotNull(unservedReason))
+    }
+
+    @Test
+    fun `an endpoint no pod serves is a line with its reason, after the served ones`() {
+        val kit = config(endpoint("db"), selected.copy(name = "ui", port = 30474))
+        val report = KitEndpointAddresses.resolve(kit, "graph", hosts, KitEndpointHost { _, _ -> Result.success(emptyList()) })
+
+        val lines = KitEndpointAddresses.formatLines(report).lines()
+
+        assertThat(lines).hasSize(3)
+        assertThat(lines[2]).contains("ui", "not served", "no running, ready pod matches app=graph in namespace default")
+    }
+
+    @Test
+    fun `the status summary groups endpoints that share a reason and points at the kit status`() {
+        val unresolved =
+            listOf(
+                KitEndpointAddresses.Unresolved(selected, "no pod"),
+                KitEndpointAddresses.Unresolved(selected.copy(name = "ui"), "no pod"),
+                KitEndpointAddresses.Unresolved(selected.copy(name = "admin"), "proxy down"),
+            )
+
+        assertThat(KitEndpointAddresses.unavailableSummary("graph2", unresolved))
+            .isEqualTo("bolt, ui: no pod; admin: proxy down; run 'graph2 status'")
+        assertThat(KitEndpointAddresses.unavailableSummary("graph2", emptyList())).isNull()
     }
 
     @Test
@@ -77,7 +105,7 @@ class KitEndpointAddressesTest {
                 Result.success(listOf(servingPod("10.0.2.2")))
             }
         val kit =
-            config(endpoint("db").copy(podSelector = "app=\${KIT_NAME}"))
+            config(endpoint("db").copy(servingPodSelector = "app=\${KIT_NAME}"))
                 .copy(runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, namespace = "graphs"))
 
         KitEndpointAddresses.resolve(kit, "graph2", hosts, endpointHost)
@@ -96,10 +124,10 @@ class KitEndpointAddressesTest {
             }
         val kit = config(selected, selected.copy(name = "ui", port = 30474))
 
-        val resolved = KitEndpointAddresses.resolve(kit, "graph", hosts, endpointHost)
+        val report = KitEndpointAddresses.resolve(kit, "graph", hosts, endpointHost)
 
         assertThat(queries).hasSize(1)
-        assertThat(resolved.map { it.address }).containsExactly("10.0.2.2:30687", "10.0.2.2:30474")
+        assertThat(report.resolved.map { it.address }).containsExactly("10.0.2.2:30687", "10.0.2.2:30474")
     }
 
     @Test
@@ -123,7 +151,7 @@ class KitEndpointAddressesTest {
 
         val resolved = KitEndpointAddresses.resolveInstalled(kitDir, hosts, endpointHost)
 
-        assertThat(resolved.getOrThrow().map { it.address }).containsExactly("10.0.2.2:30687")
+        assertThat(resolved.getOrThrow().resolved.map { it.address }).containsExactly("10.0.2.2:30687")
     }
 
     companion object {
@@ -152,7 +180,7 @@ class KitEndpointAddressesTest {
                 hostIp = hostIp,
             )
 
-        private val selected = endpoint("db").copy(podSelector = "app=graph")
+        private val selected = endpoint("db").copy(servingPodSelector = "app=graph")
 
         @JvmStatic
         fun resolveCases(): List<Arguments> =
@@ -162,24 +190,35 @@ class KitEndpointAddressesTest {
                     endpoint("db"),
                     Result.success(emptyList<KubernetesPod>()),
                     listOf("10.0.2.1:30687", "10.0.2.2:30687"),
+                    null,
                 ),
                 Arguments.of(
                     "pod-selector: only the node running the pod, not the first node",
                     selected,
                     Result.success(listOf(servingPod("10.0.2.2"))),
                     listOf("10.0.2.2:30687"),
+                    null,
                 ),
                 Arguments.of(
-                    "pod-selector, no serving pod: not shown",
+                    "pod-selector, no serving pod: not shown, with the reason",
                     selected,
                     Result.success(listOf(servingPod("10.0.2.2").copy(ready = "0/1"))),
                     emptyList<String>(),
+                    "no running, ready pod matches app=graph in namespace default",
                 ),
                 Arguments.of(
-                    "pod-selector, pod query fails: not shown",
+                    "pod-selector, pod query fails: not shown, with the reason",
                     selected,
                     Result.failure<List<KubernetesPod>>(IllegalStateException("connection refused")),
                     emptyList<String>(),
+                    "cannot list the pods matching app=graph in namespace default: connection refused",
+                ),
+                Arguments.of(
+                    "pod-selector, the pod runs on a node of another type: not shown, with the reason",
+                    selected,
+                    Result.success(listOf(servingPod("10.0.0.1"))),
+                    emptyList<String>(),
+                    "the pods matching app=graph in namespace default run on 10.0.0.1, which is not a node of type db",
                 ),
             )
     }

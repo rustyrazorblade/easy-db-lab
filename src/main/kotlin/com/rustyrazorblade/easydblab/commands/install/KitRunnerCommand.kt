@@ -7,10 +7,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallStep
-import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitDashboardInstance
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
+import com.rustyrazorblade.easydblab.services.TargetEndpointNotServedException
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -65,7 +66,7 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
-    private val k8sRead: K8sReadOperations by inject()
+    private val endpointHost: KitEndpointHost by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
     private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
@@ -81,7 +82,14 @@ class KitRunnerCommand(
             return
         }
 
-        val augmentedEnv = buildAugmentedEnv(config)
+        val augmentedEnv =
+            try {
+                buildAugmentedEnv(config)
+            } catch (e: TargetEndpointNotServedException) {
+                eventBus.emit(Event.Kit.TargetNotServed(kitName, phaseName, e.targetKit, e.endpointName, e.reason))
+                processExitCode = Constants.ExitCodes.ERROR
+                return
+            }
         val kitConfig = config ?: KitConfig(name = kitName)
 
         if (stopsBeforeUninstall(kitConfig)) {
@@ -418,17 +426,20 @@ class KitRunnerCommand(
     }
 
     /**
-     * Reports where to connect: every declared endpoint at the private IP of each node that serves it. The kit has
-     * already started, so a failure here is logged and never turns the start into a failure.
+     * Reports where to connect: every declared endpoint at the private IP of each node that serves
+     * it, and each endpoint served by one pod that no pod serves yet, with the reason. The kit has
+     * already started, so neither an endpoint not yet served nor a failure to report turns the start
+     * into a failure; the latter is logged.
      */
     private fun reportEndpoints(config: KitConfig) {
-        runCatching {
-            val resolved = KitEndpointAddresses.resolve(config, kitName, clusterState.hosts, KitEndpointHost.of { k8sRead })
-            if (resolved.isNotEmpty()) {
+        runCatchingException {
+            val report = KitEndpointAddresses.resolve(config, kitName, clusterState.hosts, endpointHost)
+            if (report.resolved.isNotEmpty() || report.unresolved.isNotEmpty()) {
                 eventBus.emit(
                     Event.Kit.EndpointsAvailable(
                         kit = kitName,
-                        endpoints = resolved.map { KitEndpointAddresses.toEndpointAddress(it) },
+                        endpoints = report.resolved.map { KitEndpointAddresses.toEndpointAddress(it) },
+                        unserved = report.unresolved.map { KitEndpointAddresses.toUnservedEndpoint(it) },
                     ),
                 )
             }

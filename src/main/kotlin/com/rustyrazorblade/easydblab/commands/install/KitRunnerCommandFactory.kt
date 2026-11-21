@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
-import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.SerializationException
@@ -94,7 +93,7 @@ class KitRunnerCommandFactory {
                 endpoint = jdbcEndpoint,
                 user = cap.user,
                 driverClass = cap.driverClass,
-                namespace = KitEndpointAddresses.namespaceOf(kitConfig),
+                namespace = kitConfig.namespace,
             )
         val spec = CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory()).name(commandName)
         spec.usageMessage().description(description)

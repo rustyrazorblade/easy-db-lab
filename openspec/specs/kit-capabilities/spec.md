@@ -74,23 +74,35 @@ before connecting, required for drivers that do not auto-register via ServiceLoa
 Any kit endpoint MAY declare a `pod-selector`: a label selector, with `${KIT_NAME}` filled
 with the kit instance name, for the one pod that serves the endpoint's port as a `hostPort`.
 Its serving node SHALL be the host IP of a pod that matches the selector in the kit's runtime
-namespace (`default` without a runtime) and is running, has every container ready, and is not
-being deleted; with several such pods, the first by name. No consumer SHALL fall back to
-another node of the endpoint's node type.
+namespace (`default` without a runtime), is running, has every container ready, is not being
+deleted, and runs on a node of the endpoint's node type; with several such pods, the newest (the
+smallest age, then the first by name), so a client follows a rollout. No consumer SHALL fall back
+to another node of the endpoint's node type. An endpoint no pod serves SHALL carry the reason: no
+node of the type, the pod query failed (with its cause), no running and ready pod matches (naming
+the selector and the namespace), or the matching pods run only on nodes of another type (naming
+their IPs). When the cluster API cannot be reached (the SOCKS proxy failed), no pod query SHALL be
+made, and the reason SHALL be that failure.
 
 An endpoint with no `pod-selector` is served on every node of its node type (a NodePort). The
 resolution SHALL be kit-generic (no kit name or driver appears in it), and every consumer SHALL
 use it (`services/KitEndpointHost`):
 
 - `sql` SHALL connect to the serving node, or to the first node of the type for a NodePort.
+  When no node serves the endpoint, `sql` SHALL emit `Sql.EndpointNotServed` (kit, endpoint,
+  reason; it says no statement ran), attempt no connection, and exit non-zero with a message
+  other than a failed statement's.
 - A bench kit's `TARGET_*` variables (spec `kit-cross-targeting`) SHALL name the serving node,
   or the first node of the type for a NodePort. A `pod-selector` endpoint with no serving pod
-  yields no variables, and the skip is logged as a warning.
-- `<kit> status`, the endpoints `<kit> start` reports, and `status` / the server's status
-  (spec `server`) SHALL list a `pod-selector` endpoint only at its serving node, and leave it
-  out, with a logged warning, when no pod serves it.
+  SHALL fail the phase before its steps run.
+- `<kit> status` and `status` / the server's status (spec `server`) SHALL list a `pod-selector`
+  endpoint only at its serving node. When no pod serves it, `<kit> status` SHALL print one
+  `<endpoint>: not served: <reason>` line for it, and `status` SHALL print the reason under the
+  kit and carry it in `endpointsUnavailable`.
+- `<kit> start` SHALL emit `Kit.EndpointsAvailable` with the served endpoints and, in
+  `unserved`, each endpoint no pod serves with its reason; it SHALL emit the event when every
+  endpoint is unserved.
 - `kit info` reads no cluster API, so it SHALL list a `pod-selector` endpoint by its bare port
-  with a pointer to `<kit> status`, never at a node address.
+  with a pointer to `<instance> status`, never at a node address.
 
 The Presto and Trino UI and `JDBC` endpoints, both served by the coordinator's hostPort 8080,
 SHALL declare the coordinator pod as their `pod-selector`.
@@ -109,10 +121,29 @@ SHALL declare the coordinator pod as their `pod-selector`.
 - **WHEN** listing the pods that match the selector fails
 - **THEN** `sql` emits an error that carries the cause, and no connection is attempted
 
+#### Scenario: The serving pod runs on a node of another type
+- **WHEN** the only running, ready pod matching an `app` endpoint's selector runs on a db node
+- **THEN** the endpoint is not served, and the reason names the pod's node IP and the node type
+
+#### Scenario: Kit status shows an endpoint no pod serves
+- **WHEN** a kit's coordinator is scaled to 0 and the user runs `<kit> status`
+- **THEN** it prints one line per `pod-selector` endpoint: the endpoint name, `not served` and the reason
+
+#### Scenario: Status with the proxy down
+- **WHEN** the SOCKS proxy cannot be established and the user runs `status`
+- **THEN** no pod is listed for a running kit's `pod-selector` endpoints
+- **AND** those endpoints are shown unavailable with the proxy failure as the reason
+- **AND** the kit's NodePort endpoints are still listed
+
 #### Scenario: A bench kit targets the coordinator's node
 - **WHEN** a bench kit runs with `TARGET=presto`
 - **AND** the presto coordinator runs on an app node other than the first one in cluster state
 - **THEN** `TARGET_JDBC_URL` names the coordinator's node
+
+#### Scenario: A bench kit's target serves no endpoint
+- **WHEN** a bench kit runs a phase with `--target trino`
+- **AND** no pod serves a trino `pod-selector` endpoint
+- **THEN** the phase fails before its script runs, with `Kit.TargetNotServed` naming the target kit, the endpoint and the reason (the selector and the namespace)
 
 #### Scenario: Status shows the coordinator's node only
 - **WHEN** the presto kit is running with its coordinator on the second app node

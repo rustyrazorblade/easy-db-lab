@@ -38,12 +38,14 @@ import java.util.concurrent.TimeoutException
  * A section that could not be read is absent (or has null rules) in [response], which is all the
  * REST API reports. The `status` command says more, so the reason travels beside the response:
  * [securityGroupError] when the security group could not be described, and [stressJobsError] when
- * the stress jobs could not be listed.
+ * the stress jobs could not be listed. [kits] holds every running kit and its endpoints, resolved
+ * once; the response carries the same list in its access info when it has one.
  */
 data class StatusReport(
     val response: StatusResponse,
     val securityGroupError: String? = null,
     val stressJobsError: String? = null,
+    val kits: List<KitAccess> = emptyList(),
 )
 
 /**
@@ -83,6 +85,7 @@ class ClusterStatusCollector(
     private val openSearchService: OpenSearchService by inject()
     private val stressJobService: StressJobService by inject()
     private val workspaceKitScanner: WorkspaceKitScanner by inject()
+    private val kitEndpointHost: KitEndpointHost by inject()
 
     /**
      * Collects every section for [state].
@@ -95,26 +98,31 @@ class ClusterStatusCollector(
      *
      * @param includePods whether to list the Kubernetes pods; `status` does not show them, so it
      *   skips the call
-     * @param kubernetesReachable whether the Kubernetes API can be reached (the SOCKS tunnel is
-     *   up); when it cannot, the stress jobs, which come from it, are left out instead of failing
+     * @param kubernetesUnreachable why the Kubernetes API cannot be reached (the SOCKS tunnel is
+     *   down), or null when it can; when it cannot, the stress jobs, which come from it, are left
+     *   out instead of failing, and the kit endpoints served by one pod are not looked up but
+     *   reported unavailable with this reason
      */
     fun collect(
         state: ClusterState,
         includePods: Boolean = true,
-        kubernetesReachable: Boolean = true,
+        kubernetesUnreachable: String? = null,
     ): StatusReport {
+        val endpointHost = kubernetesUnreachable?.let { KitEndpointHost.unreachable(it) } ?: kitEndpointHost
         val executor = Executors.newVirtualThreadPerTaskExecutor()
         try {
             val instanceStates = executor.submit<Map<String, InstanceDetails>> { fetchInstanceStates(state) }
             val securityGroup = executor.submit<SecurityGroupOutcome> { collectSecurityGroup(state) }
-            val stress = executor.submit<StressOutcome> { if (kubernetesReachable) collectStressJobs() else StressOutcome() }
+            val stress = executor.submit<StressOutcome> { if (kubernetesUnreachable == null) collectStressJobs() else StressOutcome() }
             val spark = executor.submit<SparkInfo?> { buildSparkInfo(state) }
             val openSearch = executor.submit<OpenSearchInfo?> { buildOpenSearchInfo(state) }
             val kubernetes = executor.submit<KubernetesInfo?> { if (includePods) buildKubernetesInfo() else null }
             val cassandraVersion =
                 executor.submit<CassandraVersionInfo?> { buildCassandraVersionInfo(state, await(instanceStates)) }
 
+            val runningKits = executor.submit<List<KitAccess>> { runningKits(state, endpointHost) }
             val instances = await(instanceStates)
+            val kits = await(runningKits)
             val securityGroupOutcome = await(securityGroup)
             val stressOutcome = await(stress)
             val response =
@@ -129,9 +137,9 @@ class ClusterStatusCollector(
                     kubernetes = await(kubernetes),
                     stressJobs = stressOutcome.info,
                     cassandraVersion = await(cassandraVersion),
-                    accessInfo = buildAccessInfo(state),
+                    accessInfo = buildAccessInfo(state, kits),
                 )
-            return StatusReport(response, securityGroupOutcome.error, stressOutcome.error)
+            return StatusReport(response, securityGroupOutcome.error, stressOutcome.error, kits)
         } finally {
             // Closing waits for the threads, so stop any still running (an interrupt, or a failure
             // in one fetch) before it does.
@@ -155,24 +163,33 @@ class ClusterStatusCollector(
         }
 
     /**
-     * The endpoints of every installed kit recorded as running, from each kit's `kit.yaml`.
-     * A stopped kit is left out even when other pods of the kit, such as ClickHouse Keeper, run.
+     * The endpoints of every installed kit recorded as running, from each kit's `kit.yaml`, found
+     * through [endpointHost]. A stopped kit is left out even when other pods of the kit, such as
+     * ClickHouse Keeper, run. [KitAccess.endpointsUnavailable] says why an endpoint is missing: the
+     * descriptor cannot be read, or no pod serves an endpoint served by one pod.
      */
-    fun runningKits(state: ClusterState): List<KitAccess> =
+    private fun runningKits(
+        state: ClusterState,
+        endpointHost: KitEndpointHost,
+    ): List<KitAccess> =
         workspaceKitScanner
             .discover()
             .filter { it.name in state.runningKits }
             .sortedBy { it.name }
             .map { kitDir ->
-                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts, KitEndpointHost.of { k8sService })
+                val report = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts, endpointHost)
                 KitAccess(
                     name = kitDir.name,
                     endpoints =
-                        resolved.getOrDefault(emptyList()).map {
+                        report.getOrNull()?.resolved.orEmpty().map {
                             val address = KitEndpointAddresses.toEndpointAddress(it)
                             KitEndpointAccess(name = address.name, type = address.type, address = address.address)
                         },
-                    endpointsUnavailable = resolved.exceptionOrNull()?.let { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
+                    endpointsUnavailable =
+                        report.fold(
+                            onSuccess = { KitEndpointAddresses.unavailableSummary(kitDir.name, it.unresolved) },
+                            onFailure = { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
+                        ),
                 )
             }
 
@@ -478,7 +495,10 @@ class ClusterStatusCollector(
         return version
     }
 
-    private fun buildAccessInfo(state: ClusterState): AccessInfo? {
+    private fun buildAccessInfo(
+        state: ClusterState,
+        kits: List<KitAccess>,
+    ): AccessInfo? {
         val controlHost = state.getControlHost() ?: return null
         if (!WorkspaceKubeconfig.exists(context.workingDirectory)) return null
 
@@ -492,7 +512,7 @@ class ClusterStatusCollector(
                     tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
                     pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
                 ),
-            kits = runningKits(state),
+            kits = kits,
             // A cluster with no account bucket has nothing for the S3 manager to browse.
             s3Manager =
                 state.s3Bucket?.takeIf { it.isNotBlank() }?.let {

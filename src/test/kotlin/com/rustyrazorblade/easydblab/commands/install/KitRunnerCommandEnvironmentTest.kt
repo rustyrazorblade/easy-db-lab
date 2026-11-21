@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
@@ -58,6 +60,51 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
         command("sysbench-clickhouse", "start").call()
 
         assertThat(outputFile.readText().trim()).isEqualTo("jdbc:clickhouse://10.0.2.1:8123/default")
+    }
+
+    @Test
+    fun `a target kit whose one-pod endpoint no pod serves fails the phase before the script runs`() {
+        File(File(workingDir, "trino").also { it.mkdirs() }, "kit.yaml").writeText(
+            """
+            name: trino
+            endpoints:
+              - name: UI
+                node-type: db
+                port: 8080
+                type: http
+                pod-selector: app=${'$'}{KIT_NAME}
+            """.trimIndent(),
+        )
+        writeKitYaml(
+            "loadtest",
+            """
+            name: loadtest
+            args:
+              - flag: --target
+                variable: TARGET
+                type: kit-ref
+            """.trimIndent(),
+        )
+        writeResolvedArgs("loadtest", mapOf("TARGET" to "trino"))
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(emptyList()))
+        val ran = File(workingDir, "ran.txt")
+        writeScript("loadtest", "start", """echo ran > "${ran.absolutePath}"""")
+
+        var exitCode = 0
+        val events = captureEvents { exitCode = command("loadtest", "start").call() }
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(ran).doesNotExist()
+        assertThat(events.filterIsInstance<Event.Kit.TargetNotServed>().single()).isEqualTo(
+            Event.Kit.TargetNotServed(
+                kit = "loadtest",
+                phase = "start",
+                targetKit = "trino",
+                endpoint = "UI",
+                reason = "no running, ready pod matches app=trino in namespace default",
+            ),
+        )
+        verify(mockKubeService).listPodsByLabel("app=trino", "default")
     }
 
     @Test

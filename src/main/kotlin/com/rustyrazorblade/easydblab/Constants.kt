@@ -929,6 +929,9 @@ object Constants {
     object K8s {
         const val NAMESPACE = "default"
 
+        /** The pod phase of a pod whose containers have started (`status.phase`). */
+        const val POD_PHASE_RUNNING = "Running"
+
         /** The label every workload carries to name itself; its Deployment selector matches on it. */
         const val APP_NAME_LABEL = "app.kubernetes.io/name"
 

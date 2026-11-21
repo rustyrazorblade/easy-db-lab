@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -35,12 +36,22 @@ class KitStatusCommandTest : BaseKoinTest() {
     private val mockKubeService: K8sService = mock()
     private val mockHelmService: HelmService = mock()
 
+    /** The pods the endpoint lookup sees, apart from the pods the running state is read from. */
+    private var servingPods: List<KubernetesPod> = emptyList()
+    private val endpointQueries = mutableListOf<Pair<String, String>>()
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<K8sService> { mockKubeService }
                 single<HelmService> { mockHelmService }
+                single {
+                    KitEndpointHost { selector, namespace ->
+                        endpointQueries += selector to namespace
+                        Result.success(servingPods)
+                    }
+                }
             },
         )
 
@@ -115,12 +126,27 @@ class KitStatusCommandTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a pod-selector endpoint is listed only at the node that runs its pod (#1224)`() {
-        val output = runStatus(listOf(runningPod.copy(hostIp = "10.0.2.2")), endpoint = bolt.copy(podSelector = "app=mydb"))
+    fun `a pod-selector endpoint is listed only at the node that runs its pod, looked up in the runtime namespace (#1224)`() {
+        servingPods = listOf(runningPod.copy(hostIp = "10.0.2.2"))
+        val runtime = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb", namespace = "graphs")
+
+        val output = runStatus(listOf(runningPod), runtime, endpoint = bolt.copy(servingPodSelector = "app=\${KIT_NAME}"))
 
         assertThat(output).contains("Running (1/1 pods ready)")
         assertThat(output).contains("10.0.2.2:30687")
         assertThat(output).doesNotContain("10.0.2.1:30687")
+        assertThat(endpointQueries).containsExactly("app=mydb" to "graphs")
+    }
+
+    @Test
+    fun `a pod-selector endpoint no pod serves is a line with the reason, not an address (#1224)`() {
+        servingPods = listOf(runningPod.copy(hostIp = "10.0.2.2", ready = "0/1"))
+
+        val output = runStatus(listOf(runningPod), endpoint = bolt.copy(servingPodSelector = "app=mydb"))
+
+        assertThat(output).doesNotContain("30687")
+        assertThat(output.lines().single { "bolt" in it })
+            .contains("not served", "no running, ready pod matches app=mydb in namespace default")
     }
 
     @Test

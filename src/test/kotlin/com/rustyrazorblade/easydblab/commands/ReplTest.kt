@@ -19,6 +19,7 @@ import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 
 class ReplTest : BaseKoinTest() {
     @Command(name = "", subcommands = [Db::class, Info::class, Run::class, Secret::class])
@@ -188,15 +189,18 @@ class ReplTest : BaseKoinTest() {
 
     @Test
     fun `a hidden top-level command is not offered for the first word or listed by help`() {
-        val output = ByteArrayOutputStream()
-        val shell = replShell(Recorded().root, output)
+        val shell = replShell(Recorded().root, ByteArrayOutputStream())
         val firstWord = mutableListOf<Candidate>()
 
         shell.dispatcher().completer().complete(shell.reader(), DefaultParser().parse("", 0, Parser.ParseContext.COMPLETE), firstWord)
+        // help prints to the session stream; capture it directly, not through the terminal, whose
+        // output path depends on the terminal type the environment selects.
+        val helpOut = ByteArrayOutputStream()
+        (shell.dispatcher() as LiteralLineDispatcher).session().setOut(PrintStream(helpOut, true))
         shell.dispatcher().execute("help")
 
         assertThat(firstWord.map { it.value() }).contains("db", "info", "cls").doesNotContain("secret")
-        assertThat(output.toString()).contains("db").doesNotContain("secret")
+        assertThat(helpOut.toString()).contains("db", "info", "cls").doesNotContain("secret")
     }
 
     @Test

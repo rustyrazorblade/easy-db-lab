@@ -79,9 +79,12 @@ Expect: `start` waits for the deployment to be Available. `stop` looks the objec
 The kit lives next to this plan, in `test-plans/cluster-tooling-ssh-qa/tooling-qa/`. Register its
 parent as a kit source by absolute path, so `kit install tooling-qa` takes the named path and runs
 the kit's `install:` steps. `kit install --from` only scaffolds and never runs them. `REPO` is the
-absolute path of the checkout that holds this plan.
+checkout that holds this plan, derived from the binary the wrapper runs.
 
 ```bash
+EDB_BIN=$(sed -n 's/^exec "\(.*\)" "\$@"$/\1/p' "$EDB")
+REPO=$(cd "$(dirname "$EDB_BIN")/.." && pwd)
+ls -d "$REPO/test-plans/cluster-tooling-ssh-qa/tooling-qa"
 $EDB kit source add tooling-qa-plan "$REPO/test-plans/cluster-tooling-ssh-qa"
 $EDB kit install tooling-qa
 $EDB tooling-qa start
@@ -141,11 +144,14 @@ Expect: HTTP 200.
 
 ### 10. Tear down
 
-Take the cluster id (`CLUSTER_ID`) from `$EDB status` before `down`, then check that nothing
-tagged with it is left:
+Take the cluster id from `$EDB status` before `down`, then check that nothing tagged with it is
+left. The kit source removal repeats step 7's, so a run that stopped early leaves no
+registration; "not found" is fine here.
 
 ```bash
-$EDB status
+CLUSTER_ID=$($EDB status | awk '/^Cluster ID:/{print $3}')
+test -n "$CLUSTER_ID" || { echo "no cluster id"; exit 1; }
+$EDB kit source remove tooling-qa-plan || true
 $EDB down --auto-approve; echo "exit=$?"
 aws ec2 describe-instances --profile easy-db-lab --region us-west-2 \
   --filters "Name=tag:ClusterId,Values=$CLUSTER_ID" "Name=instance-state-name,Values=pending,running,stopping,stopped" \

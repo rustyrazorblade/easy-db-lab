@@ -724,7 +724,7 @@ easy-db-lab cassandra profile status
 
 ### cassandra profile fetch
 
-Download completed JFR chunks into `./profiles/<host>/`. The chunk currently being written is never
+Download completed JFR chunks into the workspace's `profiles/<host>/`. The chunk currently being written is never
 offered — it has no constant pool yet and no tool can read it.
 
 ```bash

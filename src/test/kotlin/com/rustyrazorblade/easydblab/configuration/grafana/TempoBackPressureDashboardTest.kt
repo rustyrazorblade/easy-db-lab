@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+import com.rustyrazorblade.easydblab.YamlTestSupport
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -17,7 +18,7 @@ import java.io.File
  * lives in different files, so these tests stop the dashboard from showing a limit Tempo no longer
  * uses, and the two copies of the query from drifting apart.
  */
-class TempoLiveTraceBytesLimitTest {
+class TempoBackPressureDashboardTest {
     private fun panels(path: String): List<JsonObject> =
         Json
             .parseToJsonElement(File(path).readText())
@@ -30,10 +31,7 @@ class TempoLiveTraceBytesLimitTest {
     fun `the live trace bytes threshold equals max_live_traces_bytes in the live_store block of the Tempo config`() {
         val config = File("src/main/resources/com/rustyrazorblade/easydblab/configuration/tempo/tempo.yaml").readText()
         val configured =
-            Regex("""(?m)^[ \t]+max_live_traces_bytes:\s*(\d+)\s*$""")
-                .find(config.substringAfter("\nlive_store:").substringBefore("\n\n#"))
-                ?.groupValues
-                ?.get(1)
+            YamlTestSupport.scalarAt(config, "live_store", "max_live_traces_bytes")
         assertThat(configured)
             .describedAs("tempo.yaml live_store.max_live_traces_bytes as a plain byte count")
             .isNotNull()

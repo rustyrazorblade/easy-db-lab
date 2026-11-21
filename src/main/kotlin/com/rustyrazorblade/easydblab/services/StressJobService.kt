@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.ImagePullFailedException
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.kubernetes.isPermanentKubernetesFailure
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.pollUntilOrTimeout
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
@@ -174,6 +175,7 @@ class DefaultStressJobService(
                 operationName = "wait-for-stress-pod-$jobName",
                 maxAttempts = POD_READY_MAX_ATTEMPTS,
                 interval = podReadyPollInterval,
+                isTransient = { !it.isPermanentKubernetesFailure() },
                 done = { found -> found.firstOrNull()?.let { it.status in POD_RUNNING_PHASES || it.imagePullFailure != null } ?: false },
             ) {
                 getPodsForJob(jobName).getOrThrow().also { found ->

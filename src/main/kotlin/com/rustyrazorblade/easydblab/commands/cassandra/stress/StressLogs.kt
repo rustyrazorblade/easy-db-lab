@@ -44,7 +44,7 @@ class StressLogs : PicoBaseCommand() {
             stressJobService
                 .getPodsForJob(jobName)
                 .getOrElse { e ->
-                    error("Failed to get pods for job $jobName: ${e.message}")
+                    throw IllegalStateException("Failed to get pods for job $jobName: ${e.message}", e)
                 }
 
         if (pods.isEmpty()) {

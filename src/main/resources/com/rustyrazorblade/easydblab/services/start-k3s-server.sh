@@ -94,6 +94,18 @@ etcd-arg:
 EOF
 echo "K3s datastore set to embedded etcd in /etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
 
+# `up` applies one MutatingAdmissionPolicy that gives every pod-network pod the tuned network
+# sysctls (pod-network-tuning). The API is beta and off by default on Kubernetes 1.35, the release
+# the AMI's K3s carries, so the API server needs its feature gate and the v1beta1 group. When the
+# AMI moves to K3s 1.36 or later (the API is GA and on by default there), this file goes and
+# PodNetworkSysctlPolicyBuilder moves to admissionregistration.k8s.io/v1. Rewritten on every run.
+cat > /etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml <<'EOF'
+kube-apiserver-arg+:
+  - "feature-gates=MutatingAdmissionPolicy=true"
+  - "runtime-config=admissionregistration.k8s.io/v1beta1=true"
+EOF
+echo "Admission policy API enabled in /etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml"
+
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
 # containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.
 # Link K3s's bundled portmap (its stable data/cni dir, populated when K3s starts) there so every

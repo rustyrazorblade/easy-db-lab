@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
@@ -27,7 +26,7 @@ class UpMarkerTagsTest : UpTestFixture() {
     @Test
     fun `the VPC, the instances and the optional services carry both marker tags and the cluster id`() {
         val state = happyState()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
 
         Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST).execute()
 
@@ -54,11 +53,11 @@ class UpMarkerTagsTest : UpTestFixture() {
     @Test
     fun `up backfills the marker tags on the account bucket it uses`() {
         val state = happyState()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
 
         Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST).execute()
 
-        assertThat(state.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
+        assertThat(clusterStateManager.load().s3Bucket).isEqualTo("easy-db-lab-test-bucket")
         verify(mockS3BucketService).ensureMarkerTags("easy-db-lab-test-bucket")
     }
 
@@ -79,7 +78,7 @@ class UpMarkerTagsTest : UpTestFixture() {
                             ),
                     ),
             )
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
 
         Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST).execute()
 

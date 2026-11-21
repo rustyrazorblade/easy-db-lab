@@ -103,7 +103,7 @@ class MetricsStreamTest : BaseKoinTest() {
         )
     }
 
-    private fun save(state: ClusterState) = get<ClusterStateManager>().save(state)
+    private fun save(state: ClusterState) = get<ClusterStateManager>().replace(state)
 
     private fun stream(metrics: String? = "node.cpu") = MetricsStream().apply { this.metrics = metrics }
 

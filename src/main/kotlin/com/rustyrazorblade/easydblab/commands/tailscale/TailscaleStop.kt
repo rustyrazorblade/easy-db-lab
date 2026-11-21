@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -101,8 +102,7 @@ class TailscaleStop : PicoBaseCommand() {
             eventBus.emit(Event.Tailscale.AuthKeyNotDeleted(keyId, e.messageOrString()))
         }
 
-        clusterState.updateTailscaleAuthKeyId(null)
-        clusterStateManager.save(clusterState)
+        clusterStateManager.update(clusterState) { it.updateTailscaleAuthKeyId(null) }
     }
 
     /**
@@ -139,7 +139,6 @@ class TailscaleStop : PicoBaseCommand() {
             return
         }
         eventBus.emit(Event.Tailscale.DeviceDeleted(deviceId))
-        clusterState.tailscaleDeviceId = null
-        clusterStateManager.save(clusterState)
+        clusterStateManager.update(clusterState) { it.tailscaleDeviceId = null }
     }
 }

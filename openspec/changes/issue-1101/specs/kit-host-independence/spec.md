@@ -6,7 +6,7 @@ No pod created by a built-in kit or by a stress job SHALL mount a `hostPath` und
 
 #### Scenario: No host dependency in any built-in kit or stress job
 - **WHEN** the packaged kit resources and `edl-kit-lib.sh` are scanned, and every kit manifest and a stress Job are rendered
-- **THEN** none contains `hostPath`, `hostPort`, `hostNetwork`, `/usr/local/otel` or `/usr/local/pyroscope`
+- **THEN** none contains `hostPath` (outside a kit that requires `host-path`), `hostPort`, `hostNetwork`, `/usr/local/otel` or `/usr/local/pyroscope`
 
 #### Scenario: Agent jars come from an init container
 - **WHEN** a stress Job is built
@@ -16,6 +16,25 @@ No pod created by a built-in kit or by a stress job SHALL mount a `hostPath` und
 #### Scenario: Agent versions on AWS are unchanged
 - **WHEN** neo4j and a stress job start on AWS
 - **THEN** they load OTel Java agent 2.31.1 and Pyroscope agent 2.3.0, the versions the AMI ships
+
+### Requirement: A kit that needs a host path declares it
+
+A kit whose pods cannot work without a `hostPath` SHALL list `host-path` under `requires` in its `kit.yaml`; `requires` SHALL take node capability names (`NodeCapability`). `kit install` and the kit's `start` SHALL compare them with the capabilities the cluster state records (`NodeCapabilities.from`) and, when one is absent, SHALL emit `Event.Kit.CapabilityMissing` (the kit, the phase and the missing capabilities), exit non-zero and run nothing of the phase. `stop` and `uninstall` SHALL NOT be checked. The host-dependency scan SHALL allow `hostPath` only in the files of a kit that requires `host-path`; `hostPort` and `hostNetwork` SHALL stay findings in every kit. `cqlite-flight`, which reads the database's data directory off the node, SHALL be the only built-in kit that declares it.
+
+#### Scenario: A kit requiring host-path is refused where the cluster lacks it
+- **GIVEN** a cluster whose recorded capabilities do not include `host-path`
+- **WHEN** `kit install cqlite-flight` or `cqlite-flight start` runs
+- **THEN** it emits `Kit.CapabilityMissing` naming `host-path`, exits non-zero, and writes or runs nothing
+
+#### Scenario: A kit requiring host-path runs where the cluster has it
+- **GIVEN** a cluster whose recorded capabilities include `host-path`
+- **WHEN** `kit install cqlite-flight` runs
+- **THEN** no `Kit.CapabilityMissing` is emitted and the install proceeds
+
+#### Scenario: An undeclared hostPath is still a finding
+- **WHEN** the host-dependency scan meets a `hostPath` line in a kit whose `kit.yaml` does not require `host-path`
+- **THEN** it reports the line as a host path finding
+- **AND** a `hostPort` or `hostNetwork` line is a finding even in a kit that requires `host-path`
 
 ### Requirement: Roles map to node selectors per environment
 

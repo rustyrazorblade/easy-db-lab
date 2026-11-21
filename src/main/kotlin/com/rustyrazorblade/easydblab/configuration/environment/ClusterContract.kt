@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.environment
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
@@ -31,7 +32,8 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * @property toolingForm how `helm`, `kubectl` and `cilium` run.
  * @property nodeAccessForm how commands reach a node (#1039).
  * @property storeKind where the observability backends keep their data (#1035).
- * @property networkMode how this machine reaches the cluster.
+ * @property networkMode how this machine reaches the cluster: on EC2 the mode `init` recorded in
+ *   `state.json` (`socks` or `tailscale`); anywhere else always `direct`, whatever the state records.
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
  * @property namespace the namespace easy-db-lab's workloads run in (#1094 adds the flag).
@@ -78,7 +80,7 @@ data class ClusterContract(
                         toolingForm = ToolingForm.Ssh,
                         nodeAccessForm = NodeAccessForm.Ssh,
                         storeKind = StoreKind.ObjectStore,
-                        networkMode = NetworkMode.Tunnel,
+                        networkMode = state.networkMode,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts, StoreCredentials.InstanceRole),
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,

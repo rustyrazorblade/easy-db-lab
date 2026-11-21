@@ -16,7 +16,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Test suite for OpenSearchStop command following TDD principles.
@@ -26,7 +26,7 @@ import org.mockito.kotlin.whenever
  */
 class OpenSearchStopTest : BaseKoinTest() {
     private lateinit var mockOpenSearchService: OpenSearchService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
 
     private val testControlHost =
         ClusterHost(
@@ -50,14 +50,14 @@ class OpenSearchStopTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<OpenSearchService>().also { mockOpenSearchService = it } }
-                single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockOpenSearchService = getKoin().get()
-        mockClusterStateManager = getKoin().get()
+        stateManager = getKoin().get()
     }
 
     @Test
@@ -79,7 +79,7 @@ class OpenSearchStopTest : BaseKoinTest() {
                 openSearchDomain = null,
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutOpenSearch)
+        stateManager.replace(stateWithoutOpenSearch)
 
         val command = OpenSearchStop()
         command.force = true
@@ -100,7 +100,7 @@ class OpenSearchStopTest : BaseKoinTest() {
                 openSearchDomain = testOpenSearchState,
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+        stateManager.replace(stateWithOpenSearch)
 
         val command = OpenSearchStop()
         command.force = false
@@ -121,14 +121,13 @@ class OpenSearchStopTest : BaseKoinTest() {
                 openSearchDomain = testOpenSearchState,
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+        stateManager.replace(stateWithOpenSearch)
 
         val command = OpenSearchStop()
         command.force = true
         command.execute()
 
         verify(mockOpenSearchService).deleteDomain("test-cluster-os")
-        verify(mockClusterStateManager).save(any())
     }
 
     @Test
@@ -143,13 +142,12 @@ class OpenSearchStopTest : BaseKoinTest() {
                 openSearchDomain = testOpenSearchState,
             )
 
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithOpenSearch)
+        stateManager.replace(stateWithOpenSearch)
 
         val command = OpenSearchStop()
         command.force = true
         command.execute()
 
-        // Verify the state was updated to clear OpenSearch domain
-        assertThat(stateWithOpenSearch.openSearchDomain).isNull()
+        assertThat(stateManager.load().openSearchDomain).isNull()
     }
 }

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.ResourceQuotaBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -117,5 +118,6 @@ class CapabilityProbeIntegrationTest {
             .hasMessageContaining("probe-closed")
             .hasMessageContaining("baseline")
             .hasMessageContaining("exceeded quota")
+            .hasCauseInstanceOf(KubernetesClientException::class.java)
     }
 }

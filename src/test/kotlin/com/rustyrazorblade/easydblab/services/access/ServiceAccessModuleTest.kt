@@ -69,7 +69,7 @@ class ServiceAccessModuleTest {
     private fun withPortForwardCluster(block: (Koin) -> Unit) {
         kubeconfig.writeText(TWO_CONTEXT_KUBECONFIG)
         val stateManager = ClusterStateManager(File(workspace, "state.json"))
-        stateManager.save(
+        stateManager.replace(
             ClusterState(name = "test").apply {
                 exposure = Exposure.PortForward
                 kubeContext = "pinned-context"

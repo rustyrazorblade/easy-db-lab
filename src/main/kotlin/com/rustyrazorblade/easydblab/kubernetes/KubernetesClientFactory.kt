@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.reason
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -33,26 +33,26 @@ interface KubernetesClientFactory {
  *
  * The proxy port is read from the [Constants.Proxy.PORT_PROPERTY] system property (set by
  * [com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService] when the proxy starts).
- * When the property is absent (Tailscale active, no proxy started), the client connects directly.
+ * When the property is absent (a network mode that needs no tunnel, no proxy started), the client connects directly.
  *
  * The SOCKS proxy is configured explicitly via `Config.httpsProxy`. We rely on this rather than the
  * global `socksProxyHost` precisely so that only K8s traffic uses the tunnel — AWS and other traffic
  * stays direct.
  *
- * The proxy is set only in [NetworkMode.Tunnel]. In [NetworkMode.Direct] (K3s in Docker, a
- * kubeconfig cluster) the API is reachable from this machine, so a port another command left
- * published (in the REPL or the server) never sends it through SOCKS.
+ * The proxy is set only in a mode that [NetworkMode.needsTunnel] (`socks`). In `tailscale` and in
+ * `direct` (K3s in Docker, a kubeconfig cluster) the API is reachable from this machine, so a port
+ * another command left published (in the REPL or the server) never sends it through SOCKS.
  *
  * @param networkMode how this machine reaches the cluster now, asked for every client
  */
 class ProxiedKubernetesClientFactory(
-    private val networkMode: () -> NetworkMode = { NetworkMode.Tunnel },
+    private val networkMode: () -> NetworkMode = { NetworkMode.Socks },
 ) : KubernetesClientFactory {
     override fun createClient(api: KubeApi): KubernetesClient {
         val config = api.loadConfig()
 
         val mode = networkMode()
-        if (mode == NetworkMode.Tunnel) {
+        if (mode.needsTunnel) {
             System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
                 config.httpsProxy = socksProxyUrl(port)
             }

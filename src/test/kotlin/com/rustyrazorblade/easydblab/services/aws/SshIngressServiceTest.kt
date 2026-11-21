@@ -61,7 +61,7 @@ class SshIngressServiceTest : BaseKoinTest() {
 
     @Test
     fun `cluster state with no infrastructure makes no AWS call`() {
-        stateManager.save(ClusterState(name = "test-cluster"))
+        stateManager.replace(ClusterState(name = "test-cluster"))
 
         assertThat(service.revoke(listOf("203.0.113.7"))).isEqualTo(IngressResult.NoSecurityGroupInState)
         verifyNoInteractions(vpcService)
@@ -214,7 +214,7 @@ class SshIngressServiceTest : BaseKoinTest() {
     }
 
     private fun givenState(securityGroupId: String? = SECURITY_GROUP) {
-        stateManager.save(
+        stateManager.replace(
             ClusterState(
                 name = "test-cluster",
                 infrastructure = InfrastructureState(vpcId = "vpc-1", region = "us-west-2", securityGroupId = securityGroupId),

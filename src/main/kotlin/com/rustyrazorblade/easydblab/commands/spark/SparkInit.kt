@@ -111,15 +111,16 @@ class SparkInit : PicoBaseCommand() {
                 ),
             )
 
-        state.updateEmrCluster(emrCluster)
-        state.initConfig =
-            initConfig.copy(
-                sparkEnabled = true,
-                sparkMasterInstanceType = masterInstanceType,
-                sparkWorkerInstanceType = workerInstanceType,
-                sparkWorkerCount = workerCount,
-            )
-        clusterStateManager.save(state)
+        clusterStateManager.update { saved ->
+            saved.updateEmrCluster(emrCluster)
+            saved.initConfig =
+                (saved.initConfig ?: initConfig).copy(
+                    sparkEnabled = true,
+                    sparkMasterInstanceType = masterInstanceType,
+                    sparkWorkerInstanceType = workerInstanceType,
+                    sparkWorkerCount = workerCount,
+                )
+        }
 
         eventBus.emit(Event.Emr.ClusterProvisioned(emrCluster.clusterId))
         emrCluster.masterPublicDns?.let {

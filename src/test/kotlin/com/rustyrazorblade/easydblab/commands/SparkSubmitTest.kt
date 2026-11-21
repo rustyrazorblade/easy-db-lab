@@ -67,7 +67,7 @@ class SparkSubmitTest : BaseKoinTest() {
                 s3Bucket = testBucket,
                 clusterId = "test-id",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // Verify the S3 path format by examining what would be constructed
         val s3Path = state.s3Path()
@@ -99,7 +99,7 @@ class SparkSubmitTest : BaseKoinTest() {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
         val state = ClusterState(name = "test-cluster")
-        manager.save(state)
+        manager.replace(state)
 
         val testClusterId = "j-TEST123"
         val validClusterInfo =

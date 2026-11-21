@@ -121,9 +121,16 @@ data class PodInfo(
     val age: String,
 )
 
+/**
+ * The cluster's pods, or why they could not be listed.
+ *
+ * @property error why the pods could not be listed (for example a missing exec auth plugin, with
+ *   how to install it); absent when they were listed
+ */
 @Serializable
 data class KubernetesInfo(
     val pods: List<PodInfo>,
+    val error: String? = null,
 )
 
 @Serializable

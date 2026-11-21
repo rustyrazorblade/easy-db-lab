@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -43,6 +44,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.io.File
 import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
@@ -75,7 +77,7 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
                 single<StressJobService> { stress }
                 single<RemoteOperationsService> { remoteOps }
                 single { WorkspaceKitScanner(get()) }
-                single<ObjectStore> { S3ObjectStore(get(), get()) }
+                single<ObjectStore> { S3ObjectStore(get(), get(), RegionalS3Presigners(AnonymousCredentialsProvider.create())) }
                 single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
             },
         )

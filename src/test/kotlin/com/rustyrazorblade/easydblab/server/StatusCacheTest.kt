@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -43,6 +44,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -112,7 +114,7 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
                 single { WorkspaceKitScanner(get()) }
-                single<ObjectStore> { S3ObjectStore(get(), get()) }
+                single<ObjectStore> { S3ObjectStore(get(), get(), RegionalS3Presigners(AnonymousCredentialsProvider.create())) }
                 factory { ClusterStatusCollector() }
             },
         )

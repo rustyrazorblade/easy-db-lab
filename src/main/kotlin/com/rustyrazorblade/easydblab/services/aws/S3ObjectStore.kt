@@ -38,12 +38,12 @@ import com.rustyrazorblade.easydblab.events.Event as DomainEvent
  * conflicts when multiple clusters share the same S3 bucket.
  *
  * @property s3Client AWS SDK S3 client for S3 operations
- * @property presigners signs [presignedGetUrl] for the bucket's own region; null in a store that is never asked to
+ * @property presigners signs [presignedGetUrl] for the bucket's own region
  */
 class S3ObjectStore(
     private val s3Client: S3Client,
     private val eventBus: EventBus,
-    private val presigners: RegionalS3Presigners? = null,
+    private val presigners: RegionalS3Presigners,
 ) : ObjectStore {
     private val log = KotlinLogging.logger {}
 
@@ -380,7 +380,6 @@ class S3ObjectStore(
         ttl: Duration,
     ): String {
         require(ttl <= Constants.S3.MAX_PRESIGN_TTL) { "A presigned S3 URL lasts at most 7 days; $ttl was asked for." }
-        val signers = checkNotNull(presigners) { "This S3 object store was built without a presigner." }
         val request =
             GetObjectPresignRequest
                 .builder()
@@ -392,7 +391,7 @@ class S3ObjectStore(
                         .key(path.getKey())
                         .build(),
                 ).build()
-        return signers.forRegion(BucketRegion(s3Client).of(path.bucket)).use { it.presignGetObject(request).url().toString() }
+        return presigners.forRegion(BucketRegion(s3Client).of(path.bucket)).use { it.presignGetObject(request).url().toString() }
     }
 
     /**

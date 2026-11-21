@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -14,6 +15,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -27,7 +29,7 @@ import java.util.UUID
 class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
     private val s3 = SharedLocalStack.s3Client()
     private val bucket = "annotation-backup-${UUID.randomUUID().toString().take(8)}"
-    private val objectStore = S3ObjectStore(s3, EventBus())
+    private val objectStore = S3ObjectStore(s3, EventBus(), RegionalS3Presigners(AnonymousCredentialsProvider.create()))
     private val sameSecond = Clock.fixed(Instant.parse("2026-09-24T13:04:05Z"), ZoneOffset.UTC)
     private lateinit var grafana: MockWebServer
     private lateinit var service: DefaultGrafanaAnnotationBackupService

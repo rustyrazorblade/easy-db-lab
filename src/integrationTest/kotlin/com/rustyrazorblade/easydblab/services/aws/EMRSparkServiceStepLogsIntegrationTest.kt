@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,7 +38,7 @@ class EMRSparkServiceStepLogsIntegrationTest {
         val clusterState = ClusterState(name = "test-cluster", clusterId = "c-steplogs", s3Bucket = bucket)
         val clusterStateManager = ClusterStateManager(File(tempDir.toFile(), "state.json")).also { it.replace(clusterState) }
         val eventBus = EventBus()
-        val objectStore = S3ObjectStore(s3Client, eventBus)
+        val objectStore = S3ObjectStore(s3Client, eventBus, RegionalS3Presigners(AnonymousCredentialsProvider.create()))
         val logsDir = tempDir.resolve("logs")
         val sparkService =
             EMRSparkService(

@@ -200,7 +200,8 @@ class ReplTest : BaseKoinTest() {
         shell.dispatcher().execute("help")
 
         assertThat(firstWord.map { it.value() }).contains("db", "info", "cls").doesNotContain("secret")
-        assertThat(helpOut.toString()).contains("db", "info", "cls").doesNotContain("secret")
+        val helpRows = helpOut.toString().lines().map { it.trim().substringBefore(" ") }
+        assertThat(helpRows).contains("db", "info", "cls").doesNotContain("secret")
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -590,6 +591,30 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val commands = remoteCommands()
         assertThat(commands).anyMatch { it.contains("/mnt/db1/pyroscope") }
         assertThat(commands).anyMatch { it.contains(GrafanaManifestBuilder.GRAFANA_DATA_PATH) }
+    }
+
+    /** A browser reaches Pyroscope through the SOCKS tunnel, which resolves names on the control node, not `.svc`. */
+    @Test
+    fun `under NodePorts the dashboards link Pyroscope at the control node's private IP and NodePort`() {
+        hosting = { ObservabilityHosting.AWS.copy(publishing = ServicePublishing.NodePorts) }
+
+        service.deploy().getOrThrow()
+
+        verify(mockDashboardService).prepare(
+            any(),
+            any(),
+            any(),
+            eq("http://${controlNode.privateIp}:${Constants.K8s.PYROSCOPE_NODE_PORT}"),
+        )
+    }
+
+    @Test
+    fun `under ClusterIp the dashboards link Pyroscope at its Service DNS name`() {
+        hosting = { ObservabilityHosting.AWS.copy(publishing = ServicePublishing.ClusterIp) }
+
+        service.deploy().getOrThrow()
+
+        verify(mockDashboardService).prepare(any(), any(), any(), eq("http://pyroscope.default.svc:4040"))
     }
 
     @Test

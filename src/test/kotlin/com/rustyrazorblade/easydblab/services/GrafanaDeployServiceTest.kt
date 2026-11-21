@@ -165,15 +165,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
      */
     @Test
     fun `a catalog with two paths for one ConfigMap name fails the deploy before anything is written`() {
-        val clashing =
-            DefaultGrafanaDeployService(
-                mockK8sService,
-                manifestBuilder,
-                GrafanaDashboardTreeWriter(GrafanaDashboardCatalog.discover(CLASHING_CATALOG)),
-                eventBus,
-                ConfigChangeReport(mockK8sService, eventBus),
-                BucketRegion(bucketInRegion("eu-west-1")),
-            )
+        val clashing = clashingService()
 
         val result = clashing.deploy(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL)
 
@@ -181,6 +173,26 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
         verify(mockK8sService, never()).applyResource(any())
     }
+
+    @Test
+    fun `a dashboard tree that fails validation is never reported as rendered`() {
+        val emitted = recordEvents()
+
+        val result = clashingService().prepare(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL)
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(emitted.filterIsInstance<Event.Grafana.DashboardsRendered>()).isEmpty()
+    }
+
+    private fun clashingService() =
+        DefaultGrafanaDeployService(
+            mockK8sService,
+            manifestBuilder,
+            GrafanaDashboardTreeWriter(GrafanaDashboardCatalog.discover(CLASHING_CATALOG)),
+            eventBus,
+            ConfigChangeReport(mockK8sService, eventBus),
+            BucketRegion(bucketInRegion("eu-west-1")),
+        )
 
     @Test
     fun `deploy fails when applyResource fails, and prunes nothing`() {

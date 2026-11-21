@@ -26,14 +26,16 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * them. The maps are applied with the Deployment, so `ConfigHashAnnotator` hashes them and a
  * dashboard change rolls Grafana.
  *
- * Everything that would make a dashboard undeliverable (one over budget, two paths with one map
- * name, a folder that is no valid volume name) is refused here, before anything is applied.
+ * Everything that would make a dashboard undeliverable is refused here, naming the files, before
+ * anything is applied: a path that is not exactly `<folder>/<file>`, a file name that is no legal
+ * ConfigMap key, a map name over the K8s object-name limit, one over budget, a folder that is no
+ * valid volume name or whose volume Grafana's pod already declares, and two paths with one map name.
  */
 object GrafanaDashboardConfigMaps {
     private const val VOLUME_PREFIX = "dashboards-"
     private const val GRAFANA_CONTAINER = "grafana"
-    private const val DNS_1123_LABEL_MAX = 63
     private val DNS_1123_LABEL = Regex("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
+    private val CONFIGMAP_KEY = Regex("[-._a-zA-Z0-9]+")
     private val NOT_NAME_CHARACTERS = Regex("[^a-z0-9]+")
 
     /** One dashboard on its way into a ConfigMap. */
@@ -54,16 +56,22 @@ object GrafanaDashboardConfigMaps {
      * dashboard in [tree], with the Grafana container mounting them at [GRAFANA_DASHBOARD_ROOT].
      *
      * @param tree each dashboard's JSON keyed by its path relative to the tree root
-     * @throws IllegalArgumentException naming the file or files when a dashboard exceeds the
-     *   per-ConfigMap budget, two paths map to one ConfigMap name, or a folder is not a DNS-1123 label
+     * @throws IllegalArgumentException naming the file or files when any dashboard in [tree] cannot be
+     *   delivered (see the object KDoc for every check)
      */
     fun mountInto(
         resources: List<HasMetadata>,
         tree: Map<String, String>,
     ): List<HasMetadata> {
         val entries = tree.map { (path, json) -> Entry(path, json) }
-        validate(entries)
         val deployment = resources.filterIsInstance<Deployment>().single()
+        validate(
+            entries,
+            deployment.spec.template.spec.volumes
+                .orEmpty()
+                .map { it.name }
+                .toSet(),
+        )
         val maps = entries.map { configMap(it, deployment.metadata.namespace) }
         val mounted = mount(deployment, entries.groupBy { it.folder })
         return maps + resources.map { if (it === deployment) mounted else it }
@@ -72,27 +80,60 @@ object GrafanaDashboardConfigMaps {
     /** The ConfigMap names [tree] renders to, the set a deploy keeps when it prunes. */
     fun namesOf(tree: Map<String, String>): Set<String> = tree.keys.map { Entry(it, "").mapName }.toSet()
 
-    private fun validate(entries: List<Entry>) {
+    private fun validate(
+        entries: List<Entry>,
+        declaredVolumes: Set<String>,
+    ) {
+        val nested = entries.filter { it.path.count { c -> c == '/' } != 1 }.map { it.path }
+        require(nested.isEmpty()) {
+            "These dashboards are not exactly one folder and one file (<folder>/<file>.json): ${nested.joinToString(", ")}."
+        }
+        val badKeys = entries.filter { !isConfigMapKey(it.fileName) }.map { it.path }
+        require(badKeys.isEmpty()) {
+            "These dashboard file names are not a legal ConfigMap key (letters, digits, '-', '_' and '.', " +
+                "at most ${Constants.K8s.CONFIGMAP_KEY_MAX_LENGTH} characters): ${badKeys.joinToString(", ")}."
+        }
+        val longNames = entries.filter { it.mapName.length > Constants.K8s.OBJECT_NAME_MAX_LENGTH }.map { it.path }
+        require(longNames.isEmpty()) {
+            "These dashboards would make a ConfigMap name longer than ${Constants.K8s.OBJECT_NAME_MAX_LENGTH} " +
+                "characters: ${longNames.joinToString(", ")}."
+        }
         val budget = Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES
         val oversized = entries.filter { it.bytes > budget }.map { it.path }
         require(oversized.isEmpty()) {
             "These dashboards are each larger than one ConfigMap's $budget-byte budget: ${oversized.joinToString(", ")}."
         }
-        val badFolders =
-            entries.map { it.folder }.distinct().filter { folder ->
-                val volume = VOLUME_PREFIX + folder
-                !DNS_1123_LABEL.matches(volume) || volume.length > DNS_1123_LABEL_MAX
-            }
-        require(badFolders.isEmpty()) {
-            "These dashboard folders do not make a valid volume name (lowercase letters, digits and '-', " +
-                "at most ${DNS_1123_LABEL_MAX - VOLUME_PREFIX.length} characters): ${badFolders.joinToString(", ")}."
-        }
+        validateFolders(entries, declaredVolumes)
         val clashes = entries.groupBy { it.mapName }.filterValues { it.size > 1 }
         require(clashes.isEmpty()) {
             "These dashboards map to the same ConfigMap name: " +
                 clashes.entries.joinToString("; ") { (name, same) -> "$name <- ${same.joinToString(", ") { it.path }}" } + "."
         }
     }
+
+    /** Each folder's volume must be a DNS-1123 label and must not take a volume Grafana's pod already declares. */
+    private fun validateFolders(
+        entries: List<Entry>,
+        declaredVolumes: Set<String>,
+    ) {
+        val folders = entries.map { it.folder }.distinct()
+        val badFolders =
+            folders.filter { folder ->
+                val volume = VOLUME_PREFIX + folder
+                !DNS_1123_LABEL.matches(volume) || volume.length > Constants.K8s.DNS_LABEL_MAX_LENGTH
+            }
+        require(badFolders.isEmpty()) {
+            "These dashboard folders do not make a valid volume name (lowercase letters, digits and '-', " +
+                "at most ${Constants.K8s.DNS_LABEL_MAX_LENGTH - VOLUME_PREFIX.length} characters): ${badFolders.joinToString(", ")}."
+        }
+        val taken = entries.filter { VOLUME_PREFIX + it.folder in declaredVolumes }
+        require(taken.isEmpty()) {
+            "These dashboards' folders would mount as a volume Grafana's pod already declares: " +
+                taken.joinToString(", ") { "${it.path} (${VOLUME_PREFIX + it.folder})" } + "."
+        }
+    }
+
+    private fun isConfigMapKey(key: String): Boolean = CONFIGMAP_KEY.matches(key) && key.length <= Constants.K8s.CONFIGMAP_KEY_MAX_LENGTH
 
     private fun configMap(
         entry: Entry,

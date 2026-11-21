@@ -952,6 +952,15 @@ object Constants {
         /** The longest label key prefix (a DNS subdomain) Kubernetes accepts. */
         const val LABEL_PREFIX_MAX_LENGTH = 253
 
+        /** The longest object name (a DNS subdomain) Kubernetes accepts, e.g. for a ConfigMap. */
+        const val OBJECT_NAME_MAX_LENGTH = 253
+
+        /** The longest ConfigMap data key Kubernetes accepts. */
+        const val CONFIGMAP_KEY_MAX_LENGTH = 253
+
+        /** The longest DNS-1123 label Kubernetes accepts, e.g. for a pod volume name. */
+        const val DNS_LABEL_MAX_LENGTH = 63
+
         /**
          * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
          * when the port it was given was bound by another process after it was chosen: the first

@@ -65,8 +65,9 @@ The `when (hosting.storage)` branch goes away, and both storage modes take the C
 - **Recommended: `grafana-dashboard-<folder>-<stem>`.**
   - Lowercased, and every run of characters outside `[a-z0-9]` becomes `-`, trimmed. For example, `cassandra/ab-comparison.json` becomes `grafana-dashboard-cassandra-ab-comparison`. The longest name today is about 51 characters.
   - Two paths that map to the same name (`a-b/c.json` and `a/b-c.json`) fail at render, naming both.
-  - Volume names are `dashboards-<folder>`, checked as a DNS-1123 label.
-  - The data key is the file name.
+  - Volume names are `dashboards-<folder>`, checked as a DNS-1123 label of at most 63 characters that the Grafana pod does not already declare (`config` would take `dashboards-config`).
+  - The data key is the file name, checked as a legal ConfigMap key (`[-._a-zA-Z0-9]+`, at most 253 characters). A path must be exactly `<folder>/<file>`, and the map name at most 253 characters.
+  - Every check runs at render, before anything is applied, and names the file.
   - Readable in `kubectl get cm`.
 - **Alternative: append 8 hex characters of the path's sha256.** Collision-proof without a check, but the names are unreadable.
 

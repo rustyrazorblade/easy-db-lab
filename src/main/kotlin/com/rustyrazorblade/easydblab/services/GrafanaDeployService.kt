@@ -131,9 +131,11 @@ class DefaultGrafanaDeployService(
         val (withDashboards, rendered) =
             runCatching {
                 val tree = treeWriter.render(pyroscopeUrl, context)
-                eventBus.emit(Event.Grafana.DashboardsRendered(tree.size))
                 val grafana = manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting)
-                GrafanaDashboardConfigMaps.mountInto(grafana, tree) to GrafanaDashboardConfigMaps.namesOf(tree)
+                val mounted = GrafanaDashboardConfigMaps.mountInto(grafana, tree)
+                // Only a tree that passed validation is reported as rendered.
+                eventBus.emit(Event.Grafana.DashboardsRendered(tree.size))
+                mounted to GrafanaDashboardConfigMaps.namesOf(tree)
             }.getOrElse { exception ->
                 return Result.failure(
                     IllegalStateException("Failed to render Grafana dashboards: ${exception.message}", exception),
@@ -170,6 +172,10 @@ class DefaultGrafanaDeployService(
             }
         }
 
+        // The prune runs only after the Deployment is applied: until then the live pod template may
+        // still name a map this release dropped, and deleting it would hang a new pod in
+        // ContainerCreating. An apply that fails part-way returns above, before the prune, so the
+        // stale maps stay (harmless, unmounted) until the next deploy that succeeds prunes them.
         k8sService.pruneConfigMaps(DEFAULT_NAMESPACE, DASHBOARD_LABELS, release.dashboardMaps).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to prune stale Grafana dashboard ConfigMaps: ${exception.message}", exception),

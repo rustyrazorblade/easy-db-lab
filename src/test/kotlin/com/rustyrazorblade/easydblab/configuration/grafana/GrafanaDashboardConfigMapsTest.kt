@@ -170,6 +170,78 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a dashboard whose file name and JSON are exactly the budget is accepted, one byte more is refused`() {
+        val fileName = "edge.json"
+        // A two-byte character, so the budget is counted in bytes, not characters.
+        val filler = "é" + "x".repeat(Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES - fileName.length - 2)
+        val atBudget = mapOf("big/$fileName" to filler)
+        assertThat(fileName.toByteArray().size + filler.toByteArray().size).isEqualTo(Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES)
+
+        assertThat(dashboardMaps(GrafanaDashboardConfigMaps.mountInto(grafana, atBudget))).hasSize(1)
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf("big/$fileName" to filler + "x")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("big/$fileName")
+    }
+
+    @Test
+    fun `a path that is not exactly one folder and one file is refused, naming it`() {
+        for (path in listOf("a/b/c.json", "top.json")) {
+            assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf(path to "{}")) }
+                .describedAs(path)
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("exactly one folder")
+                .hasMessageContaining(path)
+        }
+    }
+
+    @Test
+    fun `a dashboard whose ConfigMap name would exceed 253 characters is refused, naming it`() {
+        // 18 (prefix) + 50 (folder) + 1 + 200 (stem) = 269 characters; the 205-character file name is a legal key.
+        val path = "f".repeat(50) + "/" + "s".repeat(200) + ".json"
+
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf(path to "{}")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("ConfigMap name longer than 253")
+            .hasMessageContaining(path)
+    }
+
+    @Test
+    fun `a file name that is not a legal ConfigMap key is refused, naming it`() {
+        val spaced = "cassandra/my dashboard.json"
+        val long = "c/" + "k".repeat(250) + ".json"
+
+        for (path in listOf(spaced, long)) {
+            assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf(path to "{}")) }
+                .describedAs(path)
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("not a legal ConfigMap key")
+                .hasMessageContaining(path)
+        }
+    }
+
+    @Test
+    fun `a folder whose volume name Grafana's pod already declares is refused, naming it`() {
+        // dashboards-config is the volume holding Grafana's dashboard provisioning config.
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf("config/x.json" to "{}")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("dashboards-config")
+            .hasMessageContaining("config/x.json")
+    }
+
+    @Test
+    fun `a folder volume name of 63 characters is accepted, 64 is refused`() {
+        // dashboards- is 11 characters, so a 52-character folder makes a 63-character volume name.
+        val longest = "f".repeat(52)
+        val tooLong = "f".repeat(53)
+
+        assertThat(grafanaMounts(GrafanaDashboardConfigMaps.mountInto(grafana, mapOf("$longest/x.json" to "{}"))).map { it.name })
+            .containsExactly("dashboards-$longest")
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, mapOf("$tooLong/x.json" to "{}")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining(tooLong)
+    }
+
+    @Test
     fun `a folder name that is not a DNS-1123 label is refused`() {
         val badFolder = mapOf("Bad_Folder/x.json" to "{}")
 

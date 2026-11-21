@@ -972,6 +972,15 @@ tasks.register<Exec>("testCacheLib") {
     commandLine = listOf("bash", "packer/base/install/edl-cache-lib.test.sh")
 }
 
+// Unit-test the shared cassandra.yaml merge (edl-cassandra-config.sh) under a real /bin/sh, and
+// patch-config's contract with UpdateConfig: the success marker and every exit code. Uses the real yq.
+tasks.register<Exec>("testCassandraConfigMerge") {
+    group = "Verification"
+    description = "Unit-test the shared cassandra.yaml merge and patch-config"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/lib/edl-cassandra-config.test.sh")
+}
+
 tasks.register("testCassandraScripts") {
     group = "Verification"
     description = "Run all Cassandra shell script unit tests"
@@ -983,6 +992,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraSjkGc",
         "testCassandraAgentSelection",
         "testCassandraAxonOpsAgentScript",
+        "testCassandraConfigMerge",
         "testCacheLib",
     )
 }

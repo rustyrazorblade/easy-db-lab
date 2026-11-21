@@ -1,9 +1,9 @@
 ## 1. Shared config merge (VM path first)
 
-- [ ] 1.1 `packer/cassandra/lib/edl-cassandra-config.sh` (POSIX): `edl_merge_cassandra_yaml <orig> <out> <patch>...` with yq `. *= load(...)`
-- [ ] 1.2 `patch-config` calls the library. Shell test: the "Successfully patched" marker and every exit code are unchanged, the patches merge in order, and the library runs under a real `/bin/sh`
-- [ ] 1.3 `cassandra.in.sh` env overrides: `ECL_AGENTS_LIB`, `EDL_CASSANDRA_BUILD`, the OTLP endpoint, the log directory, and extra resource attributes. Extend `edl-cassandra-agents.test.sh` (real `/bin/sh`): the VM defaults are unchanged, the overrides are applied, and `host.name` is kept
-- [ ] 1.4 `./gradlew testCassandraScripts` passes
+- [x] 1.1 `packer/cassandra/lib/edl-cassandra-config.sh` (POSIX): `edl_merge_cassandra_yaml <orig> <out> <patch>...` with yq `. *= load(...)`
+- [x] 1.2 `patch-config` calls the library. Shell test: the "Successfully patched" marker and every exit code are unchanged, the patches merge in order, and the library runs under a real `/bin/sh`
+- [x] 1.3 `cassandra.in.sh` env overrides: `ECL_AGENTS_LIB`, `EDL_CASSANDRA_BUILD`, the OTLP endpoint, the log directory, and extra resource attributes. Extend `edl-cassandra-agents.test.sh` (real `/bin/sh`): the VM defaults are unchanged, the overrides are applied, and `host.name` is kept
+- [x] 1.4 `./gradlew testCassandraScripts` passes
 
 ## 2. Config patch builders in Kotlin
 

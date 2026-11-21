@@ -42,4 +42,8 @@ sudo install -D -m 0644 /tmp/cassandra.in.sh /usr/local/share/easy-db-lab/cassan
 # live in /tmp: a runtime `cassandra install` has to find it long after the bake.
 sudo install -D -m 0644 /tmp/edl-cassandra-agents.sh /usr/local/lib/edl-cassandra-agents.sh
 
+# The one cassandra.yaml merge, which patch-config sources. The cassandra-pods kit ships the same
+# file to its pods, so both paths build the config the same way.
+sudo install -D -m 0644 /tmp/edl-cassandra-config.sh /usr/local/lib/edl-cassandra-config.sh
+
 sudo chown -R cassandra:cassandra /usr/local/cassandra

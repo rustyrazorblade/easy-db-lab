@@ -336,6 +336,79 @@ for fn in $(printf '%s\n' "$in_sh_code" | grep -oE '(^|[^_[:alnum:]])edl_[a-z0-9
   fi
 done
 
+# --- cassandra.in.sh env overrides, sourced by a real /bin/sh -----------------
+# The cassandra-pods kit sources this same file in each pod. A pod has no /usr/local/lib, no
+# /usr/local/cassandra/current symlink, no collector on localhost and no /mnt/db1, so each of those
+# is an env override. On a VM none is set, and the options must be exactly what they were.
+INSH_SANDBOX="$(mktemp -d)"
+mkdir -p "${INSH_SANDBOX}/bin" "${INSH_SANDBOX}/home"
+printf '#!/bin/sh\necho "openjdk version \\"17.0.16\\" 2025-07-15" >&2\n' >"${INSH_SANDBOX}/bin/java"
+printf '#!/bin/sh\necho node-host\n' >"${INSH_SANDBOX}/bin/hostname"
+printf '#!/bin/sh\necho ubuntu\n' >"${INSH_SANDBOX}/bin/whoami"
+chmod +x "${INSH_SANDBOX}/bin/"*
+touch "${INSH_SANDBOX}/otel.jar" "${INSH_SANDBOX}/jmx.yaml"
+
+# source_in_sh [VAR=value]... - source cassandra.in.sh under /bin/sh with a clean environment and
+# print JVM_EXTRA_OPTS and JVM_OPTS, one per line, then the log directory it chose.
+source_in_sh() {
+  env -i PATH="${INSH_SANDBOX}/bin:/usr/bin:/bin" HOME="${INSH_SANDBOX}/home" \
+    EDL_OTEL_AGENT_JAR="${INSH_SANDBOX}/otel.jar" EDL_OTEL_JMX_CONFIG="${INSH_SANDBOX}/jmx.yaml" \
+    "$@" "$POSIX_SH" -c '. "$1"; printf "%s\n%s\n%s\n" "$JVM_EXTRA_OPTS" "$JVM_OPTS" "$CASSANDRA_LOG_DIR"' \
+    _ "${SCRIPT_DIR}/../cassandra.in.sh" 2>/dev/null
+}
+
+vm_out="$(source_in_sh ECL_AGENTS_LIB="${SCRIPT_DIR}/edl-cassandra-agents.sh")"
+vm_extra="$(sed -n 1p <<<"$vm_out")"
+vm_opts="$(sed -n 2p <<<"$vm_out")"
+vm_log="$(sed -n 3p <<<"$vm_out")"
+for expected in \
+  "-Dotel.resource.attributes=service.instance.id=node-host,node_role=db,cassandra_build=unknown" \
+  "-Dotel.exporter.otlp.endpoint=http://localhost:4318"; do
+  if [[ " ${vm_extra} " == *" ${expected} "* ]]; then
+    pass "VM default kept: ${expected}"
+  else
+    fail "VM default changed: expected ${expected} in [${vm_extra}]"
+  fi
+done
+if [[ "$vm_log" == "${INSH_SANDBOX}/home/logs" && "$vm_opts" == *"file=${INSH_SANDBOX}/home/logs/gc.log"* ]]; then
+  pass "VM default log directory kept for a non-cassandra user"
+else
+  fail "VM default log directory changed: [${vm_log}] [${vm_opts}]"
+fi
+
+# ECL_AGENTS_LIB is honored: pointing it at a missing file is reported and loses the GC log.
+if missing_err="$(env -i PATH="${INSH_SANDBOX}/bin:/usr/bin:/bin" HOME="${INSH_SANDBOX}/home" \
+    ECL_AGENTS_LIB="${INSH_SANDBOX}/no-such-lib.sh" "$POSIX_SH" -c '. "$1"' _ "${SCRIPT_DIR}/../cassandra.in.sh" 2>&1)" \
+  && [[ "$missing_err" == *"${INSH_SANDBOX}/no-such-lib.sh is missing"* ]]; then
+  pass "ECL_AGENTS_LIB picks the agents library"
+else
+  fail "ECL_AGENTS_LIB should pick the agents library, got: ${missing_err}"
+fi
+
+pod_out="$(source_in_sh ECL_AGENTS_LIB="${SCRIPT_DIR}/edl-cassandra-agents.sh" \
+  EDL_CASSANDRA_BUILD="5.0.4" EDL_OTLP_ENDPOINT="http://10.0.0.7:4318" \
+  EDL_CASSANDRA_LOG_DIR="${INSH_SANDBOX}/podlogs" \
+  EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES="host.name=node-a")"
+pod_extra="$(sed -n 1p <<<"$pod_out")"
+pod_opts="$(sed -n 2p <<<"$pod_out")"
+pod_log="$(sed -n 3p <<<"$pod_out")"
+for expected in \
+  "-Dotel.resource.attributes=service.instance.id=node-host,node_role=db,cassandra_build=5.0.4,host.name=node-a" \
+  "-Dotel.exporter.otlp.endpoint=http://10.0.0.7:4318"; do
+  if [[ " ${pod_extra} " == *" ${expected} "* ]]; then
+    pass "override applied: ${expected}"
+  else
+    fail "override not applied: expected ${expected} in [${pod_extra}]"
+  fi
+done
+if [[ "$pod_log" == "${INSH_SANDBOX}/podlogs" && -d "${INSH_SANDBOX}/podlogs" \
+      && "$pod_opts" == *"file=${INSH_SANDBOX}/podlogs/gc.log"* ]]; then
+  pass "EDL_CASSANDRA_LOG_DIR sets the log directory and the GC log path"
+else
+  fail "EDL_CASSANDRA_LOG_DIR not applied: [${pod_log}] [${pod_opts}]"
+fi
+rm -rf "$INSH_SANDBOX"
+
 echo
 echo "${tests_run} assertions, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

@@ -3,11 +3,20 @@
 # patches the current cassandra.yaml using the original + modifications
 # accepts two arguments: the patch file and the version number, assumed to be current if omitted
 # we want the ability to be able to patch stuff before we apply it as the current version.
+#
+# The merge itself is edl_merge_cassandra_yaml from edl-cassandra-config.sh, the same function the
+# cassandra-pods kit renders its pods' config with. Its output ("Successfully patched" on success)
+# and exit codes are a contract with UpdateConfig; edl-cassandra-config.test.sh pins them.
+#
+# EDL_CASSANDRA_HOME and EDL_CASSANDRA_CONFIG_LIB exist for the tests; on a node both default to
+# the AMI's paths.
 
 set -e  # Exit on first error
 
 export PATCH=$1
 export VERSION=${2:-current}
+CASSANDRA_HOME_ROOT="${EDL_CASSANDRA_HOME:-/usr/local/cassandra}"
+CONFIG_LIB="${EDL_CASSANDRA_CONFIG_LIB:-/usr/local/lib/edl-cassandra-config.sh}"
 
 # Validate inputs
 if [ -z "$PATCH" ]; then
@@ -21,32 +30,42 @@ if [ ! -f "$PATCH" ]; then
     exit 2
 fi
 
-# Check if yq is available
+# Check if yq and the merge library are available
 if ! command -v yq &> /dev/null; then
     echo "ERROR: yq command not found. Please install yq." >&2
     exit 3
 fi
 
-ORIG_CONFIG="/usr/local/cassandra/$VERSION/conf.orig/cassandra.yaml"
+if [ ! -f "$CONFIG_LIB" ]; then
+    echo "ERROR: config merge library not found: $CONFIG_LIB" >&2
+    exit 3
+fi
+# shellcheck source=/dev/null
+. "$CONFIG_LIB"
+
+ORIG_CONFIG="$CASSANDRA_HOME_ROOT/$VERSION/conf.orig/cassandra.yaml"
 if [ ! -f "$ORIG_CONFIG" ]; then
     echo "ERROR: Original config not found: $ORIG_CONFIG" >&2
     echo "Available versions:" >&2
-    ls -1 /usr/local/cassandra/ 2>&1 | sed 's/^/  /' >&2
+    ls -1 "$CASSANDRA_HOME_ROOT/" 2>&1 | sed 's/^/  /' >&2
     exit 4
 fi
 
-export DEST="/usr/local/cassandra/$VERSION/conf/cassandra.yaml"
+export DEST="$CASSANDRA_HOME_ROOT/$VERSION/conf/cassandra.yaml"
 
 # Apply patch with error handling
 echo "Merging patch file $PATCH with $ORIG_CONFIG..."
-if ! yq '. *= load(env(PATCH))' "$ORIG_CONFIG" > /tmp/cassandra.yaml; then
+MERGED="$(mktemp)"
+if ! edl_merge_cassandra_yaml "$ORIG_CONFIG" "$MERGED" "$PATCH"; then
+    rm -f "$MERGED"
     echo "ERROR: yq failed to merge patch file. Check YAML syntax." >&2
     exit 5
 fi
+chmod 0644 "$MERGED"
 
 # Move and set ownership
 echo "Installing patched config to $DEST..."
-if ! sudo mv -f /tmp/cassandra.yaml "$DEST"; then
+if ! sudo mv -f "$MERGED" "$DEST"; then
     echo "ERROR: Failed to move config file to $DEST" >&2
     exit 6
 fi

@@ -4,6 +4,8 @@ Contributions are welcome and encouraged, although it is a good idea to check be
 
 Open a pull request as a draft.  Mark it ready for review only after you have tested it on a real cluster with the [easy-db-lab Claude Code plugin](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab).  Unit tests and CI alone are not enough: a mocked cloud client accepts a wrong parameter, a wrong region, or a missing permission.
 
+The test runs in your own AWS account, and the cluster costs money while it runs.  Set up the account and the IAM policies first, as [the setup guide](docs/getting-started/setup.md) describes.  If you have no AWS access, say so in the pull request, and ask a maintainer to run the test.
+
 1. Install the plugin from the `rustyrazorblade/skills` marketplace:
 
    ```
@@ -20,4 +22,4 @@ Open a pull request as a draft.  Mark it ready for review only after you have te
    - what you expected, and what you saw;
    - anything you did not test, and why.
 
-A pull request that only changes documentation does not need a cluster test.
+A pull request that changes only documentation (`docs/`, `test-plans/`, `openspec/`, or the root process docs such as this file) does not need a cluster test.  [`WORKFLOW.md`](WORKFLOW.md), "Docs-only PRs", holds the exact list.

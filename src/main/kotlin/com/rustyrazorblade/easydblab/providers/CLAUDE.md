@@ -36,7 +36,8 @@ providers/
 │   ├── DockerModule.kt
 │   ├── DockerClientProvider.kt
 │   ├── DefaultDockerClientProvider.kt
-│   └── DockerErrorHandler.kt  # An unreachable Docker daemon (connection failure only) as a ProviderErrorHandler, kind unavailable
+│   ├── DockerErrorHandler.kt  # An unreachable Docker daemon (connection failure only) as a ProviderErrorHandler, kind unavailable
+│   └── DockerBuildRetry.kt    # Docker.buildImage's retry policy: only a build whose content lease an image prune deleted
 ├── ssh/                    # SSH connection providers
 │   ├── SSHModule.kt
 │   ├── SSHConnectionProvider.kt
@@ -67,6 +68,7 @@ Always use factory methods instead of creating manual retry configurations.
 | `createEC2InstanceRetryConfig<T>()` | 5 | Exponential 1s→16s | EC2 instance ops, retries `InvalidInstanceID.NotFound` (matched on the error code, since the message varies with the number of ids) |
 | `createAwsRetryConfig<T>()` | 3 | Exponential 1s→4s | S3, EC2, EMR (standard AWS) |
 | `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove; retries the project `DockerException` (a socket failure, from the client seam), `IOException` and docker-java API errors except the 404 `NotFoundException` |
+| `docker/DockerBuildRetry.config<T>()` (not in `RetryUtil`) | 3 | Exponential 1s→2s | `Docker.buildImage`; retries only a build whose content lease containerd deleted under it ("lease does not exist", `Constants.Docker.LEASE_LOST_MESSAGE`, in the daemon's error below the project `DockerException`, whose message holds the build output and is not read). Under the containerd image store every image prune deletes the leases of pulls and builds in progress, whatever its filter; Testcontainers' JVM-hook reaper prunes at each test JVM's exit. A failing `RUN` step or a missing base fails at once, and an interrupted build is never retried and leaves the thread's interrupt flag set. Each retry is printed (`attempt N of M`), and the final failure names its attempt (`attempt N`) |
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |
 | `createSshConnectionRetryConfig(interval)` | 30 | Fixed 10s (tests pass a short `interval`) | SSH boot-up (~5 min total); retries `SshException` and `SsmForwardNotReadyException` (`isSshNotReady`, in `providers/ssh/SshNotReady.kt`), fails fast on any other `IOException`. `SshException` is checked: decorate with `decorateCheckedRunnable`/`decorateCheckedSupplier` |
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |

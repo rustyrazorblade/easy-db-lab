@@ -21,8 +21,12 @@ import com.rustyrazorblade.easydblab.docker.ContainerIOManager
 import com.rustyrazorblade.easydblab.docker.ContainerStateMonitor
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -323,12 +327,15 @@ data class VolumeMapping(
  * @param context The execution context
  * @param dockerClient The Docker client interface for container operations
  * @param userIdProvider Provider for getting the current user ID (for permissions)
+ * @param buildRetryConfig the retry policy for an image build; tests pass the production policy
+ *   with a short backoff
  * Events are emitted via the EventBus for user-facing output.
  */
 class Docker(
     val context: Context,
     private val dockerClient: DockerClientInterface,
     private val userIdProvider: UserIdProvider = DefaultUserIdProvider(),
+    private val buildRetryConfig: RetryConfig = DockerBuildRetry.config<Unit>(),
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -418,7 +425,10 @@ class Docker(
     /**
      * Builds [dockerfile] into an image tagged [imageTag], using an otherwise empty build context.
      *
-     * @throws DockerException if the build fails, carrying the tail of the build output
+     * A build whose content lease the daemon deleted under it (an image prune running at the same
+     * time, see [DockerBuildRetry]) is run again; any other failure is not.
+     *
+     * @throws DockerException if the build fails, carrying the tail of the last attempt's output
      */
     fun buildImage(
         dockerfile: String,
@@ -428,28 +438,74 @@ class Docker(
         eventBus.emit(Event.Docker.ImageBuilding(imageTag))
 
         val contextDir = createTempDirectory("easy-db-lab-image-").toFile()
-        val output = ArrayDeque<String>()
         try {
             File(contextDir, "Dockerfile").writeText(dockerfile)
-            dockerClient.buildImage(contextDir, imageTag) { line ->
-                log.debug { "[build $imageTag] $line" }
-                output.addLast(line)
-                if (output.size > BUILD_OUTPUT_TAIL_LINES) output.removeFirst()
-            }
-        } catch (e: com.github.dockerjava.api.exception.DockerException) {
-            throw DockerException(buildFailure(imageTag, output), e)
-        } catch (e: DockerClientException) {
-            throw DockerException(buildFailure(imageTag, output), e)
+            buildWithRetry(contextDir, imageTag)
         } finally {
             contextDir.deleteRecursively()
         }
         eventBus.emit(Event.Docker.ImageBuilt(imageTag))
     }
 
+    /**
+     * Runs [buildOnce] under [buildRetryConfig]. Each retry is printed with the attempt it starts
+     * and the budget, since a build that takes longer than usual should say why. The last failure
+     * names its attempt but not the budget: a failure that is not retried has no attempts left.
+     */
+    private fun buildWithRetry(
+        contextDir: File,
+        imageTag: String,
+    ) {
+        val maxAttempts = buildRetryConfig.maxAttempts
+        var attempts = 0
+        val retry =
+            Retry.of("docker-build-$imageTag", buildRetryConfig).also {
+                it.eventPublisher.onRetry { event ->
+                    log.warn(event.lastThrowable) { "Docker build of $imageTag lost its content lease; retrying" }
+                    println(
+                        "Docker build of $imageTag lost its content lease (an image prune may have run at the same " +
+                            "time); retrying, attempt ${event.numberOfRetryAttempts + 1} of $maxAttempts",
+                    )
+                }
+            }
+        // The project DockerException is checked, so only the checked decorator retries it.
+        Retry
+            .decorateCheckedRunnable(retry) {
+                attempts++
+                buildOnce(contextDir, imageTag, "attempt $attempts")
+            }.run()
+    }
+
+    /**
+     * One build attempt; a failure names the [attempt] and carries the tail of this attempt's
+     * output only. docker-java reports an interrupted wait as `DockerClientException("", e)` and
+     * clears the thread's interrupt flag, so the flag is set again here before the failure leaves.
+     */
+    private fun buildOnce(
+        contextDir: File,
+        imageTag: String,
+        attempt: String,
+    ) {
+        val output = ArrayDeque<String>()
+        try {
+            dockerClient.buildImage(contextDir, imageTag) { line ->
+                log.debug { "[build $imageTag] $line" }
+                output.addLast(line)
+                if (output.size > BUILD_OUTPUT_TAIL_LINES) output.removeFirst()
+            }
+        } catch (e: com.github.dockerjava.api.exception.DockerException) {
+            throw DockerException(buildFailure(imageTag, attempt, output), e)
+        } catch (e: DockerClientException) {
+            if (e.causeChain().any { it is InterruptedException }) Thread.currentThread().interrupt()
+            throw DockerException(buildFailure(imageTag, attempt, output), e)
+        }
+    }
+
     private fun buildFailure(
         imageTag: String,
+        attempt: String,
         output: Collection<String>,
-    ): String = "Error building image $imageTag. Last build output:\n${output.joinToString("\n").ifEmpty { "(none)" }}"
+    ): String = "Error building image $imageTag ($attempt). Last build output:\n${output.joinToString("\n").ifEmpty { "(none)" }}"
 
     fun runContainer(
         container: Containers,

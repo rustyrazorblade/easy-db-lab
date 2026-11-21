@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import io.fabric8.kubernetes.api.model.Config
 import java.io.File
 import java.nio.file.Path
 
@@ -10,19 +11,25 @@ import java.nio.file.Path
  * Fabric8 raises nothing for a missing plugin: it runs the command through `sh -c`, logs a warning
  * when it exits 127, and sends the request with no credential. The user would then see an
  * unexplained 401 or an anonymous 403. The plugin is looked up as Fabric8 runs it: a bare name on
- * `PATH`, a command with a path separator against the kubeconfig's directory when relative.
+ * `PATH`, a command with a path separator against the kubeconfig's directory when relative. Either
+ * way it must be a regular file with the execute bit, as `sh -c` needs.
  *
  * @param path the `PATH` to search, the process's own by default
  */
 class ExecPluginCheck(
+    // The JVM's own PATH, because Fabric8's `sh -c` inherits it and resolves a bare name with it.
     private val path: String? = System.getenv("PATH"),
 ) {
-    /** Throws [ExecPluginNotFoundException] when [context]'s user runs an exec plugin that cannot be found. */
+    /**
+     * Throws [ExecPluginNotFoundException] when [context]'s user in [config], the parsed form of the
+     * kubeconfig at [kubeconfig], runs an exec plugin that cannot be found. The caller passes the
+     * kubeconfig it has already parsed, so the file is not read again.
+     */
     fun check(
         kubeconfig: Path,
+        config: Config,
         context: String,
     ) {
-        val config = parseKubeconfig(kubeconfig)
         val userName =
             config.contexts
                 .orEmpty()
@@ -36,7 +43,7 @@ class ExecPluginCheck(
                 ?.user
                 ?.exec ?: return
         val command = exec.command?.takeIf { it.isNotBlank() } ?: return
-        val searched = if (command.contains(File.separatorChar)) resolveRelative(kubeconfig, command) else path.orEmpty()
+        val searched = if (command.isPathStyle()) resolveRelative(kubeconfig, command) else path.orEmpty()
         if (!found(command, searched)) {
             throw ExecPluginNotFoundException(command, userName, context, searched, exec.installHint?.takeIf { it.isNotBlank() })
         }
@@ -54,32 +61,17 @@ class ExecPluginCheck(
         command: String,
         searched: String,
     ): Boolean =
-        if (command.contains(File.separatorChar)) {
-            File(searched).canExecute()
+        if (command.isPathStyle()) {
+            File(searched).isRunnable()
         } else {
             searched
                 .split(File.pathSeparator)
                 .filter { it.isNotEmpty() }
-                .any { dir -> File(dir, command).let { it.isFile && it.canExecute() } }
+                .any { dir -> File(dir, command).isRunnable() }
         }
+
+    private fun File.isRunnable(): Boolean = isFile && canExecute()
 }
 
-/**
- * A kubeconfig user's exec auth plugin that cannot be found, so no request would carry a credential.
- *
- * @property plugin the exec command as the kubeconfig names it
- * @property user the kubeconfig user that runs it
- * @property context the context being loaded
- * @property searched the `PATH` searched for a bare name, or the resolved file for a path
- * @property installHint the kubeconfig's `installHint`, when it has one
- */
-class ExecPluginNotFoundException(
-    val plugin: String,
-    val user: String,
-    val context: String,
-    val searched: String,
-    val installHint: String?,
-) : IllegalStateException(
-        "The exec auth plugin '$plugin' of kubeconfig user '$user' (context '$context') was not found " +
-            (if (plugin.contains(File.separatorChar)) "at $searched" else "on PATH: $searched"),
-    )
+/** True when an exec command names a path rather than a bare name looked up on `PATH`. */
+internal fun String.isPathStyle(): Boolean = contains(File.separatorChar)

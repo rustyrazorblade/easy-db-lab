@@ -58,6 +58,12 @@ class ExecPluginCheckTest {
             installHint?.let { "      installHint: \"$it\"" },
         ).joinToString("\n")
 
+    /** Checks [file] as `loadConfig()` does, with the kubeconfig parsed once and passed in. */
+    private fun ExecPluginCheck.checkFile(
+        file: Path,
+        context: String,
+    ) = check(file, parseKubeconfig(file), context)
+
     private fun executable(
         dir: File,
         name: String,
@@ -74,7 +80,7 @@ class ExecPluginCheckTest {
 
         val thrown =
             catchThrowableOfType(ExecPluginNotFoundException::class.java) {
-                ExecPluginCheck(path).check(kubeconfig(execUser("aws")), "lab")
+                ExecPluginCheck(path).checkFile(kubeconfig(execUser("aws")), "lab")
             }
 
         assertThat(thrown.plugin).isEqualTo("aws")
@@ -92,7 +98,7 @@ class ExecPluginCheckTest {
     fun `the handler reports a missing plugin as credentials, with the install hint as the remedy`() {
         val thrown =
             catchThrowableOfType(ExecPluginNotFoundException::class.java) {
-                ExecPluginCheck(emptyPath).check(kubeconfig(execUser("aws", installHint = "Install the AWS CLI v2")), "lab")
+                ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("aws", installHint = "Install the AWS CLI v2")), "lab")
             }
 
         val description = KubernetesErrorHandler().describe(thrown)
@@ -106,7 +112,7 @@ class ExecPluginCheckTest {
     fun `without an install hint the remedy says to install the plugin or put it on PATH`() {
         val thrown =
             catchThrowableOfType(ExecPluginNotFoundException::class.java) {
-                ExecPluginCheck(emptyPath).check(kubeconfig(execUser("kubelogin")), "lab")
+                ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("kubelogin")), "lab")
             }
 
         assertThat(KubernetesErrorHandler().describe(thrown)?.remedy).contains("Install kubelogin").contains("PATH")
@@ -119,7 +125,7 @@ class ExecPluginCheckTest {
 
         assertThatCode {
             ExecPluginCheck("$emptyPath${File.pathSeparator}${bin.absolutePath}")
-                .check(kubeconfig(execUser("gke-gcloud-auth-plugin")), "lab")
+                .checkFile(kubeconfig(execUser("gke-gcloud-auth-plugin")), "lab")
         }.doesNotThrowAnyException()
     }
 
@@ -127,7 +133,7 @@ class ExecPluginCheckTest {
     fun `a relative plugin path resolves against the kubeconfig's directory`() {
         executable(File(tempDir, "bin"), "token-helper")
 
-        assertThatCode { ExecPluginCheck(emptyPath).check(kubeconfig(execUser("./bin/token-helper")), "lab") }
+        assertThatCode { ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("./bin/token-helper")), "lab") }
             .doesNotThrowAnyException()
     }
 
@@ -135,15 +141,53 @@ class ExecPluginCheckTest {
     fun `a missing relative plugin names the resolved path`() {
         val thrown =
             catchThrowableOfType(ExecPluginNotFoundException::class.java) {
-                ExecPluginCheck(emptyPath).check(kubeconfig(execUser("./bin/token-helper")), "lab")
+                ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("./bin/token-helper")), "lab")
             }
 
         assertThat(thrown.searched).isEqualTo(File(tempDir, "bin/token-helper").canonicalPath)
     }
 
     @Test
+    fun `a bare plugin on PATH without the execute bit is not found`() {
+        val bin = File(tempDir, "bin")
+        executable(bin, "aws").setExecutable(false)
+
+        assertThatThrownBy { ExecPluginCheck(bin.absolutePath).checkFile(kubeconfig(execUser("aws")), "lab") }
+            .isInstanceOf(ExecPluginNotFoundException::class.java)
+    }
+
+    @Test
+    fun `a directory on PATH named like a bare plugin is not found`() {
+        val bin = File(tempDir, "bin")
+        File(bin, "aws").mkdirs()
+
+        assertThatThrownBy { ExecPluginCheck(bin.absolutePath).checkFile(kubeconfig(execUser("aws")), "lab") }
+            .isInstanceOf(ExecPluginNotFoundException::class.java)
+    }
+
+    @Test
+    fun `a directory at a path-style plugin command is not found`() {
+        File(tempDir, "bin/token-helper").mkdirs()
+
+        val thrown =
+            catchThrowableOfType(ExecPluginNotFoundException::class.java) {
+                ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("./bin/token-helper")), "lab")
+            }
+
+        assertThat(thrown.searched).isEqualTo(File(tempDir, "bin/token-helper").canonicalPath)
+    }
+
+    @Test
+    fun `a path-style plugin without the execute bit is not found`() {
+        executable(File(tempDir, "bin"), "token-helper").setExecutable(false)
+
+        assertThatThrownBy { ExecPluginCheck(emptyPath).checkFile(kubeconfig(execUser("./bin/token-helper")), "lab") }
+            .isInstanceOf(ExecPluginNotFoundException::class.java)
+    }
+
+    @Test
     fun `a user with no exec entry is not checked`() {
-        assertThatCode { ExecPluginCheck(emptyPath).check(kubeconfig("    token: abc"), "lab") }
+        assertThatCode { ExecPluginCheck(emptyPath).checkFile(kubeconfig("    token: abc"), "lab") }
             .doesNotThrowAnyException()
     }
 

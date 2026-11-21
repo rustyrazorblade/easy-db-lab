@@ -27,12 +27,14 @@ data class KubeApi(
  */
 fun KubeApi.loadConfig(execPluginCheck: ExecPluginCheck = ExecPluginCheck()): Config {
     val file = kubeconfig.toFile()
-    val contexts = parseKubeconfig(kubeconfig).contexts.orEmpty()
+    // Parsed once for both checks; Fabric8 reads the file itself below, keeping its location.
+    val parsed = parseKubeconfig(kubeconfig)
+    val contexts = parsed.contexts.orEmpty()
     require(contexts.any { it.name == context }) {
         "Context '$context' not found in kubeconfig ${file.absolutePath}. " +
             "Available contexts: ${contexts.joinToString(", ") { it.name }}. " +
             "Re-run `up` to rewrite the kubeconfig and re-pin the context."
     }
-    execPluginCheck.check(kubeconfig, context)
+    execPluginCheck.check(kubeconfig, parsed, context)
     return Config.fromKubeconfig(context, file)
 }

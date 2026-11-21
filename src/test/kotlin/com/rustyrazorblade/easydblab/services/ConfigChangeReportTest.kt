@@ -10,10 +10,13 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesDenials
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -125,5 +128,24 @@ class ConfigChangeReportTest : BaseKoinTest() {
         val compared = reportAgainst(running, hashed(pyroscope.buildServerResources()))
 
         assertThat(compared).containsExactly(Event.Grafana.WorkloadConfigCompared(pyroscopeRef.toString(), changed = false))
+    }
+
+    @Test
+    fun `a forbidden workload read keeps the 403, so it is reported as Kubernetes permission-denied`() {
+        val denial =
+            KubernetesDenials.forbidden(
+                "GET",
+                "/apis/apps/v1/namespaces/default/deployments/pyroscope",
+                "deployments.apps \"pyroscope\" is forbidden: User \"alice\" cannot get resource \"deployments\" " +
+                    "in API group \"apps\" in the namespace \"default\"",
+            )
+        whenever(k8sService.workloadConfigHashes(any(), any())).thenReturn(Result.failure(denial))
+
+        val thrown = catchThrowable { ConfigChangeReport(k8sService, EventBus()).report(hashed(pyroscope.buildServerResources()), "default") }
+
+        assertThat(thrown).isInstanceOf(IllegalStateException::class.java).hasCause(denial)
+        val event = KubernetesDenials.reported(thrown) as Event.Command.ProviderError
+        assertThat(event.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(event.request?.name).isEqualTo("pyroscope")
     }
 }

@@ -391,9 +391,9 @@ data class ClusterState(
     var tailscaleDeviceId: String? = null,
     // Counter for stress job naming and port assignment
     var stressJobCounter: Int = 0,
-    // Whether Tailscale was active on the local machine at init time.
-    // When true, all cluster connections bypass the SOCKS proxy and use private IPs directly.
-    var tailscaleActive: Boolean = false,
+    // How this machine reaches the cluster, recorded by `init`: only Socks uses the SOCKS tunnel.
+    // ClusterStateManager.load() reads a state from before this field from its old tailscaleActive.
+    var networkMode: NetworkMode = NetworkMode.Socks,
     // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
     var runningKits: Set<String> = emptySet(),
     // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
@@ -426,12 +426,6 @@ data class ClusterState(
      * Returns true when the db nodes are provisioned with Cassandra hosts.
      */
     fun isRunningCassandra(): Boolean = !hosts[ServerType.Cassandra].isNullOrEmpty()
-
-    /**
-     * Returns true when Tailscale was configured at init time and cluster connections bypass the SOCKS proxy.
-     * Reads the stored [tailscaleActive] field from state.json.
-     */
-    fun isTailscaleEnabled(): Boolean = tailscaleActive
 
     /**
      * Update hosts

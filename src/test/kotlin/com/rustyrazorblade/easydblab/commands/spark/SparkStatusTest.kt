@@ -79,7 +79,7 @@ class SparkStatusTest : BaseKoinTest() {
             module {
                 single<EmrClient> { mockEmrClient }
                 single<ObjectStore> { objectStore }
-                single { ClusterStateManager(File(tempDir, "state.json")).also { it.save(clusterState) } }
+                single { ClusterStateManager(File(tempDir, "state.json")).also { it.replace(clusterState) } }
                 single<LokiQueryService> { mock() }
                 single<SparkService> {
                     EMRSparkService(get(), get(), get(), get(), get(), finalLogPollInterval = Duration.ZERO, logsDir = tempDir.toPath())

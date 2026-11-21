@@ -99,13 +99,15 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { mock<ClusterStateManager>().also { whenever(it.load()).thenReturn(state) } }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
                 single { TemplateService(get(), get()) }
             },
         )
 
     @BeforeEach
     fun prepare() {
+        // `init` wrote the workspace state before `down` runs.
+        getKoin().get<ClusterStateManager>().replace(state)
         SharedLocalStack.createBucketIfMissing(s3, bucket)
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         listOf(lokiVolume, mimirVolume, tempoVolume).forEach { docker.createVolumeCmd().withName(it).exec() }
@@ -470,7 +472,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         // Pushed just before the save: still live traces in Tempo's memory when the drain starts.
         val traces = listOf(pushSpan(), pushSpan())
         val tempo = containerIds().getValue(Constants.K8s.TEMPO_APP_LABEL)
-        val stateFile = ClusterStateManager(File(tempDir, "state.json"))
+        val stateFile = getKoin().get<ClusterStateManager>()
         val drain = DrainAfterRecords(stateFile)
 
         val outcome =

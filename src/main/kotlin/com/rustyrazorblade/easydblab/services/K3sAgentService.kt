@@ -122,6 +122,7 @@ class DefaultK3sAgentService(
 
             // Upload the startup script from classpath resources
             remoteOps.installFile(host, AGENT_SCRIPT_RESOURCE, AGENT_SCRIPT_PATH, "0755")
+            KubeletSysctlsDropIn.install(remoteOps, host)
 
             // The script reads the server URL and token from the config configure() wrote. They stay
             // off the command line, which reaches failure messages and events.

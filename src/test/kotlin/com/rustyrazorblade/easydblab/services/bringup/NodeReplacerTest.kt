@@ -62,6 +62,7 @@ class NodeReplacerTest {
     ): NodeReplacer {
         val state = ClusterState(name = "lab")
         state.updateHosts(mapOf(ServerType.Cassandra to (0 until nodes).map(::host)))
+        manager.replace(state)
         val writer = ClusterStateWriter(state, manager)
         return NodeReplacer(fleet, writer, budget, health, eventBus)
     }
@@ -108,7 +109,14 @@ class NodeReplacerTest {
         assertThat(outcome.oldInstanceKept).isFalse()
         assertThat(outcome.reason).contains("setup failed (setup_instance.sh exited 1)").contains("failed at $phase").contains("refused")
         assertThat(fleet.calls.filter { it.startsWith("launch") }).hasSize(if (refused == "launch") 1 else 0)
-        assertThat(manager.exists()).isFalse()
+        assertThat(
+            manager
+                .load()
+                .hosts
+                .getValue(ServerType.Cassandra)
+                .map { it.instanceId },
+        ).describedAs("the state is unchanged")
+            .containsExactly("i-old0", "i-old1", "i-old2")
         assertThat(events.filterIsInstance<Event.Provision.NodeReplaceFailed>().single())
             .extracting({ it.alias }, { it.oldInstanceId }, { it.phase }, { it.oldInstanceKept })
             .containsExactly("db1", "i-old1", phase, false)

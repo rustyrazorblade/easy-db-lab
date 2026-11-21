@@ -223,6 +223,29 @@ test_configmap_over_the_size_limit_fails_before_the_cluster() {
   [ -z "$(calls)" ] || fail "called kubectl: $(calls)"
 }
 
+# A kit passes --flag to name the flag whose file the user chose; the error then names it.
+test_configmap_over_the_size_limit_names_the_flag() {
+  start_test "ConfigMap size limit names the flag"
+  head -c 1000001 /dev/zero | tr '\0' 'a' > "${WORK}/a.sql"
+  run_lib "edl_create_configmap --flag --queries-file cm1 benchmark-run queries.sql=${WORK}/a.sql"
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -Fq "the file given by --queries-file is too large" <<< "${err}" || fail "did not name the flag: ${err}"
+  grep -q "1000001" <<< "${err}" || fail "did not give the size: ${err}"
+  [ -z "$(calls)" ] || fail "called kubectl: $(calls)"
+
+  start_test "ConfigMap --flag within the limit"
+  echo "SELECT 1" > "${WORK}/q.sql"
+  run_lib "edl_create_configmap --flag --queries-file cm1 benchmark-run queries.sql=${WORK}/q.sql"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fqx "create configmap cm1 --from-file=queries.sql=${WORK}/q.sql --dry-run=client -o yaml" <<< "$(calls)" ||
+    fail "--flag was taken as the name or a file: $(calls)"
+
+  start_test "ConfigMap --flag with no name"
+  run_lib "edl_create_configmap --flag"
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -Fq "needs a flag name" <<< "${err}" || fail "message: ${err}"
+}
+
 test_configmap_is_created_with_its_labels_in_one_call() {
   start_test "ConfigMap labelled create"
   echo "SELECT 1" > "${WORK}/q.sql"
@@ -688,6 +711,7 @@ test_resource_names_end_in_a_timestamp_and_labels_name_kit_and_role
 test_configmap_missing_file_calls_no_create
 test_configmap_empty_file_fails
 test_configmap_over_the_size_limit_fails_before_the_cluster
+test_configmap_over_the_size_limit_names_the_flag
 test_configmap_is_created_with_its_labels_in_one_call
 test_active_pods_lists_only_pods_that_have_not_ended
 test_a_pod_that_ended_before_it_was_seen_running_returns_at_once

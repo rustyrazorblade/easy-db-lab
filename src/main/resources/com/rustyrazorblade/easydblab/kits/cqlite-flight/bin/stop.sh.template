@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+
+# Every object the kit creates (DaemonSet, NodePort Service, detector ConfigMap) carries the one
+# role "flight", so one delete by kit and role removes them all.
+ROLE="flight"
+LABELS="easydblab/kit=cqlite-flight,easydblab/role=${ROLE}"
+
+echo "Stopping cqlite-flight (deleting the DaemonSet, its NodePort Service and its ConfigMap by label selector: ${LABELS})..."
+kubectl delete daemonset,service,configmap -l "${LABELS}" --namespace default --ignore-not-found
+
+echo "cqlite-flight stopped. The Cassandra data dir mount was read-only; nothing to clean up on-node."

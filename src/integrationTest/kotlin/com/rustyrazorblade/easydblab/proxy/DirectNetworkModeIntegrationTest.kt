@@ -5,12 +5,14 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.kubernetes.currentContextOf
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesModule
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import io.fabric8.kubernetes.client.Config
 import org.assertj.core.api.Assertions.assertThat
@@ -49,7 +51,7 @@ class DirectNetworkModeIntegrationTest {
     fun workspace() {
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
         kubeconfig.writeText(SharedK3s.kubeConfigYaml())
-        stateManager.save(
+        stateManager.replace(
             ClusterState(name = "local", environment = Environment.K3sDocker(File(workspace, "data").path))
                 .apply { markInfrastructureUp() },
         )
@@ -74,11 +76,15 @@ class DirectNetworkModeIntegrationTest {
     @Test
     fun `the preflight starts no tunnel and the API is reached with no proxy`() {
         val envFile = ProxyEnvFile(workspace)
-        ProxyPreflight(stateManager, mock(defaultAnswer = { error("a direct workspace must never ask for a tunnel") }), envFile)
-            .ensureTunnel()
+        ProxyPreflight(
+            stateManager,
+            mock(defaultAnswer = { error("a direct workspace must never ask for a tunnel") }),
+            WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+            workspace,
+        ).ensureTunnel()
 
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
-        assertThat(envFile.read().direct).isTrue()
+        assertThat(envFile.read().networkMode).isEqualTo(NetworkMode.Direct)
         assertThat(namespacesThroughFactory()).contains("default")
     }
 
@@ -93,7 +99,7 @@ class DirectNetworkModeIntegrationTest {
 
     @Test
     fun `the workspace kubectl wrapper runs the real kubectl with no tunnel`() {
-        ProxyEnvFile(workspace).recordReachability(stateManager.load())
+        WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))).prepare(workspace, stateManager.load())
         val builder =
             ProcessBuilder("kubectl", "get", "namespace", "default", "-o", "name")
                 .directory(workspace)

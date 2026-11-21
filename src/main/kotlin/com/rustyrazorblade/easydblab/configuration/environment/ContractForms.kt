@@ -33,15 +33,6 @@ enum class StoreKind {
     Volume,
 }
 
-/** How this machine reaches the cluster API and its nodes. */
-enum class NetworkMode {
-    /** Through the SOCKS tunnel, unless Tailscale, which keeps its own flag, connects directly. */
-    Tunnel,
-
-    /** With no tunnel: the cluster is reachable from this machine as it is. */
-    Direct,
-}
-
 /** Where the networks a passwordless database kit accepts clients from come from (`ClientNetworks`). */
 enum class ClientNetworkOrigin {
     /** The networks easy-db-lab built: the VPC CIDR and the K3s cluster CIDR, known without asking the cluster. */

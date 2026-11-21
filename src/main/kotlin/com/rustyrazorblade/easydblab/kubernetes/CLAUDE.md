@@ -48,7 +48,7 @@ Every client is built from a `KubeApi(kubeconfig: Path, context: String)` throug
 
 No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `K8sClientProvider` asks it for the address on every operation, and `DefaultK8sService` builds a client and closes it afterwards, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too, and the long-running `server` status cache picks up a rewritten kubeconfig, a newly pinned context or a new SOCKS port on its next refresh. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
 
-`up` records the context: `K3sService.downloadAndConfigureKubeconfig` returns the written kubeconfig's `current-context` (failing when it names none), `K3sClusterService` passes it back as `K3sSetupResult.kubeContext`, and `Up` sets it on its own `workingState` and saves that. The service never loads and saves `state.json` itself, so a later save of `up`'s in-memory state cannot erase the context.
+`up` records the context: `K3sService.downloadAndConfigureKubeconfig` returns the written kubeconfig's `current-context` (failing when it names none), `K3sClusterService` passes it back on the server result, and the control-node bring-up step (`bringup/k3s/K3sControlSteps`) records it through `ClusterStateWriter.update`, a `ClusterStateManager.update` that changes only `kubeContext`, so no other save of `up`'s state can erase it.
 
 ## SOCKS5 Proxy Pattern
 
@@ -65,7 +65,6 @@ config.httpsProxy = "socks5://127.0.0.1:$port"
 config.connectionTimeout = 30000  // Increased for SOCKS proxy
 config.requestTimeout = 60000
 ```
-
 
 ## Service Access Seam (`services/access/`)
 
@@ -113,7 +112,8 @@ Service port behind it (clickhouse: `svc/clickhouse-nodeport 30123:8123`, addres
 endpoint with no known Service or port without a forward command; `<kit> sql` on a port-forward
 cluster fails naming the `service:` field. `KitEndpointServiceTest` resolves every packaged kit.
 
-`createClient` names the kubeconfig path in every failure. An unreadable file throws an `IOException` with the cause kept (a missing file is still a cluster never reached, see `ClusterReach`). A file that does not parse throws an `IllegalStateException` with the path and the parser's exception class only: the parser's message quotes the start of the file, which holds client keys and tokens, so neither it nor the cause is kept. Print a failure with `Throwable.reason()`, which shows the cause behind the client's generic "An error has occurred." wrapper.
+`createClient` names the kubeconfig path in every failure. An unreadable file throws an `IOException` with the cause kept (a missing file is still a cluster never reached, see `ClusterReach`). A file that does not parse throws an `IllegalStateException` with the path and the parser's exception class only: the parser's message quotes the start of the file, which holds client keys and tokens, so neither it nor the cause is kept. Print a failure with `Throwable.reason()`, which shows the cause behind the client's generic "An error has occurred." wrapper. `WorkspaceKubeconfig.require` throws `KubeconfigNotFoundException` (an `IllegalStateException`) when the workspace has no kubeconfig, so a caller can tell a workspace `up` has not reached yet from any other failed check.
+
 ## ManifestApplier
 
 Applies K8s manifests using Fabric8's typed server-side apply (not generic resources).
@@ -137,7 +137,7 @@ val kubernetesModule = module {
     factory<KubernetesClientFactory> {
         // The factory reads the SOCKS port from Constants.Proxy.PORT_PROPERTY at client-creation
         // time (per-client, explicit; the global socksProxyHost is never set), and only while the
-        // recorded environment's network mode is Tunnel: a direct cluster never gets httpsProxy.
+        // contract's network mode is socks: a tailscale or direct cluster never gets httpsProxy.
         val contracts = get<ClusterContractSource>()
         ProxiedKubernetesClientFactory { contracts.current().networkMode }
     }

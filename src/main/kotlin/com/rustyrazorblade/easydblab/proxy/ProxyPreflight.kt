@@ -3,18 +3,25 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 
 /**
  * What the command executor does for a `@RequiresProxy` command before it runs: start or reuse the
  * SOCKS tunnel when the cluster is provisioned, its infrastructure is UP, and it is reached through
- * the tunnel ([reachedBySocksTunnel]: a Socks exposure without Tailscale). A Direct or
- * PortForward cluster never gets one, and neither does one in the direct network mode (K3s in Docker,
- * a kubeconfig cluster), whatever else its state says.
+ * the tunnel ([reachedBySocksTunnel]: a Socks exposure in the `socks` network mode). A Direct or
+ * PortForward cluster never gets one, and neither does one in the `tailscale` or `direct` network
+ * mode; an environment other than EC2 (K3s in Docker, a kubeconfig cluster) is always `direct`
+ * ([effectiveNetworkMode]), whatever else its state says.
  *
- * Before every command, with or without the annotation, the executor has it record the cluster's
- * Tailscale flag and network mode in the proxy env file ([recordReachability]) whenever the cluster
- * state can be read; [ensureTunnel] does the same. A Tailscale or direct cluster never starts a
- * tunnel, so without this the tool wrappers and `env.sh` would have no record of how to reach it.
+ * Whenever the workspace has a cluster state, it also writes the wrappers and records the cluster's
+ * network mode in the proxy env file, through [WorkspaceShellTools]. A cluster that needs no tunnel
+ * never starts one, so without this the tool wrappers and `env.sh` would have no record of how to
+ * reach the cluster. A tunnel recorded earlier is left recorded and running when the mode says no
+ * tunnel is needed: the wrappers ignore it, and `socks stop` and `down` stop it.
+ *
+ * Before every command, with or without the annotation, the executor also has it restore the mode
+ * ([recordReachability]) when the env file has lost it or records another one, so a lost key is back
+ * before the command or a `bin/` wrapper it launches reads it.
  *
  * A failure to establish the tunnel propagates: the annotation says the command cannot work without it.
  *
@@ -26,7 +33,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 class ProxyPreflight(
     private val clusterStateManager: ClusterStateManager,
     private val socksProxyService: SocksProxyService,
-    private val envFile: ProxyEnvFile,
+    private val workspaceShellTools: WorkspaceShellTools,
+    private val workspace: File,
 ) {
     private val obtained = ThreadLocal<SocksProxyState?>()
 
@@ -42,26 +50,36 @@ class ProxyPreflight(
     }
 
     /**
-     * Records the cluster's reachability in the env file without starting a tunnel, and returns the
-     * state it read. The executor calls it before every command, so a lost key is back before any
-     * command logic runs. Returns null, writing nothing, in a directory with no readable cluster state.
+     * Restores the cluster's network mode in the env file, without starting a tunnel, when the file
+     * does not record the mode the state resolves to; it goes through [WorkspaceShellTools.prepare],
+     * so the wrappers are written first. It writes nothing when the file already agrees, and nothing
+     * in a directory with no readable cluster state: the command that loads the state reports that.
      */
-    fun recordReachability(): ClusterState? {
-        if (!clusterStateManager.exists()) return null
+    fun recordReachability() {
+        if (!clusterStateManager.exists()) return
         val state =
             runCatching { clusterStateManager.load() }.getOrElse { e ->
-                log.debug(e) { "Could not load cluster state to record its reachability" }
-                return null
+                log.debug(e) { "Could not load cluster state to record its network mode" }
+                return
             }
-        envFile.recordReachability(state)
-        return state
+        if (ProxyEnvFile(workspace).read().networkMode != state.effectiveNetworkMode()) {
+            workspaceShellTools.prepare(workspace, state)
+        }
     }
 
-    /** Starts or reuses the tunnel when the cluster needs one; does nothing in a directory with no cluster. */
+    /**
+     * Starts or reuses the tunnel when the cluster needs one; does nothing in a directory with no cluster.
+     *
+     * A `state.json` that cannot be loaded fails here, with the load's own message. Several
+     * `@RequiresProxy` commands (`stress list`, `kit uninstall`, ...) never load the state themselves,
+     * so skipping the tunnel would surface later as a connect timeout that names no cause.
+     */
     fun ensureTunnel() {
         obtained.remove()
-        val state = recordReachability() ?: return
-        if (state.isDirectNetwork() || !state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
+        if (!clusterStateManager.exists()) return
+        val state: ClusterState = clusterStateManager.load()
+        workspaceShellTools.prepare(workspace, state)
+        if (!state.isInfrastructureUp() || !state.reachedBySocksTunnel()) return
         val controlHost = state.getControlHost() ?: return
         obtained.set(socksProxyService.ensureRunning(controlHost))
     }

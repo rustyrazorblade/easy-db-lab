@@ -13,7 +13,7 @@ import java.time.Duration
  * Factory for creating CqlSession instances.
  *
  * [createSession] routes through a SOCKS5 proxy; [createDirectSession] connects
- * directly (used when Tailscale is active and private IPs are reachable).
+ * directly (used when the network mode needs no tunnel and private IPs are reachable).
  */
 interface CqlSessionFactory {
     /**
@@ -32,7 +32,7 @@ interface CqlSessionFactory {
 
     /**
      * Create a CqlSession connected directly to the specified hosts (no proxy).
-     * Used when Tailscale is active and private IPs are reachable from the local machine.
+     * Used when the network mode needs no tunnel and private IPs are reachable from the local machine.
      *
      * @param contactPoints List of Cassandra host private IPs
      * @param datacenter The local datacenter name
@@ -106,7 +106,7 @@ open class DefaultCqlSessionFactory : CqlSessionFactory {
         contactPoints: List<String>,
         datacenter: String,
     ): CqlSession {
-        log.info { "Creating CqlSession with direct connection (Tailscale active)" }
+        log.info { "Creating CqlSession with direct connection (network mode needs no tunnel)" }
         log.debug { "Contact points: $contactPoints, datacenter: $datacenter" }
 
         val builder = newDirectBuilder().withConfigLoader(buildConfigLoader(datacenter))

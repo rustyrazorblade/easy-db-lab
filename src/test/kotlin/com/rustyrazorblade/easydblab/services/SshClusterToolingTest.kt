@@ -59,7 +59,7 @@ internal class SshClusterToolingTest {
     ) = ClusterHost(publicIp = publicIp, privateIp = privateIp, alias = alias, availabilityZone = "us-west-2a")
 
     private fun saveState(vararg controls: ClusterHost) {
-        stateManager.save(
+        stateManager.replace(
             ClusterState(
                 name = "test",
                 hosts = mapOf(ServerType.Control to controls.toList()),
@@ -329,7 +329,7 @@ internal class SshClusterToolingTest {
 
     @Test
     fun `a cluster with no control node fails with the same message ObservabilityHttp uses`() {
-        stateManager.save(ClusterState(name = "test"))
+        stateManager.replace(ClusterState(name = "test"))
 
         assertThatThrownBy { tooling.run(ClusterTool.KUBECTL, listOf("get", "nodes")) }
             .isInstanceOf(IllegalStateException::class.java)

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
@@ -163,7 +164,7 @@ class InitLocalTest : BaseKoinTest() {
 
         val state = state()
         assertThat(state.exposure).isEqualTo(Exposure.PortForward)
-        assertThat(state.tailscaleActive).isFalse()
+        assertThat(state.networkMode).isEqualTo(NetworkMode.Direct)
         assertThat(state.capabilities).containsExactlyInAnyOrder(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK)
         val initConfig = requireNotNull(state.initConfig)
         assertThat(initConfig.cni).isEqualTo(CniMode.Flannel)

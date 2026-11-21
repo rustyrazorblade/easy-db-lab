@@ -4,6 +4,8 @@ import com.charleskorn.kaml.PolymorphismStyle
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.modules.SerializersModule
@@ -258,6 +260,12 @@ data class KitCommandSpec(
     }
 }
 
+/**
+ * A kit's `kit.yaml`: its metadata, install args, lifecycle steps and what it needs from the
+ * cluster. [type] names the node pool it needs. [requires] names the node capabilities its pods
+ * need (for example `host-path`); `kit install` and `start` check them against the recorded
+ * capabilities ([missingCapabilities]), so a kit fails fast instead of failing its rollout.
+ */
 @Serializable
 data class KitConfig(
     val name: String,
@@ -280,6 +288,7 @@ data class KitConfig(
     val type: KitType? = null,
     val capabilities: List<KitCapability> = emptyList(),
     val commands: Map<String, KitCommandSpec> = emptyMap(),
+    val requires: List<NodeCapability> = emptyList(),
 ) {
     init {
         // resolved-args.env stores one KEY=VALUE per line, so a newline-joined value would corrupt it.
@@ -288,6 +297,10 @@ data class KitConfig(
             "Kit arg '${repeatableInstallArg?.flag}' is a top-level install arg and cannot be repeatable; declare it under commands"
         }
     }
+
+    /** The capabilities in [requires] that [provided] lacks, in enum order; empty when the kit can run. */
+    fun missingCapabilities(provided: NodeCapabilities): List<NodeCapability> =
+        NodeCapability.entries.filter { it in requires && it !in provided }
 
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }

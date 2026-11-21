@@ -23,7 +23,6 @@ import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
@@ -38,7 +37,8 @@ import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.io.File
 import java.nio.file.Files
-import java.util.concurrent.TimeUnit
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Kit storage against real StorageClasses and real binding on K3s.
@@ -225,15 +225,11 @@ class KitStorageIntegrationTest {
 
         // stop: the operator deletes its pod and its claim; the Retain volume goes Released.
         deleteConsumer("operator-first")
-        client
-            .persistentVolumeClaims()
-            .inNamespace(NAMESPACE)
-            .withName(OPERATOR_CLAIM)
-            .delete()
-        client
-            .persistentVolumes()
-            .withName(firstVolume)
-            .waitUntilCondition({ it?.status?.phase == "Released" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val claims = client.persistentVolumeClaims().inNamespace(NAMESPACE).withName(OPERATOR_CLAIM)
+        claims.delete()
+        awaitState("claim $OPERATOR_CLAIM deleted", { claims.get() }) { it == null }
+        val volume = client.persistentVolumes().withName(firstVolume)
+        awaitState("volume $firstVolume Released", { volume.get() }) { it?.status?.phase == "Released" }
 
         // start: kit-storage runs before the operator recreates the claim.
         provisioner.provision(volumes, storage, clusterState())
@@ -296,24 +292,41 @@ class KitStorageIntegrationTest {
     ) {
         client.persistentVolumeClaims().resource(claim).create()
         startConsumer(pod, claim.metadata.name)
-        try {
-            client
-                .persistentVolumeClaims()
-                .inNamespace(NAMESPACE)
-                .withName(claim.metadata.name)
-                .waitUntilCondition({ it?.status?.phase == "Bound" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        } catch (e: KubernetesClientTimeoutException) {
-            throw AssertionError(
-                listOf(
-                    e.message,
-                    storageState(),
-                    clusterDiagnostics(client, NAMESPACE),
-                    clusterDiagnostics(client, "kube-system"),
-                ).joinToString("\n"),
-                e,
-            )
-        }
+        val claims = client.persistentVolumeClaims().inNamespace(NAMESPACE).withName(claim.metadata.name)
+        awaitState("claim ${claim.metadata.name} Bound", { claims.get() }) { it?.status?.phase == "Bound" }
         waitForPodRunning(pod)
+    }
+
+    /**
+     * Reads an object every [POLL_INTERVAL] until [done] holds, and fails with the storage state and
+     * cluster diagnostics after [TIMEOUT].
+     *
+     * It polls instead of using fabric8 `waitUntilCondition`. That method tests its condition only when
+     * its informer delivers an event. When a watch event is lost or late, as under CI load, the wait
+     * never tests again. CI timed out after 180s on a claim that had been Bound to the reopened volume
+     * for 3 minutes. A fresh `get()` on each pass sees the state that is actually in the cluster.
+     */
+    private fun <T> awaitState(
+        what: String,
+        read: () -> T?,
+        done: (T?) -> Boolean,
+    ) {
+        val deadline = Instant.now().plus(TIMEOUT)
+        var current = read()
+        while (!done(current)) {
+            if (Instant.now().isAfter(deadline)) {
+                throw AssertionError(
+                    listOf(
+                        "Timed out after $TIMEOUT waiting for $what",
+                        storageState(),
+                        clusterDiagnostics(client, NAMESPACE),
+                        clusterDiagnostics(client, "kube-system"),
+                    ).joinToString("\n"),
+                )
+            }
+            Thread.sleep(POLL_INTERVAL.toMillis())
+            current = read()
+        }
     }
 
     /**
@@ -369,25 +382,14 @@ class KitStorageIntegrationTest {
     }
 
     private fun waitForPodRunning(pod: String) {
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(pod)
-            .waitUntilCondition({ it?.status?.phase == "Running" }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val pods = client.pods().inNamespace(NAMESPACE).withName(pod)
+        awaitState("pod $pod Running", { pods.get() }) { it?.status?.phase == "Running" }
     }
 
     private fun deleteConsumer(pod: String) {
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(pod)
-            .withGracePeriod(0)
-            .delete()
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(pod)
-            .waitUntilCondition({ it == null }, TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        val pods = client.pods().inNamespace(NAMESPACE).withName(pod)
+        pods.withGracePeriod(0).delete()
+        awaitState("pod $pod deleted", { pods.get() }) { it == null }
     }
 
     private companion object {
@@ -402,7 +404,8 @@ class KitStorageIntegrationTest {
 
         /** A claim an operator deletes with its resource on `stop`, as CNPG names instance 1's. */
         const val OPERATOR_CLAIM = "postgres-1"
-        const val TIMEOUT_SECONDS = 180L
+        val TIMEOUT: Duration = Duration.ofSeconds(180)
+        val POLL_INTERVAL: Duration = Duration.ofMillis(500)
 
         /** The images local-path provisioning runs, so a claim never waits on a registry. */
         const val LOCAL_PATH_PROVISIONER_IMAGE = "rancher/local-path-provisioner:v0.0.34"

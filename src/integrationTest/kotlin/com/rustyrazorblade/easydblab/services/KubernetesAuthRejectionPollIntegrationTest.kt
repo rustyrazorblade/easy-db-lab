@@ -76,8 +76,13 @@ class KubernetesAuthRejectionPollIntegrationTest {
 
     private fun assertFailedOnFirst403(failure: Throwable?) {
         assertThat(asked.get()).isEqualTo(1)
-        assertThat(failure?.causeChain().orEmpty().filterIsInstance<KubernetesClientException>().map { it.code })
-            .contains(Constants.HttpStatus.FORBIDDEN)
+        assertThat(
+            failure
+                ?.causeChain()
+                .orEmpty()
+                .filterIsInstance<KubernetesClientException>()
+                .map { it.code },
+        ).contains(Constants.HttpStatus.FORBIDDEN)
     }
 
     @Test

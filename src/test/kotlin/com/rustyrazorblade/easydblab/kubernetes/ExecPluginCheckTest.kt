@@ -81,7 +81,11 @@ class ExecPluginCheckTest {
         assertThat(thrown.user).isEqualTo("eks-user")
         assertThat(thrown.context).isEqualTo("lab")
         assertThat(thrown.searched).isEqualTo(path)
-        assertThat(thrown.message).contains("aws").contains("eks-user").contains("lab").contains(path)
+        assertThat(thrown.message)
+            .contains("aws")
+            .contains("eks-user")
+            .contains("lab")
+            .contains(path)
     }
 
     @Test

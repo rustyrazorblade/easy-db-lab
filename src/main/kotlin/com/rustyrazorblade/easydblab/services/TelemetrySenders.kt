@@ -97,7 +97,8 @@ class K8sTelemetrySenders(
         onDeleteAccepted()
         // The shared deadline, not an attempt count, bounds the poll: the add-on's wait uses part of it.
         val gone: (List<Pod>) -> Boolean = { it.isEmpty() }
-        val config = RetryUtil.createPollUntilRetryConfig(
+        val config =
+            RetryUtil.createPollUntilRetryConfig(
                 Int.MAX_VALUE,
                 pollInterval,
                 gone,

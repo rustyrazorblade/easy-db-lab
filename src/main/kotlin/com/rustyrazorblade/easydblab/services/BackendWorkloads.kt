@@ -75,7 +75,8 @@ class K8sBackendWorkloads(
         done: (List<Pod>) -> Boolean,
     ) {
         val attempts = (timeout.toMillis() / pollInterval.toMillis()).toInt().coerceAtLeast(1) + 1
-        val config = RetryUtil.createPollUntilRetryConfig<List<Pod>>(
+        val config =
+            RetryUtil.createPollUntilRetryConfig<List<Pod>>(
                 attempts,
                 pollInterval,
                 done,

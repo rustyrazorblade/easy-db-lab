@@ -110,7 +110,12 @@ sealed interface AdmissionRejection {
 
         /** The rejection in [message], or null when no admission controller refused the request. */
         fun parse(message: String): AdmissionRejection? {
-            val name = OBJECT_NAME.find(message)?.groups?.get("name")?.value
+            val name =
+                OBJECT_NAME
+                    .find(message)
+                    ?.groups
+                    ?.get("name")
+                    ?.value
             POD_SECURITY_FORM.find(message)?.groups?.let {
                 return PodSecurity(it.value("level"), splitTopLevel(it.value("violations")), name)
             }

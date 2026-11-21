@@ -23,8 +23,18 @@ class ExecPluginCheck(
         context: String,
     ) {
         val config = parseKubeconfig(kubeconfig)
-        val userName = config.contexts.orEmpty().firstOrNull { it.name == context }?.context?.user ?: return
-        val exec = config.users.orEmpty().firstOrNull { it.name == userName }?.user?.exec ?: return
+        val userName =
+            config.contexts
+                .orEmpty()
+                .firstOrNull { it.name == context }
+                ?.context
+                ?.user ?: return
+        val exec =
+            config.users
+                .orEmpty()
+                .firstOrNull { it.name == userName }
+                ?.user
+                ?.exec ?: return
         val command = exec.command?.takeIf { it.isNotBlank() } ?: return
         val searched = if (command.contains(File.separatorChar)) resolveRelative(kubeconfig, command) else path.orEmpty()
         if (!found(command, searched)) {

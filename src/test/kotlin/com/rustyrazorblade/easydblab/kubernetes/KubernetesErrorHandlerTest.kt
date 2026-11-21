@@ -171,7 +171,9 @@ class KubernetesErrorHandlerTest {
 
         assertThat(description?.kind).isEqualTo(ProviderErrorKind.REJECTED)
         assertThat(description?.policy?.name).isEqualTo("max-replicas")
-        assertThat(description?.request).isEqualTo(ProviderRequest(verb = "PATCH", resource = "deployments", namespace = "lab", name = "web"))
+        assertThat(
+            description?.request,
+        ).isEqualTo(ProviderRequest(verb = "PATCH", resource = "deployments", namespace = "lab", name = "web"))
     }
 
     @Test
@@ -188,7 +190,8 @@ class KubernetesErrorHandlerTest {
 
     @Test
     fun `a 403 whose body was not JSON is still classified by its code`() {
-        val request = StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t"), "GET", null)
+        val request =
+            StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t"), "GET", null)
         val error = OperationSupport.requestFailure(request, OperationSupport.createStatus(403, "<html>Forbidden</html>"))
 
         val description = handler.describe(error)
@@ -213,8 +216,20 @@ class KubernetesErrorHandlerTest {
             listOf(
                 failure("GET", "/api/v1/namespaces/lab/pods/x", 404, "pods \"x\" not found", reason = "NotFound"),
                 failure("POST", "/api/v1/namespaces/lab/pods", 409, "pods \"x\" already exists", reason = "AlreadyExists"),
-                failure("POST", "/api/v1/namespaces/lab/pods", 422, "Pod \"x\" is invalid: spec.containers: Required value", reason = "Invalid"),
-                failure("PATCH", "/api/v1/namespaces/lab/pods/x", 400, "admission webhook \"w\" does not support dry run", reason = "BadRequest"),
+                failure(
+                    "POST",
+                    "/api/v1/namespaces/lab/pods",
+                    422,
+                    "Pod \"x\" is invalid: spec.containers: Required value",
+                    reason = "Invalid",
+                ),
+                failure(
+                    "PATCH",
+                    "/api/v1/namespaces/lab/pods/x",
+                    400,
+                    "admission webhook \"w\" does not support dry run",
+                    reason = "BadRequest",
+                ),
             )
 
         assertThat(unclaimed.map { handler.describe(it) }).containsOnlyNulls()

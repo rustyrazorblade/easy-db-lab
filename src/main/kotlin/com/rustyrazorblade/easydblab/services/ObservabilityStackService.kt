@@ -150,7 +150,9 @@ class DefaultObservabilityStackService(
         if (workloads.isEmpty()) return
         k8sService
             .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
-            .getOrElse { exception -> throw IllegalStateException("$workloads did not finish rolling out: ${exception.messageOrString()}", exception) }
+            .getOrElse { exception ->
+                throw IllegalStateException("$workloads did not finish rolling out: ${exception.messageOrString()}", exception)
+            }
     }
 
     /**

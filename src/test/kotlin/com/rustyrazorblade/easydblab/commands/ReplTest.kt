@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.jline.reader.Candidate
@@ -10,7 +12,7 @@ import org.jline.reader.impl.DefaultParser
 import org.jline.shell.Shell
 import org.jline.shell.impl.DefaultCommandDispatcher
 import org.jline.terminal.Terminal
-import org.jline.terminal.TerminalBuilder
+import org.jline.terminal.impl.DumbTerminal
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import picocli.CommandLine
@@ -19,7 +21,10 @@ import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.io.PrintStream
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class ReplTest : BaseKoinTest() {
     @Command(name = "", subcommands = [Db::class, Info::class, Run::class, Secret::class])
@@ -75,12 +80,23 @@ class ReplTest : BaseKoinTest() {
         override fun run() = Unit
     }
 
-    private val terminal: Terminal =
-        TerminalBuilder
-            .builder()
-            .dumb(true)
-            .streams(ByteArrayInputStream(ByteArray(0)), ByteArrayOutputStream())
-            .build()
+    /** A root like the REPL's: a lifecycle command and a plain picocli command. */
+    @Command(name = "", subcommands = [Work::class, Plain::class])
+    class PicoRoot : Runnable {
+        override fun run() = Unit
+    }
+
+    @Command(name = "work")
+    class Work : PicoCommand {
+        override fun execute() = Unit
+    }
+
+    @Command(name = "plain")
+    class Plain : Runnable {
+        override fun run() = Unit
+    }
+
+    private val terminal: Terminal = testTerminal(ByteArrayInputStream(ByteArray(0)), ByteArrayOutputStream())
 
     private val shells = mutableListOf<Shell>()
     private val terminals = mutableListOf<Terminal>()
@@ -117,25 +133,25 @@ class ReplTest : BaseKoinTest() {
         return candidates.map { it.value() }
     }
 
-    /** A shell built as the REPL builds it (literal lines, help on), over [root], printing to [output]. */
+    /**
+     * A dumb terminal over [input] and [output] with no pty, so it reads the same way with or
+     * without a tty: the builder picks a pty terminal when the test runs from one.
+     */
+    private fun testTerminal(
+        input: InputStream,
+        output: ByteArrayOutputStream,
+    ): Terminal = DumbTerminal("test", Terminal.TYPE_DUMB, input, output, Charsets.UTF_8)
+
+    /** The REPL's own shell ([ReplShell]) over [root], reading [input] and printing to [output]. */
     private fun replShell(
         root: CommandLine,
         output: ByteArrayOutputStream,
+        input: String = "",
     ): Shell {
-        val shellTerminal =
-            TerminalBuilder
-                .builder()
-                .dumb(true)
-                .streams(ByteArrayInputStream(ByteArray(0)), output)
-                .build()
+        val shellTerminal = testTerminal(ByteArrayInputStream(input.toByteArray()), output)
         terminals.add(shellTerminal)
-        return Shell
-            .builder()
-            .terminal(shellTerminal)
-            .dispatcher(LiteralLineDispatcher(shellTerminal))
-            .groups(ReplCommandGroup(root, shellTerminal))
-            .helpCommands(true)
-            .build()
+        return ReplShell
+            .build(shellTerminal, ReplCommandGroup(root, shellTerminal), tempDir.resolve(".repl_history").toPath())
             .also { shells.add(it) }
     }
 
@@ -215,6 +231,73 @@ class ReplTest : BaseKoinTest() {
         assertThat(run.hosts).isEqualTo("db0")
         assertThat(run.words)
             .containsExactly("echo \$HOME", "~/.bashrc", "|", "grep", "x", "&&", "ls", ">", "out", ";", "date", "&")
+    }
+
+    @Test
+    fun `Ctrl-C ends the running line with one message and the next line runs uninterrupted`() {
+        // The first run is cancelled as jline cancels it (flag set, then the throw); each later run
+        // records whether its thread started interrupted.
+        val interruptedAtStart = mutableListOf<Boolean>()
+        val strategy =
+            ReplExecutionStrategy {
+                if (interruptedAtStart.isEmpty()) {
+                    interruptedAtStart.add(false)
+                    Thread.currentThread().interrupt()
+                    throw InterruptedException("sleep interrupted")
+                }
+                interruptedAtStart.add(Thread.currentThread().isInterrupted)
+                EXIT_CODE
+            }
+        val err = StringWriter()
+        val root =
+            CommandLine(PicoRoot()).also {
+                it.executionStrategy = strategy
+                it.err = PrintWriter(err, true)
+            }
+        val dispatcher = replShell(root, ByteArrayOutputStream()).dispatcher()
+
+        val cancelled = dispatcher.execute("work")
+        val next = dispatcher.execute("work")
+
+        assertThat(cancelled).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(err.toString().trim()).isEqualTo("Interrupted")
+        assertThat(next).isEqualTo(EXIT_CODE)
+        assertThat(interruptedAtStart).containsExactly(false, false)
+        assertThat(Thread.interrupted()).isFalse()
+    }
+
+    @Test
+    fun `a line naming a group with no command of its own runs as picocli runs it`() {
+        val ranThroughLifecycle = mutableListOf<PicoCommand>()
+        val root =
+            CommandLine(PicoRoot()).also {
+                it.executionStrategy = ReplExecutionStrategy { command -> ranThroughLifecycle.add(command).let { EXIT_CODE } }
+            }
+        val dispatcher = replShell(root, ByteArrayOutputStream()).dispatcher()
+
+        val plain = dispatcher.execute("plain")
+        val work = dispatcher.execute("work")
+
+        assertThat(plain).isEqualTo(0)
+        assertThat(work).isEqualTo(EXIT_CODE)
+        assertThat(ranThroughLifecycle.single()).isInstanceOf(Work::class.java)
+    }
+
+    @Test
+    fun `a typed line with history events reaches the command as typed`() {
+        val recorded = Recorded()
+        val shell = replShell(recorded.root, ByteArrayOutputStream(), input = "run first\nrun !! !$ !-1\n")
+
+        // Read each line through the shell's own reader, then run it, as the shell loop does; the
+        // reader is where `!` history events would be expanded. Picocli reuses the Run object, so
+        // copy its words after each line.
+        val words =
+            List(2) {
+                shell.dispatcher().execute(shell.reader().readLine("> "))
+                (recorded.ran.last() as Run).words.toList()
+            }
+
+        assertThat(words).containsExactly(listOf("first"), listOf("!!", "!$", "!-1"))
     }
 
     @Test

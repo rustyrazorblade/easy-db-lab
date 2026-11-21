@@ -249,6 +249,24 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a binary column of valid UTF-8 control characters prints as hex`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val result = buildService(connection = binaryConnection(byteArrayOf(0x00, 0x01))).execute("SELECT b").getOrThrow()
+
+        assertThat(result.rows.single()).containsExactly("0x0001")
+    }
+
+    @Test
+    fun `a binary column of text with tabs and line breaks prints as text`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val result = buildService(connection = binaryConnection("a\tb\r\nc".toByteArray())).execute("SELECT b").getOrThrow()
+
+        assertThat(result.rows.single()).containsExactly("a\tb\r\nc")
+    }
+
+    @Test
     fun `a null binary column prints as NULL`() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
 

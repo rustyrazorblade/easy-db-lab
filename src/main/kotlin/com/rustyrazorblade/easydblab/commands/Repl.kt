@@ -11,17 +11,11 @@ import com.rustyrazorblade.easydblab.commands.socks.Socks
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.jline.keymap.KeyMap
-import org.jline.reader.LineReader
-import org.jline.reader.Reference
-import org.jline.shell.Shell
-import org.jline.shell.widget.CommandTailTipWidgets
 import org.jline.terminal.TerminalBuilder
 import org.koin.core.component.get
 import org.koin.core.component.inject
@@ -110,64 +104,19 @@ class Repl : PicoBaseCommand() {
     private fun runRepl() {
         val terminal = TerminalBuilder.builder().name("easy-db-lab").build()
         val group = ReplCommandGroup(createCommandLine(), terminal)
-        val shell =
-            Shell
-                .builder()
-                .terminal(terminal)
-                .dispatcher(LiteralLineDispatcher(terminal))
-                .prompt(PROMPT)
-                .groups(group)
-                .helpCommands(true)
-                .historyFile(context.profileDir.resolve(".repl_history").toPath())
-                .variable(LineReader.LIST_MAX, MAX_COMPLETION_CANDIDATES)
-                .onReaderReady { reader -> enableTailTips(reader, group) }
-                .build()
+        val shell = ReplShell.build(terminal, group, context.profileDir.resolve(".repl_history").toPath())
 
         printWelcomeMessage()
         // The shell does not own a terminal it was given, so it is closed here.
         terminal.use { shell.use { it.run() } }
     }
 
-    /** Command descriptions under the input line, toggled with Alt+S. */
-    private fun enableTailTips(
-        reader: LineReader,
-        group: ReplCommandGroup,
-    ) {
-        val widgets =
-            CommandTailTipWidgets(
-                reader,
-                { line -> group.describe(line.args()) },
-                TAILTIP_DESCRIPTION_LINES,
-                CommandTailTipWidgets.TipType.COMPLETER,
-            )
-        widgets.enable()
-        reader.keyMaps[LineReader.MAIN]?.bind(Reference(TAILTIP_TOGGLE_WIDGET), KeyMap.alt('s'))
-    }
-
     private fun createCommandLine(): CommandLine {
         val cmd = CommandLine(ShellCommands::class.java, KoinCommandFactory())
 
-        // Set execution strategy to use our CommandExecutor
-        // Get CommandExecutor lazily to avoid resolving AWS dependencies on REPL startup
+        // The CommandExecutor is resolved when a command runs, so REPL startup resolves no AWS dependency.
         cmd.executionStrategy =
-            CommandLine.IExecutionStrategy { parseResult ->
-                var currentParseResult = parseResult.subcommand()
-                while (currentParseResult?.subcommand() != null) {
-                    currentParseResult = currentParseResult.subcommand()
-                }
-
-                if (currentParseResult != null) {
-                    val userObj = currentParseResult.commandSpec().userObject()
-                    if (userObj is PicoCommand) {
-                        // Get CommandExecutor lazily when a command actually runs
-                        val executor = get<CommandExecutor>() as DefaultCommandExecutor
-                        return@IExecutionStrategy executor.executeTopLevel(userObj)
-                    }
-                }
-
-                CommandLine.RunLast().execute(parseResult)
-            }
-
+            ReplExecutionStrategy { command -> (get<CommandExecutor>() as DefaultCommandExecutor).executeTopLevel(command) }
         return cmd
     }
 
@@ -178,10 +127,3 @@ class Repl : PicoBaseCommand() {
         )
     }
 }
-
-private const val PROMPT = "easy-db-lab> "
-private const val MAX_COMPLETION_CANDIDATES = 50
-private const val TAILTIP_DESCRIPTION_LINES = 5
-
-/** jline's widget that turns the tail tips on and off. */
-private const val TAILTIP_TOGGLE_WIDGET = "tailtip-toggle"

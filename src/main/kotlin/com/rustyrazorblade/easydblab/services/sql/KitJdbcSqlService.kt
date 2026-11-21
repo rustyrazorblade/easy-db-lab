@@ -116,7 +116,9 @@ class KitJdbcSqlService(
     /**
      * The text of one cell. A binary column is read as bytes: some drivers (Presto, for a
      * ClickHouse `String` seen through its connector) return the array's `toString()` from
-     * `getString`. Bytes that are valid UTF-8 print as text, any others as `0x` hex.
+     * `getString`. Bytes that are valid UTF-8 with no control character but tab, LF and CR print
+     * as text; any others print as `0x` hex, so `unhex('000102')` cannot put NUL or escape bytes
+     * on the terminal.
      */
     private fun cellText(
         rs: ResultSet,
@@ -125,7 +127,7 @@ class KitJdbcSqlService(
     ): String {
         if (columnType !in BINARY_TYPES) return rs.getString(column) ?: NULL_TEXT
         val bytes = rs.getBytes(column) ?: return NULL_TEXT
-        return decodeUtf8(bytes) ?: bytes.joinToString("", prefix = "0x") { "%02x".format(it) }
+        return decodeUtf8(bytes)?.takeIf(::isPrintable) ?: bytes.joinToString("", prefix = "0x") { "%02x".format(it) }
     }
 
     private fun decodeUtf8(bytes: ByteArray): String? =
@@ -140,8 +142,11 @@ class KitJdbcSqlService(
             null
         }
 
+    private fun isPrintable(text: String): Boolean = text.none { Character.isISOControl(it) && it !in TEXT_CONTROLS }
+
     private companion object {
         const val NULL_TEXT = "NULL"
+        val TEXT_CONTROLS = setOf('\t', '\n', '\r')
         val BINARY_TYPES = setOf(Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB)
     }
 }

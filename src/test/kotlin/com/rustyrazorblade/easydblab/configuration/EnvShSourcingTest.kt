@@ -230,7 +230,7 @@ internal class EnvShSourcingTest {
 
         val result = bash("source ./env.sh >/dev/null; socks5-status")
 
-        assertThat(result.stdout).doesNotContain("41234").contains("easy-db-lab socks start")
+        assertThat(result.stdout).doesNotContain(RECORDED_PROXY_ADDRESS).contains("easy-db-lab socks start")
     }
 
     @Test
@@ -255,7 +255,7 @@ internal class EnvShSourcingTest {
         val result = bash("source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
-        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset").doesNotContain("41234")
+        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset").doesNotContain(RECORDED_PROXY_ADDRESS)
     }
 
     @Test
@@ -391,6 +391,11 @@ internal class EnvShSourcingTest {
     )
 
     private companion object {
+        /**
+         * The recorded tunnel as a proxy URL or `socks5-status` names it. Assert on this form, never
+         * on the bare port, which a random JUnit temp dir name can contain.
+         */
+        const val RECORDED_PROXY_ADDRESS = "127.0.0.1:41234"
         const val LIMIT_SECONDS = 30L
 
         val ZSH_PATHS = listOf("/bin/zsh", "/usr/bin/zsh")

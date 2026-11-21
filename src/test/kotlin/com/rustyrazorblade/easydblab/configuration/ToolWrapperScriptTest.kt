@@ -105,7 +105,7 @@ internal class ToolWrapperScriptTest {
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
         assertThat(result.proxyVariables()).isEqualTo(NONE)
-        assertThat(result.stdout).doesNotContain("41234")
+        assertThat(result.stdout).doesNotContain(RECORDED_PROXY_ADDRESS)
     }
 
     @Test
@@ -352,7 +352,7 @@ internal class ToolWrapperScriptTest {
         val result = run("$tool probe")
 
         assertThat(result.exitCode).isEqualTo(1)
-        assertThat(result.stdout).doesNotContain("tool=").doesNotContain("41234")
+        assertThat(result.stdout).doesNotContain("tool=").doesNotContain(RECORDED_PROXY_ADDRESS)
         assertThat(result.stderr)
             .contains(workspace.canonicalPath)
             .contains("easy-db-lab socks start")
@@ -639,6 +639,11 @@ internal class ToolWrapperScriptTest {
     }
 
     private companion object {
+        /**
+         * The recorded tunnel as a proxy URL holds it (`socks5://` and `socks5h://`). Assert on this
+         * form, never on the bare port, which a random JUnit temp dir name can contain.
+         */
+        const val RECORDED_PROXY_ADDRESS = "127.0.0.1:41234"
         const val NOT_FOUND = 127
         const val LIMIT_SECONDS = 30L
         val SYSTEM_PATH = listOf("/usr/bin", "/bin", "/usr/sbin", "/sbin")

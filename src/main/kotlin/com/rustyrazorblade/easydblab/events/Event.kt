@@ -4,7 +4,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderPolicy
+import com.rustyrazorblade.easydblab.kernel.ProviderRequest
 import com.rustyrazorblade.easydblab.kernel.ProviderResponse
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -3607,6 +3611,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stress job $jobName on $host ${outcome.wireName} after ${durationSeconds}s"
         }
 
+        /**
+         * `metrics stream` cannot list the stress jobs for a reason no retry fixes (a missing exec
+         * auth plugin, a 401 or 403), so no [JobCompleted] can come until it is fixed. Emitted once
+         * per run of such failures; [reason] names the cause and the remedy.
+         */
+        @Serializable
+        @SerialName("Stress.JobListFailing")
+        data class JobListFailing(
+            val reason: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Cannot list the stress jobs, so no completions are reported: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.NoJobsFound")
         data object NoJobsFound : Stress {
@@ -4499,10 +4518,12 @@ sealed interface Event {
 
         /**
          * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
-         * recognised: bad credentials, missing permissions, or an unreachable provider. Carries the provider's
-         * detail, the remedy and, for a service answer, the [response] facts (service, error code, HTTP status,
-         * request id).
+         * recognised: bad credentials, missing permissions, a policy rejection, or an unreachable provider.
+         * Carries the provider's detail, the remedy and, for a service answer, the [response] facts (service,
+         * error code, HTTP status, request id). When the handler knows them, [request] names the request that
+         * failed and [policy] the policy that refused it; a failure without them serializes neither field.
          */
+        @OptIn(ExperimentalSerializationApi::class)
         @Serializable
         @SerialName("Command.ProviderError")
         data class ProviderError(
@@ -4511,14 +4532,11 @@ sealed interface Event {
             val detail: String,
             val remedy: String,
             val response: ProviderResponse? = null,
+            @EncodeDefault(EncodeDefault.Mode.NEVER) val request: ProviderRequest? = null,
+            @EncodeDefault(EncodeDefault.Mode.NEVER) val policy: ProviderPolicy? = null,
         ) : Command {
             override fun toDisplayString(): String {
-                val headline =
-                    when (kind) {
-                        ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
-                        ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
-                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
-                    }
+                val headline = ProviderErrorText.headline(provider, kind, request, policy) + ProviderErrorText.violations(policy)
                 val facts =
                     response
                         ?.summary()

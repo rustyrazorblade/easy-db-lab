@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.captureStdout
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.StressJobService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -42,5 +44,16 @@ class StressFieldsTest : BaseKoinTest() {
         whenever(mockStressJobService.runCommand(any(), any())).thenReturn(Result.success(""))
 
         assertThat(captureStdout { StressFields().execute() }).isEmpty()
+    }
+
+    @Test
+    fun `a failed command keeps its cause`() {
+        val denied = KubernetesClientException("K8s error", 403, null)
+        whenever(mockStressJobService.runCommand(any(), any())).thenReturn(Result.failure(denied))
+
+        assertThatThrownBy { StressFields().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Failed to run command")
+            .hasRootCause(denied)
     }
 }

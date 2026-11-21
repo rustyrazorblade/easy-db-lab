@@ -33,7 +33,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         requireLocalTelemetryStack("grafana update-config")
 
         observabilityStackService.deploy().getOrElse { exception ->
-            error("Failed to deploy observability stack: ${exception.message}")
+            throw IllegalStateException("Failed to deploy observability stack: ${exception.message}", exception)
         }
     }
 }

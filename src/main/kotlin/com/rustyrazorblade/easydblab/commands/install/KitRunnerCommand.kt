@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
+import com.rustyrazorblade.easydblab.kubernetes.kubernetesFailureReason
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallStep
@@ -337,7 +338,7 @@ class KitRunnerCommand(
             workloadProbe.awaitGone(kitName, config.runtime).getOrElse { e ->
                 log.warn(e) { "Could not confirm $kitName's workload left the cluster after $phase" }
                 eventBus.emit(
-                    Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName, phase = phase),
+                    Event.Kit.StopUnverified(kit = kitName, reason = e.kubernetesFailureReason(), phase = phase),
                 )
                 return false
             }

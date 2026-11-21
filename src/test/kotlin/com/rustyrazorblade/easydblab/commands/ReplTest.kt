@@ -51,6 +51,9 @@ class ReplTest : BaseKoinTest() {
 
     @Command(name = "info", description = ["Show info"])
     class Info : Runnable {
+        @Option(names = ["--level"])
+        var level: String? = null
+
         @Parameters(completionCandidates = Modes::class)
         var mode: String? = null
 
@@ -263,10 +266,20 @@ class ReplTest : BaseKoinTest() {
 
         assertThat(completions(group, "db start --hosts db0 --")).contains("--force", "--mode=")
         assertThat(completions(group, "db start --mode ")).containsExactlyInAnyOrder("fast", "safe")
-        // An option-like word after a value-taking option is an option, as picocli reads it.
+        // A word that names a known option, after a value-taking option, is that option, as picocli reads it.
         assertThat(completions(group, "db start --hosts --f")).contains("--force")
         assertThat(completions(group, "db start --hosts --mode ")).containsExactlyInAnyOrder("fast", "safe")
         assertThat(group.describe(listOf("db", "start", "--hosts", "db0"))!!.mainDescription().map { it.toString() })
+            .containsExactly("Start the database")
+    }
+
+    @Test
+    fun `a value that only looks like an option is read as the pending option value`() {
+        val group = ReplCommandGroup(Recorded().root, terminal)
+
+        assertThat(completions(group, "info --level -5 ")).containsExactlyInAnyOrder("fast", "safe")
+        assertThat(completions(group, "db start --mode -x --")).contains("--force", "--hosts=")
+        assertThat(group.describe(listOf("db", "start", "--mode", "-x"))!!.mainDescription().map { it.toString() })
             .containsExactly("Start the database")
     }
 

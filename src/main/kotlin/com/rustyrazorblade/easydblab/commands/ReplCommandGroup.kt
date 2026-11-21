@@ -125,8 +125,9 @@ class ReplCommandGroup(
 
     /**
      * Walks the words before [lastIndex] down the picocli tree. An option is skipped, with its value
-     * when it is given as a separate word (`--hosts db0`); the walk stops descending at the first
-     * word that names no subcommand.
+     * when it is given as a separate word (`--hosts db0`). As in picocli, the word after a
+     * value-taking option is its value unless it names a known option, so `--offset -5` keeps `-5`
+     * as the value. The walk stops descending at the first word that names no subcommand.
      */
     private fun locate(
         words: List<String>,
@@ -139,9 +140,10 @@ class ReplCommandGroup(
             val valueOf = pending
             pending = null
             val sub = current.subcommands[word]
+            val option = if (word.startsWith("-")) current.commandSpec.findOption(word.substringBefore('=')) else null
             when {
-                valueOf != null && !word.startsWith("-") -> Unit
-                word.startsWith("-") -> pending = current.commandSpec.findOption(word)?.takeIf { it.arity().min() > 0 }
+                valueOf != null && option == null -> Unit
+                word.startsWith("-") -> pending = option?.takeIf { '=' !in word && it.arity().min() > 0 }
                 positionalSeen || sub == null -> positionalSeen = true
                 else -> current = sub
             }

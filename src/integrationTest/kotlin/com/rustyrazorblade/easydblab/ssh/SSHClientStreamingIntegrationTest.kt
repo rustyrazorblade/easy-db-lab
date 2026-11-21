@@ -150,6 +150,40 @@ internal class SSHClientStreamingIntegrationTest {
         assertThat(left).describedAs("remote processes left after the interrupt").isEqualTo(NONE_LEFT)
     }
 
+    /**
+     * A command that ignores INT outlives the first signal; KILL, one grace period later, must stop
+     * it, and the call must return soon after rather than when the command ends.
+     */
+    @Test
+    fun `an interrupted command that ignores INT is killed after the grace period`() {
+        val grace = Duration.ofMillis(KILL_GRACE_MS)
+        val outcome = CompletableFuture<Throwable?>()
+        val caller =
+            Thread.ofVirtual().start {
+                val command = "trap '' INT; echo trap-start; sleep $INT_IGNORING_SLEEP_SECONDS"
+                val failure =
+                    runCatching {
+                        SSHClient(
+                            session,
+                            ChannelRemoteExec(session, grace),
+                        ).executeRemoteCommand(command, sink, secret = false)
+                    }
+                outcome.complete(failure.exceptionOrNull())
+            }
+        await("trap-start") { lines(NodeStream.Stdout).contains("trap-start") }
+        val interruptedAt = System.nanoTime()
+
+        caller.interrupt()
+        val failure = outcome.get(SATURATION_DEADLINE_SECONDS, TimeUnit.SECONDS)
+        val elapsed = Duration.ofNanos(System.nanoTime() - interruptedAt)
+
+        assertThat(failure).isInstanceOf(InterruptedException::class.java)
+        assertThat(elapsed).describedAs("INT is ignored, so the call waits out the grace").isGreaterThanOrEqualTo(grace)
+        assertThat(elapsed).isLessThan(grace.multipliedBy(2).plusMillis(SLOW_MARGIN_MS))
+        val left = client().executeRemoteCommand(LEFT_INT_IGNORING_QUERY, null, secret = false).text.trim()
+        assertThat(left).describedAs("remote processes left after KILL").isEqualTo(NONE_LEFT)
+    }
+
     private fun await(
         what: String,
         condition: () -> Boolean,
@@ -201,6 +235,13 @@ internal class SSHClientStreamingIntegrationTest {
         private const val NONE_LEFT = "none-left"
         private const val LEFT_SLEEP_QUERY = "pgrep -f 'sleep [6]123' || echo $NONE_LEFT"
         private const val POLL_MS = 50L
+
+        /** As [INTERRUPTED_SLEEP_SECONDS], for the command that ignores INT. */
+        private const val INT_IGNORING_SLEEP_SECONDS = 6124
+        private const val LEFT_INT_IGNORING_QUERY = "pgrep -f 'sleep [6]124' || echo $NONE_LEFT"
+
+        /** A short grace, so the KILL test does not wait out the production one. */
+        private const val KILL_GRACE_MS = 500L
 
         /** `0600`: sshd refuses an `authorized_keys` others can write. */
         private const val AUTHORIZED_KEYS_MODE = 384

@@ -115,27 +115,36 @@ class ExecRun : PicoBaseCommand() {
         val systemdRunCmd = buildSystemdRunCommand(systemdUnit, commandString)
 
         val failure =
-            try {
+            hostFailure {
                 if (background) {
                     remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
                     eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
                 } else {
                     runInForeground(host, systemdUnit, systemdRunCmd)
                 }
-                return true
-            } catch (e: IOException) {
-                e
-            } catch (e: EasyDBLabException) {
-                e
-            } catch (e: SsmForwardNotReadyException) {
-                e
-            } catch (e: IllegalArgumentException) {
-                // The ssm route refuses a host that has no instance ID.
-                e
-            }
+            } ?: return true
         eventBus.emit(Event.Command.HostExecError(host.alias, reason(failure)))
         return false
     }
+
+    /**
+     * Runs [block] and returns the host failure it threw, or null when it succeeded. These are the
+     * failures the SSH layer reports for one host; anything else is a bug and propagates.
+     */
+    private inline fun hostFailure(block: () -> Unit): Exception? =
+        try {
+            block()
+            null
+        } catch (e: IOException) {
+            e
+        } catch (e: EasyDBLabException) {
+            e
+        } catch (e: SsmForwardNotReadyException) {
+            e
+        } catch (e: IllegalArgumentException) {
+            // The ssm route refuses a host that has no instance ID.
+            e
+        }
 
     /**
      * Why [failure] failed, for the host's error event. A failed remote command already printed its
@@ -173,8 +182,10 @@ class ExecRun : PicoBaseCommand() {
 
     /**
      * Stops [systemdUnit] on [host] after an interrupt. The interrupt flag is cleared for the stop's own
-     * SSH call, which an interrupted thread could not make, and restored after it. A unit that already
-     * ended is left alone. A stop that fails is reported for the host; the interrupt still goes on.
+     * SSH call, which an interrupted thread could not make, and restored after it. The stop runs first
+     * and only fails when the unit is still active afterwards, so a unit that ends on its own between
+     * a check and the stop is not reported. A stop that fails is reported for the host; the interrupt
+     * still goes on.
      */
     private fun stopUnit(
         host: Host,
@@ -182,12 +193,10 @@ class ExecRun : PicoBaseCommand() {
     ) {
         val interrupted = Thread.interrupted()
         try {
-            val stop = "! systemctl is-active --quiet $systemdUnit || sudo systemctl stop $systemdUnit"
-            remoteOps.executeRemotely(host, stop, output = false, secret = false)
-        } catch (e: IOException) {
-            eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(e)}"))
-        } catch (e: EasyDBLabException) {
-            eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(e)}"))
+            val stop = "sudo systemctl stop $systemdUnit 2>/dev/null || ! systemctl is-active --quiet $systemdUnit"
+            hostFailure { remoteOps.executeRemotely(host, stop, output = false, secret = false) }?.let {
+                eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(it)}"))
+            }
         } finally {
             if (interrupted) Thread.currentThread().interrupt()
         }

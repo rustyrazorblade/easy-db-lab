@@ -239,7 +239,7 @@ class ExecRunTest : BaseKoinTest() {
         val sent = argumentCaptor<String>()
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
         assertThat(sent.allValues)
-            .contains("! systemctl is-active --quiet edl-exec-qa-sleep || sudo systemctl stop edl-exec-qa-sleep")
+            .contains("sudo systemctl stop edl-exec-qa-sleep 2>/dev/null || ! systemctl is-active --quiet edl-exec-qa-sleep")
             .noneMatch { it.contains("journalctl") }
     }
 
@@ -248,7 +248,7 @@ class ExecRunTest : BaseKoinTest() {
         doAnswer { throw InterruptedException("Ctrl-C") }
             .whenever(mockRemoteOps)
             .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any())
-        doAnswer { throw IOException("connection reset") }
+        doAnswer { throw IllegalArgumentException("db0 has no instance ID") }
             .whenever(mockRemoteOps)
             .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemctl stop") }, any(), any())
 
@@ -262,6 +262,6 @@ class ExecRunTest : BaseKoinTest() {
         }.isInstanceOf(InterruptedException::class.java)
 
         val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
-        assertThat(events).contains("db0: command failed: could not stop edl-exec-qa-sleep: connection reset")
+        assertThat(events).contains("db0: command failed: could not stop edl-exec-qa-sleep: db0 has no instance ID")
     }
 }

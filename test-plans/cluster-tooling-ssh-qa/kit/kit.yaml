@@ -1,0 +1,80 @@
+# QA kit for test-plans/cluster-tooling-ssh-qa.md: every typed step that runs helm or kubectl,
+# through the SSH form of ClusterTooling on a real cluster. podinfo is a small public chart and
+# kustomization, so nothing here needs a private image.
+name: tooling-qa
+type: app
+description: Typed helm and kubectl steps for the cluster tooling QA run
+version: "1.0.0"
+collision-check:
+  start: true
+runtime:
+  type: helm
+  release: tooling-qa-podinfo
+  namespace: tooling-qa
+
+install:
+  - type: helm-repo
+    name: podinfo
+    url: https://stefanprodan.github.io/podinfo
+  # namespace: one kubectl apply of a fabric8 Namespace through stdin.
+  - type: namespace
+    name: tooling-qa
+  # manifest-url: kubectl apply --server-side -f <url>.
+  - type: manifest-url
+    url: https://raw.githubusercontent.com/stefanprodan/podinfo/6.7.1/kustomize/hpa.yaml
+
+start:
+  # helm with a values file (stdin, --values -) and --set values.
+  - type: helm
+    chart: podinfo/podinfo
+    release: tooling-qa-podinfo
+    namespace: tooling-qa
+    version: 6.7.1
+    values-file: values.yaml
+    values:
+      ui.message: tooling qa
+  # kustomize: kubectl apply -k <url>, into default.
+  - type: kustomize
+    url: https://github.com/stefanprodan/podinfo//kustomize?ref=6.7.1
+  # manifest: kubectl apply -f - through stdin.
+  - type: manifest
+    template: labelled.yaml
+  - type: wait
+    kind: deployment
+    name: tooling-qa-podinfo
+    namespace: tooling-qa
+    condition: Available
+    timeout: 300s
+  - type: wait
+    kind: deployment
+    name: podinfo
+    namespace: default
+    condition: Available
+    timeout: 300s
+
+stop:
+  # A set-based selector with spaces and parentheses must reach kubectl as one argument.
+  - type: delete
+    kinds: [configmap]
+    selector: "tooling-qa in (selected, other)"
+    namespace: default
+  - type: delete
+    kind: deployment
+    name: podinfo
+    namespace: default
+  - type: delete
+    kind: service
+    name: podinfo
+    namespace: default
+  - type: delete
+    kind: hpa
+    name: podinfo
+    namespace: default
+  - type: helm-uninstall
+    release: tooling-qa-podinfo
+    namespace: tooling-qa
+
+uninstall:
+  - type: delete
+    kind: namespace
+    name: tooling-qa

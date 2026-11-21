@@ -13,10 +13,10 @@ The test runs in your own AWS account, and the cluster costs money while it runs
    /plugin install easy-db-lab@rustyrazorblade-plugins
    ```
 
-2. Find a test plan for your change.  If a plan in [`test-plans/`](test-plans/) covers the area you changed, use it.  If no plan covers it, write one with the [`plan` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/plan) (`/easy-db-lab:plan`), and add it to `test-plans/` in your pull request.
+2. Find a test plan for your change.  Use a plan in [`test-plans/`](test-plans/) only if it runs the code you changed.  If a plan almost fits, extend it in your pull request to cover the change.  If no plan fits, write one with the [`plan` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/plan) (`/easy-db-lab:plan`), and add it to `test-plans/` in your pull request.
 3. Run it with the [`run` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/run) (`/easy-db-lab:run`).  The skill provisions the cluster, runs each step, writes a lab report, and tears the cluster down.
 4. Post a comment on the pull request that says what you tested:
-   - the test plan you ran;
+   - the test plan you ran, and the steps that run your change;
    - the cluster shape (node count, instance types, database and version);
    - the commands you ran;
    - what you expected, and what you saw;

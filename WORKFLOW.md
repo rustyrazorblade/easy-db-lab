@@ -196,7 +196,6 @@ Backwards compatibility is never a finding; clusters are ephemeral.  Large `stor
 `.github/workflows/pr-checks.yml` runs on every pull request and every push to `main`.  Its `changes` job classifies the changed paths (see "Docs-only PRs").  It gates these jobs:
 
 - `openspec`: `openspec validate --all`, when the PR changes `openspec/`.
-
 - `test`: `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21.  `testScripts` runs every Docker-free shell-script test.
 - `quality`: `./gradlew ktlintCheck`, then `./gradlew detekt`, on JDK 21.
 
@@ -227,16 +226,21 @@ If a test fails, the `test` job uploads the `spec-flow-failures` artifact.  It l
 
 Every issue agent's change reaches `main` through a pull request.
 
-Open each PR as a draft.  Mark it ready only after a real-cluster QA run with the easy-db-lab plugin (`/easy-db-lab:run`), and after a PR comment that says what was tested.  Use an existing plan in `test-plans/` when one covers the change; otherwise write one with `/easy-db-lab:plan` and add it to the PR.  The comment names the plan, the cluster shape, the commands, the expected and seen results, and what was not tested.  A PR that changes only QA-exempt paths (see "Docs-only PRs") needs no cluster run.  `CONTRIBUTING.md` holds the same rule for outside contributors.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
+Open each PR as a draft.  Mark it ready only after a real-cluster QA run with the easy-db-lab plugin (`/easy-db-lab:run`), and after a PR comment that says what was tested.  Use an existing plan in `test-plans/` only if it runs the code that changed.  If a plan almost fits, extend it in the PR.  If no plan fits, write one with `/easy-db-lab:plan` and add it to the PR.  The comment names the plan and the steps that run the change, the cluster shape, the commands, the expected and seen results, and what was not tested.  A PR that changes only QA-exempt paths (see "Docs-only PRs") needs no cluster run.  `CONTRIBUTING.md` holds the same rule for outside contributors.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
 
-A ruleset named `main` lists the `test`, `quality` and `claude-review` checks, but its enforcement is disabled, so GitHub does not enforce them.  The agent holds the gate itself.  Read the ruleset with `gh api repos/OWNER/REPO/rulesets/<id>`; the classic branch-protection endpoint is misleading.
+Two GitHub settings list required checks:
+
+- A ruleset named `main` lists `test`, `quality` and `claude-review`.  Its enforcement is disabled.
+- Classic branch protection on `main` requires `test` and `quality`.  It does not enforce them on admins, so an admin merge can pass them.
+
+The agent holds the gate itself and does not rely on either setting.  Read them with `gh api repos/OWNER/REPO/rulesets/<id>` and `gh api repos/OWNER/REPO/branches/main/protection`.
 
 The issue agent squash-merges its own PR when all of these are true:
 
 1. The five review lenses have no blocking findings.
 2. The real-cluster QA comment is on the PR, and the PR is marked ready.  A QA-exempt PR is marked ready with no QA comment.
 3. If the issue has `requires-aws`, the PR holds the AWS-side result.
-4. `test`, `quality` and `claude-review` are green, or `test` and `quality` are skipped for a CI docs-only PR.  If the PR changes `openspec/`, the `openspec` job is green.  roborev passed.
+4. `test`, `quality` and `claude-review` are green, or `test` and `quality` are skipped for a CI docs-only PR and the `changes` job is green.  If the PR changes `openspec/`, the `openspec` job is green.  roborev passed.
 
 Rules for the merge:
 

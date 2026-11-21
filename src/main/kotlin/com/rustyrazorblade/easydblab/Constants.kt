@@ -1542,6 +1542,25 @@ object Constants {
 
         /** The front's port in the pod; the Service sends its port 4040 here. */
         const val FRONT_PORT = 4045
+
+        /** The front's container name in the server pod. */
+        const val FRONT_NAME = "pyroscope-front"
+
+        /** Where the server ConfigMap (the server's `config.yaml` and the front's config) is mounted in both containers. */
+        const val CONFIG_MOUNT_PATH = "/etc/pyroscope"
+
+        /**
+         * How often the kubelet checks that the front answers `/ready` on [FRONT_PORT]. The front
+         * passes `/ready` through to the server, so the pod is Ready only while both containers
+         * answer, and a front that crashed or never bound its port takes the pod out of the Service.
+         */
+        const val FRONT_READINESS_PERIOD_SECONDS = 10
+
+        /**
+         * How often the kubelet checks that the front accepts a TCP connection on [FRONT_PORT]. A
+         * TCP check, not `/ready`, so a stopping or starting server never gets the front restarted.
+         */
+        const val FRONT_LIVENESS_PERIOD_SECONDS = 15
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.

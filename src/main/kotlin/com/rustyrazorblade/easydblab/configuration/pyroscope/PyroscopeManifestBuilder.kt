@@ -52,10 +52,8 @@ class PyroscopeManifestBuilder(
         const val SERVER_IMAGE = "grafana/pyroscope:2.3.1"
         const val SERVER_PORT = 4040
 
-        /** The pod's ingest front, which the Service targets instead of [SERVER_PORT]; see `ingest-front.cfg`. */
-        private const val FRONT_NAME = "pyroscope-front"
+        /** The ConfigMap key of the ingest front's HAProxy config; the Service targets the front instead of [SERVER_PORT]. */
         const val FRONT_CONFIG_KEY = "ingest-front.cfg"
-        private const val CONFIG_MOUNT_PATH = "/etc/pyroscope"
 
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
@@ -295,14 +293,14 @@ class PyroscopeManifestBuilder(
         ContainerBuilder()
             .withName(SERVER_APP_LABEL)
             .withImage(SERVER_IMAGE)
-            .withArgs("-config.file=$CONFIG_MOUNT_PATH/config.yaml")
+            .withArgs("-config.file=${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/config.yaml")
             .addNewPort()
             .withContainerPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()
             .withName("config")
-            .withMountPath(CONFIG_MOUNT_PATH)
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
             .endVolumeMount()
             .addNewVolumeMount()
             .withName("data")
@@ -334,23 +332,41 @@ class PyroscopeManifestBuilder(
 
     /**
      * The ingest front: HAProxy on [Constants.PyroscopeServer.FRONT_PORT], reading [FRONT_CONFIG_KEY]
-     * from the server's ConfigMap. Once the server has exited the front's connection to it is
-     * refused and it answers 503, which every client retries too.
+     * from the server's ConfigMap. While the server container is down and the pod is up, the
+     * front's connection to it is refused and it answers 503, which every client retries too.
+     *
+     * Its readiness probe asks the front for `/ready`, which it passes through to the server, so a
+     * front that crashed or never bound its port takes the pod out of the Service instead of
+     * leaving pushes to a dead port. Its liveness probe is a TCP connect, so the kubelet restarts
+     * a front that stopped listening but never one whose server is only starting or stopping.
      */
     private fun buildFrontContainer(): Container =
         ContainerBuilder()
-            .withName(FRONT_NAME)
+            .withName(Constants.PyroscopeServer.FRONT_NAME)
             .withImage(Constants.PyroscopeServer.FRONT_IMAGE)
-            .withArgs("-f", "$CONFIG_MOUNT_PATH/$FRONT_CONFIG_KEY")
+            .withArgs("-f", "${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$FRONT_CONFIG_KEY")
             .addNewPort()
             .withContainerPort(Constants.PyroscopeServer.FRONT_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()
             .withName("config")
-            .withMountPath(CONFIG_MOUNT_PATH)
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
             .withReadOnly(true)
             .endVolumeMount()
+            .withNewReadinessProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_READINESS_PERIOD_SECONDS)
+            .endReadinessProbe()
+            .withNewLivenessProbe()
+            .withNewTcpSocket()
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endTcpSocket()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_LIVENESS_PERIOD_SECONDS)
+            .endLivenessProbe()
             .build()
 
     /**

@@ -202,9 +202,50 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
         assertThat(rules).containsExactly(
             "http-response wait-for-body time 1s if { status 422 }",
-            "http-response set-status 503 if { status 422 } { res.body -m sub \"service is unavailable\" }",
+            "http-response set-status 503 if { status 422 } { res.body -m reg $SHUTDOWN_REFUSAL_PATTERN }",
         )
         assertThat(Constants.PyroscopeServer.FRONT_IMAGE).matches("haproxy:[0-9.]+-alpine@sha256:[0-9a-f]{64}")
+    }
+
+    @Test
+    fun `the front's refusal pattern matches only Pyroscope's shutdown body, not the phrase elsewhere in a 422`() {
+        val rule =
+            builder
+                .buildFrontConfig()
+                .lines()
+                .map { it.trim() }
+                .single { it.startsWith("http-response set-status 503") }
+        // HAProxy's `-m reg` is a POSIX extended regex; Java's matches these patterns the same way.
+        val pattern = Regex(rule.substringAfter("-m reg '").substringBeforeLast("' }").replace("[[:space:]]", "\\s"))
+        val shutdown =
+            """{"code":"unknown","message":"pushing IngestInput-pprof failed push series with index 0 and id  failed: """ +
+                """unknown: rpc error: code = Unavailable desc = service is unavailable"}"""
+        val parseError = """{"code":"invalid_argument","message":"failed to parse profile: frame service is unavailable in stack"}"""
+        val laterPhrase = """{"code":"unknown","message":"rpc error: code = Unavailable desc = service is unavailable; and then more"}"""
+
+        assertThat(pattern.containsMatchIn(shutdown)).describedAs("Pyroscope's shutdown refusal").isTrue()
+        assertThat(pattern.containsMatchIn("$shutdown\n")).describedAs("the refusal with a trailing newline").isTrue()
+        assertThat(pattern.containsMatchIn(parseError)).describedAs("a parse error naming the phrase").isFalse()
+        assertThat(pattern.containsMatchIn(laterPhrase)).describedAs("the gRPC error not at the body's end").isFalse()
+    }
+
+    @Test
+    fun `the rendered front config has no placeholder left`() {
+        assertThat(Regex("__[A-Z_]+__").findAll(builder.buildFrontConfig()).map { it.value }.toList()).isEmpty()
+    }
+
+    @Test
+    fun `a front that is down takes the pod out of the Service, and a starting server never restarts it`() {
+        val front =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec.containers
+                .single { it.name == Constants.PyroscopeServer.FRONT_NAME }
+
+        assertThat(front.readinessProbe.httpGet.path).isEqualTo("/ready")
+        assertThat(front.readinessProbe.httpGet.port.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(front.livenessProbe.httpGet).describedAs("liveness must not follow the server's /ready").isNull()
+        assertThat(front.livenessProbe.tcpSocket.port.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
     }
 
     @Test
@@ -294,3 +335,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(tenant.key).isEqualTo("tenant")
     }
 }
+
+/** The front's match for Pyroscope's shutdown refusal: the wrapped gRPC error that ends its JSON body. */
+private const val SHUTDOWN_REFUSAL_PATTERN =
+    "'rpc error: code = Unavailable desc = service is unavailable\"}[[:space:]]*\$'"

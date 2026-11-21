@@ -24,7 +24,11 @@ Command → SocksProxyService.ensureRunning(controlHost)
 | `KubeApiLocator.kt` | Seam that finds the `KubeApi`; `currentContextOf(path)` helper |
 | `KubeconfigFile.kt` | `parseKubeconfig(path)`: the only caller of Fabric8's internal `KubeConfigUtils`; an unparseable file fails naming its path and the parse cause |
 | `KubernetesClientFactory.kt` | Client creation with SOCKS5 proxy config |
-| `KubernetesModule.kt` | Koin DI registration |
+| `KubernetesModule.kt` | Koin DI registration (the client factory and `KubernetesErrorHandler` as a `ProviderErrorHandler`) |
+| `KubernetesErrorHandler.kt` | Describes RBAC denials, 401/anonymous credential failures, admission rejections and a missing exec plugin as `Command.ProviderError` (see `providers/CLAUDE.md`, "Provider Errors") |
+| `KubernetesDenial.kt` | Pure parsers of the API server's messages: `RbacDenial`, `AdmissionRejection` (PodSecurity, Webhook, ValidatingPolicy), and `Throwable.isKubernetesAuthRejection()` for poll predicates |
+| `ApiPath.kt` | Resource, namespace, name and subresource of an API request path; the handler's fallback when a message does not match |
+| `ExecPluginCheck.kt` | Fails `loadConfig()` with `ExecPluginNotFoundException` when the context's exec auth plugin is not on `PATH` (or at its kubeconfig-relative path); Fabric8 would otherwise send no credential |
 | `KubernetesTypes.kt` | Data classes (KubernetesJob, KubernetesPod, KubernetesNode) |
 
 ## Workspace binding
@@ -38,7 +42,7 @@ path; call `WorkspaceKubeconfig.file`, `exists` or `require`. The read queries (
 
 ## Loading the client: `KubeApi`, by path with an explicit context
 
-Every client is built from a `KubeApi(kubeconfig: Path, context: String)` through `KubeApi.loadConfig()`, the one place a Fabric8 `Config` is loaded: it checks that the kubeconfig holds the context (failing fast with the context, the path and the contexts it does hold) and loads it with `Config.fromKubeconfig(api.context, file)`. That keeps the file location on the config, so a relative certificate or exec-plugin path resolves against the kubeconfig's directory, and it never reads `Config.KUBERNETES_KUBECONFIG_FILE` or the `KUBECONFIG` env var. **`Config.autoConfigure` is forbidden.**
+Every client is built from a `KubeApi(kubeconfig: Path, context: String)` through `KubeApi.loadConfig()`, the one place a Fabric8 `Config` is loaded: it checks that the kubeconfig holds the context (failing fast with the context, the path and the contexts it does hold), checks that the context user's exec auth plugin can be found (`ExecPluginCheck`, failing with `ExecPluginNotFoundException`) and loads it with `Config.fromKubeconfig(api.context, file)`. That keeps the file location on the config, so a relative certificate or exec-plugin path resolves against the kubeconfig's directory, and it never reads `Config.KUBERNETES_KUBECONFIG_FILE` or the `KUBECONFIG` env var. **`Config.autoConfigure` is forbidden.**
 
 No K8s service takes a `ClusterHost`. `services/K8sClientProvider.createClient()` asks its `KubeApiLocator` for the address: `services/WorkspaceKubeApiLocator` reads `<workspace>/kubeconfig` and the context pinned in `ClusterState.kubeContext`, falling back to the kubeconfig's `current-context`. `K8sClientProvider` asks it for the address on every operation, and `DefaultK8sService` builds a client and closes it afterwards, so `kit status`, the kit workload probe and the server's pod listing target the pinned context too, and the long-running `server` status cache picks up a rewritten kubeconfig, a newly pinned context or a new SOCKS port on its next refresh. The `metrics stream` stress-job lister (`services/metrics/Fabric8StressJobLister`) builds its per-route client from the same `KubeApiLocator` and `loadConfig()`. No other main code calls `currentContextOf`, and none calls `Config.fromKubeconfig` with kubeconfig text.
 

@@ -334,7 +334,7 @@ easy-db-lab
 
 You should see the help output with available commands.
 
-## When an AWS Command Fails
+## When a Command Fails
 
 A failed command prints one message that says what went wrong and what to do, instead of a raw error chain.
 
@@ -353,6 +353,34 @@ If this is missing permissions on your AWS user, attach the EasyDBLabEC2 IAM pol
 For S3 the last sentence reads `A bucket policy, SCP or KMS key policy can also deny the request.` A denial from STS names no policy, because its only call, `GetCallerIdentity`, needs no IAM permission. That message points at a service control policy, permissions boundary or session policy instead. See [Step 2](#step-2-getting-iam-policies) to print and attach the policies.
 
 **Docker is not running.** A failure to reach Docker says so, and asks you to check that Docker is running and run the command again.
+
+### Permission and admission errors on your own cluster
+
+When you point easy-db-lab at a Kubernetes cluster you run yourself (`init --kubeconfig`), the cluster's API server can refuse a request. The message names the request and the reason, with no stack trace.
+
+**Kubernetes denied permission.** The API server's RBAC refused the request. The first line names the user the server checked, the verb, the resource and the namespace, for example:
+
+```text
+Kubernetes denied permission: alice cannot list pods in namespace lab.
+```
+
+easy-db-lab needs cluster-admin on the cluster. The message ends with the binding to ask your cluster administrator for, for example `kubectl create clusterrolebinding easy-db-lab-admin --clusterrole=cluster-admin --user=alice`. For a ServiceAccount, the binding uses `--serviceaccount=<namespace>:<name>`.
+
+**Kubernetes credentials are missing, expired or invalid.** The API server answered 401, or it treated you as `system:anonymous`. Log in again, or refresh the kubeconfig user's token or certificate. If the user runs an exec auth plugin (`aws`, `gke-gcloud-auth-plugin`, `kubelogin`), the plugin may have returned no credential. Run it by hand to see why.
+
+**The exec auth plugin was not found.** When the kubeconfig user runs an exec auth plugin that is not installed, every command fails before it sends a request. The message names the plugin, the kubeconfig user, the context, and the `PATH` it searched. The remedy is the kubeconfig's `installHint` when it has one. Otherwise it tells you to install the plugin or put it on `PATH`. A plugin given as a relative path, such as `./bin/token-helper`, is looked up next to the kubeconfig file.
+
+**Kubernetes rejected the request.** An admission policy refused what the request contained. A permission grant does not fix this. The message names the policy and lists each violation on its own line:
+
+```text
+Kubernetes rejected POST pods/x in namespace lab: PodSecurity restricted:latest.
+  - allowPrivilegeEscalation != false (container "c" must set securityContext.allowPrivilegeEscalation=false)
+  - runAsNonRoot != true (pod or container "c" must set securityContext.runAsNonRoot=true)
+```
+
+For Pod Security, easy-db-lab's workloads need the `privileged` level. Ask your cluster administrator to label the namespace `pod-security.kubernetes.io/enforce=privileged`, or use a namespace that allows it. An admission webhook (Kyverno or Gatekeeper, for example) or a ValidatingAdmissionPolicy is named the same way, with its reason.
+
+A poll that gets a 401 or 403, such as a rollout wait, fails on the first answer. It does not wait for its timeout.
 
 **Anything else.** The message lists the exception and each cause in turn. The full details are in `logs/info.log`.
 

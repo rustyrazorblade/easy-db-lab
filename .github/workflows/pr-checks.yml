@@ -18,7 +18,7 @@ jobs:
   # workflow that paths-ignore skips reports nothing and blocks the merge.
   #
   # The gate fails closed: if this job fails, or the diff cannot be read,
-  # test and quality run.
+  # test, quality and openspec run.  A cancelled run stops.
   #
   # A PR that changes only the docs-only paths below gets code=false.  Nothing
   # in the build or the tests reads them.  docs/, test-plans/, .claude/ and the
@@ -66,7 +66,7 @@ jobs:
   # JDK or Gradle, so a docs-only spec PR still gets a real check.
   openspec:
     needs: changes
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.openspec == 'true')
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.openspec == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -80,7 +80,7 @@ jobs:
   # Run tests without waiting for linting - fast feedback
   test:
     needs: changes
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true')
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -207,7 +207,7 @@ jobs:
   # Run linting and static analysis in parallel with tests
   quality:
     needs: changes
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true')
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
 
     steps:

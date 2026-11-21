@@ -199,6 +199,8 @@ Backwards compatibility is never a finding; clusters are ephemeral.  Large `stor
 - `test`: `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21.  `testScripts` runs every Docker-free shell-script test.
 - `quality`: `./gradlew ktlintCheck`, then `./gradlew detekt`, on JDK 21.
 
+If the `changes` job fails, all three jobs run.  Pushes to `main` always run all three.
+
 Path-filtered workflows run the Docker-backed script tests:
 
 - `.github/workflows/packer-test.yml`, on `packer/**` changes: `testPackerBase`, `testPackerCassandra` and `testAxonSudoers`.

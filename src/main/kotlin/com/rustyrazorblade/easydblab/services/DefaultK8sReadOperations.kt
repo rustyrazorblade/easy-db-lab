@@ -165,7 +165,9 @@ private fun Pod.toKubernetesPod(): KubernetesPod {
         restarts = totalRestarts,
         age = age,
         terminating = metadata?.deletionTimestamp != null,
+        nodeName = spec?.nodeName.orEmpty(),
         imagePullFailure = imagePullFailure(),
+        hostIp = status?.hostIP.orEmpty(),
     )
 }
 

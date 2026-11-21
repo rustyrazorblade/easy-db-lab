@@ -396,6 +396,51 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         assertThat(capturedUrl).isEqualTo("jdbc:presto://10.0.1.10:8080/cassandra")
     }
 
+    @Test
+    fun `connects to the address the host resolver returns, not the first node of the type (#1224)`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        var capturedUrl: String? = null
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
+                resolveHost = { Result.success("10.0.1.11") },
+                connectionFactory = { url, _ ->
+                    capturedUrl = url
+                    throw RuntimeException("stop here")
+                },
+            )
+
+        service.execute("SELECT 1")
+
+        assertThat(capturedUrl).isEqualTo("jdbc:presto://10.0.1.11:8080/cassandra")
+    }
+
+    @Test
+    fun `a host resolver failure fails the query before any connection`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        var connectionAttempted = false
+        val service =
+            KitJdbcSqlService(
+                clusterStateManager = getKoin().get(),
+                endpoint = prestoJdbcEndpoint,
+                user = "easy-db-lab",
+                resolveHost = { Result.failure(IllegalStateException("No running, ready pod serves endpoint")) },
+                connectionFactory = { _, _ ->
+                    connectionAttempted = true
+                    mock()
+                },
+            )
+
+        val result = service.execute("SELECT 1")
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("No running, ready pod serves endpoint")
+        assertThat(connectionAttempted).isFalse()
+    }
+
     private companion object {
         const val FAKE_LOCAL_PORT = 54321
     }

@@ -81,7 +81,13 @@ cluster workspace, rather than the kit's base name, when a bench kit is installe
 - **AND** each has independent `start`, `stop`, and `status` subcommands
 
 ### Requirement: TARGET_* env vars injected at start time
-When a bench kit with a `kit-ref` arg runs any phase, the framework SHALL read the target kit's `kit.yaml` from its directory in the workspace and inject `TARGET_*` environment variables derived from each declared endpoint into the script's environment.  `KitEndpoint.toTargetVars` SHALL handle every `KitEndpoint.EndpointType` in an exhaustive `when`, so a new endpoint type does not compile until it states its variables.  The `native` type SHALL yield `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER` and `TARGET_NATIVE_DATABASE`.  The `https` and `cql` types SHALL yield no variables.
+When a bench kit with a `kit-ref` arg runs any phase, the framework SHALL read the target kit's `kit.yaml` from its directory in the workspace and inject `TARGET_*` environment variables derived from each declared endpoint into the script's environment.  `KitEndpoint.toTargetVars` SHALL handle every `KitEndpoint.EndpointType` in an exhaustive `when`, so a new endpoint type does not compile until it states its variables.  The `native` type SHALL yield `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER` and `TARGET_NATIVE_DATABASE`.  The `https` and `cql` types SHALL yield no variables.  The host in each variable SHALL be the node that serves the endpoint: the first node of its node type, or, for an endpoint with a `pod-selector`, the node that runs its serving pod (spec `kit-capabilities`, "Kit endpoints resolve to the nodes that serve them").  A NodePort endpoint (no `pod-selector`) with no node of its type yields no variables.  A `pod-selector` endpoint with no serving pod, including when the cluster has no node of its type, SHALL fail the phase before its script runs: `Kit.TargetNotServed` names the kit, the phase, the target kit, the endpoint and the reason, and the command exits non-zero.  The teardown phases `stop` and `uninstall` are the exception: they remove what the bench kit made and usually run after the target is stopped, so they run with that endpoint's variables left out.
+
+#### Scenario: A bench kit stops after its target
+- **WHEN** a bench kit runs with `TARGET=trino`
+- **AND** no pod serves trino's `pod-selector` endpoint because trino was stopped first
+- **THEN** the bench kit's `stop` and `uninstall` phases run without that endpoint's variables, and with the variables of trino's NodePort endpoints
+- **AND** its `start` phase fails with `Kit.TargetNotServed`
 
 #### Scenario: JDBC endpoint produces TARGET_JDBC_* vars
 - **WHEN** a bench kit starts with `TARGET=clickhouse`

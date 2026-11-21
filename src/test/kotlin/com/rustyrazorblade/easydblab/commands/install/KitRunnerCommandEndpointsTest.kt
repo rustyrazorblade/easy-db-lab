@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -11,6 +12,8 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.koin.test.get
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * After a successful start, the kit's declared endpoints are reported at their node's private
@@ -54,6 +57,45 @@ class KitRunnerCommandEndpointsTest : KitRunnerCommandTestBase() {
             Event.Kit.EndpointAddress(name = "http", type = "http", address = "http://10.0.2.1:30474"),
         )
         assertThat(available.toDisplayString()).contains("Endpoints:", "10.0.2.1:30687", "http://10.0.2.1:30474")
+    }
+
+    @Test
+    fun `a one-pod endpoint is reported at the pod's node only, and as unserved with the reason when no pod serves`() {
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            endpoints:
+              - name: ui
+                node-type: db
+                port: 8080
+                type: http
+                pod-selector: app=${'$'}{KIT_NAME}
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+        val serving = KubernetesPod("default", "mydb-0", "Running", "1/1", 0, Duration.ofMinutes(1), hostIp = "10.0.2.1")
+        whenever(mockKubeService.listPodsByLabel("app=mydb", "default"))
+            .thenReturn(Result.success(listOf(serving)), Result.success(emptyList()))
+
+        val served = captureEvents { assertThat(command("mydb", "start").call()).isEqualTo(0) }
+        val unserved = captureEvents { assertThat(command("mydb", "start").call()).isEqualTo(0) }
+
+        // The first listener stays on the bus, so it sees the second start too; its first event is the first start.
+        assertThat(served.filterIsInstance<Event.Kit.EndpointsAvailable>().first()).isEqualTo(
+            Event.Kit.EndpointsAvailable(
+                kit = "mydb",
+                endpoints = listOf(Event.Kit.EndpointAddress(name = "ui", type = "http", address = "http://10.0.2.1:8080")),
+            ),
+        )
+        val notServed = unserved.filterIsInstance<Event.Kit.EndpointsAvailable>().single()
+        assertThat(notServed.endpoints).isEmpty()
+        assertThat(notServed.unserved).containsExactly(
+            Event.Kit.UnservedEndpoint(name = "ui", reason = "no running, ready pod matches app=mydb in namespace default"),
+        )
+        assertThat(notServed.toDisplayString()).contains("ui", "not served", "no running, ready pod")
     }
 
     @Test

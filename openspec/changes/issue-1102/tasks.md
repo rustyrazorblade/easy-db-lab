@@ -35,4 +35,4 @@
 ## 8. Docs and verification
 
 - [x] 8.1 `events/CLAUDE.md`, `providers/CLAUDE.md`, `kubernetes/CLAUDE.md` files table; user docs section on permission and admission errors on your own cluster
-- [ ] 8.2 `./gradlew ktlintFormat detekt test integrationTest` (in a subagent), all green, no detekt loosening
+- [x] 8.2 `./gradlew ktlintFormat detekt test integrationTest` (in a subagent), all green, no detekt loosening

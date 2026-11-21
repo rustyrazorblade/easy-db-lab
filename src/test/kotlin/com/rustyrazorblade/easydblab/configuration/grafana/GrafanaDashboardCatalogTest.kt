@@ -121,8 +121,9 @@ class GrafanaDashboardCatalogTest {
 
     @Test
     fun `two folders may hold a dashboard with the same file name`() {
-        // The copied tree keeps each file under its own directory, so nothing about a dashboard
-        // has to be unique across folders. This is the case the tree layout exists for.
+        // Each file is delivered under its own folder, so nothing about a dashboard has to be
+        // unique across folders. Discovery is checked here; GrafanaDashboardConfigMapsTest
+        // checks that two such files become two ConfigMaps in two folder volumes.
         val catalog =
             catalogOf(
                 GrafanaDashboard("cassandra", "overview.json"),

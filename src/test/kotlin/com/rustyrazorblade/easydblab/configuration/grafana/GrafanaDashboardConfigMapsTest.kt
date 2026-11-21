@@ -71,6 +71,16 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
             .volumeMounts
             .filter { it.mountPath.startsWith("$GRAFANA_DASHBOARD_ROOT/") }
 
+    /** Each ConfigMap [volume] projects, with the file paths it projects from that map. */
+    private fun projectedInto(
+        resources: List<HasMetadata>,
+        volume: String,
+    ) = grafanaPod(resources)
+        .volumes
+        .single { it.name == volume }
+        .projected.sources
+        .map { source -> source.configMap.name to source.configMap.items.map { it.path } }
+
     @Test
     fun `each dashboard is its own ConfigMap, named for its folder and stem, holding only its file name`() {
         val small =
@@ -125,6 +135,29 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("a-b/c.json")
             .hasMessageContaining("a/b-c.json")
+    }
+
+    @Test
+    fun `the same file name in two folders is two ConfigMaps, each projected into its own folder volume`() {
+        val sameName = mapOf("cassandra/overview.json" to "{\"a\":1}", "opensearch/overview.json" to "{\"b\":2}")
+
+        val resources = GrafanaDashboardConfigMaps.mountInto(grafana, sameName)
+
+        val maps = dashboardMaps(resources)
+        assertThat(maps.map { it.metadata.name to it.data })
+            .containsExactlyInAnyOrder(
+                "grafana-dashboard-cassandra-overview" to mapOf("overview.json" to "{\"a\":1}"),
+                "grafana-dashboard-opensearch-overview" to mapOf("overview.json" to "{\"b\":2}"),
+            )
+        assertThat(grafanaMounts(resources).map { it.name to it.mountPath })
+            .containsExactlyInAnyOrder(
+                "dashboards-cassandra" to "$GRAFANA_DASHBOARD_ROOT/cassandra",
+                "dashboards-opensearch" to "$GRAFANA_DASHBOARD_ROOT/opensearch",
+            )
+        assertThat(projectedInto(resources, "dashboards-cassandra"))
+            .containsExactly("grafana-dashboard-cassandra-overview" to listOf("overview.json"))
+        assertThat(projectedInto(resources, "dashboards-opensearch"))
+            .containsExactly("grafana-dashboard-opensearch-overview" to listOf("overview.json"))
     }
 
     @Test

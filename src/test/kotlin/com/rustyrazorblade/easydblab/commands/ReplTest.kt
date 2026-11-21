@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.jline.reader.Candidate
 import org.jline.reader.Parser
 import org.jline.reader.impl.DefaultParser
+import org.jline.shell.Shell
 import org.jline.shell.impl.DefaultCommandDispatcher
 import org.jline.terminal.Terminal
 import org.jline.terminal.TerminalBuilder
@@ -14,11 +15,12 @@ import org.junit.jupiter.api.Test
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import picocli.CommandLine.Parameters
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 class ReplTest : BaseKoinTest() {
-    @Command(name = "", subcommands = [Db::class, Info::class, Secret::class])
+    @Command(name = "", subcommands = [Db::class, Info::class, Run::class, Secret::class])
     class Root : Runnable {
         override fun run() = Unit
     }
@@ -48,6 +50,21 @@ class ReplTest : BaseKoinTest() {
 
     @Command(name = "info", description = ["Show info"])
     class Info : Runnable {
+        @Parameters(completionCandidates = Modes::class)
+        var mode: String? = null
+
+        override fun run() = Unit
+    }
+
+    /** Like `exec run`: the remaining words are a command for a remote shell. */
+    @Command(name = "run", description = ["Run a remote command"])
+    class Run : Runnable {
+        @Option(names = ["--hosts"])
+        var hosts: String? = null
+
+        @Parameters
+        var words: List<String> = emptyList()
+
         override fun run() = Unit
     }
 
@@ -63,8 +80,13 @@ class ReplTest : BaseKoinTest() {
             .streams(ByteArrayInputStream(ByteArray(0)), ByteArrayOutputStream())
             .build()
 
+    private val shells = mutableListOf<Shell>()
+    private val terminals = mutableListOf<Terminal>()
+
     @AfterEach
     fun closeTerminal() {
+        shells.forEach { it.close() }
+        terminals.forEach { it.close() }
         terminal.close()
     }
 
@@ -91,6 +113,27 @@ class ReplTest : BaseKoinTest() {
         // The line reader parses for completion, which keeps the empty word after a trailing space.
         group.complete(DefaultParser().parse(line, line.length, Parser.ParseContext.COMPLETE), candidates)
         return candidates.map { it.value() }
+    }
+
+    /** A shell built as the REPL builds it (literal lines, help on), over [root], printing to [output]. */
+    private fun replShell(
+        root: CommandLine,
+        output: ByteArrayOutputStream,
+    ): Shell {
+        val shellTerminal =
+            TerminalBuilder
+                .builder()
+                .dumb(true)
+                .streams(ByteArrayInputStream(ByteArray(0)), output)
+                .build()
+        terminals.add(shellTerminal)
+        return ReplLines
+            .literal(Shell.builder())
+            .terminal(shellTerminal)
+            .groups(ReplCommandGroup(root, shellTerminal))
+            .helpCommands(true)
+            .build()
+            .also { shells.add(it) }
     }
 
     @Test
@@ -135,10 +178,36 @@ class ReplTest : BaseKoinTest() {
 
         val commands = group.commands().associateBy { it.name() }
 
-        assertThat(commands.keys).containsExactlyInAnyOrder("db", "info", "secret", "cls")
+        assertThat(commands.keys).containsExactlyInAnyOrder("db", "info", "run", "cls")
         assertThat(commands.getValue("db").aliases()).containsExactly("database")
         assertThat(commands.getValue("db").description()).isEqualTo("Database commands")
         assertThat(commands.getValue("cls").aliases()).containsExactly("clear")
+    }
+
+    @Test
+    fun `a hidden top-level command is not offered for the first word or listed by help`() {
+        val output = ByteArrayOutputStream()
+        val shell = replShell(Recorded().root, output)
+        val firstWord = mutableListOf<Candidate>()
+
+        shell.dispatcher().completer().complete(shell.reader(), DefaultParser().parse("", 0, Parser.ParseContext.COMPLETE), firstWord)
+        shell.dispatcher().execute("help")
+
+        assertThat(firstWord.map { it.value() }).contains("db", "info", "cls").doesNotContain("secret")
+        assertThat(output.toString()).contains("db").doesNotContain("secret")
+    }
+
+    @Test
+    fun `a line reaches the command literally, with no local expansion or shell operators`() {
+        val recorded = Recorded()
+        val dispatcher = replShell(recorded.root, ByteArrayOutputStream()).dispatcher()
+
+        dispatcher.execute("run --hosts db0 \"echo \$HOME\" ~/.bashrc | grep x && ls > out ; date &")
+
+        val run = recorded.ran.single() as Run
+        assertThat(run.hosts).isEqualTo("db0")
+        assertThat(run.words)
+            .containsExactly("echo \$HOME", "~/.bashrc", "|", "grep", "x", "&&", "ls", ">", "out", ";", "date", "&")
     }
 
     @Test
@@ -174,6 +243,33 @@ class ReplTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an option value given as a separate word does not end completion or the description`() {
+        val group = ReplCommandGroup(Recorded().root, terminal)
+
+        assertThat(completions(group, "db start --hosts db0 --")).contains("--force", "--mode=")
+        assertThat(completions(group, "db start --mode ")).containsExactlyInAnyOrder("fast", "safe")
+        assertThat(group.describe(listOf("db", "start", "--hosts", "db0"))!!.mainDescription().map { it.toString() })
+            .containsExactly("Start the database")
+    }
+
+    @Test
+    fun `completion offers a positional parameter's completion candidates`() {
+        val group = ReplCommandGroup(Recorded().root, terminal)
+
+        assertThat(completions(group, "info ")).containsExactlyInAnyOrder("fast", "safe")
+    }
+
+    @Test
+    fun `a word that names no subcommand stops the walk, and later words are not read as subcommands`() {
+        val group = ReplCommandGroup(Recorded().root, terminal)
+
+        assertThat(completions(group, "db nope ")).isEmpty()
+        assertThat(group.describe(listOf("db", "nope", "start"))!!.mainDescription().map { it.toString() })
+            .containsExactly("Database commands")
+        assertThat(group.describe(listOf("nope"))).isNull()
+    }
+
+    @Test
     fun `the description is the deepest named command's, with its options`() {
         val group = ReplCommandGroup(Recorded().root, terminal)
 
@@ -182,7 +278,6 @@ class ReplTest : BaseKoinTest() {
         assertThat(description.isCommand).isTrue()
         assertThat(description.mainDescription().map { it.toString() }).containsExactly("Start the database")
         assertThat(description.options().keys).contains("--hosts=<hosts>", "--force")
-        assertThat(group.describe(listOf("db", "nope"))).isNull()
     }
 
     @Test

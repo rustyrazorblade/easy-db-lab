@@ -95,9 +95,10 @@ class KitJdbcSqlService(
                     val meta = rs.metaData
                     val columnCount = meta.columnCount
                     val columns = (1..columnCount).map { meta.getColumnName(it) }
+                    val types = (1..columnCount).map { meta.getColumnType(it) }
                     val rows = mutableListOf<List<String>>()
                     while (rs.next()) {
-                        rows.add((1..columnCount).map { cellText(rs, meta.getColumnType(it), it) })
+                        rows.add((1..columnCount).map { cellText(rs, types[it - 1], it) })
                     }
                     log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
                     SqlQueryResult(columns = columns, rows = rows)

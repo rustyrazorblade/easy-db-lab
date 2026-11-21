@@ -30,37 +30,68 @@ class ReplCommandGroup(
 ) : CommandGroup {
     override fun name(): String = "easy-db-lab"
 
-    // A hidden command still runs when typed; completion is what leaves it out.
+    /**
+     * The visible top-level commands, plus `cls`. jline lists these in `help` and offers them for
+     * the first word, so a hidden command is left out; [command] still finds it when it is typed.
+     */
     override fun commands(): Collection<Command> =
         root.subcommands.values
             .distinct()
+            .filterNot { it.commandSpec.usageMessage().hidden() }
             .map { PicocliCommand(it) } + ClearScreen(terminal)
+
+    /** The command [name] names, hidden or not, so a hidden command runs when typed. */
+    override fun command(name: String): Command? =
+        root.subcommands[name]?.let { PicocliCommand(it) } ?: ClearScreen(terminal).takeIf { name == it.name() || name in it.aliases() }
 
     /** Completes the line by finding the picocli command its finished words name. */
     fun complete(
         line: ParsedLine,
         candidates: MutableList<Candidate>,
     ) {
-        val target = findCommandLine(line.words(), line.wordIndex()) ?: return
-        if (target.commandSpec.usageMessage().hidden()) return
+        val position = locate(line.words(), line.wordIndex())
+        if (position.command.commandSpec
+                .usageMessage()
+                .hidden()
+        ) {
+            return
+        }
         val word = line.word()
-        if (word.startsWith("-")) {
-            optionCandidates(target, word.substring(0, line.wordCursor()), candidates)
-        } else {
-            target.subcommands.values
-                .distinct()
-                .filterNot { it.commandSpec.usageMessage().hidden() }
-                .forEach { sub ->
-                    (listOf(sub.commandSpec.name()) + sub.commandSpec.aliases()).forEach {
-                        candidates.add(candidate(it, it, complete = true))
-                    }
-                }
+        val pending = position.pendingOption
+        when {
+            pending != null -> pending.completionCandidates()?.forEach { candidates.add(candidate(it, it, true)) }
+            word.startsWith("-") -> optionCandidates(position.command, word.substring(0, line.wordCursor()), candidates)
+            else -> wordCandidates(position, candidates)
         }
     }
 
-    /** The tail-tip description of the deepest command [args] name, or null for an unknown one. */
+    /** The subcommands (unless a positional was already given) and the positional candidates. */
+    private fun wordCandidates(
+        position: Position,
+        candidates: MutableList<Candidate>,
+    ) {
+        val spec = position.command.commandSpec
+        if (!position.positionalSeen) {
+            position.command.subcommands.values
+                .distinct()
+                .filterNot { it.commandSpec.usageMessage().hidden() }
+                .flatMap { listOf(it.commandSpec.name()) + it.commandSpec.aliases() }
+                .forEach { candidates.add(candidate(it, it, complete = true)) }
+        }
+        spec
+            .positionalParameters()
+            .filterNot { it.hidden() }
+            .flatMap { it.completionCandidates()?.toList().orEmpty() }
+            .forEach { candidates.add(candidate(it, it, complete = true)) }
+    }
+
+    /**
+     * The tail-tip description of the deepest command [args] name: its description and options.
+     * Null when the first word names no command.
+     */
     fun describe(args: List<String>): CommandDescription? {
-        val target = findCommandLine(args, args.size) ?: return null
+        val target = locate(args, args.size).command
+        if (target === root) return null
         val spec = target.commandSpec
         val builder =
             CommandDescription
@@ -79,21 +110,43 @@ class ReplCommandGroup(
     }
 
     /**
-     * The picocli command named by the words before [lastIndex], or null when a word names no
-     * subcommand. Words that start with `-` are options and are skipped.
+     * Where the words before [lastIndex] leave the line.
+     *
+     * @property command the deepest command the words name.
+     * @property pendingOption the option whose value comes next: the last word was `--opt`, with no
+     *   `=`, for an option that takes a value.
+     * @property positionalSeen a word that names no subcommand was given, so no subcommand can follow.
      */
-    private fun findCommandLine(
+    private class Position(
+        val command: CommandLine,
+        val pendingOption: CommandLine.Model.OptionSpec?,
+        val positionalSeen: Boolean,
+    )
+
+    /**
+     * Walks the words before [lastIndex] down the picocli tree. An option is skipped, with its value
+     * when it is given as a separate word (`--hosts db0`); the walk stops descending at the first
+     * word that names no subcommand.
+     */
+    private fun locate(
         words: List<String>,
         lastIndex: Int,
-    ): CommandLine? {
+    ): Position {
         var current: CommandLine = root
+        var pending: CommandLine.Model.OptionSpec? = null
+        var positionalSeen = false
         for (word in words.take(lastIndex)) {
-            if (word.startsWith("-")) continue
-            current = current.subcommands.values.firstOrNull {
-                it.commandName == word || word in it.commandSpec.aliases()
-            } ?: return null
+            val valueOf = pending
+            pending = null
+            val sub = current.subcommands[word]
+            when {
+                valueOf != null -> Unit
+                word.startsWith("-") -> pending = current.commandSpec.findOption(word)?.takeIf { it.arity().min() > 0 }
+                positionalSeen || sub == null -> positionalSeen = true
+                else -> current = sub
+            }
         }
-        return current
+        return Position(current, pending, positionalSeen)
     }
 
     private fun optionCandidates(

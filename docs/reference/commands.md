@@ -925,7 +925,7 @@ Start interactive REPL.
 easy-db-lab repl
 ```
 
-Type any command without the `easy-db-lab` prefix. TAB completes commands, subcommands and options; Alt+S toggles the command description under the input line. `help` lists the commands, `cls` (or `clear`) clears the screen, and `exit`, `quit` or Ctrl-D leaves the REPL. History is kept in the profile directory.
+Type any command without the `easy-db-lab` prefix. TAB completes commands, subcommands and options; Alt+S toggles the command description under the input line. `help` lists the commands, `cls` (or `clear`) clears the screen, and `exit`, `quit` or Ctrl-D leaves the REPL. History is kept in the profile directory. A line is passed to the command as typed: the REPL does not expand `$VAR` or `~` and does not treat `|`, `&&`, `;`, `>` or `&` as operators, so a remote command such as `exec run "ps aux | grep java"` reaches the node unchanged.
 
 ### server
 

@@ -99,14 +99,72 @@ sealed interface AdmissionRejection {
         override val violations: List<String> get() = listOf(reason)
     }
 
+    /**
+     * `unable to create new content in namespace <ns> because it is being terminated`: the
+     * NamespaceLifecycle admission plugin refuses every create in a namespace that is being deleted.
+     *
+     * @property namespace the namespace being deleted
+     */
+    data class NamespaceTerminating(
+        val namespace: String,
+        override val name: String? = null,
+    ) : AdmissionRejection {
+        override val policy: String get() = NAMESPACE_LIFECYCLE
+        override val violations: List<String> get() = listOf("namespace $namespace is being terminated")
+    }
+
+    /**
+     * `exceeded quota: <quota>, requested: ..., used: ..., limited: ...`, or `failed quota: <quota>:
+     * must specify ...`: a ResourceQuota in the namespace refuses what the object asks for.
+     *
+     * @property quota the ResourceQuota's name
+     * @property reason what was requested, used and limited, or the field the quota requires
+     */
+    data class QuotaExceeded(
+        val quota: String,
+        val reason: String,
+        override val name: String? = null,
+    ) : AdmissionRejection {
+        override val policy: String get() = "$RESOURCE_QUOTA $quota"
+        override val violations: List<String> get() = listOf(reason)
+    }
+
+    /**
+     * A LimitRange in the namespace refuses the object's requests or limits:
+     * `maximum cpu usage per Container is 1, but limit is 2`, the matching `minimum` form, or
+     * `cpu max limit to request ratio per Container is 2, but provided ratio is 4.000000`. Several
+     * come as one bracketed list.
+     */
+    data class LimitRangeViolation(
+        override val violations: List<String>,
+        override val name: String? = null,
+    ) : AdmissionRejection {
+        override val policy: String get() = LIMIT_RANGE
+    }
+
     companion object {
         const val POD_SECURITY = "PodSecurity"
+        const val NAMESPACE_LIFECYCLE = "NamespaceLifecycle"
+        const val RESOURCE_QUOTA = "ResourceQuota"
+        const val LIMIT_RANGE = "LimitRange"
 
         private val OBJECT_NAME = Regex("""^\S+ "(?<name>[^"]*)" is forbidden: """)
         private val POD_SECURITY_FORM = Regex("""violates PodSecurity "(?<level>[^"]+)": (?<violations>.+)""")
         private val WEBHOOK_FORM = Regex("""admission webhook "(?<webhook>[^"]+)" denied the request: (?<reason>.+)""")
         private val POLICY_FORM =
             Regex("""ValidatingAdmissionPolicy '(?<policy>[^']+)' with binding '[^']*' denied request: (?<reason>.+)""")
+        private val TERMINATING_FORM =
+            Regex("""unable to create new content in namespace (?<namespace>\S+) because it is being terminated""")
+        private val QUOTA_EXCEEDED_FORM = Regex("""exceeded quota: (?<quota>[^,]+), (?<reason>requested: .+)""")
+        private val QUOTA_FAILED_FORM = Regex("""failed quota: (?<quota>[^:]+): (?<reason>.+)""")
+        private val LIMIT_RANGE_FORM =
+            Regex(
+                """is forbidden: \[?(?<violations>(?:(?:maximum|minimum) \S+ usage per|\S+ max limit to request ratio per) """ +
+                    """\S+ is .+?)]?$""",
+            )
+
+        /** The `, ` between LimitRange violations: each violation holds one `, but ` of its own. */
+        private val LIMIT_RANGE_SEPARATOR = Regex(""", (?!but )""")
 
         /** The rejection in [message], or null when no admission controller refused the request. */
         fun parse(message: String): AdmissionRejection? {
@@ -116,6 +174,14 @@ sealed interface AdmissionRejection {
                     ?.groups
                     ?.get("name")
                     ?.value
+            return policyRejection(message, name) ?: namespaceRejection(message, name)
+        }
+
+        /** Pod Security, a webhook or a ValidatingAdmissionPolicy: a policy about the object's content. */
+        private fun policyRejection(
+            message: String,
+            name: String?,
+        ): AdmissionRejection? {
             POD_SECURITY_FORM.find(message)?.groups?.let {
                 return PodSecurity(it.value("level"), splitTopLevel(it.value("violations")), name)
             }
@@ -124,6 +190,22 @@ sealed interface AdmissionRejection {
             }
             return POLICY_FORM.find(message)?.groups?.let {
                 ValidatingPolicy(it.value("policy"), it.value("reason"), name)
+            }
+        }
+
+        /** A namespace being deleted, or a ResourceQuota or LimitRange of the namespace. */
+        private fun namespaceRejection(
+            message: String,
+            name: String?,
+        ): AdmissionRejection? {
+            TERMINATING_FORM.find(message)?.groups?.let {
+                return NamespaceTerminating(it.value("namespace"), name)
+            }
+            (QUOTA_EXCEEDED_FORM.find(message) ?: QUOTA_FAILED_FORM.find(message))?.groups?.let {
+                return QuotaExceeded(it.value("quota").trim(), it.value("reason"), name)
+            }
+            return LIMIT_RANGE_FORM.find(message)?.groups?.let {
+                LimitRangeViolation(it.value("violations").split(LIMIT_RANGE_SEPARATOR).map(String::trim), name)
             }
         }
 
@@ -158,5 +240,13 @@ sealed interface AdmissionRejection {
  */
 fun Throwable.isKubernetesAuthRejection(): Boolean =
     causeChain().any { it is KubernetesClientException && (it.code == HTTP_UNAUTHORIZED || it.code == HTTP_FORBIDDEN) }
+
+/**
+ * True when no retry can fix this Kubernetes failure: a 401 or 403 ([isKubernetesAuthRejection]),
+ * or an [ExecPluginNotFoundException] from loading the client, since the plugin stays missing until
+ * the user installs it. Every Kubernetes poll passes `isTransient = { !it.isPermanentKubernetesFailure() }`.
+ */
+fun Throwable.isPermanentKubernetesFailure(): Boolean =
+    isKubernetesAuthRejection() || causeChain().any { it is ExecPluginNotFoundException }
 
 private fun MatchGroupCollection.value(group: String): String = get(group)?.value.orEmpty()

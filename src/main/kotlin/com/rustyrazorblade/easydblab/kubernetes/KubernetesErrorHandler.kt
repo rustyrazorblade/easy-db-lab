@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kernel.ErrorDescription
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
@@ -26,8 +27,8 @@ import java.net.URISyntaxException
  * [ExecPluginNotFoundException], a kubeconfig exec plugin that [ExecPluginCheck] could not find, as
  * `credentials`.
  *
- * The detail is the server's status message, never the request URI, whose query could carry a
- * token.
+ * The detail is the server's status message, never the request URI, whose userinfo or query could
+ * carry a credential.
  */
 class KubernetesErrorHandler : ProviderErrorHandler {
     override fun describe(error: Throwable): ErrorDescription? =
@@ -44,26 +45,36 @@ class KubernetesErrorHandler : ProviderErrorHandler {
         }
 
     private fun describeApiFailure(error: KubernetesClientException): ErrorDescription? {
-        val message = error.status?.message?.takeIf { it.isNotBlank() } ?: error.messageWithoutQuery()
+        val message = error.status?.message?.takeIf { it.isNotBlank() } ?: error.messageWithoutSecrets()
         return when (error.code) {
             HTTP_UNAUTHORIZED -> credentials(message, error.fallbackRequest())
             HTTP_FORBIDDEN -> forbidden(error, message)
-            HTTP_BAD_REQUEST, HTTP_UNPROCESSABLE -> AdmissionRejection.parse(message)?.let { rejected(error, message, it) }
+            HTTP_BAD_REQUEST, Constants.HttpStatus.UNPROCESSABLE_ENTITY -> admissionRejected(error, message)
             else -> null
         }
     }
 
+    /** The admission refusal in [message], or null when no admission controller refused the request. */
+    private fun admissionRejected(
+        error: KubernetesClientException,
+        message: String,
+    ): ErrorDescription? = AdmissionRejection.parse(message)?.let { rejected(error, message, it) }
+
+    /**
+     * A 403 is claimed only when its message says why: an RBAC denial, or an admission refusal
+     * (a policy, a namespace being deleted, a ResourceQuota or a LimitRange). Any other 403 (a
+     * proxy or auth gateway in front of the API server) is left to the generic error, so it never
+     * gets the cluster-admin remedy, which would be wrong for it.
+     */
     private fun forbidden(
         error: KubernetesClientException,
         message: String,
-    ): ErrorDescription {
+    ): ErrorDescription? {
         val denial = RbacDenial.parse(message)
-        val rejection = if (denial == null) AdmissionRejection.parse(message) else null
         return when {
             denial?.isAnonymous == true -> credentials(message, denial.toRequest())
             denial != null -> permissionDenied(message, denial.toRequest())
-            rejection != null -> rejected(error, message, rejection)
-            else -> permissionDenied(message, error.fallbackRequest())
+            else -> admissionRejected(error, message)
         }
     }
 
@@ -113,13 +124,13 @@ class KubernetesErrorHandler : ProviderErrorHandler {
     /**
      * The exception's own message, for an answer whose status carries no message. Fabric8's
      * `Failure executing: <METHOD> at: <URI>` form becomes the method, the URI's path and the HTTP
-     * code; any other message keeps its text with every URI's query cut off. Either way the detail
-     * never holds a query, which could carry a token.
+     * code; any other message keeps its text with every URI's userinfo, query and fragment cut off.
+     * Either way the detail never holds a password or a query, which could carry a token.
      */
-    private fun KubernetesClientException.messageWithoutQuery(): String {
+    private fun KubernetesClientException.messageWithoutSecrets(): String {
         val text = message.orEmpty()
-        val match = FAILURE_EXECUTING.find(text) ?: return URI_QUERY.replace(text, "$1")
-        val path = rawPathOf(match.groupValues[2]) ?: URI_QUERY.replace(match.groupValues[2], "$1")
+        val match = FAILURE_EXECUTING.find(text) ?: return text.withoutUriSecrets()
+        val path = rawPathOf(match.groupValues[2]) ?: match.groupValues[2].withoutUriSecrets()
         return "The API server answered HTTP $code with no message to ${match.groupValues[1]} $path"
     }
 
@@ -158,17 +169,31 @@ class KubernetesErrorHandler : ProviderErrorHandler {
             is AdmissionRejection.ValidatingPolicy ->
                 "The ValidatingAdmissionPolicy ${rejection.policy} refused the request. Ask a cluster administrator to " +
                     "exempt $where from its binding, or change the policy."
+            is AdmissionRejection.NamespaceTerminating ->
+                "Namespace ${rejection.namespace} is being deleted, so nothing new can be created in it. Wait until it is " +
+                    "gone (kubectl get namespace ${rejection.namespace}), then run the command again."
+            is AdmissionRejection.QuotaExceeded ->
+                "The ResourceQuota ${rejection.quota} in $where does not allow this request. Free some of its quota " +
+                    "(delete or shrink workloads there), or ask a cluster administrator to raise it."
+            is AdmissionRejection.LimitRangeViolation ->
+                "A LimitRange in $where does not allow these resource requests or limits. Change them to fit the " +
+                    "LimitRange (kubectl describe limitrange${namespace?.let { " -n $it" }.orEmpty()}), or ask a " +
+                    "cluster administrator to change it."
         }
     }
 
     private companion object {
         const val PROVIDER = "Kubernetes"
-        const val HTTP_UNPROCESSABLE = 422
         const val SERVICE_ACCOUNT_PREFIX = "system:serviceaccount:"
         val FAILURE_EXECUTING = Regex("""^Failure executing: (\S+) at: (\S+?)\.(?: |$)""")
-        val URI_QUERY = Regex("""(\w+://[^\s?#]+)[?#]\S*""")
+
+        /** A URI in free text: its scheme, any `user[:password]@`, its host and path, then any query or fragment. */
+        val URI_IN_TEXT = Regex("""(\w+://)(?:[^\s/?#@]*@)?([^\s?#]*)(?:[?#]\S*)?""")
         const val CREDENTIALS_REMEDY =
             "Re-authenticate the kubeconfig user (log in again, or refresh its token or certificate). " +
                 "If the user runs an exec auth plugin, it may have returned no credential: run it by hand to see why."
+
+        /** [this] with every URI cut to its scheme, host and path: no userinfo, query or fragment, each of which can carry a credential. */
+        fun String.withoutUriSecrets(): String = URI_IN_TEXT.replace(this, "$1$2")
     }
 }

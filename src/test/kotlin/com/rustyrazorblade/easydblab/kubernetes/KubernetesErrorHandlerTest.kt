@@ -47,6 +47,16 @@ class KubernetesErrorHandlerTest {
         return OperationSupport.requestFailure(request, status)
     }
 
+    /** A listener that adds every emitted event to [into]. */
+    private fun collecting(into: MutableList<Event>): EventListener =
+        object : EventListener {
+            override fun onEvent(envelope: EventEnvelope) {
+                into.add(envelope.event)
+            }
+
+            override fun close() = Unit
+        }
+
     @Test
     fun `an RBAC denial is permission-denied with the request the server named`() {
         val error =
@@ -179,62 +189,149 @@ class KubernetesErrorHandlerTest {
     }
 
     @Test
-    fun `an unrecognised 403 falls back to the request URI and the HTTP method`() {
-        val error = failure("DELETE", "/apis/apps/v1/namespaces/lab/statefulsets/db", 403, "access denied by gateway")
+    fun `a 403 the server does not explain is left to the generic error, with no cluster-admin remedy`() {
+        val unexplained =
+            listOf(
+                failure("DELETE", "/apis/apps/v1/namespaces/lab/statefulsets/db", 403, "access denied by gateway"),
+                OperationSupport.requestFailure(
+                    StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods"), "GET", null),
+                    OperationSupport.createStatus(403, "<html>Forbidden</html>"),
+                ),
+                KubernetesClientException("Forbidden!", 403, null),
+            )
 
-        val description = handler.describe(error)
-
-        assertThat(description?.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
-        assertThat(description?.request)
-            .isEqualTo(ProviderRequest(verb = "DELETE", resource = "statefulsets", namespace = "lab", name = "db"))
-        assertThat(description?.detail).isEqualTo("access denied by gateway")
+        assertThat(unexplained.map { handler.describe(it) }).containsOnlyNulls()
     }
 
     @Test
-    fun `a 403 whose body was not JSON is still classified by its code`() {
-        val request =
-            StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t"), "GET", null)
-        val error = OperationSupport.requestFailure(request, OperationSupport.createStatus(403, "<html>Forbidden</html>"))
+    fun `an unexplained 403 reaches the user as the generic error with the server's message`() {
+        val emitted = mutableListOf<Event>()
+        val bus = EventBus().also { it.addListener(collecting(emitted)) }
+
+        CommandFailureReporter(bus, listOf(handler))
+            .report(failure("GET", "/api/v1/namespaces/lab/pods", 403, "access denied by gateway"))
+
+        val event = emitted.single() as Event.Command.ExecutionError
+        assertThat(event.toDisplayString()).contains("access denied by gateway").doesNotContain("cluster-admin")
+    }
+
+    @Test
+    fun `a create in a namespace being deleted is rejected, with a remedy to wait for it`() {
+        val error =
+            failure(
+                "POST",
+                "/api/v1/namespaces/lab/pods",
+                403,
+                "pods \"web\" is forbidden: unable to create new content in namespace lab because it is being terminated",
+            )
 
         val description = handler.describe(error)
 
-        assertThat(description?.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
-        assertThat(description?.request).isEqualTo(ProviderRequest(verb = "GET", resource = "pods", namespace = "lab"))
-        assertThat(description?.detail).doesNotContain("s3cr3t")
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.REJECTED)
+        assertThat(description?.policy?.name).isEqualTo("NamespaceLifecycle")
+        assertThat(description?.request).isEqualTo(ProviderRequest(verb = "POST", resource = "pods", namespace = "lab", name = "web"))
+        assertThat(description?.remedy).contains("being deleted").contains("Wait").doesNotContain("cluster-admin")
     }
 
-    @ParameterizedTest(name = "{0} with status message [{1}]")
-    @CsvSource(
-        value = ["401,NULL", "401,''", "401,'  '", "403,NULL", "403,''", "422,NULL", "422,''"],
-        nullValues = ["NULL"],
-    )
-    fun `a failure with no status message never puts the request URI's query in the detail`(
-        code: Int,
-        statusMessage: String?,
-    ) {
+    @Test
+    fun `an exceeded ResourceQuota is rejected, naming the quota, with a remedy to free or raise it`() {
+        val error =
+            failure(
+                "POST",
+                "/api/v1/namespaces/lab/pods",
+                403,
+                "pods \"web\" is forbidden: exceeded quota: compute, requested: limits.cpu=2, used: limits.cpu=4, limited: limits.cpu=5",
+            )
+
+        val description = handler.describe(error)
+
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.REJECTED)
+        assertThat(description?.policy)
+            .isEqualTo(
+                ProviderPolicy(
+                    "ResourceQuota compute",
+                    violations = listOf("requested: limits.cpu=2, used: limits.cpu=4, limited: limits.cpu=5"),
+                ),
+            )
+        assertThat(description?.remedy).contains("ResourceQuota compute").contains("raise").doesNotContain("cluster-admin")
+    }
+
+    @Test
+    fun `a LimitRange refusal is rejected, with a remedy to fit the LimitRange`() {
+        val error =
+            failure(
+                "POST",
+                "/api/v1/namespaces/lab/pods",
+                403,
+                "pods \"web\" is forbidden: maximum cpu usage per Container is 1, but limit is 2",
+            )
+
+        val description = handler.describe(error)
+
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.REJECTED)
+        assertThat(description?.policy)
+            .isEqualTo(ProviderPolicy("LimitRange", violations = listOf("maximum cpu usage per Container is 1, but limit is 2")))
+        assertThat(description?.remedy).contains("LimitRange").contains("-n lab").doesNotContain("cluster-admin")
+    }
+
+    @ParameterizedTest(name = "401 with status message [{0}]")
+    @CsvSource(value = ["NULL", "''", "'  '"], nullValues = ["NULL"])
+    fun `a failure with no status message never puts the request URI's query in the detail`(statusMessage: String?) {
         val request =
             StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t"), "GET", null)
         val status =
             StatusBuilder()
                 .withStatus("Failure")
-                .withCode(code)
+                .withCode(401)
                 .withMessage(statusMessage)
                 .build()
         val error = OperationSupport.requestFailure(request, status)
 
-        val detail = handler.describe(error)?.detail.orEmpty()
+        val description = handler.describe(error)
 
         assertThat(error.message).contains("s3cr3t")
-        assertThat(detail).doesNotContain("s3cr3t").doesNotContain("?watch").doesNotContain("token=")
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+        assertThat(description?.detail)
+            .isEqualTo("The API server answered HTTP 401 with no message to GET /api/v1/namespaces/lab/pods")
     }
 
     @Test
-    fun `a 403 with no status uses the exception message`() {
-        val description = handler.describe(KubernetesClientException("Forbidden!", 403, null))
+    fun `a blank status message with a non-Fabric8 exception message keeps any URI's userinfo and query out of the detail`() {
+        val status =
+            StatusBuilder()
+                .withStatus("Failure")
+                .withCode(401)
+                .withMessage(" ")
+                .build()
+        val error =
+            KubernetesClientException(
+                "Proxy refused https://admin:hunter2@10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t#frag " +
+                    "and http://ops@gateway.local/auth",
+                401,
+                status,
+            )
 
-        assertThat(description?.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
-        assertThat(description?.detail).isEqualTo("Forbidden!")
-        assertThat(description?.request).isNull()
+        val description = handler.describe(error)
+
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
+        assertThat(description?.detail)
+            .isEqualTo("Proxy refused https://10.0.0.1:6443/api/v1/namespaces/lab/pods and http://gateway.local/auth")
+    }
+
+    @Test
+    fun `a Fabric8 failure with no status message keeps the URI's userinfo out of the detail`() {
+        val request =
+            StandardHttpRequest(emptyMap(), URI("https://admin:hunter2@10.0.0.1:6443/api/v1/namespaces/lab/pods?token=s3cr3t"), "GET", null)
+        val error = OperationSupport.requestFailure(request, OperationSupport.createStatus(401, ""))
+
+        val description = handler.describe(error)
+
+        assertThat(error.message).contains("hunter2")
+        assertThat(description?.detail)
+            .isNotNull()
+            .doesNotContain("admin")
+            .doesNotContain("hunter2")
+            .doesNotContain("s3cr3t")
     }
 
     @Test
@@ -286,18 +383,7 @@ class KubernetesErrorHandlerTest {
             )
         for (wrapped in listOf(IllegalStateException("Failed to apply Grafana", denial), CompletionException(denial))) {
             val emitted = mutableListOf<Event>()
-            val bus =
-                EventBus().also {
-                    it.addListener(
-                        object : EventListener {
-                            override fun onEvent(envelope: EventEnvelope) {
-                                emitted.add(envelope.event)
-                            }
-
-                            override fun close() = Unit
-                        },
-                    )
-                }
+            val bus = EventBus().also { it.addListener(collecting(emitted)) }
 
             CommandFailureReporter(bus, listOf(handler)).report(wrapped)
 

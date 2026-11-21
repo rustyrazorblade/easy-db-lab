@@ -134,6 +134,64 @@ class KubernetesDenialTest {
     }
 
     @Test
+    fun `a create in a namespace being terminated names the namespace`() {
+        val rejection =
+            AdmissionRejection.parse(
+                "pods \"web\" is forbidden: unable to create new content in namespace lab because it is being terminated",
+            )
+
+        assertThat(rejection).isEqualTo(AdmissionRejection.NamespaceTerminating(namespace = "lab", name = "web"))
+    }
+
+    @Test
+    fun `an exceeded ResourceQuota names the quota and keeps what was requested, used and limited`() {
+        val rejection =
+            AdmissionRejection.parse(
+                "pods \"web\" is forbidden: exceeded quota: compute, requested: limits.cpu=2, used: limits.cpu=4, limited: limits.cpu=5",
+            )
+
+        assertThat(rejection).isEqualTo(
+            AdmissionRejection.QuotaExceeded(
+                quota = "compute",
+                reason = "requested: limits.cpu=2, used: limits.cpu=4, limited: limits.cpu=5",
+                name = "web",
+            ),
+        )
+    }
+
+    @Test
+    fun `a ResourceQuota that requires a field the object leaves out is a quota rejection`() {
+        val rejection =
+            AdmissionRejection.parse("pods \"web\" is forbidden: failed quota: compute: must specify limits.cpu for: c")
+
+        assertThat(rejection).isEqualTo(
+            AdmissionRejection.QuotaExceeded(quota = "compute", reason = "must specify limits.cpu for: c", name = "web"),
+        )
+    }
+
+    @Test
+    fun `a LimitRange refusal keeps each violation whole, though each holds a comma`() {
+        val rejection =
+            AdmissionRejection.parse(
+                "pods \"web\" is forbidden: [maximum cpu usage per Container is 1, but limit is 2, " +
+                    "minimum memory usage per Pod is 64Mi, but request is 32Mi, " +
+                    "cpu max limit to request ratio per Container is 2, but provided ratio is 4.000000]",
+            )
+
+        assertThat(rejection).isEqualTo(
+            AdmissionRejection.LimitRangeViolation(
+                violations =
+                    listOf(
+                        "maximum cpu usage per Container is 1, but limit is 2",
+                        "minimum memory usage per Pod is 64Mi, but request is 32Mi",
+                        "cpu max limit to request ratio per Container is 2, but provided ratio is 4.000000",
+                    ),
+                name = "web",
+            ),
+        )
+    }
+
+    @Test
     fun `a webhook that does not support dry run is not a rejection`() {
         assertThat(AdmissionRejection.parse("admission webhook \"validate.kyverno.svc\" does not support dry run")).isNull()
     }

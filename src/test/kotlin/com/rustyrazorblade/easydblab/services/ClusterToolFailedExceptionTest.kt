@@ -1,80 +1,40 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
-/** What a failed helm or kubectl call tells the user, in either [ClusterTooling] form. */
+/** What a failed helm or kubectl call tells the user. */
 internal class ClusterToolFailedExceptionTest {
     @Test
-    fun `the message names the tool, the arguments, the status and the stderr`() {
-        val failure =
-            ClusterToolFailedException(
-                tool = ClusterTool.KUBECTL,
-                args = listOf("get", "nosuchkind"),
-                exitStatus = 1,
-                stderr = "error: the server doesn't have a resource type \"nosuchkind\"\n",
-            )
+    fun `the message names the command, where it ran, the status and the stderr, and stdout only when there is any`() {
+        val quiet = ClusterToolFailedException(ClusterTool.KUBECTL, listOf("get", "nosuchkind"), 1, "control0 (54.1.2.3)", "no such kind\n")
+        val loud = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "control0 (54.1.2.3)", "boom", stdout = "partial\n")
 
-        assertThat(failure.message)
-            .contains("kubectl get nosuchkind", "exit status 1", "the server doesn't have a resource type \"nosuchkind\"")
-        assertThat(failure.stderr).isEqualTo("error: the server doesn't have a resource type \"nosuchkind\"")
+        assertThat(quiet.message).isEqualTo(
+            "kubectl get nosuchkind failed on control0 (54.1.2.3) with exit status 1\nstderr:\nno such kind",
+        )
+        assertThat(loud.message).endsWith("stderr:\nboom\nstdout:\npartial")
     }
 
     @Test
-    fun `stdout follows stderr in the message only when there is any, and keeps only the tail`() {
-        val limit = Constants.ClusterTooling.FAILURE_TAIL_LINES
-        val stdout = (1..limit + 5).joinToString("\n") { "out $it" }
+    fun `a failure the transport reported no status for says so instead of inventing one`() {
+        val failure = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), null, "control0 (54.1.2.3)", "")
 
-        val quiet = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom")
-        val loud = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom", stdout = stdout)
-
-        assertThat(quiet.message).doesNotContain("stdout")
-        assertThat(loud.message).contains("stderr:\nboom\nstdout:\nout 6\n").endsWith("out ${limit + 5}")
-        assertThat(loud.stdout.lines()).hasSize(limit)
+        assertThat(failure.message).isEqualTo("helm list failed on control0 (54.1.2.3) with no exit status reported")
     }
 
     @Test
-    fun `where the tool ran appears in the message only when given`() {
-        val local = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom")
-        val remote = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom", location = "control0 (54.1.2.3)")
-
-        assertThat(local.message).doesNotContain(" on ")
-        assertThat(remote.message).contains("on control0 (54.1.2.3)")
-    }
-
-    @Test
-    fun `stderr keeps only the last lines up to the tail limit`() {
-        val limit = Constants.ClusterTooling.FAILURE_TAIL_LINES
-        val stderr = (1..limit + 20).joinToString("\n") { "line $it" }
-
-        val failure = ClusterToolFailedException(ClusterTool.HELM, listOf("upgrade"), 1, stderr)
-
-        val kept = failure.stderr.lines()
-        assertThat(kept).hasSize(limit)
-        assertThat(kept.first()).isEqualTo("line 21")
-        assertThat(kept.last()).isEqualTo("line ${limit + 20}")
-        assertThat(failure.message).doesNotContain("line 20\n")
-    }
-
-    @Test
-    fun `credentials in a url never reach the message or the stderr`() {
+    fun `credentials in the command never reach the message, and there is no cause to repeat them`() {
         val failure =
             ClusterToolFailedException(
                 tool = ClusterTool.KUBECTL,
                 args = listOf("apply", "-f", "https://alice:ghp_secrettoken@example.com/m.yaml"),
                 exitStatus = 1,
-                stderr = "error: unable to read URL \"https://alice:ghp_secrettoken@example.com/m.yaml\"",
+                location = "control0 (54.1.2.3)",
+                stderr = "",
             )
 
-        assertThat(failure.message).doesNotContain("ghp_secrettoken").contains("***@example.com")
-        assertThat(failure.stderr).doesNotContain("ghp_secrettoken").contains("***@example.com")
-    }
-
-    @Test
-    fun `the exception carries no cause that could repeat an unredacted command`() {
-        val failure = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom")
-
+        assertThat(failure.message).doesNotContain("ghp_secrettoken").contains("https://***@example.com/m.yaml")
         assertThat(failure.cause).isNull()
     }
 }

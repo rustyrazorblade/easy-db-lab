@@ -1,13 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
+import com.rustyrazorblade.easydblab.redact
 
 /**
  * The cluster command-line tools a kit or service drives: what [ClusterTooling] can run.
  *
- * [executable] is the program name, which is also the name of its workspace wrapper in `bin/`.
+ * [executable] is the program name.
  */
 enum class ClusterTool(
     val executable: String,
@@ -19,28 +18,18 @@ enum class ClusterTool(
 /**
  * The one seam through which `KubectlService` and `HelmService` run helm and kubectl.
  *
- * It exists so the same service code can reach a cluster two ways: over SSH on the control node (AWS),
- * or as a local process in the kit process environment (a local cluster with no SSH host). A service
- * builds an argument list and never says where the tool runs.
+ * A service builds an argument list and never says where the tool runs, so a cluster reached some
+ * other way than SSH to the control node needs a new implementation, not new service code.
+ * [SshClusterTooling] is the only implementation today; the local form comes with #1163.
  */
 interface ClusterTooling {
     /**
      * Runs [tool] with [args], feeding [stdin] when given, and returns its stdout.
      *
-     * A file argument of `-` (`apply -f -`, `--values -`) reads [stdin]. The local form pipes it; the
-     * SSH form uploads it to a temporary file on the control node and replaces the `-` with that path.
-     * When [stdin] is given, exactly one argument in [args] must be `-`; both forms fail fast otherwise.
-     *
-     * Every argument reaches the tool as exactly the value passed, in both forms. The SSH form joins
-     * the command into one remote shell string, so it single-quotes any argument that holds a
-     * character outside the shell-safe set (a space, `;`, `$`, a quote), whether or not it is marked:
-     * a kit variable interpolated into a step field can hold any of them. [shellQuoted] holds the
-     * indexes the SSH form single-quotes even when they are all safe characters (a label selector, an
-     * object name). The local form passes arguments as a list, never through a shell, so it quotes
-     * nothing; both forms fail fast on an index outside [args]. A caller therefore passes raw values
-     * and never quotes a value itself.
-     *
-     * [echo] shows stdout to the user; callers that parse stdout pass false.
+     * A file argument of `-` (`apply -f -`, `--values -`) reads [stdin]; when [stdin] is given,
+     * exactly one argument must be `-`. Every argument reaches the tool as exactly the value passed,
+     * so a caller passes raw values and never quotes one itself. [echo] shows stdout to the user;
+     * callers that parse stdout pass false.
      *
      * @throws ClusterToolFailedException when the tool exits non-zero
      */
@@ -49,94 +38,32 @@ interface ClusterTooling {
         args: List<String>,
         stdin: String? = null,
         echo: Boolean = true,
-        shellQuoted: Set<Int> = emptySet(),
     ): String
 }
 
 /**
- * Fails fast when [stdin] is given and [args] does not hold exactly one `-`. The SSH form needs that
- * one argument to stand for the uploaded file; the local form would pipe stdin to a tool that never
- * reads it. Both [ClusterTooling] forms call it first, so a caller's mistake fails the same way
- * wherever the tool would have run, and not only on AWS.
- */
-internal fun requireOneStdinArgument(
-    tool: ClusterTool,
-    args: List<String>,
-    stdin: String?,
-) = require(stdin == null || args.count { it == Constants.ClusterTooling.STDIN_ARGUMENT } == 1) {
-    "A command with stdin needs exactly one '${Constants.ClusterTooling.STDIN_ARGUMENT}' argument " +
-        "to stand for the uploaded file, got " +
-        redactUrlCredentials((listOf(tool.executable) + args).joinToString(" "))
-}
-
-/**
- * Fails fast when [shellQuoted] names an argument [args] does not have. Both [ClusterTooling] forms
- * call it first, so a wrong index fails the same way wherever the tool would have run.
- */
-internal fun requireShellQuotedWithin(
-    tool: ClusterTool,
-    args: List<String>,
-    shellQuoted: Set<Int>,
-) = require(shellQuoted.all { it in args.indices }) {
-    "shellQuoted $shellQuoted names an index outside the ${args.size} arguments of ${tool.executable}"
-}
-
-/**
- * Thrown when a helm or kubectl command exits non-zero, in either [ClusterTooling] form.
+ * Thrown when a helm or kubectl command fails.
  *
- * Carries what the tool actually said, because its stderr is the main thing that explains the failure.
- * [stderr] and [stdout] each keep the last [Constants.ClusterTooling.FAILURE_TAIL_LINES] lines with URL
- * credentials redacted, so a failed `apply -f https://user:token@host/...` cannot print its token. The
- * message shows stdout after stderr, when there is any, as `RemoteCommandFailedException`'s message did
- * before the SSH form replaced it. [exitStatus] is
- * [Constants.ClusterTooling.UNKNOWN_EXIT_STATUS] when the transport did not report one. [location] names
- * where the tool ran when that is not this machine, such as the SSH form's control node. [args] is
- * kept exactly as the caller passed it, unredacted, for code that inspects the failure; only the
- * message and [stderr] are redacted, so never print [args] directly.
- *
- * Like `RemoteCommandFailedException` it carries no cause: the cause's message would repeat the
- * unredacted command.
+ * It names the command, where it ran and its exit status, and carries the tool's stderr and stdout,
+ * because stderr is what explains the failure. [stderr] and [stdout] arrive already tailed and
+ * redacted by the transport; the command in the message is redacted here. [exitStatus] is null when
+ * the transport reported none. [args] is kept exactly as the caller passed it, unredacted, for code
+ * that inspects the failure, so never print it directly. Like `RemoteCommandFailedException` it
+ * carries no cause, whose message would repeat the unredacted command.
  */
 class ClusterToolFailedException(
     val tool: ClusterTool,
     val args: List<String>,
-    val exitStatus: Int,
-    stderr: String,
-    val location: String? = null,
-    stdout: String = "",
+    val exitStatus: Int?,
+    val location: String,
+    val stderr: String,
+    val stdout: String = "",
 ) : EasyDBLabException(
-        describe(tool, args, exitStatus, location, listOf("stderr" to redactedTail(stderr), "stdout" to redactedTail(stdout))),
-    ) {
-    /** The tool's stderr, tailed and with URL credentials redacted. */
-    val stderr: String = redactedTail(stderr)
-
-    /** The tool's stdout, tailed and with URL credentials redacted. */
-    val stdout: String = redactedTail(stdout)
-
-    private companion object {
-        fun redactedTail(text: String): String =
-            redactUrlCredentials(
-                text
-                    .lines()
-                    .takeLast(Constants.ClusterTooling.FAILURE_TAIL_LINES)
-                    .joinToString("\n")
-                    .trimEnd(),
-            )
-
-        fun describe(
-            tool: ClusterTool,
-            args: List<String>,
-            exitStatus: Int,
-            location: String?,
-            streams: List<Pair<String, String>>,
-        ): String =
-            buildString {
-                append(redactUrlCredentials((listOf(tool.executable) + args).joinToString(" ")))
-                append(" failed with exit status ").append(exitStatus)
-                location?.let { append(" on ").append(it) }
-                streams.filter { (_, text) -> text.isNotBlank() }.forEach { (name, text) ->
-                    append("\n").append(name).append(":\n").append(text)
-                }
-            }
-    }
-}
+        buildString {
+            append(redact((listOf(tool.executable) + args).joinToString(" ")))
+            append(" failed on ").append(location)
+            append(exitStatus?.let { " with exit status $it" } ?: " with no exit status reported")
+            if (stderr.isNotBlank()) append("\nstderr:\n").append(stderr.trimEnd())
+            if (stdout.isNotBlank()) append("\nstdout:\n").append(stdout.trimEnd())
+        },
+    )

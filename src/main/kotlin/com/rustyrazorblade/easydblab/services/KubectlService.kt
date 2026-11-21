@@ -1,13 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import io.fabric8.kubernetes.client.utils.Serialization
 
 /** What the kit steps and commands ask of kubectl, wherever it runs; [DefaultKubectlService] runs it through [ClusterTooling]. */
 interface KubectlService {
-    /**
-     * Creates namespace [name] if it is missing and leaves it alone otherwise: a client-side dry run
-     * renders the Namespace, and applying that output is what makes the call idempotent.
-     */
+    /** Creates namespace [name] if it is missing and leaves it alone otherwise, as `kubectl apply` does. */
     fun createNamespace(name: String)
 
     fun applyUrl(url: String)
@@ -55,9 +54,8 @@ interface KubectlService {
 }
 
 /**
- * Runs kubectl through [ClusterTooling], so the same calls reach a cluster over SSH on AWS and as a
- * local process on a local cluster. It builds argument lists and marks the ones the SSH form must
- * quote; it never quotes a value itself, because the local form would hand the quotes to kubectl.
+ * Runs kubectl through [ClusterTooling]. It builds argument lists of raw values and never quotes one
+ * itself; [ClusterTooling] gets each value to kubectl unchanged.
  */
 class DefaultKubectlService(
     private val tooling: ClusterTooling,
@@ -67,9 +65,13 @@ class DefaultKubectlService(
     }
 
     override fun createNamespace(name: String) {
-        // The dry run's output is the manifest to apply, so it must not be echoed.
-        val manifest = tooling.run(ClusterTool.KUBECTL, listOf("create", "namespace", name, "--dry-run=client", "-o", "yaml"), echo = false)
-        tooling.run(ClusterTool.KUBECTL, APPLY_FROM_INPUT, stdin = manifest)
+        val namespace =
+            NamespaceBuilder()
+                .withNewMetadata()
+                .withName(name)
+                .endMetadata()
+                .build()
+        applyContent(Serialization.asYaml(namespace))
     }
 
     override fun applyUrl(url: String) {
@@ -120,14 +122,9 @@ class DefaultKubectlService(
         // `kubectl delete -l` prints a bare "No resources found" when nothing matches, so look the
         // objects up without echoing the result and delete only what the selector found.
         val lookup = listOf("get", kinds.joinToString(","), "-l", selector, "-n", namespace, "-o", "name")
-        val found = nonBlankLines(tooling.run(ClusterTool.KUBECTL, lookup, echo = false, shellQuoted = setOf(SELECTOR_INDEX)))
+        val found = nonBlankLines(tooling.run(ClusterTool.KUBECTL, lookup, echo = false))
         if (found.isEmpty()) return
-        // The names come from the cluster, so each one is quoted for the SSH form: argument 0 is "delete".
-        tooling.run(
-            ClusterTool.KUBECTL,
-            listOf("delete") + found + listOf("-n", namespace, "--ignore-not-found"),
-            shellQuoted = (1..found.size).toSet(),
-        )
+        tooling.run(ClusterTool.KUBECTL, listOf("delete") + found + listOf("-n", namespace, "--ignore-not-found"))
     }
 
     override fun listInAllNamespaces(resource: String): List<String> =
@@ -142,8 +139,5 @@ class DefaultKubectlService(
     private companion object {
         /** `apply -f -`: the manifest comes in as input to the tool. */
         val APPLY_FROM_INPUT = listOf("apply", "-f", Constants.ClusterTooling.STDIN_ARGUMENT)
-
-        /** Where the label selector sits in the lookup's arguments: `get <kinds> -l <selector> ...`. */
-        const val SELECTOR_INDEX = 3
     }
 }

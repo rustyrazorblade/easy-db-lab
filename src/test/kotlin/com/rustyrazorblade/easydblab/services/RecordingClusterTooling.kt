@@ -2,8 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 /**
  * A [ClusterTooling] that records each call and answers it with [respond], so a service test can
- * assert on the argument lists the service built and on what it did with the output it got back.
- * [respond] may throw, to stand for a failed tool.
+ * assert on what the service did with the output it got back. [respond] may throw, to stand for a
+ * failed tool.
  */
 internal class RecordingClusterTooling(
     private val respond: (Call) -> String = { "" },
@@ -14,7 +14,6 @@ internal class RecordingClusterTooling(
         val args: List<String>,
         val stdin: String? = null,
         val echo: Boolean = true,
-        val shellQuoted: Set<Int> = emptySet(),
     )
 
     val calls = mutableListOf<Call>()
@@ -24,9 +23,8 @@ internal class RecordingClusterTooling(
         args: List<String>,
         stdin: String?,
         echo: Boolean,
-        shellQuoted: Set<Int>,
     ): String {
-        val call = Call(tool, args, stdin, echo, shellQuoted)
+        val call = Call(tool, args, stdin, echo)
         calls += call
         return respond(call)
     }

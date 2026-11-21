@@ -34,9 +34,8 @@ interface HelmService {
 }
 
 /**
- * Runs helm through [ClusterTooling], so the same calls reach a cluster over SSH on AWS and as a
- * local process on a local cluster. It builds argument lists and marks the ones the SSH form must
- * quote; it never quotes a value itself, because the local form would hand the quotes to helm.
+ * Runs helm through [ClusterTooling]. It builds argument lists of raw values and never quotes one
+ * itself; [ClusterTooling] gets each value to helm unchanged.
  */
 class DefaultHelmService(
     private val tooling: ClusterTooling,
@@ -84,19 +83,7 @@ class DefaultHelmService(
         release: String,
         namespace: String,
     ): Boolean {
-        // The filter holds `$`, which the SSH form's remote shell would otherwise read as a variable.
-        val output =
-            tooling.run(
-                ClusterTool.HELM,
-                listOf("list", "-n", namespace, "-f", "^$release\$", "-q"),
-                echo = false,
-                shellQuoted = setOf(FILTER_INDEX),
-            )
+        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", "^$release\$", "-q"), echo = false)
         return output.trim().isNotEmpty()
-    }
-
-    private companion object {
-        /** Where the release filter sits in `helm list`'s arguments: `list -n <ns> -f <filter> -q`. */
-        const val FILTER_INDEX = 4
     }
 }

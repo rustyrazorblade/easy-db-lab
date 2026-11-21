@@ -253,7 +253,8 @@ in `openspec/changes/issue-1158/design.md` (D1-D12) until it is archived.
 ## Node Setup and OS Tuning
 
 `NodeSetupService` sets up one node: `environment.sh`, the per-type files, the hostname, then
-`setup_instance.sh`. Before the script runs it uploads the packaged OS tuning files
+`setup_instance.sh`. It reads the workspace files it uploads through `Context.workspaceFile`, never
+from the process's current directory. Before the script runs it uploads the packaged OS tuning files
 (`commands/node-tuning/`, listed in `Constants.NodeTuning.FILES`) into `node-tuning/` beside
 it with one directory upload, staged by `NodeTuningFiles`. The script's `tune_node` installs
 them, applies them and runs `edl-node-tuning verify`, whose `ERROR:` lines fail the node's setup

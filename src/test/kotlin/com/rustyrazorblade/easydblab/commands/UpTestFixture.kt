@@ -279,7 +279,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             // The real tuning step over the mocked manifests; the API server admits every pod tuned.
             single { PodNetworkTuning(get<K8sService>(), { ProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
-            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles()) }
+            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles(), get()) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
             single<Ec2BringUpPorts> {
                 val steps = get<K3sBringUpSteps>()

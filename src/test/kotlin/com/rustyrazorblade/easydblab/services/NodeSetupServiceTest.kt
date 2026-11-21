@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestContextFactory
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
@@ -11,6 +12,9 @@ import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
@@ -31,8 +35,14 @@ import java.nio.file.Path
  * the SSH boundary; the uploaded `stress.env` is read as it is uploaded.
  */
 class NodeSetupServiceTest {
+    @TempDir
+    lateinit var tempDir: File
+
     private val remoteOps: RemoteOperationsService = mock()
-    private val service = NodeSetupService(remoteOps, mock(), NodeTuningFiles())
+    private val workspace by lazy { File(tempDir, "workspace").also { it.mkdirs() } }
+    private val service by lazy {
+        NodeSetupService(remoteOps, mock(), NodeTuningFiles(), TestContextFactory.createTestContext(tempDir, workingDirectory = workspace))
+    }
     private val context = NodeSetupContext("10.0.1.100", "10.0.1.5", "test-abc", "default")
     private val uploads = mutableMapOf<String, MutableList<String>>()
 
@@ -121,6 +131,37 @@ class NodeSetupServiceTest {
             "sudo EDL_INSTANCE_TYPE=c6id.4xlarge bash setup_instance.sh",
             "sudo EDL_INSTANCE_TYPE=m8id.xlarge bash setup_instance.sh",
         )
+    }
+
+    /**
+     * The workspace is not the process directory, so a file read relative to the current directory
+     * would miss the workspace copy. Each node type uploads exactly its workspace files, by
+     * absolute path under the workspace; anything else it uploads is a staged temp file.
+     */
+    @ParameterizedTest
+    @EnumSource(ServerType::class)
+    fun `every workspace file a node uploads is read from the workspace, not the current directory`(serverType: ServerType) {
+        val workspaceFiles = listOf("environment.sh", Constants.Cassandra.JMX_RULES_FILE, "setup_instance.sh")
+        workspaceFiles.forEach { File(workspace, it).writeText("workspace copy of $it") }
+        val sources = mutableListOf<Path>()
+        whenever(remoteOps.upload(any(), any(), any(), any())).thenAnswer {
+            sources.add(it.getArgument<Path>(1))
+            Unit
+        }
+        regionOn("app0", "us-west-2\n")
+        val node = host(serverType.serverType + "0", "10")
+
+        service.setup(serverType, node, context)
+
+        val expected =
+            when (serverType) {
+                ServerType.Cassandra -> workspaceFiles
+                ServerType.Stress, ServerType.Control -> listOf("environment.sh", "setup_instance.sh")
+            }
+        assertThat(sources.filter { it.startsWith(workspace.toPath()) }.map { it.fileName.toString() })
+            .containsExactlyInAnyOrderElementsOf(expected)
+        assertThat(sources.filterNot { it.startsWith(workspace.toPath()) })
+            .allSatisfy { assertThat(it.fileName.toString()).doesNotContain(*workspaceFiles.toTypedArray()) }
     }
 
     @Test

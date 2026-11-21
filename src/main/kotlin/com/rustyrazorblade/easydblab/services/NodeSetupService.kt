@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -14,7 +15,6 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.installFile
 import com.rustyrazorblade.easydblab.shellQuote
 import java.nio.file.Files
-import java.nio.file.Path
 import java.time.Instant
 
 /**
@@ -75,12 +75,14 @@ data class NodeSetupContext(
  *
  * An app node reads its own region from instance metadata for the stress default datacenter;
  * every node is in one region, so the value is the same one the first app node would give. The
- * workspace files it uploads are read from the current directory, the cluster workspace.
+ * workspace files it uploads are read from [workspace]'s directory, whatever directory the
+ * process started in.
  */
 class NodeSetupService(
     private val remoteOps: RemoteOperationsService,
     private val profilingService: CassandraProfilingService,
     private val tuningFiles: NodeTuningFiles,
+    private val workspace: Context,
 ) {
     /** Sets up [host] as a node of [serverType]. */
     fun setup(
@@ -129,7 +131,7 @@ class NodeSetupService(
      * install.
      */
     fun installEnvironment(host: Host) {
-        val environment = Path.of(ENVIRONMENT_FILE)
+        val environment = workspace.workspaceFile(ENVIRONMENT_FILE).toPath()
         if (!Files.exists(environment)) return
         remoteOps.installFile(host, environment, ENVIRONMENT_PATH, FILE_MODE)
     }
@@ -174,7 +176,8 @@ class NodeSetupService(
     // and restart Cassandra - no rebake, no Gradle build.
     private fun writeJmxRules(host: Host) {
         remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
-        remoteOps.installFile(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_PATH, FILE_MODE)
+        val rules = workspace.workspaceFile(Constants.Cassandra.JMX_RULES_FILE).toPath()
+        remoteOps.installFile(host, rules, Constants.Cassandra.JMX_RULES_PATH, FILE_MODE)
     }
 
     // Cluster-up is the only moment that knows both the Pyroscope address and the cluster name,
@@ -212,7 +215,7 @@ class NodeSetupService(
             remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false)
             remoteOps.uploadDirectory(host, dir, Constants.NodeTuning.REMOTE_DIR)
         }
-        remoteOps.upload(host, Path.of(SETUP_SCRIPT), SETUP_SCRIPT)
+        remoteOps.upload(host, workspace.workspaceFile(SETUP_SCRIPT).toPath(), SETUP_SCRIPT)
         try {
             remoteOps.executeRemotely(host, setupCommand(instanceType)).text
         } catch (e: RemoteCommandFailedException) {

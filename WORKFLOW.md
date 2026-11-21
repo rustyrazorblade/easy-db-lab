@@ -50,7 +50,7 @@ To improve throughput, batch small changes into one review train.
 
 - **Lifecycle**, one at a time, in this order:
   - `status:ready`: groomed and ready to start.
-  - `status:spec-review`: a feature's OpenSpec change waits for owner approval.
+  - `status:spec-review`: a feature's OpenSpec change passed its plan panel and waits for owner approval.
   - `status:in-progress`: implementation is in progress.
   - `status:in-review`: the PR is open and goes through review and CI.
   - `status:addressing`: the agent fixes review or CI findings.
@@ -66,9 +66,12 @@ The lead sets `requires-aws` and `requires-ami-bake` before it delegates.  It de
 
 ## Agents and models
 
+- **Plans:** an Opus agent writes the plan for each feature (see "Planning new work").  It owns the design decisions of that work.
+- **Builds of a plan:** a Sonnet agent builds the approved plan when the work is mechanical.  A hard problem (concurrency, a design gap found during the build, a hard bug) may go to Opus.  A step that the Sonnet agent fails twice goes back to Opus.  This is a default, not a hard rule.
 - **Kotlin work:** `dev-skills:kotlin-dev`, in its own worktree.
 - **Small work** (bug fixes, chores, small changes): a Sonnet agent.
 - **Builds and tests:** a Sonnet `build-engineer` with a narrow brief: run the given Gradle tasks and return only the result and the failures.  The issue agent never runs a Gradle build in its own context.
+- **Load, stress and performance tests:** the `easy-db-lab-tester` agent, never inline.
 - **Other work:** the default model.
 
 The lead states the chosen agent and model in `lead.md`.
@@ -80,14 +83,28 @@ The lead states the chosen agent and model in `lead.md`.
 - An approved main-checkout change may be committed and pushed straight to `main` when the owner says so.  Otherwise it uses a branch and a PR.
 - The lead records each agent's worktree path and branch in `lead.md`.
 
-## Specs before code
+## Planning new work
 
-- **Features and behavior changes** need an owner-approved OpenSpec change before any code.
-  1. The agent writes the OpenSpec change: proposal, design, and spec deltas.
-  2. The agent renders the change as one self-contained HTML file and opens it with `open <file>`.  Use `dev-skills:ide-explain` or `dev-skills:walkthrough` to render it.
-  3. The agent sets `status:spec-review` and stops.  The lead tells the owner at once.
-  4. Code starts only after the owner approves.
-- **Bug fixes, chores and small changes** go straight to code.  Spec edits go in the same PR.
+The owner set this process on 2026-11-21 for all new work.  Work already in progress finishes in its own way.
+
+A **feature** is a new capability or a behavior change.  Bug fixes, chores, test-only work, docs and pure refactors are not features; they go straight to code, and spec edits go in the same PR.
+
+1. **Issue.**  Each piece of work has an issue.  In prose, write `#NNN (description)`, never a bare number.
+2. **Plan.**  An Opus plan agent writes the OpenSpec change under `openspec/changes/<name>/` and validates it with `openspec validate`.  Before any code, the change holds three parts:
+   - **The architecture plan** (`design.md`): the design, the alternatives, and how the design keeps provider types behind provider-neutral ports.
+   - **The test plan**: for each requirement, its tests by name and tier (unit, integration, or real AWS).  Each test has a control that is seen to fail: break the check on purpose, see the test fail, then revert.  The plan states what runs in CI and what runs on a real cluster.
+   - **The task list** (`tasks.md`): each task is marked mechanical or judgement.
+3. **Pre-work plan panel.**  Four reviewers read the three parts, at the same time, before the first build task:
+   - **Adversarial:** tries to break the design: failure modes, races, wrong assumptions, partial failures of AWS or SSH calls, and concurrent commands in one workspace.
+   - **Test gaps:** finds requirements and failure paths with no test, tests that cannot fail, missing controls, timing-based tests, and mock-echo tests.
+   - **Tech debt:** finds coupling, duplication, new provider coupling, complexity, and work that the next step will throw away.
+   - **Performance and scale:** checks the design at the largest clusters the tool runs (about 100 nodes), and checks `up` and `down` time, AWS API call counts and rate limits, SSH fan-out, and observability volume and cardinality.  It flags any cost that grows with the node count in a loop that runs one node at a time.
+4. **Refinement.**  The panel writes one HTML report, linked from the change.  The planner revises the plan, and the same four reviewers review it again, up to 3 rounds.  Each round's report keeps the earlier findings and states how each one was closed.  Stop early when a round has no CRITICAL or MAJOR finding.  Never waive a performance or scale finding to end the loop.  If a CRITICAL or MAJOR finding is still open after round 3, it goes to the owner.
+5. **Zoom out.**  If a review finds a MAJOR error in something just revised, stop patching and re-examine the approach.  Put "refactor the abstraction above this" next to "patch this spot", and compare them on risk, size and how many future bugs each removes.  If a plan file passes 300 lines, split the change.
+6. **Real-cluster proof.**  A change that targets a measured limit (provisioning time, throughput, a scale limit) names a validation plan in the spec before code: the limit with today's baseline, the workload, the expected effect, and the pass criterion.  Run the same workload on the same cluster shape before and after, and put the numbers in the PR.
+7. **Owner approval.**  After the panel closes, the agent renders the change as one self-contained HTML file and opens it with `open <file>`.  Use `dev-skills:ide-explain` or `dev-skills:walkthrough` to render it.  The HTML links the panel report.  The agent sets `status:spec-review` and stops.  The lead tells the owner at once.  Code starts only after the owner approves.
+8. **The brief.**  Each build step gets a brief in `$CLAUDE_JOB_DIR/tmp/state/briefs/<name>.md`: the worktree and git rules, the sources, the edit points as `file:line`, the tests and controls by name, and the hand-back.  A brief has no context-size stop.
+9. **Build.**  A Sonnet agent builds the mechanical tasks; judgement tasks stay on Opus (see "Agents and models").  The review, CI and merge rules below still apply.
 
 Specs are the source of truth.  If a change conflicts with an existing spec, stop and tell the owner.
 

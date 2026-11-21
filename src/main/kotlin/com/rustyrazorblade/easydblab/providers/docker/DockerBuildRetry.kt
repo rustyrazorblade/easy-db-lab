@@ -1,0 +1,40 @@
+package com.rustyrazorblade.easydblab.providers.docker
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kernel.causeChain
+import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.RetryConfig
+
+/**
+ * The retry policy for building a Docker image.
+ *
+ * Under Docker's containerd image store, every image prune first deletes the content leases that
+ * pulls and builds in progress hold, whatever the prune's filter. A build whose base is being
+ * unpacked at that moment fails with containerd's "lease does not exist", though nothing is wrong
+ * with it. Testcontainers' JVM-hook reaper prunes images at each test JVM's exit, so a parallel test
+ * run hits this. The policy retries only that failure; any other build failure (a `RUN` step that
+ * exits non-zero, a base image that does not exist) would fail the same way again.
+ *
+ * It is its own object, not a member of `RetryUtil`, because it is the only Docker policy that
+ * matches on the daemon's message rather than on an exception type.
+ */
+object DockerBuildRetry {
+    private val log = KotlinLogging.logger {}
+
+    /** Three attempts with exponential backoff (1s, 2s), retrying only a lost content lease. */
+    fun <T> config(): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Retry.MAX_DOCKER_RETRIES)
+            .intervalFunction { attemptCount ->
+                Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
+            }.retryOnException { throwable ->
+                isLeaseLost(throwable).also { lost ->
+                    if (lost) log.warn { "Docker build lost its content lease - will retry: ${throwable.message}" }
+                }
+            }.build()
+
+    /** Whether containerd's lease-lost message appears anywhere in [throwable]'s cause chain. */
+    fun isLeaseLost(throwable: Throwable): Boolean =
+        throwable.causeChain().any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }
+}

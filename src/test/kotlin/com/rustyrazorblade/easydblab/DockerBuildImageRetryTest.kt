@@ -6,7 +6,7 @@ import com.github.dockerjava.api.command.PullImageResultCallback
 import com.github.dockerjava.api.exception.DockerClientException
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.Image
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -77,7 +77,7 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     }
 
     private val fastRetry: RetryConfig =
-        RetryConfig.from<Unit>(RetryUtil.createDockerBuildRetryConfig<Unit>()).intervalFunction { _ -> 1L }.build()
+        RetryConfig.from<Unit>(DockerBuildRetry.config<Unit>()).intervalFunction { _ -> 1L }.build()
 
     private fun build(client: DockerClientInterface) =
         Docker(context, client, buildRetryConfig = fastRetry).buildImage("FROM scratch\n", "edl/test:1")

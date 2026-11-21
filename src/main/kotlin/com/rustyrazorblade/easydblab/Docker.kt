@@ -22,7 +22,7 @@ import com.rustyrazorblade.easydblab.docker.ContainerStateMonitor
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -334,7 +334,7 @@ class Docker(
     val context: Context,
     private val dockerClient: DockerClientInterface,
     private val userIdProvider: UserIdProvider = DefaultUserIdProvider(),
-    private val buildRetryConfig: RetryConfig = RetryUtil.createDockerBuildRetryConfig<Unit>(),
+    private val buildRetryConfig: RetryConfig = DockerBuildRetry.config<Unit>(),
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -425,7 +425,7 @@ class Docker(
      * Builds [dockerfile] into an image tagged [imageTag], using an otherwise empty build context.
      *
      * A build whose content lease the daemon deleted under it (an image prune running at the same
-     * time, see [RetryUtil.createDockerBuildRetryConfig]) is run again; any other failure is not.
+     * time, see [DockerBuildRetry]) is run again; any other failure is not.
      *
      * @throws DockerException if the build fails, carrying the tail of the last attempt's output
      */

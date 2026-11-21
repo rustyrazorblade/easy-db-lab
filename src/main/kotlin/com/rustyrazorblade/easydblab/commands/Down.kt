@@ -241,8 +241,11 @@ class Down : PicoBaseCommand() {
         // The tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
         // it down. A tunnel failure touched nothing and fails every signal the save would have saved.
         // Either failure stops `down` with the standard "no infrastructure removed / --force"
-        // guidance rather than a raw stack trace.
-        runCatching { socksProxyService.ensureRunning(controlHost) }.onFailure { failure ->
+        // guidance rather than a raw stack trace. A network mode that needs no tunnel reaches the
+        // control node directly, so no tunnel is started.
+        runCatching {
+            if (state.networkMode.needsTunnel) socksProxyService.ensureRunning(controlHost)
+        }.onFailure { failure ->
             log.error(failure) { "The SOCKS tunnel to the control node failed before the pre-teardown save" }
             eventBus.emit(unsavedAbort(state, TUNNEL_STEP, failure))
             return false
@@ -581,18 +584,19 @@ class Down : PicoBaseCommand() {
                 // owner's data and are never expired or deleted here.
                 dataBucketTeardown.stopMetrics(clusterState)
 
-                clusterState.markInfrastructureDown()
-                clusterState.updateHosts(emptyMap())
-                clusterState.updateEmrCluster(null)
-                clusterState.updateOpenSearchDomain(null)
-                clusterState.updateInfrastructure(null)
-                clusterState.updateTailscaleAuthKeyId(null)
-                clusterStateManager.save(clusterState)
+                clusterStateManager.update {
+                    it.markInfrastructureDown()
+                    it.updateHosts(emptyMap())
+                    it.updateEmrCluster(null)
+                    it.updateOpenSearchDomain(null)
+                    it.updateInfrastructure(null)
+                    it.updateTailscaleAuthKeyId(null)
+                }
                 eventBus.emit(Event.Teardown.ClusterStateMarkedDown)
             }
         } catch (e: IOException) {
-            // The state loaded successfully earlier in this run, so only reading it again or
-            // saving it can fail here, and both fail with an IOException.
+            // The state loaded successfully earlier in this run, so only reading it again, waiting
+            // for another command's state lock, or saving it can fail here: all are IOExceptions.
             reportClusterStateFailure(e)
         }
     }
@@ -622,8 +626,7 @@ class Down : PicoBaseCommand() {
             DeviceRemoval.NoneRecorded -> result
             is DeviceRemoval.Failed -> result.copy(success = false, errors = result.errors + removal.reason)
             is DeviceRemoval.Removed -> {
-                clusterState.tailscaleDeviceId = null
-                clusterStateManager.save(clusterState)
+                clusterStateManager.update { it.tailscaleDeviceId = null }
                 result
             }
         }

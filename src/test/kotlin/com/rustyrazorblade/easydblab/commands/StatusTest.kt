@@ -18,12 +18,15 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
-import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.server.ClusterStatusCollector
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
@@ -555,7 +558,13 @@ class StatusTest : BaseKoinTest() {
                     ),
                 resourceManager = mockResourceManager,
                 eventBus = getKoin().get(),
-                proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
+                proxyPreflight =
+                    ProxyPreflight(
+                        mockClusterStateManager,
+                        mockSocksProxyService,
+                        WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                        context.workingDirectory,
+                    ),
                 proxyAvailability = proxyAvailability,
                 profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )

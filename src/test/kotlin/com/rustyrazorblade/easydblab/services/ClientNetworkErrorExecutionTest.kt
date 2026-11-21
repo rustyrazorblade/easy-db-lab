@@ -14,10 +14,13 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
-import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -72,7 +75,8 @@ class ClientNetworkErrorExecutionTest : BaseKoinTest() {
                 ProxyPreflight(
                     states,
                     mock<SocksProxyService>(defaultAnswer = { error("no tunnel") }),
-                    ProxyEnvFile(context.workingDirectory),
+                    WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                    context.workingDirectory,
                 ),
             proxyAvailability = DefaultProxyAvailability(),
             profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run") },
@@ -99,7 +103,7 @@ class ClientNetworkErrorExecutionTest : BaseKoinTest() {
 
     @Test
     fun `a hand-edited client network in state json is one error naming the value, the file and the option`() {
-        ClusterStateManager(stateFile).save(
+        ClusterStateManager(stateFile).replace(
             ClusterState(name = "test", clientNetworks = listOf("10.0.0.5/8")),
         )
 

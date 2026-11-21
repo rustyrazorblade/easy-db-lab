@@ -35,7 +35,9 @@ class BringUpHarness(
     /** The real node output, recording: what the fake steps write here is each node's tail. */
     val nodeOutput = RecordingNodeOutput()
     private val state = ClusterState(name = "lab")
-    val writer = ClusterStateWriter(state, ClusterStateManager(stateFile))
+
+    /** `init` wrote the workspace's state before `up` runs. */
+    val writer = ClusterStateWriter(state, ClusterStateManager(stateFile).also { it.replace(state) })
 
     private val eventBus =
         EventBus().also {

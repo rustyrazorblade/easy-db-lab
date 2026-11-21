@@ -24,10 +24,11 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 class TailscaleStopTest : BaseKoinTest() {
     private lateinit var mockTailscaleService: TailscaleService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testControlHost =
@@ -53,17 +54,17 @@ class TailscaleStopTest : BaseKoinTest() {
         listOf(
             module {
                 single<TailscaleService> { mockTailscaleService }
-                single<ClusterStateManager> { mockClusterStateManager }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockTailscaleService = mock()
-        mockClusterStateManager = mock()
+        stateManager = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        stateManager.replace(testClusterState)
     }
 
     @Test
@@ -73,7 +74,7 @@ class TailscaleStopTest : BaseKoinTest() {
                 name = "test-cluster",
                 hosts = emptyMap(),
             )
-        whenever(mockClusterStateManager.load()).thenReturn(stateNoControl)
+        stateManager.replace(stateNoControl)
 
         val command = TailscaleStop()
         command.execute()
@@ -118,7 +119,7 @@ class TailscaleStopTest : BaseKoinTest() {
                     ),
                 tailscaleAuthKeyId = "key-to-delete",
             )
-        whenever(mockClusterStateManager.load()).thenReturn(stateWithKey)
+        stateManager.replace(stateWithKey)
 
         val userWithTailscale =
             User(
@@ -140,8 +141,7 @@ class TailscaleStopTest : BaseKoinTest() {
         command.execute()
 
         verify(mockTailscaleService).deleteAuthKey(eq("ts-client-id"), eq("ts-client-secret"), eq("key-to-delete"))
-        verify(mockClusterStateManager).save(stateWithKey)
-        assertThat(stateWithKey.tailscaleAuthKeyId).isNull()
+        assertThat(stateManager.load().tailscaleAuthKeyId).isNull()
     }
 
     @Test
@@ -153,7 +153,7 @@ class TailscaleStopTest : BaseKoinTest() {
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
                 tailscaleAuthKeyId = "key-to-delete",
             )
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         stubRunningAndStops()
         whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(TailscaleApiException("auth key not found"))
@@ -161,7 +161,7 @@ class TailscaleStopTest : BaseKoinTest() {
         val exitCode = TailscaleStop().call()
 
         assertThat(exitCode).isZero()
-        assertThat(state.tailscaleAuthKeyId).isNull()
+        assertThat(stateManager.load().tailscaleAuthKeyId).isNull()
         val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errorOutput).contains("key-to-delete").contains("auth key not found")
     }
@@ -175,13 +175,13 @@ class TailscaleStopTest : BaseKoinTest() {
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
                 tailscaleAuthKeyId = "key-to-delete",
             )
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         stubRunningAndStops()
         whenever(mockTailscaleService.deleteAuthKey(any(), any(), any())).thenThrow(IllegalStateException("bug"))
 
         assertThatThrownBy { TailscaleStop().call() }.isInstanceOf(IllegalStateException::class.java)
-        assertThat(state.tailscaleAuthKeyId).isEqualTo("key-to-delete")
+        assertThat(stateManager.load().tailscaleAuthKeyId).isEqualTo("key-to-delete")
     }
 
     @Test
@@ -255,7 +255,7 @@ class TailscaleStopTest : BaseKoinTest() {
     @Test
     fun `stop removes the recorded device from the tailnet and forgets it`() {
         val state = stateWithDevice()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         stubRunningAndStops()
 
@@ -263,8 +263,7 @@ class TailscaleStopTest : BaseKoinTest() {
 
         assertThat(exitCode).isEqualTo(0)
         verify(mockTailscaleService).deleteDevice(eq("ts-client-id"), eq("ts-client-secret"), eq("node-abc123"))
-        assertThat(state.tailscaleDeviceId).isNull()
-        verify(mockClusterStateManager).save(state)
+        assertThat(stateManager.load().tailscaleDeviceId).isNull()
         assertThat(outputHandler.messages.joinToString("\n")).contains("node-abc123")
     }
 
@@ -272,7 +271,7 @@ class TailscaleStopTest : BaseKoinTest() {
     @Test
     fun `a failed device removal is reported, exits non-zero and keeps the device recorded`() {
         val state = stateWithDevice()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         stubRunningAndStops()
         whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
@@ -281,7 +280,7 @@ class TailscaleStopTest : BaseKoinTest() {
         val exitCode = TailscaleStop().call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
-        assertThat(state.tailscaleDeviceId).isEqualTo("node-abc123")
+        assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("node-abc123")
         val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errorOutput).contains("node-abc123").contains("devices:core")
     }
@@ -289,14 +288,14 @@ class TailscaleStopTest : BaseKoinTest() {
     @Test
     fun `without OAuth credentials the recorded device is reported as not removed`() {
         val state = stateWithDevice()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         stubRunningAndStops()
 
         val exitCode = TailscaleStop().call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         verify(mockTailscaleService, never()).deleteDevice(any(), any(), any())
-        assertThat(state.tailscaleDeviceId).isEqualTo("node-abc123")
+        assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("node-abc123")
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("node-abc123")
     }
 
@@ -304,7 +303,7 @@ class TailscaleStopTest : BaseKoinTest() {
     @Test
     fun `when tailscale is already down the recorded device is still removed and forgotten`() {
         val state = stateWithDevice()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
 
@@ -313,15 +312,14 @@ class TailscaleStopTest : BaseKoinTest() {
         assertThat(exitCode).isEqualTo(0)
         verify(mockTailscaleService, never()).stopTailscale(any())
         verify(mockTailscaleService).deleteDevice(eq("ts-client-id"), eq("ts-client-secret"), eq("node-abc123"))
-        assertThat(state.tailscaleDeviceId).isNull()
-        verify(mockClusterStateManager).save(state)
+        assertThat(stateManager.load().tailscaleDeviceId).isNull()
         assertThat(outputHandler.messages.joinToString("\n")).contains("not running")
     }
 
     @Test
     fun `when tailscale is already down a failed device removal exits non-zero and keeps the device recorded`() {
         val state = stateWithDevice()
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        stateManager.replace(state)
         declareTailscaleUser()
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(false))
         whenever(mockTailscaleService.deleteDevice(any(), any(), any()))
@@ -330,7 +328,7 @@ class TailscaleStopTest : BaseKoinTest() {
         val exitCode = TailscaleStop().call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
-        assertThat(state.tailscaleDeviceId).isEqualTo("node-abc123")
+        assertThat(stateManager.load().tailscaleDeviceId).isEqualTo("node-abc123")
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("node-abc123").contains("devices:core")
     }
 

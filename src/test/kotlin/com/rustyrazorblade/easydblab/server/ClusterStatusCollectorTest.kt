@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
@@ -383,7 +384,20 @@ class ClusterStatusCollectorTest : BaseKoinTest() {
         val failed = collector().collect(state()).response.kubernetes
 
         assertThat(listed).isEqualTo(KubernetesInfo(listOf(PodInfo("default", "web-1", "1/1", "Running", 2, "3h"))))
-        assertThat(failed).isNull()
+        assertThat(failed).isEqualTo(KubernetesInfo(emptyList(), error = "api down"))
+    }
+
+    @Test
+    fun `a missing exec auth plugin names the plugin and how to install it in the pods and stress job errors`() {
+        WorkspaceKubeconfig.file(context.workingDirectory).writeText("kubeconfig")
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", "Install the AWS CLI v2")
+        whenever(k8s.listPods()).thenReturn(Result.failure(missing))
+        whenever(stress.listJobs()).thenReturn(Result.failure(IllegalStateException("Could not list the jobs", missing)))
+
+        val report = collector().collect(state())
+
+        assertThat(report.response.kubernetes?.error).contains("exec auth plugin 'aws'").contains("Install the AWS CLI v2")
+        assertThat(report.stressJobsError).contains("exec auth plugin 'aws'").contains("Install the AWS CLI v2")
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
@@ -81,6 +82,10 @@ class KitInstallCommand(
     }
 
     override fun execute() {
+        if (requiredCapabilityIsMissing()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
         val placement = roleNodes.placement(RoleSelectors.from(clusterState))
         if (requiredNodePoolIsMissing(placement)) {
             exitCode = Constants.ExitCodes.ERROR
@@ -100,13 +105,9 @@ class KitInstallCommand(
             return
         }
 
-        if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
-            val outputDir = context.workspaceFile(instanceName)
-            if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
-                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
-                exitCode = Constants.ExitCodes.ERROR
-                return
-            }
+        if (outputDirectoryCollides(instanceName)) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
         }
 
         val extensionVars = buildExtensionVars()
@@ -168,6 +169,29 @@ class KitInstallCommand(
         for ((variable, default) in resolvedDefaults) {
             if (variable !in passed) argValues[variable] = default
         }
+    }
+
+    /**
+     * Whether the kit guards install against overwriting and [instanceName]'s output directory
+     * already holds files, with no `--force`: reports [Event.Install.CollisionDetected] and returns true.
+     */
+    private fun outputDirectoryCollides(instanceName: String): Boolean {
+        if (!config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) || force) return false
+        val outputDir = context.workspaceFile(instanceName)
+        if (!outputDir.isDirectory || outputDir.listFiles().orEmpty().isEmpty()) return false
+        eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
+        return true
+    }
+
+    /**
+     * Fails fast when the cluster's recorded capabilities lack one the kit `requires`: reports
+     * [Event.Kit.CapabilityMissing] and returns true, before anything is rendered or written.
+     */
+    private fun requiredCapabilityIsMissing(): Boolean {
+        val missing = config.missingCapabilities(NodeCapabilities.from(clusterState))
+        if (missing.isEmpty()) return false
+        eventBus.emit(Event.Kit.CapabilityMissing(kit = config.name, phase = Constants.Kit.PHASE_INSTALL, missing = missing))
+        return true
     }
 
     /**

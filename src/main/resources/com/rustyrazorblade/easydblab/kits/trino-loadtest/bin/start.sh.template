@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+#
+# Runs the trino-loadtest driver against the target trino kit in a pod on an app node, pushes each
+# interval's figures as gauges to the collector on the control node, runs the snapshot-leak check
+# from this machine when one is configured, and exits non-zero when the driver fails (bad
+# arguments, a failed run) or the check fails.
+set -euo pipefail
+
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+. "${KIT_DIR}/lib/snapshot-check.sh"
+. "${KIT_DIR}/lib/catalog-check.sh"
+# The driver's base image, pinned by digest so every run of a comparison uses the same one.
+# docker.io/library/python:3.12-slim, multi-arch index digest as of 2026-11-19.
+IMAGE="docker.io/library/python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
+# The trino-python-client the driver uses, pinned so every run of a comparison uses the same one.
+TRINO_CLIENT_VERSION="0.340.0"
+ROLE="run"
+
+# The trino kit's "Trino UI" http endpoint resolves to TARGET_HTTP_URL (KitEndpointResolver, kit-ref
+# arg --target); it is the coordinator address.
+[ -n "${TARGET_HTTP_URL:-}" ] ||
+  edl_fail "TARGET_HTTP_URL is not set. Install with --target pointing at a running trino kit that exposes an http endpoint."
+TRINO_LOADTEST_HOST_PORT="${TARGET_HTTP_URL#http://}"
+TRINO_LOADTEST_HOST_PORT="${TRINO_LOADTEST_HOST_PORT#https://}"
+# The host and port are split at the first and last ':', which only holds for <host>:<port>. Refuse
+# the two forms that split would misread, rather than run the driver against the wrong address.
+[[ "${TRINO_LOADTEST_HOST_PORT}" != \[* ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has an IPv6 literal host, which trino-loadtest does not support; the trino kit's http endpoint must be http://<ipv4-or-hostname>:<port>."
+[[ "${TRINO_LOADTEST_HOST_PORT}" != *@* ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) carries user info (user@ or user:password@), which trino-loadtest does not support; the trino kit's http endpoint must be http://<host>:<port>."
+TRINO_LOADTEST_HOST="${TRINO_LOADTEST_HOST_PORT%%:*}"
+TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
+# With no ":<port>", the expansion above returns the whole host, so check the port is a number.
+[[ "${TRINO_LOADTEST_HOST_PORT}" == *:* && "${TRINO_LOADTEST_PORT}" =~ ^[0-9]+$ ]] ||
+  edl_fail "TARGET_HTTP_URL (${TARGET_HTTP_URL}) has no numeric port; the trino kit's http endpoint must be http://<host>:<port>."
+TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
+
+# The kit runner records an optional arg the user did not give, with no default, as ""
+# (KitArgOptions.UnsetArg.EMPTY). Succeeds when $1 holds a value.
+is_set() {
+  [ -n "$1" ]
+}
+
+# The snapshot-leak check, checked before any pod runs. It runs here, after the driver, not in the
+# pod: the pod has no nodetool and no way to reach the db nodes.
+SNAPSHOT_CHECK_CMD=""
+SNAPSHOT_CHECK_TIMEOUT_S="${TL_SNAPSHOT_DEFAULT_TIMEOUT_SECONDS}"
+if is_set "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD:-}"; then
+  SNAPSHOT_CHECK_CMD="${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}"
+  ! is_set "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S:-}" ||
+    SNAPSHOT_CHECK_TIMEOUT_S="${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}"
+  tl_validate_snapshot_check "${SNAPSHOT_CHECK_CMD}" "${SNAPSHOT_CHECK_TIMEOUT_S}"
+fi
+
+# The driver's arguments, passed to the pod as separate argv entries, so no value is parsed by a
+# shell a second time. An omitted --ks/--tbl lets driver.py fail fast with its required-arg message.
+ARGV=(--host "${TRINO_LOADTEST_HOST}" --port "${TRINO_LOADTEST_PORT}" --user "${TRINO_LOADTEST_USER}")
+! is_set "${TRINO_LOADTEST_KEYSPACE:-}" || ARGV+=(--ks "${TRINO_LOADTEST_KEYSPACE}")
+! is_set "${TRINO_LOADTEST_TABLE:-}" || ARGV+=(--tbl "${TRINO_LOADTEST_TABLE}")
+CONFIGMAP_FILES=("driver.py=${KIT_DIR}/driver.py")
+if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
+  [ -f "${TRINO_LOADTEST_QUERIES_FILE}" ] && [ -r "${TRINO_LOADTEST_QUERIES_FILE}" ] ||
+    edl_fail "--queries-file ${TRINO_LOADTEST_QUERIES_FILE} is not a readable file."
+  # The queries ride in the driver's ConfigMap with driver.py; edl_create_configmap enforces the
+  # size cap, before any pod, and its error names --queries-file (see the call below).
+  CONFIGMAP_FILES+=("queries.txt=${TRINO_LOADTEST_QUERIES_FILE}")
+  ARGV+=(--queries-file /driver/queries.txt)
+fi
+ARGV+=(--threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}")
+[ "${TRACEPARENT}" != "true" ] || ARGV+=(--traceparent)
+
+edl_require_app_node trino-loadtest
+
+# The driver reads cqlite.<ks>.<tbl>; a target with no cqlite catalog fails here, before any pod.
+tl_require_cqlite_catalog "${TARGET_HTTP_URL%/}" "${TRINO_LOADTEST_USER}"
+
+POD="$(edl_resource_name "${ROLE}")"
+# The ConfigMap stays until stop, which deletes it with the pod by label. Deleting it when this
+# script exits, as on Ctrl-C, would leave a pod that is still Pending waiting for its volume forever.
+# The over-limit error names --queries-file only when one was given; driver.py alone always fits.
+if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
+  edl_create_configmap --flag --queries-file "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+else
+  edl_create_configmap "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+fi
+
+echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
+kubectl run "${POD}" \
+  --image="${IMAGE}" \
+  --restart=Never \
+  --labels="$(edl_labels "${ROLE}")" \
+  --overrides="$(edl_pod_overrides "${POD}" /driver "${POD}")" \
+  --override-type=strategic \
+  --command -- sh -c "echo \"trino-loadtest: installing trino client ${TRINO_CLIENT_VERSION} from PyPI...\" && pip install --quiet trino==${TRINO_CLIENT_VERSION} && exec python /driver/driver.py \"\$@\"" sh "${ARGV[@]}"
+
+# Running is reached before pip install starts. The pod logs that it is installing the client, so
+# the time pip takes shows in the streamed log below rather than looking like a hang.
+edl_wait_for_pod_running "${POD}"
+
+# The fields of driver.py's format_interval_line, each pushed as the gauge after it:
+#   "[ Ns ] threads: N qps: N.NN rows_s: N.NN lat_p50_ms: N.NN lat_p99_ms: N.NN err_s: N.NN"
+INTERVAL_FIELDS="qps rows_s lat_p50_ms lat_p99_ms err_s"
+
+# Echoes every line and pushes each interval's figures. An interval line missing a field pushes
+# nothing, with a warning, since a gauge of 0 would read as a real 0. The "[ final ] " summary does
+# not match and is only echoed.
+handle_line() {
+  local line="$1" values missing
+  echo "${line}"
+  [[ "${line}" =~ ^\[\ [0-9]+s\ \] ]] || return 0
+  values="$(awk -v fields="${INTERVAL_FIELDS}" '{
+      n = split(fields, want, " ")
+      for (i = 1; i < NF; i++) seen[$i] = $(i + 1)
+      out = ""
+      for (j = 1; j <= n; j++) {
+        key = want[j] ":"
+        if (!(key in seen)) { print "MISSING " want[j]; exit }
+        out = out seen[key] " "
+      }
+      print out
+    }' <<< "${line}")"
+  if [[ "${values}" == MISSING* ]]; then
+    missing="${values#MISSING }"
+    echo "warning: interval line has no ${missing} field; pushing no gauges for it" >&2
+    return 0
+  fi
+  local qps rows p50 p99 errs
+  read -r qps rows p50 p99 errs <<< "${values}"
+  edl_push_gauges trino-loadtest trino_loadtest_qps "${qps}" trino_loadtest_rows_per_sec "${rows}" \
+    trino_loadtest_lat_p50_ms "${p50}" trino_loadtest_lat_p99_ms "${p99}" \
+    trino_loadtest_errors_per_second "${errs}"
+  return 0
+}
+edl_follow_pod_logs "${POD}" handle_line
+EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
+
+[ "${EXIT_CODE}" = 0 ] ||
+  edl_fail "The trino-loadtest run failed with exit code ${EXIT_CODE} (pod ${POD}; kubectl logs ${POD})"
+
+if [ -n "${SNAPSHOT_CHECK_CMD}" ]; then
+  tl_run_snapshot_check "${SNAPSHOT_CHECK_CMD}" "${SNAPSHOT_CHECK_TIMEOUT_S}"
+else
+  echo "snapshot-leak check: SKIPPED (no --snapshot-check-cmd configured)"
+fi
+
+echo "trino-loadtest run complete (pod: ${POD}). Run '${KIT_NAME} stop' to remove its pod and ConfigMap."

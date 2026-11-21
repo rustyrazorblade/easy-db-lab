@@ -32,8 +32,9 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
-import org.mockito.kotlin.mock
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.whenever
+import java.io.File
 import kotlin.random.Random
 
 /**
@@ -55,7 +56,7 @@ class UseCassandraTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { stateManager }
                 single<RemoteOperationsService> { nodes }
-                single { HostOperationsService(stateManager) }
+                single { HostOperationsService(get()) }
                 single<CassandraService> { FakeCassandraService() }
                 single { CassandraVersionResolver(RecordOnlySources()) }
                 single { CassandraInstaller(get(), get(), get(), get()) }
@@ -77,10 +78,15 @@ class UseCassandraTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         nodes = FakeNodes()
-        stateManager = mock()
+        // The real manager on the test workspace; the spy only counts the saves.
+        stateManager =
+            spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                doAnswer { invocation ->
+                    saveCount++
+                    invocation.callRealMethod()
+                }.whenever(manager).update(any())
+            }
         withNodes(2)
-        whenever(stateManager.exists()).thenReturn(true)
-        doAnswer { saveCount++ }.whenever(stateManager).save(any())
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 
@@ -91,7 +97,7 @@ class UseCassandraTest : BaseKoinTest() {
                 initConfig = InitConfig(region = "us-west-2"),
                 hosts = mapOf(ServerType.Cassandra to (0 until count).map { FakeNodes.host("db$it") }),
             )
-        whenever(stateManager.load()).thenReturn(state)
+        stateManager.replace(state)
     }
 
     private fun use(
@@ -115,12 +121,12 @@ class UseCassandraTest : BaseKoinTest() {
         listOf("db0", "db1").forEach { alias ->
             assertThat(nodes.scriptRuns(alias)).hasSize(1)
             assertThat(activations(alias)).containsExactly("sudo use-cassandra 5.0 --java 17 --python 3.11.9")
-            val node = state.nodes.getValue(alias)
+            val node = stateManager.load().nodes.getValue(alias)
             assertThat(node.version).isEqualTo("5.0")
             assertThat(node.javaVersion).isEqualTo("17")
             assertThat(node.installed.keys).containsExactly("5.0")
         }
-        assertThat(state.default.version).isEqualTo("5.0")
+        assertThat(stateManager.load().default.version).isEqualTo("5.0")
         assertThat(saveCount).isEqualTo(1)
         // Before any node changes, the user sees which release the name resolved to, and from where.
         assertThat(
@@ -147,7 +153,13 @@ class UseCassandraTest : BaseKoinTest() {
         assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(activations("db0") + activations("db1")).isEmpty()
-        assertThat(state.nodes["db0"]?.version.orEmpty()).isEmpty()
+        assertThat(
+            stateManager
+                .load()
+                .nodes["db0"]
+                ?.version
+                .orEmpty(),
+        ).isEmpty()
         assertThat(errors()).contains("db1", "5.0", "5.0.6", "activated on no host")
         assertThat(chained).isEmpty()
     }
@@ -188,7 +200,13 @@ class UseCassandraTest : BaseKoinTest() {
             "sudo use-cassandra 5.0 --java 11 --python 3.11.9",
             "sudo use-cassandra 5.0 --java 11 --python 3.11.9",
         )
-        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("11")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .javaVersion,
+        ).isEqualTo("11")
         assertThat(nodes.scriptRuns("db0")).hasSize(1)
     }
 
@@ -201,22 +219,47 @@ class UseCassandraTest : BaseKoinTest() {
 
         use("5.0").execute()
 
-        assertThat(state.nodes.getValue("db0").javaVersion).isEqualTo("11")
-        assertThat(state.nodes.getValue("db1").javaVersion).isEqualTo("17")
-        assertThat(state.default.version).isEqualTo("5.0")
-        assertThat(state.default.javaVersion).isEqualTo("17")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .javaVersion,
+        ).isEqualTo("11")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db1")
+                .javaVersion,
+        ).isEqualTo("17")
+        assertThat(stateManager.load().default.version).isEqualTo("5.0")
+        assertThat(stateManager.load().default.javaVersion).isEqualTo("17")
     }
 
     @Test
     fun `--hosts switches only the named nodes and leaves the cluster default alone`() {
         state.nodes["db0"] = NodeState(version = "4.1")
+        stateManager.replace(state)
 
         use("5.0") { hosts.hostList = "db1" }.execute()
 
         assertThat(nodes.commandsOn("db0")).isEmpty()
-        assertThat(state.nodes.getValue("db0").version).isEqualTo("4.1")
-        assertThat(state.nodes.getValue("db1").version).isEqualTo("5.0")
-        assertThat(state.default.version).isEmpty()
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .version,
+        ).isEqualTo("4.1")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db1")
+                .version,
+        ).isEqualTo("5.0")
+        assertThat(stateManager.load().default.version).isEmpty()
         assertThat(chained.map { hostFilter(it) }).containsOnly("db1")
         assertThat(messages()).contains("Using version 5.0 on 1 hosts, filter: db1")
     }
@@ -235,15 +278,29 @@ class UseCassandraTest : BaseKoinTest() {
 
         assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
 
-        assertThat(state.nodes.getValue("db0").version).isEqualTo("5.0")
-        assertThat(state.nodes.getValue("db1").version).isEmpty()
         assertThat(
-            state.nodes
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .version,
+        ).isEqualTo("5.0")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db1")
+                .version,
+        ).isEmpty()
+        assertThat(
+            stateManager
+                .load()
+                .nodes
                 .getValue("db1")
                 .installed.keys,
         ).containsExactly("5.0")
         // db1 does not run 5.0, so 5.0 is not the cluster default either.
-        assertThat(state.default.version).isEmpty()
+        assertThat(stateManager.load().default.version).isEmpty()
         assertThat(errors()).contains("db1: failed to activate 5.0", "JDK 17 is not installed")
         // db0 now runs 5.0, so it gets the config for 5.0; db1 still runs its old version and is left alone.
         assertThat(chained.map { it.javaClass.simpleName }).containsExactly("DownloadConfig", "UpdateConfig")
@@ -293,7 +350,13 @@ class UseCassandraTest : BaseKoinTest() {
 
         assertThatThrownBy { use("5.0").execute() }.isInstanceOf(CommandFailedException::class.java)
 
-        assertThat(state.nodes.getValue("db0").version).isEqualTo("5.0")
+        assertThat(
+            stateManager
+                .load()
+                .nodes
+                .getValue("db0")
+                .version,
+        ).isEqualTo("5.0")
         assertThat(nodes.commandsOn("db0").filter { it.contains("tee ${AxonOpsAgents.DROP_IN}") })
             .singleElement()
             .asString()
@@ -377,8 +440,8 @@ class UseCassandraTest : BaseKoinTest() {
 
         use("4.1").execute()
 
-        assertThat(state.nodes).hasSize(count)
-        assertThat(state.nodes.values).allSatisfy { node ->
+        assertThat(stateManager.load().nodes).hasSize(count)
+        assertThat(stateManager.load().nodes.values).allSatisfy { node ->
             assertThat(node.version).isEqualTo("4.1")
             assertThat(node.javaVersion).isEqualTo("11")
             assertThat(node.installed.getValue("4.1").url).contains("4.1.7")

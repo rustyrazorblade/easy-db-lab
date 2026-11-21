@@ -54,7 +54,7 @@ class StressStop : PicoBaseCommand() {
                 stressJobService
                     .listJobs()
                     .getOrElse { e ->
-                        error("Failed to get stress jobs: ${e.message}")
+                        throw IllegalStateException("Failed to get stress jobs: ${e.message}", e)
                     }
 
             if (jobs.isEmpty()) {
@@ -98,7 +98,7 @@ class StressStop : PicoBaseCommand() {
         stressJobService
             .stopJob(name)
             .getOrElse { e ->
-                error("Failed to delete job $name: ${e.message}")
+                throw IllegalStateException("Failed to delete job $name: ${e.message}", e)
             }
     }
 }

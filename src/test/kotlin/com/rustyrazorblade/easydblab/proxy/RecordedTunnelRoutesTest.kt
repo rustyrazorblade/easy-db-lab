@@ -2,9 +2,12 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 import java.time.Duration
 import java.util.stream.Stream
@@ -27,9 +30,10 @@ class RecordedTunnelRoutesTest : BaseKoinTest() {
                 ),
         )
 
-    @Test
-    fun `Tailscale gives a direct route and reads no tunnel`() {
-        state.tailscaleActive = true
+    @ParameterizedTest
+    @EnumSource(value = NetworkMode::class, names = ["Tailscale", "Direct"])
+    fun `a mode that needs no tunnel gives a direct route`(mode: NetworkMode) {
+        state.networkMode = mode
 
         assertThat(routes().current(state)).isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))
     }
@@ -39,6 +43,16 @@ class RecordedTunnelRoutesTest : BaseKoinTest() {
     fun `a K3s in Docker workspace gives a direct route and ignores any recorded tunnel`() {
         envFile.recordTunnel(PORT, PID)
         state.environment = Environment.K3sDocker("/data")
+
+        assertThat(routes(FakeTunnelProcess.tunnelScript(PID, PORT, sshConfig)).current(state))
+            .isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = NetworkMode::class, names = ["Tailscale", "Direct"])
+    fun `a mode that needs no tunnel ignores a live recorded one`(mode: NetworkMode) {
+        state.networkMode = mode
+        envFile.recordTunnel(PORT, PID)
 
         assertThat(routes(FakeTunnelProcess.tunnelScript(PID, PORT, sshConfig)).current(state))
             .isEqualTo(RouteLookup.Usable(ObservabilityRoute.Direct))

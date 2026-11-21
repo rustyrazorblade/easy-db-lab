@@ -41,7 +41,6 @@ Override `additionalTestModules()` to register mocks for services not in the cor
 ```kotlin
 class MyCommandTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockClusterStateManager: ClusterStateManager
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -49,20 +48,23 @@ class MyCommandTest : BaseKoinTest() {
                 single {
                     mock<K8sService>().also { mockK8sService = it }
                 }
-                single {
-                    mock<ClusterStateManager>().also { mockClusterStateManager = it }
-                }
+                // Never a mock: the real manager over the test workspace.
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
-        mockClusterStateManager = getKoin().get()
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        getKoin().get<ClusterStateManager>().replace(testClusterState)
     }
 }
 ```
+
+`ClusterStateManager` is under `configuration/`, so it is never mocked. Seed the state with
+`replace(...)` and assert on `load()` after the command runs. To observe each save, wrap the real
+manager in a Mockito `spy` whose `update` answer calls `invocation.callRealMethod()` and records
+the returned state (see `UpTestFixture.recordSaves`).
 
 **Important:** When a command uses `by inject()` for a service, you MUST provide a mock in `additionalTestModules()` or the test will fail with a Koin resolution error.
 
@@ -125,7 +127,7 @@ val testState = ClusterState(
     name = "test-cluster",
     hosts = mapOf(ServerType.Control to listOf(testControlHost)),
 )
-whenever(mockClusterStateManager.load()).thenReturn(testState)
+getKoin().get<ClusterStateManager>().replace(testState)
 ```
 
 ### Exception Testing
@@ -171,7 +173,7 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 
 If K3s fails to start with `ContainerLaunchException` inside a nested container environment (e.g. CI), ensure the outer container is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write.
 
-If K3s logs `too many open files` and then loops on `Waiting for containerd startup: ... unknown service runtime.v1.RuntimeService`, the host has run out of inotify instances (`fs.inotify.max_user_instances`), not time. Each K3s container holds about 23, and the integration tier runs several at once across its forks. `pr-checks.yml` raises the limit to 1280 because the ubuntu-26.04 runner leaves it at 128 (actions/runner-images#15108). Do not raise the Testcontainers timeout for this.
+If K3s logs `too many open files` and then loops on `Waiting for containerd startup: ... unknown service runtime.v1.RuntimeService`, the host has run out of inotify instances (`fs.inotify.max_user_instances`), not time. Each K3s container holds about 23, and the integration tier runs several at once across its forks. `pr-checks.yml` raises the limit to 8192 (and `max_user_watches` to 1048576, the cluster nodes' values), because the ubuntu-26.04 runner leaves it at 128 (actions/runner-images#15108). Do not raise the Testcontainers timeout for this.
 
 ## Test Data Quality
 

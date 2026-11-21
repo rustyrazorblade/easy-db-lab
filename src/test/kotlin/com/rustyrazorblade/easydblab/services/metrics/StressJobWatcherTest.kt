@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.github.oshai.kotlinlogging.Level
 import org.assertj.core.api.Assertions.assertThat
@@ -142,6 +143,30 @@ class StressJobWatcherTest : BaseKoinTest() {
 
         assertThat(log.failed(stopping = true)).isEqualTo(Level.DEBUG)
         assertThat(log.succeeded()).isNull()
+    }
+
+    @Test
+    fun `a missing exec auth plugin is reported once per failing run, naming the plugin and how to install it`() {
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", "Install the AWS CLI v2")
+        val watcher =
+            StressJobWatcher(
+                ScriptedLister(listOf(Result.failure(missing), Result.failure(missing), ok(), Result.failure(missing))),
+            )
+
+        val reports = watcher.cycles(4)
+
+        val failing = reports[0].single() as Event.Stress.JobListFailing
+        assertThat(failing.reason).contains("exec auth plugin 'aws'").contains("Install the AWS CLI v2")
+        assertThat(reports[1]).isEmpty()
+        assertThat(reports[2]).isEmpty()
+        assertThat(reports[3]).containsExactly(failing)
+    }
+
+    @Test
+    fun `a transient list failure is only logged`() {
+        val watcher = StressJobWatcher(ScriptedLister(listOf(Result.failure(IllegalStateException("connection reset")))))
+
+        assertThat(watcher.cycles(1).single()).isEmpty()
     }
 
     @Test

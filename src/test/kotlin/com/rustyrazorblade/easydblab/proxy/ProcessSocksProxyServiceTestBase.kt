@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -133,7 +134,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
 
     protected fun recordedEnv() =
         ProxyEnvFile(tempDir).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(STOP_PORT, ProcessHandle.current().pid())
         }
 

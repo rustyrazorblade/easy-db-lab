@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitStorageProvisioner
 import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -166,6 +167,21 @@ class PlatformCreatePvsTest : BaseKoinTest() {
         assertThat(config.dbName).isEqualTo("presto")
         assertThat(config.localPath).isEqualTo("/mnt/db1/presto/data")
         assertThat(config.count).isEqualTo(appHosts.size)
+    }
+
+    @Test
+    fun `a failure creating the volumes keeps the Kubernetes exception as the cause`() {
+        val denied = KubernetesClientException("forbidden", 403, null)
+        whenever(mockK8sService.createLocalPersistentVolumes(any())).thenReturn(Result.failure(denied))
+        val command =
+            PlatformCreatePvs().apply {
+                kit = "clickhouse"
+                size = "100Gi"
+            }
+
+        assertThatThrownBy { command.execute() }
+            .hasMessageContaining("Failed to create PVs for clickhouse")
+            .hasRootCause(denied)
     }
 
     @Test

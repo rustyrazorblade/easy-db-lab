@@ -49,7 +49,7 @@ class StressFields : PicoBaseCommand() {
             stressJobService
                 .runCommand(image, args)
                 .getOrElse { e ->
-                    error("Failed to run command: ${e.message}")
+                    throw IllegalStateException("Failed to run command: ${e.message}", e)
                 }
 
         if (output.isNotEmpty()) {

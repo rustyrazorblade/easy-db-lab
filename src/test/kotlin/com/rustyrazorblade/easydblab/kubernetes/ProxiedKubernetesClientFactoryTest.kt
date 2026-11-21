@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.environment.NetworkMode
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import io.fabric8.kubernetes.client.Config
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy

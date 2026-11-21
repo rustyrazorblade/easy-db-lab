@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.services.StressJobService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -160,6 +161,7 @@ class StressStopTest : BaseKoinTest() {
 
     @Test
     fun `execute should fail when stopJob fails`() {
+        val denied = KubernetesClientException("Job deletion failed", 403, null)
         // Given - cluster state with control node
         val stateWithControl =
             ClusterState(
@@ -172,7 +174,7 @@ class StressStopTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockStressJobService.stopJob(any()))
-            .thenReturn(Result.failure(RuntimeException("Job deletion failed")))
+            .thenReturn(Result.failure(denied))
 
         val command = StressStop()
         command.jobName = "stress-test-1234567890"
@@ -181,6 +183,7 @@ class StressStopTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("deletion failed")
+            .hasRootCause(denied)
     }
 
     @Test
@@ -206,5 +209,25 @@ class StressStopTest : BaseKoinTest() {
 
         // Then - no jobs to delete
         verify(mockStressJobService, never()).stopJob(any())
+    }
+
+    @Test
+    fun `execute should keep the cause when listing jobs for --all fails`() {
+        val denied = KubernetesClientException("Failed to list jobs", 403, null)
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                hosts = mutableMapOf(ServerType.Control to listOf(testControlHost)),
+            ),
+        )
+        whenever(mockStressJobService.listJobs()).thenReturn(Result.failure(denied))
+
+        val command = StressStop()
+        command.deleteAll = true
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Failed to get stress jobs")
+            .hasRootCause(denied)
     }
 }

@@ -31,7 +31,7 @@ class KitStorageResolver(
     private fun defaultClass(): String {
         val default =
             k8sService.defaultStorageClass().getOrElse { exception ->
-                error("Could not read the cluster's default StorageClass: ${exception.message}")
+                throw IllegalStateException("Could not read the cluster's default StorageClass: ${exception.message}", exception)
             }
         if (default == null) {
             val event = Event.Setup.NoDefaultKitStorageClass

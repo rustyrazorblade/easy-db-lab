@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -122,7 +123,7 @@ class ProvisioningPreflight(
      * local process invocation.
      */
     private fun verifyLocalTailscale(state: ClusterState) {
-        if (!state.isTailscaleEnabled()) return
+        if (state.networkMode != NetworkMode.Tailscale) return
 
         when (val local = localTailscaleClient.state()) {
             is LocalTailscaleState.Connected -> return

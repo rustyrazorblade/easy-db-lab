@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.SavedSignal
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
@@ -30,6 +31,8 @@ import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -379,6 +382,25 @@ class DownBackupTest : BaseKoinTest() {
         val exitCode = Down().apply { autoApprove = true }.call()
 
         assertThat(exitCode).isEqualTo(0)
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = NetworkMode::class, names = ["Tailscale", "Direct"])
+    fun `a network mode with no tunnel saves the tail without starting a tunnel`(mode: NetworkMode) {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState().apply { networkMode = mode })
+        // Starting a tunnel in these modes would fail the save; the save must never reach it.
+        whenever(socksProxyService.ensureRunning(any())).thenThrow(IllegalStateException("no tunnel in this mode"))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
+        previewFindsResources()
+        whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownBackupService).backupBeforeTeardown(eq(controlHost), any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(false))
     }
 
     @Test

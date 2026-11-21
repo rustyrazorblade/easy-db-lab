@@ -7,9 +7,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -45,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -192,7 +195,7 @@ class InitTest : BaseKoinTest() {
             assertThat(outputHandler.errors.joinToString("\n") { it.first })
                 .contains("vpc-live", "i-aaa", "i-bbb", "easy-db-lab down")
             assertThat(workspaceFile).exists()
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -205,7 +208,7 @@ class InitTest : BaseKoinTest() {
             Init().apply { clean = true }.execute()
 
             assertThat(workspaceFile).doesNotExist()
-            verify(mockClusterStateManager).save(any())
+            verify(mockClusterStateManager).replace(any())
         }
     }
 
@@ -250,7 +253,7 @@ class InitTest : BaseKoinTest() {
             command.execute()
 
             assertThat(bin).doesNotExist()
-            verify(mockClusterStateManager).save(any())
+            verify(mockClusterStateManager).replace(any())
         }
 
         @Test
@@ -262,7 +265,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
             assertThat(own).hasContent("#!/bin/sh\necho mine\n")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -274,13 +277,13 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
             assertThat(File(bin, "my-script")).exists()
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         private fun assertRefusedAndUntouched(entriesBefore: List<String>) {
             assertThat(context.workingDirectory.list()).containsExactlyInAnyOrderElementsOf(entriesBefore)
             assertThat(File("setup_instance.sh")).doesNotExist()
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
             assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
         }
     }
@@ -293,7 +296,7 @@ class InitTest : BaseKoinTest() {
 
         assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
-        verify(mockClusterStateManager, never()).save(any())
+        verify(mockClusterStateManager, never()).replace(any())
     }
 
     @Nested
@@ -319,7 +322,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("--quiet")
                 .hasMessageContaining("--up")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -353,7 +356,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining(Constants.K3s.CLUSTER_CIDR)
                 .hasMessageContaining(Constants.K3s.SERVICE_CIDR)
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(any())
         }
 
         @Test
@@ -365,7 +368,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("/25 or larger")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(any())
         }
 
         @Test
@@ -389,7 +392,7 @@ class InitTest : BaseKoinTest() {
             command.name = "my-cluster"
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     name == "my-cluster" &&
                         initConfig?.cassandraInstances == 3 &&
@@ -400,15 +403,17 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `a plain init records EC2 plus K3s and leaves no network mode in the env file`() {
+        fun `a plain init records EC2 plus K3s and records no network mode before up`() {
             val envFile = ProxyEnvFile(context.workingDirectory)
 
             Init().apply { clean = true }.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { environment == Environment.Ec2K3s && exposure == Exposure.Socks && initConfig?.cni == CniMode.Cilium },
             )
-            assertThat(envFile.file.readText()).doesNotContain(Constants.Proxy.ENV_NETWORK_MODE)
+            // No mode is recorded until `up` or the command preflight writes it with the wrappers.
+            assertThat(envFile.file).doesNotExist()
+            assertThat(envFile.read().networkMode).isNull()
         }
 
         @Test
@@ -421,7 +426,7 @@ class InitTest : BaseKoinTest() {
             command.instanceType = "i3.2xlarge"
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     name == "custom-cluster" &&
                         initConfig?.cassandraInstances == 6 &&
@@ -443,6 +448,25 @@ class InitTest : BaseKoinTest() {
             assertThat(scheduled.filterIsInstance<Up>().single().quiet).isEqualTo(quiet)
         }
 
+        @ParameterizedTest(name = "credentials {0}, --no-tailscale {1} -> {2}")
+        @CsvSource("true, false, Tailscale", "true, true, Socks", "false, false, Socks")
+        fun `init records tailscale only when the profile has Tailscale credentials and --no-tailscale is not given`(
+            credentials: Boolean,
+            noTailscale: Boolean,
+            expected: NetworkMode,
+        ) {
+            getKoin().get<User>().apply {
+                tailscaleClientId = if (credentials) "ts-client-id" else ""
+                tailscaleClientSecret = if (credentials) "ts-client-secret" else ""
+            }
+            val command = Init()
+            command.clean = true
+            command.noTailscale = noTailscale
+            command.execute()
+
+            verify(mockClusterStateManager).replace(argThat { networkMode == expected })
+        }
+
         @Test
         fun `execute stores explicit cidr in state`() {
             val command = Init()
@@ -450,7 +474,7 @@ class InitTest : BaseKoinTest() {
             command.cidr = "172.16.0.0/16"
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.cidr == "172.16.0.0/16" },
             )
         }
@@ -461,7 +485,7 @@ class InitTest : BaseKoinTest() {
             picocli.CommandLine(command).parseArgs("--clean", "--node-label", "pool=observability,disk=ssd")
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.nodeLabels == mapOf("pool" to "observability", "disk" to "ssd") },
             )
         }
@@ -472,7 +496,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.cidr == null },
             )
         }
@@ -546,7 +570,7 @@ class InitTest : BaseKoinTest() {
         fun `without overrides the declared AWS set is recorded and nothing is reported absent`() {
             Init().apply { clean = true }.execute()
 
-            verify(mockClusterStateManager).save(argThat { capabilities == NodeCapability.entries.toSet() })
+            verify(mockClusterStateManager).replace(argThat { capabilities == NodeCapability.entries.toSet() })
             assertThat(stdout.toString()).doesNotContain("Absent capabilities")
         }
 
@@ -558,7 +582,7 @@ class InitTest : BaseKoinTest() {
                     capabilityOverrides = listOf("privileged=false")
                 }.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { capabilities == NodeCapability.entries.toSet() - NodeCapability.PRIVILEGED },
             )
             assertThat(stdout.toString())
@@ -576,7 +600,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("'gpu'")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -590,7 +614,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("privileged")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 
@@ -663,7 +687,7 @@ class InitTest : BaseKoinTest() {
             }
         }
 
-        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).save(any())
+        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).replace(any())
 
         @Test
         fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
@@ -716,7 +740,7 @@ class InitTest : BaseKoinTest() {
             withEbs.ebsType = "gp3"
             withEbs.execute()
 
-            verify(mockClusterStateManager).save(argThat { initConfig?.instanceType == "c5.2xlarge" })
+            verify(mockClusterStateManager).replace(argThat { initConfig?.instanceType == "c5.2xlarge" })
         }
 
         @Test
@@ -743,7 +767,7 @@ class InitTest : BaseKoinTest() {
 
             command.execute()
 
-            verify(mockClusterStateManager).save(argThat { initConfig?.stressInstances == 1 })
+            verify(mockClusterStateManager).replace(argThat { initConfig?.stressInstances == 1 })
         }
     }
 
@@ -762,7 +786,7 @@ class InitTest : BaseKoinTest() {
             command.stressInstanceType = "x86.app"
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     initConfig?.dbArch == "ARM64" &&
                         initConfig?.appArch == "AMD64" &&
@@ -786,7 +810,7 @@ class InitTest : BaseKoinTest() {
                 .hasMessageContaining("us-west-2")
 
             // No cluster state saved with instance config when derivation fails.
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(
                 argThat { initConfig != null },
             )
         }
@@ -801,7 +825,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.cni == CniMode.Cilium },
             )
         }
@@ -813,7 +837,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.cni == CniMode.Flannel },
             )
         }
@@ -825,7 +849,7 @@ class InitTest : BaseKoinTest() {
         fun `without --role-nodes each role keeps the owned nodes' type label`() {
             Init().apply { clean = true }.execute()
 
-            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES })
+            verify(mockClusterStateManager).replace(argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES })
         }
 
         @Test
@@ -835,7 +859,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     val selectors = RoleSelectors.from(this)
                     selectors.db.labels == mapOf("pool" to "databases") &&
@@ -853,7 +877,7 @@ class InitTest : BaseKoinTest() {
                     broughtCluster = BROUGHT_API
                 }.execute()
 
-            verify(mockClusterStateManager).save(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
+            verify(mockClusterStateManager).replace(argThat { RoleSelectors.from(this) == RoleSelectors.ANYWHERE })
         }
 
         @Test
@@ -864,7 +888,7 @@ class InitTest : BaseKoinTest() {
             command.broughtCluster = BROUGHT_API
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     RoleSelectors.from(this) == RoleSelectors.ANYWHERE.copy(db = NodeSelector(mapOf("pool" to "databases")))
                 },
@@ -878,7 +902,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { RoleSelectors.from(this) == RoleSelectors.OWNED_NODES.copy(app = NodeSelector.NONE) },
             )
         }
@@ -893,7 +917,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("db=bad")
                 .hasMessageContaining("<role>=<key=value>")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 
@@ -913,7 +937,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat {
                     ClientNetworks.from(this).cidrs.map { it.value } ==
                         listOf("172.16.0.0/16", Constants.K3s.CLUSTER_CIDR, "192.168.0.0/16", "203.0.113.7/32")
@@ -934,7 +958,7 @@ class InitTest : BaseKoinTest() {
             command.execute()
 
             val saved = argumentCaptor<ClusterState>()
-            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            verify(mockClusterStateManager, atLeastOnce()).replace(saved.capture())
             val state = saved.lastValue
             assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32", "192.168.0.0/16")
             assertThat(probedApis).containsExactly(BROUGHT_API)
@@ -958,7 +982,7 @@ class InitTest : BaseKoinTest() {
                 }.execute()
 
             val saved = argumentCaptor<ClusterState>()
-            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            verify(mockClusterStateManager, atLeastOnce()).replace(saved.capture())
             val state = saved.lastValue
             assertThat(state.clientNetworks).containsExactly("10.244.0.0/24", "192.168.1.5/32")
             assertThat(ClientNetworks.from(state).cidrs.map { it.value }).containsExactly("10.244.0.0/24", "192.168.1.5/32")
@@ -970,7 +994,7 @@ class InitTest : BaseKoinTest() {
             Init().apply { clean = true }.execute()
 
             assertThat(probedApis).isEmpty()
-            verify(mockClusterStateManager).save(argThat { clientNetworks == null })
+            verify(mockClusterStateManager).replace(argThat { clientNetworks == null })
         }
 
         @Test
@@ -982,7 +1006,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("10.0.0.1/8")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -1021,7 +1045,7 @@ class InitTest : BaseKoinTest() {
                 }.execute()
 
             val saved = argumentCaptor<ClusterState>()
-            verify(mockClusterStateManager, atLeastOnce()).save(saved.capture())
+            verify(mockClusterStateManager, atLeastOnce()).replace(saved.capture())
             assertThat(saved.lastValue.clientNetworks).containsExactly("192.168.1.5/32")
             assertThat(outputHandler.messages.joinToString("\n"))
                 .contains(Event.Setup.NoPodCidrClientNetworks(listOf("192.168.1.5/32")).toDisplayString())
@@ -1056,7 +1080,7 @@ class InitTest : BaseKoinTest() {
                     broughtCluster = BROUGHT_API
                 }.execute()
 
-            verify(mockClusterStateManager, atLeastOnce()).save(argThat { clientNetworks.orEmpty().contains("8.0.0.0/6") })
+            verify(mockClusterStateManager, atLeastOnce()).replace(argThat { clientNetworks.orEmpty().contains("8.0.0.0/6") })
             assertThat(outputHandler.messages.joinToString("\n"))
                 .contains("Warning: a node reports pod CIDR 8.0.0.0/6, which gives 67108864 addresses passwordless access")
                 .doesNotContain("pod CIDR 192.168.1.5/32")
@@ -1098,7 +1122,7 @@ class InitTest : BaseKoinTest() {
             assertThat(output)
                 .contains("Warning: --client-network 10.0.0.0/7 gives 33554432 addresses passwordless access")
                 .doesNotContain("--client-network 192.168.0.0/16 gives")
-            verify(mockClusterStateManager).save(argThat { extraClientNetworks.contains("10.0.0.0/7") })
+            verify(mockClusterStateManager).replace(argThat { extraClientNetworks.contains("10.0.0.0/7") })
         }
 
         @Test
@@ -1122,7 +1146,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("0.0.0.0/0")
                 .hasMessageContaining("--client-network")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 
@@ -1135,7 +1159,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(
+            verify(mockClusterStateManager).replace(
                 argThat { initConfig?.kitStorageClass == "retain-x" && initConfig?.kitStorageSize == "200Gi" },
             )
         }
@@ -1150,7 +1174,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("lots")
                 .hasMessageContaining("--kit-storage-size")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(any())
         }
 
         @Test
@@ -1165,7 +1189,7 @@ class InitTest : BaseKoinTest() {
                     .hasMessageContaining("'$size'")
                     .hasMessageContaining("positive")
             }
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(any())
         }
     }
 
@@ -1178,7 +1202,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(argThat { tenant() == "default" })
+            verify(mockClusterStateManager).replace(argThat { tenant() == "default" })
         }
 
         @Test
@@ -1188,7 +1212,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(argThat { initConfig?.tenant == "acme" })
+            verify(mockClusterStateManager).replace(argThat { initConfig?.tenant == "acme" })
         }
 
         /** Names at the edges of `^[a-z][a-z0-9_-]{0,62}$` are accepted, not just rejected past them. */
@@ -1207,7 +1231,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(argThat { tenant() == name })
+            verify(mockClusterStateManager).replace(argThat { tenant() == name })
         }
 
         @ParameterizedTest
@@ -1228,7 +1252,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         /** A Loki tenant named `index` would put its chunks under Loki's index path. */
@@ -1241,7 +1265,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("'index' is reserved")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 
@@ -1256,7 +1280,7 @@ class InitTest : BaseKoinTest() {
             command.clean = true
             command.execute()
 
-            verify(mockClusterStateManager).save(argThat { this.name == name })
+            verify(mockClusterStateManager).replace(argThat { this.name == name })
         }
 
         @ParameterizedTest
@@ -1279,7 +1303,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 
@@ -1295,8 +1319,7 @@ class InitTest : BaseKoinTest() {
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Using existing VPC: vpc-existing123")
 
-            // save is called twice: once in prepareEnvironment, once after setting VPC
-            verify(mockClusterStateManager, atLeastOnce()).save(
+            verify(mockClusterStateManager).replace(
                 argThat { vpcId == "vpc-existing123" },
             )
         }
@@ -1309,11 +1332,11 @@ class InitTest : BaseKoinTest() {
                     existingVpcId = "vpc-existing123"
                 }
             supplied.execute()
-            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == "vpc-existing123" && vpcSupplied })
+            verify(mockClusterStateManager, atLeastOnce()).replace(argThat { vpcId == "vpc-existing123" && vpcSupplied })
 
             val own = Init().apply { clean = true }
             own.execute()
-            verify(mockClusterStateManager, atLeastOnce()).save(argThat { vpcId == null && !vpcSupplied })
+            verify(mockClusterStateManager, atLeastOnce()).replace(argThat { vpcId == null && !vpcSupplied })
         }
     }
 
@@ -1357,7 +1380,7 @@ class InitTest : BaseKoinTest() {
                     .hasMessageContaining("--redirect-metrics-endpoint")
             }
 
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).replace(any())
         }
 
         @Test
@@ -1396,7 +1419,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("traces")
 
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
     }
 

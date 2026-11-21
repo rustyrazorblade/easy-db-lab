@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -95,5 +96,13 @@ class KitStorageResolverTest {
             .hasMessageContaining("no default StorageClass")
             .hasMessageContaining("--kit-storage-class")
         assertThat(events).singleElement().isInstanceOf(Event.Setup.NoDefaultKitStorageClass::class.java)
+    }
+
+    @Test
+    fun `a failure to read the default class keeps the Kubernetes exception as the cause`() {
+        val denied = KubernetesClientException("forbidden", 403, null)
+        whenever(k8sService.defaultStorageClass()).thenReturn(Result.failure(denied))
+
+        assertThatThrownBy { resolver.resolve(null) }.hasRootCause(denied)
     }
 }

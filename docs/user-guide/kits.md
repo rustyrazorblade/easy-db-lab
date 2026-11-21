@@ -16,8 +16,21 @@ easy-db-lab ships with built-in kits:
 - cassandra-pods (see [Cassandra Pods](cassandra-pods.md))
 - sysbench
 - clickhouse-benchmark
+- the cqlite offline-query kits (see below)
 
 You can also create your own kits for any workload you want to benchmark or test.
+
+### Offline SSTable query kits (cqlite)
+
+These built-in kits work together to query a database's SSTables offline — read-only,
+flushed-SSTables-only, and eventually stale (never a live consistent view):
+
+- [cqlite-flight](cqlite-flight.md) — Arrow Flight data plane, one pod per db node,
+  reading local SSTables.
+- The [Trino](install-trino.md) kit's `cqlite` catalog — reads SSTables through cqlite-flight with
+  `SELECT * FROM cqlite.<keyspace>.<table>` addressing. It is a catalog of the trino kit, not a
+  standalone kit, and is **not shipped yet** (`pmcfadin/cqlite#2869`).
+- [trino-loadtest](trino-loadtest.md) — drives concurrent read load against that catalog.
 
 ## Discovering kits
 

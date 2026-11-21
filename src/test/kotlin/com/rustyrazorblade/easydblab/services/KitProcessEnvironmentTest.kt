@@ -102,7 +102,7 @@ internal class KitProcessEnvironmentTest {
 
     @Test
     fun `EDL_NODE_SSH is true on an AWS cluster that records no set`() {
-        ClusterStateManager(File(workspace, CLUSTER_STATE)).save(ClusterState(name = "lab"))
+        ClusterStateManager(File(workspace, CLUSTER_STATE)).replace(ClusterState(name = "lab"))
         val builder = ProcessBuilder("true").also { it.environment()[Constants.Kit.NODE_SSH_ENV] = "false" }
 
         environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "false"))
@@ -143,7 +143,7 @@ internal class KitProcessEnvironmentTest {
 
     private fun recordCapabilities(capabilities: Set<NodeCapability>) {
         ClusterStateManager(File(workspace, CLUSTER_STATE))
-            .save(ClusterState(name = "lab", capabilities = capabilities))
+            .replace(ClusterState(name = "lab", capabilities = capabilities))
     }
 
     @Test

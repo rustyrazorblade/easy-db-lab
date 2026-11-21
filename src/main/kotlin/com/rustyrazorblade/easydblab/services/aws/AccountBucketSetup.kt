@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -51,7 +52,7 @@ class AccountBucketSetup(
         // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))
         s3BucketService.putBucketPolicy(accountBucket)
-        state.s3Bucket = accountBucket
+        clusterStateManager.update(state) { it.s3Bucket = accountBucket }
         eventBus.emit(Event.S3.BucketConfigured(accountBucket, state.clusterPrefix()))
 
         // Configure per-cluster data bucket
@@ -62,8 +63,7 @@ class AccountBucketSetup(
             metricsConfigId = state.metricsConfigId(),
         )
 
-        state.dataBucket = state.dataBucketName()
-        clusterStateManager.save(state)
+        clusterStateManager.update(state) { it.dataBucket = it.dataBucketName() }
     }
 
     /**

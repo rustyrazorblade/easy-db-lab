@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.K3sClusterService
@@ -79,7 +80,7 @@ class ControlNodeNetwork(
         // The control node is the tailnet subnet router. Cilium's NAT chain ACCEPTs tailnet packets
         // to the db nodes before Tailscale can masquerade them, so the db nodes are unreachable over
         // the tailnet until this chain is in place.
-        if (state.read { it.isTailscaleEnabled() }) cilium.installTailscaleMasquerade(host).getOrThrow()
+        if (state.read { it.networkMode == NetworkMode.Tailscale }) cilium.installTailscaleMasquerade(host).getOrThrow()
     }
 
     private companion object {

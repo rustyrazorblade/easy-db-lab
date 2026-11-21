@@ -402,39 +402,63 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// KitFlagsDocumentedTest reads these user-guide pages off the filesystem to check they
-// document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
-// an edit that drops a flag row would be masked by an up-to-date or cached test result.
+// Several unit tests read the source tree off the filesystem instead of the classpath:
+// NoVictoriaReferencesTest scans every root below for stale backend names, KitFlagsDocumentedTest
+// reads the kit user guides under docs/, DevLauncherTelemetryTest runs bin/easy-db-lab, the
+// dashboard tests read dashboards/, the packer tests (NodeTenantRuleTest, CassandraJmxRulesTest,
+// EbpfExporterManifestBuilderTest) read packer/, and NodeTuningReservedPortsTest reads Kotlin
+// source text under src/main. Gradle can't infer those reads, so without declaring them an edit
+// to a scanned file (a test plan, a doc page, a comment) would be masked by an up-to-date or
+// cached test result. When a test starts reading another path off disk, add it here.
+// When a tree or file is removed from the repo, remove its entry too: a missing input fails the task.
+// Each entry names the unit tests that read it; NoVictoriaReferencesTest scans all of them.
+val sourceTreesReadByTests =
+    mapOf(
+        // NodeTuningReservedPortsTest, StorageSchemeBoundaryTest, StoreKeyNamesTest, DashboardFiles (the kit dashboard tests)
+        "mainSourceTree" to "src/main",
+        // DashboardFiles and the core dashboard tests (GrafanaDashboardCatalogTest, ComparisonDashboardsTest, ...)
+        "dashboardsTree" to "dashboards",
+        // NodeTenantRuleTest, CassandraJmxRulesTest, EbpfExporterManifestBuilderTest, PackerBuildCommandTest
+        "packerTree" to "packer",
+        // DevLauncherTelemetryTest
+        "binTree" to "bin",
+        // KitFlagsDocumentedTest, StoreKeyNamesTest
+        "docsTree" to "docs",
+        // NoVictoriaReferencesTest only, for the five entries from here on
+        "testPlansTree" to "test-plans",
+        "claudeAgentsTree" to ".claude/agents",
+        "claudeCommandsTree" to ".claude/commands",
+        "claudeSkillsTree" to ".claude/skills",
+    )
+val sourceFilesReadByTests =
+    mapOf(
+        // NoVictoriaReferencesTest
+        "rootClaudeMd" to "CLAUDE.md",
+        "rootBuildScript" to "build.gradle.kts",
+    )
+
 tasks.named<Test>("test") {
     // Unit tier only. Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which
     // holds every main class in ArchUnit's graph (without this it fails with "Java heap space"), on
     // top of up to forkEvery other classes in the same JVM. The integration tier has no such test.
     maxHeapSize = "1536m"
 
-    inputs
-        .file("docs/user-guide/sysbench.md")
-        .withPropertyName("sysbenchUserGuide")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-    inputs
-        .file("docs/user-guide/clickhouse-benchmark.md")
-        .withPropertyName("clickhouseBenchmarkUserGuide")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
+    sourceTreesReadByTests.forEach { (property, path) ->
+        inputs
+            .dir(path)
+            .withPropertyName(property)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+    sourceFilesReadByTests.forEach { (property, path) ->
+        inputs
+            .file(path)
+            .withPropertyName(property)
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
 
     // StoreGoldenTest reads and rewrites its golden files under the project, wherever Gradle
     // runs the test JVM from.
     systemProperty("easydblab.projectDir", projectDir.absolutePath)
-
-    // OperatorScriptPortsTest reads the Mimir NodePort out of this operator script.
-    inputs
-        .file("bin/export-workload-metrics")
-        .withPropertyName("exportWorkloadMetrics")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-
-    // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
-    inputs
-        .file("bin/easy-db-lab")
-        .withPropertyName("devLauncher")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
 
     // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
     // user runs, to check which OpenTelemetry exporter settings it hands the JVM.
@@ -522,6 +546,12 @@ tasks.register("testScripts") {
         "testSetupInstanceDataDisk",
         "testSetupInstanceTuning",
         "testEdlNodeTuning",
+        "testTrinoLoadtestDriver",
+        "testTrinoLoadtestStartScript",
+        "testTrinoLoadtestStopScript",
+        "testCqliteFlightDetectMultidisk",
+        "testCqliteFlightStartScript",
+        "testCqliteFlightStopScript",
     )
 }
 
@@ -693,6 +723,53 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's start script: its driver pod runs on an app node and its
+// interval figures go to the collector as OTLP JSON gauges. kubectl and curl are stubbed.
+tasks.register<Exec>("testTrinoLoadtestStartScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-start.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's stop script: it deletes only this instance's pods and
+// ConfigMaps, by label. kubectl is stubbed.
+tasks.register<Exec>("testTrinoLoadtestStopScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-stop.test.sh")
+}
+
+// Unit-test the cqlite-flight kit's detect-multidisk init-container script against fake data roots:
+// the verified single disk, the multi-disk warning and the cannot-verify warning, with doubled
+// slashes and symlinked disks, and the --data-gid access check that fails the pod. Runs under dash
+// when installed, as the image's /bin/sh is POSIX sh.
+tasks.register<Exec>("testCqliteFlightDetectMultidisk") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight detect-multidisk script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/cqlite-flight-detect-multidisk.test.sh")
+}
+
+// Unit-test the cqlite-flight kit start script: a failed rollout fails with the host-path hint and the
+// multi-disk note, a healthy one prints neither. kubectl is stubbed; no cluster. Runs under bash 5 and /bin/bash 3.2.
+tasks.register<Exec>("testCqliteFlightStartScript") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-start.test.sh")
+}
+
+// Unit-test the cqlite-flight kit stop script: it deletes by the kit and role labels. kubectl is
+// stubbed; no cluster. Runs under bash 5 and /bin/bash 3.2.
+tasks.register<Exec>("testCqliteFlightStopScript") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
@@ -918,6 +995,41 @@ tasks.register<Exec>("testProfilingReconcile") {
     description = "Unit-test the edl-profiling-reconcile node script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/bin/edl-profiling-reconcile.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's driver.py pure logic (argument-error
+// contract, percentile math, cumulative-stats separation, interval-line
+// format). The driver imports `trino` lazily, so the stdlib `unittest` runner
+// exercises every function under test with no third-party package and no
+// cluster. The tests live OUTSIDE the shipped kit resource dir (the kit ships
+// driver.py only), so this task points the runner at src/test/python.
+tasks.register<Exec>("testTrinoLoadtestDriver") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit driver.py pure logic"
+    workingDir = file(".")
+    // Fails, not skips, without python3: check is the gate, and a skipped driver test passes it.
+    // Bound at configuration time, so the action reaches no script object (configuration cache).
+    val searchPath = System.getenv("PATH").orEmpty()
+    doFirst {
+        val found =
+            searchPath
+                .split(File.pathSeparator)
+                .any { File(it, "python3").canExecute() }
+        if (!found) {
+            throw GradleException("testTrinoLoadtestDriver needs python3 on PATH; install Python 3 and run it again")
+        }
+    }
+    commandLine =
+        listOf(
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "src/test/python/trino-loadtest",
+            "-p",
+            "test_*.py",
+        )
 }
 
 tasks.register<Exec>("testPackerScript") {

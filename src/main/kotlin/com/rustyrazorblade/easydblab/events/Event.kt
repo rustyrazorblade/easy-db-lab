@@ -4,7 +4,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderPolicy
+import com.rustyrazorblade.easydblab.kernel.ProviderRequest
 import com.rustyrazorblade.easydblab.kernel.ProviderResponse
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -3607,6 +3611,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stress job $jobName on $host ${outcome.wireName} after ${durationSeconds}s"
         }
 
+        /**
+         * `metrics stream` cannot list the stress jobs for a reason no retry fixes (a missing exec
+         * auth plugin, a 401 or 403), so no [JobCompleted] can come until it is fixed. Emitted once
+         * per run of such failures; [reason] names the cause and the remedy.
+         */
+        @Serializable
+        @SerialName("Stress.JobListFailing")
+        data class JobListFailing(
+            val reason: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Cannot list the stress jobs, so no completions are reported: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.NoJobsFound")
         data object NoJobsFound : Stress {
@@ -4499,10 +4518,12 @@ sealed interface Event {
 
         /**
          * A command failed with an error a provider's [com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler]
-         * recognised: bad credentials, missing permissions, or an unreachable provider. Carries the provider's
-         * detail, the remedy and, for a service answer, the [response] facts (service, error code, HTTP status,
-         * request id).
+         * recognised: bad credentials, missing permissions, a policy rejection, or an unreachable provider.
+         * Carries the provider's detail, the remedy and, for a service answer, the [response] facts (service,
+         * error code, HTTP status, request id). When the handler knows them, [request] names the request that
+         * failed and [policy] the policy that refused it; a failure without them serializes neither field.
          */
+        @OptIn(ExperimentalSerializationApi::class)
         @Serializable
         @SerialName("Command.ProviderError")
         data class ProviderError(
@@ -4511,14 +4532,11 @@ sealed interface Event {
             val detail: String,
             val remedy: String,
             val response: ProviderResponse? = null,
+            @EncodeDefault(EncodeDefault.Mode.NEVER) val request: ProviderRequest? = null,
+            @EncodeDefault(EncodeDefault.Mode.NEVER) val policy: ProviderPolicy? = null,
         ) : Command {
             override fun toDisplayString(): String {
-                val headline =
-                    when (kind) {
-                        ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
-                        ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
-                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
-                    }
+                val headline = ProviderErrorText.headline(provider, kind, request, policy) + ProviderErrorText.violations(policy)
                 val facts =
                     response
                         ?.summary()
@@ -6444,6 +6462,62 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "StorageClass $storageClass retains and provisions the volumes for '$kit'; no PVs created"
         }
+
+        /** The admission policy [policy] is in effect: a new pod-network pod carries every one of [sysctls]. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyReady")
+        data class PodSysctlPolicyReady(
+            val policy: String,
+            val sysctls: Map<String, String>,
+        ) : Platform {
+            override fun toDisplayString(): String = "Pod network sysctls in effect for new pods (${sysctls.size} keys, policy $policy)"
+        }
+
+        /** The API server refused the admission policy [policy] or its binding; [reason] is its answer. */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotApplied")
+        data class PodSysctlPolicyNotApplied(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the pod network sysctl policy $policy could not be applied: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The dry-run probe for [policy] failed with an error that is neither a refusal nor an
+         * unreachable API server, so `up` stopped at once instead of waiting; [reason] is the error.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlProbeFailed")
+        data class PodSysctlProbeFailed(
+            val policy: String,
+            val reason: String,
+        ) : Platform {
+            override fun toDisplayString(): String = "Error: the probe for the pod network sysctl policy $policy failed: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * After [timeoutSeconds], a dry-run pod still lacked [missingKeys] of [policy]; [reason] says
+         * why the last probe got no pod back, when the API server refused it or could not be reached.
+         */
+        @Serializable
+        @SerialName("Platform.PodSysctlPolicyNotInEffect")
+        data class PodSysctlPolicyNotInEffect(
+            val policy: String,
+            val missingKeys: List<String>,
+            val timeoutSeconds: Long,
+            val reason: String? = null,
+        ) : Platform {
+            override fun toDisplayString(): String =
+                "Error: after ${timeoutSeconds}s a new pod still lacks the pod network sysctls ${missingKeys.joinToString(", ")}" +
+                    (reason?.let { "; no pod was admitted: $it" } ?: "")
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================
@@ -6723,6 +6797,25 @@ sealed interface Event {
         }
 
         /**
+         * [kit] cannot run [phase] because its `kit.yaml` `requires` the [missing] node capabilities
+         * and the cluster's recorded capabilities lack them. Nothing of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.CapabilityMissing")
+        data class CapabilityMissing(
+            val kit: String,
+            val phase: String,
+            val missing: List<NodeCapability>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: cannot $phase '$kit': it requires ${missing.joinToString { it.serialName }}, and " +
+                    "${missing.joinToString("; ") { it.absentReason }}. " +
+                    "'easy-db-lab status' lists the recorded capabilities."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * A collision-checked kit refused [phase] because its workload is already in the cluster:
          * [resources] (`kind/name`) in [namespace], found through the kit's runtime declaration.
          * No step of the phase ran.
@@ -6959,30 +7052,23 @@ sealed interface Event {
                 """.trimMargin()
         }
 
-        /** The cluster is reached without a tunnel, for [reason], so no tunnel was started. */
+        /**
+         * The cluster's network mode needs no tunnel, so none was started. [networkMode] is the mode's
+         * wire id, `tailscale` or `direct`; each has its own text. Any other id (`socks` needs a tunnel,
+         * so it never comes here) gets a text that names the mode and claims nothing about it.
+         */
         @Serializable
         @SerialName("Proxy.TunnelNotNeeded")
         data class TunnelNotNeeded(
-            val reason: Reason,
+            val networkMode: String,
         ) : Proxy {
-            /** Why the cluster needs no tunnel. */
-            @Serializable
-            enum class Reason {
-                /** Tailscale routes this machine to the nodes' private addresses. */
-                @SerialName("tailscale")
-                TAILSCALE,
-
-                /** The environment's network mode is direct: the cluster is reachable from this machine as it is. */
-                @SerialName("direct")
-                DIRECT,
-            }
-
             override fun toDisplayString(): String =
-                when (reason) {
-                    Reason.TAILSCALE ->
-                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
-                    Reason.DIRECT ->
+                when (networkMode) {
+                    Constants.Proxy.NETWORK_MODE_DIRECT ->
                         "This cluster is reachable from this machine, so no SOCKS5 tunnel is needed: tools connect to it directly."
+                    Constants.Proxy.NETWORK_MODE_TAILSCALE ->
+                        "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+                    else -> "No SOCKS5 tunnel was started for this cluster's network mode '$networkMode'."
                 }
         }
 

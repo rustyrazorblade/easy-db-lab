@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
@@ -199,15 +200,25 @@ class ClusterContractTest {
     }
 
     @Test
+    fun `EC2 takes the recorded network mode and every other environment is direct whatever it records`() {
+        assertThat(ClusterContract.of(stateFor(Environment.Ec2K3s).apply { networkMode = NetworkMode.Tailscale }).networkMode)
+            .isEqualTo(NetworkMode.Tailscale)
+        assertThat(environmentsWithoutAws()).allSatisfy { environment ->
+            assertThat(ClusterContract.of(stateFor(environment).apply { networkMode = NetworkMode.Socks }).networkMode)
+                .isEqualTo(NetworkMode.Direct)
+        }
+    }
+
+    @Test
     fun `the state source reads the state on every call`(
         @TempDir tempDir: File,
     ) {
         val manager = ClusterStateManager(File(tempDir, "state.json"))
         val source = StateClusterContractSource(manager)
-        manager.save(stateFor(Environment.Ec2K3s))
-        assertThat(source.current().networkMode).isEqualTo(NetworkMode.Tunnel)
+        manager.replace(stateFor(Environment.Ec2K3s))
+        assertThat(source.current().networkMode).isEqualTo(NetworkMode.Socks)
 
-        manager.save(stateFor(Environment.K3sDocker("/d")))
+        manager.replace(stateFor(Environment.K3sDocker("/d")))
 
         assertThat(source.current().networkMode).isEqualTo(NetworkMode.Direct)
     }
@@ -232,7 +243,7 @@ class ClusterContractTest {
                     toolingForm = ToolingForm.Ssh,
                     nodeAccessForm = NodeAccessForm.Ssh,
                     storeKind = StoreKind.ObjectStore,
-                    networkMode = NetworkMode.Tunnel,
+                    networkMode = NetworkMode.Socks,
                     nodeCapabilities = NodeCapabilities.AWS,
                     hosting = ObservabilityHosting.AWS,
                     namespace = "default",

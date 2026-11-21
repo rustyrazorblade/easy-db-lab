@@ -141,7 +141,9 @@ class ConfigChangeReportTest : BaseKoinTest() {
             )
         whenever(k8sService.workloadConfigHashes(any(), any())).thenReturn(Result.failure(denial))
 
-        val thrown = catchThrowable { ConfigChangeReport(k8sService, EventBus()).report(hashed(pyroscope.buildServerResources()), "default") }
+        val resources = hashed(pyroscope.buildServerResources())
+
+        val thrown = catchThrowable { ConfigChangeReport(k8sService, EventBus()).report(resources, "default") }
 
         assertThat(thrown).isInstanceOf(IllegalStateException::class.java).hasCause(denial)
         val event = KubernetesDenials.reported(thrown) as Event.Command.ProviderError

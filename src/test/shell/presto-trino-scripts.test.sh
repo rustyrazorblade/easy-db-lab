@@ -181,8 +181,14 @@ EOF
   [ "$(jq -r '.spec.template.spec.containers[0].ports // "none"' <<< "${worker}")" = none ] || fail "the worker patch carries ports"
   jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${coordinator}" | grep -q "pyroscope.application.name=${kit} .*component=coordinator" ||
     fail "coordinator patch has no Pyroscope agent for ${kit}"
-  jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${worker}" | grep -q "cluster=${LABEL},component=worker" ||
-    fail "worker patch has no cluster label"
+  # The profile cluster label is cluster-config's cluster_name (<name>-<id>), never the bare
+  # CLUSTER_NAME the kit runner exports (issue 982).
+  local component patch
+  for component in coordinator worker; do
+    if [ "${component}" = coordinator ]; then patch="${coordinator}"; else patch="${worker}"; fi
+    jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${patch}" | grep -q "pyroscope.labels=cluster=${LABEL},component=${component}" ||
+      fail "${component} patch has no cluster=${LABEL} label: $(jq -r '.spec.template.spec.containers[0].env[0].value' <<< "${patch}")"
+  done
   # Trino start replaces its coordinator pod after the patches (the new hostPort cannot be taken up
   # by a rolling update); Presto start leaves that to its rollout wait, so only update-catalogs deletes.
   if [ "${kit}" = trino ]; then

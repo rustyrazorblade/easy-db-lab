@@ -306,7 +306,7 @@ All scripts and shell steps receive the following environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `CLUSTER_NAME` | Name of the cluster |
+| `CLUSTER_NAME` | Name of the cluster, without its id. Do not use it as a `cluster` label (see below) |
 | `KUBECONFIG` | Absolute path to the workspace kubeconfig file |
 | `PATH` | `<workspace>/bin` (the tool wrappers) followed by the inherited `PATH` |
 | `CONTROL_HOST` | Public IP of the control node |
@@ -326,6 +326,13 @@ All scripts and shell steps receive the following environment variables:
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
 | `EDL_KIT_LIB` | Absolute path of the shared kit shell library, `<workspace>/bin/edl-kit-lib.sh` (see [Shared shell library](#shared-shell-library)) |
+
+**The `cluster` label.** Every signal in the shared observability store carries
+`cluster=<name>-<id>`, the `cluster_name` key of the `cluster-config` ConfigMap. `CLUSTER_NAME` is
+only `<name>`, so a label built from it does not match the dashboards' cluster filter and mixes two
+clusters with the same name. When a kit script sets a `cluster` label itself (for example on
+Pyroscope profiles), take the value from `edl_cluster_label` in the shared shell library:
+`CLUSTER_LABEL="$(edl_cluster_label)"`. Scraped metrics get the right label without any kit code.
 
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`. An arg the user leaves out that
@@ -458,7 +465,7 @@ and the failure, and exits non-zero. The kit's pods still run.
 Registration creates one K8s ConfigMap per scrape entry, named `easydblab-metrics-<kit>-<job>` and
 labelled `easydblab.com/workload-metrics=true`. `OtelSyncService` reads these ConfigMaps and
 regenerates the OTel collector config with a scrape job for each. Scraped metrics receive the
-entry's `job` and `cluster=<cluster-name>` labels automatically.
+entry's `job` and `cluster=<cluster-name>-<cluster-id>` labels automatically.
 
 A `hostPort` scrape assumes **one metrics-exposing pod per node per kit**. A kit that exposes
 metrics from multiple pods (e.g. Flink serves `:9249` on the JobManager *and* every TaskManager)

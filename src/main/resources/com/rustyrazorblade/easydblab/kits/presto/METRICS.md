@@ -1,6 +1,6 @@
 # Presto Metrics
 
-All metrics have `job="presto"` and `cluster=<cluster-name>`. Metrics are scraped from the JMX Prometheus exporter on port 9090.
+All metrics have `job="presto"` and `cluster=<cluster-name>-<cluster-id>`. Metrics are scraped from the JMX Prometheus exporter on port 9090.
 
 ## Key Metrics
 

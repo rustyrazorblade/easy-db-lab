@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope

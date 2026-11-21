@@ -31,6 +31,7 @@ All tests that need dependency injection should extend `BaseKoinTest`. It provid
 | `SSHConnectionProvider` | Mock with `MockSSHClient` |
 | `RemoteOperationsService` | Mock with no-op implementations |
 | `Context`, `ContextFactory` | Test context with temp directories |
+| `ClusterStateManager` | Real, from the production `configurationModule`, over the test context's workspace |
 | `UserConfigProvider` | From test context |
 | `CommandExecutor` | Pass-through implementation |
 

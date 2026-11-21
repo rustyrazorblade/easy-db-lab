@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.commandsModule
+import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.di.prompterModule
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -92,6 +93,8 @@ object TestModules {
             testEventBusModule(),
             testSSHModule(),
             testCommandExecutorModule(),
+            // The production binding: the real ClusterStateManager over the test Context's workspace.
+            configurationModule,
             commandsModule,
             prompterModule,
         )

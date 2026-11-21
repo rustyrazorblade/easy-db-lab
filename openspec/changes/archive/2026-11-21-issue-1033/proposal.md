@@ -6,14 +6,15 @@ Part of #1032 (local execution environment), spike break B9. Thirteen sites in 8
 
 - `Context.workingDirectory` has no `user.dir` default, and must be absolute (`require` in `init`). `user.dir` is read in exactly one place, the `ContextFactory` default. `Context.forCli` takes the directory, and the unused `forRepl` is deleted.
 - `ClusterStateManager` takes a **required** state file, bound from `File(get<Context>().workingDirectory, CLUSTER_STATE)`. `load()` fails with the absolute path when the file is missing.
-- `K8sClientProvider(clusterStateManager, workspace)` reads `<workspace>/kubeconfig`, the same pattern as `LocalClusterTooling` in PR #1078.
+- `K8sClientProvider` reads `<workspace>/kubeconfig`. Main already does this through `WorkspaceKubeconfig`, so the port changes nothing here.
 - These sites resolve `File(context.workingDirectory, NAME)`:
-  - `SetupInstance` (5 sites)
+  - `NodeSetupService` (3 sites; main moved the per-node work of `setup-instances` here, and `up` runs it too)
   - `cassandra start` (`axonops-workbench.json`)
   - `cassandra update-config`, through removal of `Version.file`, the same way `download-config` resolves it
   - `profiling fetch` and `profiling flamegraph` (`profiles/`)
-- `EMRSparkService` gets the workspace `logs/` directory with no default.
-- `upload-keys` writes its scratch file to a temp file and deletes it.
+- `EMRSparkService` gets the workspace `logs/` directory with no default, bound in `services/aws/AwsServicesModule`.
+- `Version.localDir`, a bare relative path, is removed; `download-config` and `update-config` use `context.workspaceFile(versionString)`.
+- `upload-keys` writes its scratch file to a temp file and deletes it. With no directory it reads the workspace's `authorized_keys/`.
 - The unused `uploadDirectory(host, Version)` overload and its two test fakes are deleted.
 - The workaround overrides in `HelpTopicCommandLinesTest` and `CommandLineParserTest` are removed. They become regression tests of the production binding.
 - Docs:

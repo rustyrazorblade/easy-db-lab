@@ -2,6 +2,7 @@
 
 - The missing-state error names the absolute path; before, it was a `FileNotFoundException` for the relative `state.json`.
 - `upload-keys` no longer leaves `authorized_keys_extra` in the current directory.
+- `upload-keys` with no directory reads the workspace's `authorized_keys`, not `./authorized_keys`.
 - Otherwise this change only adds a requirement.
 
 ## Conflicts with other in-flight changes

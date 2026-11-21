@@ -2,6 +2,13 @@
 
 Verified at b1c5056b. Paths are under `src/main/kotlin/com/rustyrazorblade/easydblab/`.
 
+Ported to main at 3fe8f32e9. Since b1c5056b, main changed these sites:
+- Sites 3-7: `SetupInstance`'s per-node work moved to `services/NodeSetupService.kt`, which `up` also runs. Its three reads (`environment.sh`, `cassandra-jmx-rules.yaml`, `setup_instance.sh`) go through the injected `Context`.
+- Site 2: `K8sClientProvider` already resolves the kubeconfig through `kubernetes/WorkspaceKubeconfig`, so it is unchanged.
+- Site 13: the `EMRSparkService` binding moved to `services/aws/AwsServicesModule.kt`.
+- Site 9: `Version.localDir` (`Path.of(versionString)`) is removed as well, and `DownloadConfig` and `UpdateConfig` use `context.workspaceFile(versionString)`.
+- `upload-keys` defaulted to a bare `authorized_keys`; the default is now the workspace's directory. A typed directory still resolves against the current directory.
+
 `Context.workingDirectory` exists, and about 40 sites use it correctly: `Status`, `StatusCache`, `KitStatusCommand`, `MetricsStreamModule`, `ProxyModule`, `ProcessSocksProxyService`, `Init`, `Clean`, `DownloadConfig`, `KitHookExecutor`, `KitInstallCommand`, `KitRunnerCommand`, `ClusterConfigurationService`, `BackupRestoreService`, `Repl`. Every kit `ProcessBuilder` sets `.directory(...)`.
 
 In the CLI process the workspace always equals `user.dir`, so the bug never fires there. It fires when a `Context` is built for a different directory.

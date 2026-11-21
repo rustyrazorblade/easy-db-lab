@@ -30,7 +30,7 @@
 
 ## 7. Integration
 
-- [ ] 7.1 `src/integrationTest/`: K3s TestContainer with a ServiceAccount-token kubeconfig with no RBAC (real 403) and a `pod-security.kubernetes.io/enforce=restricted` namespace with a privileged Pod (real Pod Security message); assert the descriptions
+- [x] 7.1 `src/integrationTest/`: K3s TestContainer with a ServiceAccount-token kubeconfig with no RBAC (real 403) and a `pod-security.kubernetes.io/enforce=restricted` namespace with a privileged Pod (real Pod Security message); assert the descriptions
 
 ## 8. Docs and verification
 

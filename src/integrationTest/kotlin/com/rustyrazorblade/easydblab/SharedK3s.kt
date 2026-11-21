@@ -49,6 +49,8 @@ object SharedK3s {
 
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
     private const val LOG_TAIL_CHARS = 6000
+    private const val CONTROL_PLANE_LOG_TAIL_CHARS = 20_000
+    private val ORPHAN_CGROUP_NOISE = listOf("orphaned pod cgroup", "Failed to kill all the processes attached to cgroup")
 
     private const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
 
@@ -135,6 +137,18 @@ object SharedK3s {
     fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
 
     /**
+     * The last part of the K3s container's log without the kubelet's orphaned-pod-cgroup lines.
+     * Every K3s test container shares the host cgroup tree, so each kubelet sees the others' pod
+     * cgroups as orphans and logs several lines a second about them; unfiltered, they fill the tail.
+     */
+    private fun controlPlaneLogTail(): String =
+        container.logs
+            .lineSequence()
+            .filterNot { line -> ORPHAN_CGROUP_NOISE.any { it in line } }
+            .joinToString("\n")
+            .takeLast(CONTROL_PLANE_LOG_TAIL_CHARS)
+
+    /**
      * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
      * before it admits a pod into the namespace.
      */
@@ -158,6 +172,9 @@ object SharedK3s {
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
                     "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
+                        "${runCatching { serviceAccountState(client, name) }.getOrElse {
+                            "service account state unavailable: ${it.messageOrString()}"
+                        }}\n" +
                         "${runCatching {
                             K3sDiagnostics.clusterDiagnostics(
                                 client,
@@ -165,10 +182,37 @@ object SharedK3s {
                             )
                         }.getOrElse {
                             "cluster diagnostics unavailable: ${it.messageOrString()}"
-                        }}\nK3s log tail:\n${logTail()}",
+                        }}\nK3s log tail, without orphaned pod cgroup lines:\n${controlPlaneLogTail()}",
                     e,
                 )
             }
         }
+    }
+
+    /**
+     * Whether the ServiceAccount exists now (read directly, not through a watch) and when the
+     * controller-manager last renewed its leader lease. An existing account means the wait missed
+     * its event; a stale lease means the controller that creates the account had stalled.
+     */
+    private fun serviceAccountState(
+        client: KubernetesClient,
+        namespace: String,
+    ): String {
+        val account =
+            client
+                .serviceAccounts()
+                .inNamespace(namespace)
+                .withName("default")
+                .get()
+        val lease =
+            client
+                .leases()
+                .inNamespace("kube-system")
+                .withName("kube-controller-manager")
+                .get()
+        return "default ServiceAccount read directly: " +
+            (account?.metadata?.creationTimestamp?.let { "exists, created $it" } ?: "absent") +
+            "; kube-controller-manager lease: holder=${lease?.spec?.holderIdentity} " +
+            "renewed=${lease?.spec?.renewTime} now=${java.time.Instant.now()}"
     }
 }

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.providers.ssh.isSshNotReady
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
@@ -236,6 +237,31 @@ object RetryUtil {
                         true
                     }
                     else -> false
+                }
+            }.build()
+
+    /**
+     * Creates retry configuration for building a Docker image.
+     *
+     * Under Docker's containerd image store, every image prune first deletes the content leases
+     * that pulls and builds in progress hold, whatever the prune's filter. A build whose base is
+     * being unpacked at that moment fails with containerd's "lease does not exist", though nothing
+     * is wrong with it. This retries only that failure; any other build failure (a `RUN` step that
+     * exits non-zero, a base image that does not exist) would fail the same way again.
+     *
+     * - Standard retry count (3 attempts), exponential backoff: 1s, 2s, 4s
+     *
+     * @return RetryConfig configured for Docker image builds
+     */
+    fun <T> createDockerBuildRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(Constants.Retry.MAX_DOCKER_RETRIES)
+            .intervalFunction { attemptCount ->
+                Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
+            }.retryOnException { throwable ->
+                throwable.causeChain().any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }.also { lost ->
+                    if (lost) log.warn { "Docker build lost its content lease - will retry: ${throwable.message}" }
                 }
             }.build()
 

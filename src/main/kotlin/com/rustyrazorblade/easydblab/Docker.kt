@@ -22,7 +22,10 @@ import com.rustyrazorblade.easydblab.docker.ContainerStateMonitor
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -323,12 +326,15 @@ data class VolumeMapping(
  * @param context The execution context
  * @param dockerClient The Docker client interface for container operations
  * @param userIdProvider Provider for getting the current user ID (for permissions)
+ * @param buildRetryConfig the retry policy for an image build; tests pass the production policy
+ *   with a short backoff
  * Events are emitted via the EventBus for user-facing output.
  */
 class Docker(
     val context: Context,
     private val dockerClient: DockerClientInterface,
     private val userIdProvider: UserIdProvider = DefaultUserIdProvider(),
+    private val buildRetryConfig: RetryConfig = RetryUtil.createDockerBuildRetryConfig<Unit>(),
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -418,7 +424,10 @@ class Docker(
     /**
      * Builds [dockerfile] into an image tagged [imageTag], using an otherwise empty build context.
      *
-     * @throws DockerException if the build fails, carrying the tail of the build output
+     * A build whose content lease the daemon deleted under it (an image prune running at the same
+     * time, see [RetryUtil.createDockerBuildRetryConfig]) is run again; any other failure is not.
+     *
+     * @throws DockerException if the build fails, carrying the tail of the last attempt's output
      */
     fun buildImage(
         dockerfile: String,
@@ -428,9 +437,24 @@ class Docker(
         eventBus.emit(Event.Docker.ImageBuilding(imageTag))
 
         val contextDir = createTempDirectory("easy-db-lab-image-").toFile()
-        val output = ArrayDeque<String>()
         try {
             File(contextDir, "Dockerfile").writeText(dockerfile)
+            val retry = Retry.of("docker-build-$imageTag", buildRetryConfig)
+            // The project DockerException is checked, so only the checked decorator retries it.
+            Retry.decorateCheckedRunnable(retry) { buildOnce(contextDir, imageTag) }.run()
+        } finally {
+            contextDir.deleteRecursively()
+        }
+        eventBus.emit(Event.Docker.ImageBuilt(imageTag))
+    }
+
+    /** One build attempt; a failure carries the tail of this attempt's output only. */
+    private fun buildOnce(
+        contextDir: File,
+        imageTag: String,
+    ) {
+        val output = ArrayDeque<String>()
+        try {
             dockerClient.buildImage(contextDir, imageTag) { line ->
                 log.debug { "[build $imageTag] $line" }
                 output.addLast(line)
@@ -440,10 +464,7 @@ class Docker(
             throw DockerException(buildFailure(imageTag, output), e)
         } catch (e: DockerClientException) {
             throw DockerException(buildFailure(imageTag, output), e)
-        } finally {
-            contextDir.deleteRecursively()
         }
-        eventBus.emit(Event.Docker.ImageBuilt(imageTag))
     }
 
     private fun buildFailure(

@@ -1,8 +1,8 @@
 ## 1. Kernel and event
 
-- [ ] 1.1 `kernel/ProviderErrorHandler.kt`: add `ProviderErrorKind.REJECTED` (`rejected`), `ProviderRequest`, `ProviderPolicy`, and optional `request`/`policy` on `ErrorDescription`
-- [ ] 1.2 `events/Event.kt` `Command.ProviderError`: optional `request`/`policy`; headline names the request and policy when present, and a `rejected` headline; serialization test that AWS and Docker events have neither field
-- [ ] 1.3 `services/CommandFailureReporter.kt`: pass `request`/`policy` through
+- [x] 1.1 `kernel/ProviderErrorHandler.kt`: add `ProviderErrorKind.REJECTED` (`rejected`), `ProviderRequest`, `ProviderPolicy`, and optional `request`/`policy` on `ErrorDescription`
+- [x] 1.2 `events/Event.kt` `Command.ProviderError`: optional `request`/`policy`; headline names the request and policy when present, and a `rejected` headline; serialization test that AWS and Docker events have neither field
+- [x] 1.3 `services/CommandFailureReporter.kt`: pass `request`/`policy` through
 
 ## 2. Parsers (test first, pure strings)
 

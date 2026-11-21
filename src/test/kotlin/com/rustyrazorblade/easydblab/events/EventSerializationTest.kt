@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.kernel.ProviderPolicy
+import com.rustyrazorblade.easydblab.kernel.ProviderRequest
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.lang.ArchCondition
@@ -233,6 +235,7 @@ private object NoPackagePrefixInSerialName : ArchCondition<JavaClass>(
                 ProviderErrorKind.CREDENTIALS to "credentials",
                 ProviderErrorKind.PERMISSION_DENIED to "permission-denied",
                 ProviderErrorKind.UNAVAILABLE to "unavailable",
+                ProviderErrorKind.REJECTED to "rejected",
             )
         assertThat(expectedWire.keys).containsExactlyInAnyOrder(*ProviderErrorKind.entries.toTypedArray())
 
@@ -249,5 +252,40 @@ private object NoPackagePrefixInSerialName : ArchCondition<JavaClass>(
             assertThat(json).describedAs(kind.name).contains("\"kind\":\"$wire\"")
             assertThat(EventEnvelope.fromJson(json)).isEqualTo(envelope)
         }
+    }
+
+    @Test
+    fun `a provider error without request or policy serializes neither field`() {
+        val json =
+            EventEnvelope.toJson(
+                EventEnvelope(
+                    event = Event.Command.ProviderError("AWS", ProviderErrorKind.CREDENTIALS, "detail", "remedy"),
+                    timestamp = "2026-01-01T00:00:00.000Z",
+                ),
+            )
+
+        assertThat(json).doesNotContain("\"request\"").doesNotContain("\"policy\"")
+    }
+
+    @Test
+    fun `a provider error with request and policy round-trips them`() {
+        val envelope =
+            EventEnvelope(
+                event =
+                    Event.Command.ProviderError(
+                        provider = "Kubernetes",
+                        kind = ProviderErrorKind.REJECTED,
+                        detail = "detail",
+                        remedy = "remedy",
+                        request = ProviderRequest("create", "pods", "lab", "x", "alice"),
+                        policy = ProviderPolicy("PodSecurity", "restricted:latest", listOf("runAsNonRoot != true")),
+                    ),
+                timestamp = "2026-01-01T00:00:00.000Z",
+            )
+
+        val json = EventEnvelope.toJson(envelope)
+
+        assertThat(json).contains("\"kind\":\"rejected\"").contains("\"verb\":\"create\"").contains("\"level\":\"restricted:latest\"")
+        assertThat(EventEnvelope.fromJson(json)).isEqualTo(envelope)
     }
 }

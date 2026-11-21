@@ -201,6 +201,9 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
+    # Splits a larger incoming request, so every batch holds at most 1024 items. The remote write
+    # queue is bounded only by its batch count, which is a size bound only while batches are capped.
+    send_batch_max_size: 1024
   # Required by the metrics/logs pipeline, and the single most silent failure in this file.
   #
   # The count connector emits Sums with AggregationTemporality: Delta, and signal_to_metrics emits
@@ -478,14 +481,20 @@ exporters:
   # service addresses in local mode, the external stack's endpoints under telemetry redirect.
   # Mimir and Loki run native multi-tenancy: every write carries the cluster's tenant, on a
   # redirected cluster too. TENANT comes from the cluster-config ConfigMap.
-  #
   # Every exporter holds what it cannot deliver while a backend is down or restarting, in memory,
-  # and sends it when the backend is back (issue 991). Retries never give up (max_elapsed_time 0)
-  # and each queue holds 20000 batches. A batch is up to 1024 items, so the queue lasts an hour
-  # (Mimir's out-of-order window) only while the collector sends under about 5.5 batches a second,
-  # about 5,600 items a second at full batches; a busier collector fills it sooner and then drops
-  # new batches. A collector restart during an outage loses its queue; there is deliberately no
-  # on-disk queue.
+  # and sends it when the backend is back (issue 991). Retries never give up (max_elapsed_time 0).
+  # A collector restart during an outage loses its queue; there is deliberately no on-disk queue.
+  #
+  # The queues are bounded by bytes so that all three together fit the smallest default node this
+  # collector runs on (16 GiB) inside its 4 GiB container limit (issue 1002). Counted in batches, one
+  # Tempo backlog grew the app node's collector to 12.2 GB and the kernel killed it, losing every
+  # queue. A full queue refuses new batches (counted in otelcol_exporter_enqueue_failed_*) and keeps
+  # what it holds.
+  #  - otlp_http/logs and otlp_grpc/tempo: 256 MiB each (sizer: bytes, the batch's OTLP proto size).
+  #  - prometheus_remote_write: 500 batches. Its 0.161.0 factory fixes the requests sizer, so a batch
+  #    count is the closest bound it has; batch.send_batch_max_size caps each batch at 1024 points.
+  # Measured on 0.161.0 with every backend down and all three queues full: heap 2.3-2.7 GB, RSS
+  # 3.2 GB under the 4 GiB limit with GOMEMLIMIT at 3 GiB, nothing refused at the receivers.
   prometheus_remote_write:
     # endpoint, tls and headers live under http: once http is set, the deprecated top-level
     # endpoint, tls and headers are ignored. http.timeout bounds one request.
@@ -507,11 +516,11 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_elapsed_time: 0
-    # This exporter's queue is remote_write_queue, not sending_queue. queue_size counts batches;
-    # a full queue drops new ones.
+    # This exporter's queue is remote_write_queue, not sending_queue. queue_size counts batches
+    # (see the sizing above); a full queue refuses new ones.
     remote_write_queue:
       enabled: true
-      queue_size: 20000
+      queue_size: 500
     resource_to_telemetry_conversion:
       enabled: true
   otlp_http/logs:
@@ -527,7 +536,8 @@ exporters:
       max_elapsed_time: 0
     sending_queue:
       enabled: true
-      queue_size: 20000
+      sizer: bytes
+      queue_size: 268435456
   # Tempo runs native multi-tenancy: every write carries the cluster's tenant, on a redirected
   # cluster too. TENANT comes from the cluster-config ConfigMap.
   otlp_grpc/tempo:
@@ -541,7 +551,8 @@ exporters:
       max_elapsed_time: 0
     sending_queue:
       enabled: true
-      queue_size: 20000
+      sizer: bytes
+      queue_size: 268435456
 
 connectors:
   # Turns log records into metrics, so what a logger reports can be charted beside the JMX

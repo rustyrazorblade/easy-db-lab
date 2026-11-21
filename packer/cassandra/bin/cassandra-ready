@@ -75,10 +75,16 @@ fi
 
 # Whether anything is listening on PORT, on any address.
 #
-# `ss` is the tool on the nodes; `netstat` is the fallback that keeps this runnable on a macOS
+# `ss` is the tool on the nodes; `lsof` is the fallback that keeps this runnable on a macOS
 # developer machine, which has no `ss`. Both are asked for numeric output and matched on the port at
 # the end of the local address, which covers every spelling either prints: `10.0.1.234:9042`,
-# `[::]:9042`, `*:9042` and BSD's `10.0.1.234.9042`.
+# `[::]:9042` and `*:9042`.
+#
+# Not `netstat`: on macOS 27, run from Homebrew's bash (the `bash` a Gradle task finds first on
+# PATH), it prints no TCP table at all and still exits 0, so an empty table read as "nothing is
+# listening" while the socket was plainly listening. Run from /bin/bash it prints the table. `lsof`
+# answers the same under both. Run as a non-root user, `lsof` lists only that user's sockets; that
+# covers its one use, a developer's own test process, and on the nodes `ss` answers first.
 #
 # Answers `listening`, `quiet`, or `unknown` when neither tool is present and the socket table
 # cannot be read at all.
@@ -86,13 +92,14 @@ socket_state() {
   local addresses
   if command -v ss >/dev/null 2>&1; then
     addresses="$(ss -lnt 2>/dev/null | awk 'NR > 1 {print $4}')"
-  elif command -v netstat >/dev/null 2>&1; then
-    addresses="$(netstat -an 2>/dev/null | awk '/LISTEN/ {print $4}')"
+  elif command -v lsof >/dev/null 2>&1; then
+    # lsof exits 1 when no socket matches, which is the quiet answer, not a failure.
+    addresses="$(lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null | awk 'NR > 1 {print $9}')"
   else
     echo unknown
     return
   fi
-  if grep -qE "[:.]${PORT}\$" <<<"$addresses"; then echo listening; else echo quiet; fi
+  if grep -qE ":${PORT}\$" <<<"$addresses"; then echo listening; else echo quiet; fi
 }
 
 # Seconds since the process started, from /proc alone.
@@ -123,7 +130,7 @@ fi
 # Said in the sentence rather than in the reason code: an unreadable socket table is a broken probe
 # environment, not a different readiness state, and it changes nothing about what the backstop does.
 if [[ "$SOCKET" == "unknown" ]]; then
-  observed="neither ss nor netstat is installed, so nothing could be observed on port ${PORT}"
+  observed="neither ss nor lsof is installed, so nothing could be observed on port ${PORT}"
 else
   observed="nothing is listening on port ${PORT}"
 fi

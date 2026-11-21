@@ -8,6 +8,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 
@@ -40,6 +41,21 @@ class TempoManifestBuilder(
 
         /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val TEMPO_UID = 10001L
+
+        /**
+         * Tempo's memory limit. Tempo is an observability pod that shares the control node, so it is
+         * sized; only database pods never set a limit.
+         *
+         * Tempo sets GOMEMLIMIT from it (`memory.automemlimit_enabled` in tempo.yaml), so the Go
+         * collector works to stay under it, and the pod is no longer BestEffort, the first pod the
+         * kernel kills. With live traces capped at 500 MB, Tempo peaked at 5.1 GB under an ingest
+         * rate past what it could drain. 6 GiB leaves the rest of the 16 GiB default control node
+         * to K3s and the other backends.
+         */
+        const val MEMORY_LIMIT = "6Gi"
+
+        /** Tempo's steady-state memory, so the scheduler reserves it: 1.1-1.7 GB at 42k spans/s. */
+        const val MEMORY_REQUEST = "2Gi"
 
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
@@ -188,6 +204,10 @@ class TempoManifestBuilder(
                 .withHostPort(Constants.K8s.TEMPO_OTLP_HTTP_PORT)
                 .withProtocol("TCP")
                 .endPort()
+                .withNewResources()
+                .addToRequests("memory", Quantity(MEMORY_REQUEST))
+                .addToLimits("memory", Quantity(MEMORY_LIMIT))
+                .endResources()
                 .addToVolumeMounts(
                     VolumeMountBuilder()
                         .withName("config")

@@ -38,6 +38,16 @@ Kits use `nodeSelector: type: db` (or `app`) to constrain placement, and PVs use
 - **THEN** all nodes carry a `type` label of `db`, `app`, or `control`
 - **AND** `db` and `app` nodes carry an `easydblab.com/node-ordinal` label starting at `0`
 
+### Requirement: Database workloads set no resource requests or limits
+
+A database SHALL use all of its node's hardware. No database workload a kit runs SHALL set a CPU or memory request or limit: not a pod, a StatefulSet, or an operator custom resource that creates them (for example a CNPG `Cluster`, a `ClickHouseInstallation`, a `TidbCluster` or a `KafkaNodePool`). A storage request on a claim is a claim size and is allowed.
+
+Observability pods and other control-node pods MAY set requests and limits, because several share the control node. Each SHALL be sized from a measurement stated beside it.
+
+#### Scenario: No built-in database kit sets a compute quota
+- **WHEN** every manifest template of every built-in kit whose `kit.yaml` declares `type: db` is rendered with its defaults
+- **THEN** no object in it sets a `requests` or `limits` entry other than `storage`
+
 ### Requirement: Persistent Volumes
 
 Per-kit PVs SHALL be created lazily at install time, not at cluster-up time. One PV per db node is created by `platform create-pvs`:

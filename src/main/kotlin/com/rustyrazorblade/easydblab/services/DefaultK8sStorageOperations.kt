@@ -142,6 +142,30 @@ class DefaultK8sStorageOperations(
             }
         }
 
+    override fun pruneConfigMaps(
+        namespace: String,
+        labels: Map<String, String>,
+        keep: Set<String>,
+    ): Result<List<String>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                val maps = client.configMaps().inNamespace(namespace)
+                val stale =
+                    maps
+                        .withLabels(labels)
+                        .list()
+                        .items
+                        .map { it.metadata.name }
+                        .filterNot { it in keep }
+                stale.forEach { name ->
+                    maps.withName(name).delete()
+                    eventBus.emit(Event.K8s.ConfigMapDeleted(name))
+                }
+                log.info { "Pruned ${stale.size} ConfigMap(s) matching labels $labels" }
+                stale
+            }
+        }
+
     override fun createLocalPersistentVolumes(config: PersistentVolumeConfig): Result<Unit> =
         runCatching {
             log.info { "Creating ${config.count} Local PVs for ${config.dbName}" }

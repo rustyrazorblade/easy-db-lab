@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 /**
  * Root of the dashboard tree inside the Grafana container. The single provisioning provider
  * sweeps it, and every core dashboard sits at `$GRAFANA_DASHBOARD_ROOT/<folder>/<file>.json`.
- * It is the hostPath [GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH] seen from inside.
+ * Each folder is a projected volume of dashboard ConfigMaps mounted here ([GrafanaDashboardConfigMaps]).
  */
 const val GRAFANA_DASHBOARD_ROOT = "/var/lib/grafana/dashboards"
 

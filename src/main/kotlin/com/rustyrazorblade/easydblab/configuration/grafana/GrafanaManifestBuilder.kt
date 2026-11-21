@@ -25,11 +25,10 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 /**
  * Builds all Grafana K8s resources as typed Fabric8 objects.
  *
- * Dashboards are not K8s objects. The CLI copies the whole dashboard tree onto the control
- * node's Grafana data directory ([GRAFANA_DASHBOARD_HOST_PATH]), which the Deployment already
- * mounts at `/var/lib/grafana`, and the provisioning ConfigMap declares one provider that sweeps
- * it. Nothing built here varies with how many dashboards or folders exist; the home dashboard is
- * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
+ * The provisioning ConfigMap declares one provider that sweeps [GRAFANA_DASHBOARD_ROOT]; the core
+ * dashboards are ConfigMaps that [GrafanaDashboardConfigMaps] mounts there, one projected volume per
+ * folder. Nothing built here varies with how many dashboards or folders exist; the home dashboard
+ * is a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
  * Grafana listens on loopback only, on [Constants.Grafana.INTERNAL_PORT]. An nginx front in the pod
  * holds Grafana's client port and serves the test documents under `/reports/` beside it
@@ -60,12 +59,6 @@ class GrafanaManifestBuilder(
         const val GRAFANA_DATA_PATH = "/mnt/db1/grafana"
 
         private val STATE = StateVolume(APP_LABEL, DATA_VOLUME, GRAFANA_DATA_PATH, owner = GRAFANA_UID.toLong())
-
-        /**
-         * Where the dashboard tree lives on the control node. It is [GRAFANA_DASHBOARD_ROOT] seen
-         * from the host: the Deployment mounts [GRAFANA_DATA_PATH] at `/var/lib/grafana`.
-         */
-        const val GRAFANA_DASHBOARD_HOST_PATH = "$GRAFANA_DATA_PATH/dashboards"
 
         @Suppress("MagicNumber")
         const val GRAFANA_UID = 472

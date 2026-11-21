@@ -173,7 +173,6 @@ val servicesModule =
         // One classpath scan per process: the set of dashboard files cannot change at runtime.
         single { GrafanaDashboardCatalog.discover() }
         factoryOf(::GrafanaDashboardTreeWriter)
-        factoryOf(::DefaultGrafanaDashboardTreeUploader) bind GrafanaDashboardTreeUploader::class
         factoryOf(::GrafanaManifestBuilder)
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)

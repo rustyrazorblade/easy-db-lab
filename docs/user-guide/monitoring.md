@@ -13,6 +13,8 @@ When running multiple environments side by side, Grafana displays the cluster na
 - **Sidebar org name** - The organization name in the sidebar shows the cluster name
 - **Home dashboard** - The System Overview dashboard is set as the home page instead of the default Grafana welcome page
 
+The core dashboards reach Grafana as Kubernetes ConfigMaps, one per dashboard, labelled `easydblab.com/grafana-dashboard=core` (list them with `kubectl get configmaps -l easydblab.com/grafana-dashboard=core`). A dashboard edit restarts Grafana: `up` and `grafana update-config` apply the changed ConfigMap, Grafana rolls, and the new version is served when the command returns. A dashboard removed from easy-db-lab is removed from Grafana on the next `grafana update-config`.
+
 ### Tenant pickers and the current cluster
 
 Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.

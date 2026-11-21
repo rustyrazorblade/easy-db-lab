@@ -1115,7 +1115,7 @@ There is no `start` or `stop`: every cluster runs a compactor pod, and the lease
 
 Build and apply the full observability stack to the K8s cluster, including Grafana and its core dashboards. `up` runs this automatically.
 
-The core dashboards are copied as a file tree onto the control node's Grafana data directory (`/mnt/db1/grafana/dashboards`), one subdirectory per Grafana folder. Grafana's file provider re-reads that directory every 10 seconds and files each dashboard into a folder named after its subdirectory. The command reads the tree from the installed build, so run `./gradlew installDist` after editing a dashboard before running it from a source checkout.
+Each core dashboard is applied as its own ConfigMap, `grafana-dashboard-<folder>-<name>`, labelled `easydblab.com/grafana-dashboard=core`, and mounted into Grafana under a directory named for its folder; Grafana files each dashboard into a folder of that name. A changed dashboard restarts Grafana, and a dashboard removed from the build has its ConfigMap deleted, after Grafana stops mounting it. A dashboard over 512 KiB, or two dashboards whose ConfigMap names collide, fail the command before anything is applied. The command reads the tree from the installed build, so run `./gradlew installDist` after editing a dashboard before running it from a source checkout.
 
 ```bash
 easy-db-lab grafana update-config
@@ -1123,7 +1123,7 @@ easy-db-lab grafana update-config
 
 ### grafana install
 
-Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the core dashboard ConfigMaps, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
 
 ```bash
 easy-db-lab grafana install my-dashboard.json --folder=experiments

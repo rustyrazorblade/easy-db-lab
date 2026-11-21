@@ -9,30 +9,20 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
-import kotlin.io.path.readText
-import kotlin.io.path.relativeTo
-import kotlin.io.path.walk
 
 /**
- * Tests for [GrafanaDashboardTreeWriter], which lays the catalog out on disk exactly as the
- * control node and Grafana's file provider expect it.
+ * Tests for [GrafanaDashboardTreeWriter.render], which renders the catalog keyed exactly as
+ * Grafana's file provider sees it once the ConfigMaps are mounted.
  *
- * A file at the wrong depth lands in the wrong Grafana folder (or General) with no error from
- * anyone, so the written layout is compared against the catalog outright.
+ * A dashboard at the wrong path lands in the wrong Grafana folder (or General) with no error from
+ * anyone, so the rendered paths are compared against the catalog outright.
  */
 class GrafanaDashboardTreeWriterTest {
     private val catalog = TestDashboardCatalog.catalog
     private val writer = GrafanaDashboardTreeWriter(catalog)
     private val pyroscopeUrl = "http://10.0.0.1:4040"
     private val context = DashboardInstallContext("lab-abc123", TenantSet.of("acme", listOf("default")))
-
-    private fun writtenFiles(root: Path): Set<String> =
-        root
-            .walk()
-            .map { it.relativeTo(root).toString() }
-            .toSet()
+    private val rendered by lazy { writer.render(pyroscopeUrl, context) }
 
     private fun resourceText(dashboard: GrafanaDashboard): String =
         checkNotNull(javaClass.getResource(catalog.resourcePathOf(dashboard))).readText()
@@ -40,64 +30,46 @@ class GrafanaDashboardTreeWriterTest {
     private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
     @Test
-    fun `writes exactly the catalog's files at folder slash file and reports their number`(
-        @TempDir root: Path,
-    ) {
-        val count = writer.writeTo(root, pyroscopeUrl, context)
-
-        assertThat(writtenFiles(root)).containsExactlyInAnyOrderElementsOf(catalog.dashboards.map { it.relativePath })
-        assertThat(count).isEqualTo(catalog.dashboards.size)
+    fun `renders exactly the catalog's dashboards keyed by folder slash file`() {
+        assertThat(rendered.keys).containsExactlyInAnyOrderElementsOf(catalog.dashboards.map { it.relativePath })
     }
 
     @Test
-    fun `no written dashboard still carries the Pyroscope placeholder`(
-        @TempDir root: Path,
-    ) {
+    fun `no rendered dashboard still carries the Pyroscope placeholder`() {
         // At least one shipped dashboard must carry it, or this proves nothing about substitution.
         assertThat(catalog.dashboards.filter { resourceText(it).contains(PYROSCOPE_URL_PLACEHOLDER) }).isNotEmpty()
 
-        writer.writeTo(root, pyroscopeUrl, context)
-
-        assertThat(catalog.dashboards).allSatisfy { dashboard ->
-            val json = root.resolve(dashboard.relativePath).readText()
-            assertThat(json).describedAs(dashboard.relativePath).doesNotContain(PYROSCOPE_URL_PLACEHOLDER)
+        assertThat(rendered).allSatisfy { path, json ->
+            assertThat(json).describedAs(path).doesNotContain(PYROSCOPE_URL_PLACEHOLDER)
         }
-        assertThat(catalog.dashboards.map { root.resolve(it.relativePath).readText() }).anyMatch { it.contains(pyroscopeUrl) }
+        assertThat(rendered.values).anyMatch { it.contains(pyroscopeUrl) }
     }
 
     @Test
-    fun `a dashboard without the placeholder is written as its JSON with only the install-time pass applied`(
-        @TempDir root: Path,
-    ) {
+    fun `a dashboard without the placeholder is rendered as its JSON with only the install-time pass applied`() {
         // Dashboards must not go through any general substitution: TemplateService-style processing
         // corrupts Grafana built-ins like $__rate_interval.
-        writer.writeTo(root, pyroscopeUrl, context)
-
         val untouched = catalog.dashboards.filter { !resourceText(it).contains(PYROSCOPE_URL_PLACEHOLDER) }
         assertThat(untouched).isNotEmpty()
         assertThat(untouched).allSatisfy { dashboard ->
-            assertThat(parse(root.resolve(dashboard.relativePath).readText()))
+            assertThat(parse(rendered.getValue(dashboard.relativePath)))
                 .describedAs(dashboard.relativePath)
                 .isEqualTo(DashboardDefaults.apply(parse(resourceText(dashboard)), context))
         }
     }
 
     @Test
-    fun `every written dashboard with a cluster variable defaults it to the current cluster`(
-        @TempDir root: Path,
-    ) {
-        writer.writeTo(root, pyroscopeUrl, context)
-
+    fun `every rendered dashboard with a cluster variable defaults it to the current cluster`() {
         val clusters =
-            catalog.dashboards.mapNotNull { dashboard ->
-                parse(root.resolve(dashboard.relativePath).readText())["templating"]
+            rendered.mapNotNull { (path, json) ->
+                parse(json)["templating"]
                     ?.jsonObject
                     ?.get("list")
                     ?.jsonArray
                     ?.map { it.jsonObject }
                     ?.singleOrNull { it["name"]?.jsonPrimitive?.content == "cluster" }
                     ?.let {
-                        dashboard.relativePath to
+                        path to
                             it
                                 .getValue("current")
                                 .jsonObject

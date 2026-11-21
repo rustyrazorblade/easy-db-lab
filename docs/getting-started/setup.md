@@ -382,6 +382,8 @@ For Pod Security, easy-db-lab's workloads need the `privileged` level. Ask your 
 
 A poll that gets a 401 or 403, such as a rollout wait, fails on the first answer. It does not wait for its timeout.
 
+The message quotes the API server's own reason. When the server gives none, it names the request method, the API path and the HTTP code. It never prints the request's query string, which can hold a token.
+
 **Anything else.** The message lists the exception and each cause in turn. The full details are in `logs/info.log`.
 
 ## Next Steps

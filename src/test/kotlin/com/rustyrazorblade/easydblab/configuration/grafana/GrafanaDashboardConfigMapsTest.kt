@@ -25,8 +25,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 /**
- * Tests for [GrafanaDashboardConfigMaps], which delivers the dashboard tree through the K8s API where
- * Grafana's state is on a claim and there is no node directory to copy it into.
+ * Tests for [GrafanaDashboardConfigMaps], which delivers the core dashboard tree through the K8s API
+ * on every environment: one ConfigMap per dashboard, projected per folder into Grafana.
  */
 class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
     private val installContext = DashboardInstallContext("lab-abc123", TenantSet.of("acme"))
@@ -54,7 +54,9 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
     private val tree by lazy { GrafanaDashboardTreeWriter(TestDashboardCatalog.catalog).render("http://pyroscope:4040", installContext) }
 
     private fun dashboardMaps(resources: List<HasMetadata>) =
-        resources.filterIsInstance<ConfigMap>().filter { it.metadata.name.startsWith(GrafanaDashboardConfigMaps.NAME_PREFIX) }
+        resources.filterIsInstance<ConfigMap>().filter {
+            it.metadata.labels[Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL] == Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL_VALUE
+        }
 
     private fun grafanaPod(resources: List<HasMetadata>) =
         resources
@@ -62,16 +64,85 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
             .single()
             .spec.template.spec
 
+    private fun grafanaMounts(resources: List<HasMetadata>) =
+        grafanaPod(resources)
+            .containers
+            .single { it.name == "grafana" }
+            .volumeMounts
+            .filter { it.mountPath.startsWith("$GRAFANA_DASHBOARD_ROOT/") }
+
     @Test
-    fun `the shipped tree is split into ConfigMaps that each fit well under the API's object size limit`() {
+    fun `each dashboard is its own ConfigMap, named for its folder and stem, holding only its file name`() {
+        val small =
+            mapOf(
+                "cassandra/ab-comparison.json" to "{\"a\":1}",
+                "infrastructure/System_Overview.v2.json" to "{\"b\":2}",
+            )
+
+        val maps = dashboardMaps(GrafanaDashboardConfigMaps.mountInto(grafana, small)).associateBy { it.metadata.name }
+
+        assertThat(maps.keys).containsExactlyInAnyOrder(
+            "grafana-dashboard-cassandra-ab-comparison",
+            "grafana-dashboard-infrastructure-system-overview-v2",
+        )
+        assertThat(maps.getValue("grafana-dashboard-cassandra-ab-comparison").data)
+            .isEqualTo(mapOf("ab-comparison.json" to "{\"a\":1}"))
+        assertThat(maps.getValue("grafana-dashboard-infrastructure-system-overview-v2").data)
+            .isEqualTo(mapOf("System_Overview.v2.json" to "{\"b\":2}"))
+    }
+
+    @Test
+    fun `the shipped tree becomes one ConfigMap per dashboard, each with both labels and within budget`() {
         val maps = dashboardMaps(GrafanaDashboardConfigMaps.mountInto(grafana, tree))
 
-        assertThat(maps).hasSizeGreaterThan(1)
+        assertThat(maps).hasSize(tree.size)
         assertThat(maps).allSatisfy { map ->
-            val bytes = map.data.entries.sumOf { (key, value) -> key.toByteArray().size + value.toByteArray().size }
-            assertThat(bytes).describedAs(map.metadata.name).isLessThanOrEqualTo(Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES)
+            assertThat(map.metadata.name).startsWith(Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX)
+            assertThat(map.metadata.labels)
+                .containsEntry("app.kubernetes.io/name", "grafana")
+                .containsEntry(Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL, Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL_VALUE)
+            assertThat(map.data).hasSize(1)
         }
         assertThat(maps.flatMap { it.data.values }).containsExactlyInAnyOrderElementsOf(tree.values)
+    }
+
+    @Test
+    fun `removing one dashboard leaves every other ConfigMap name unchanged`() {
+        val before = dashboardMaps(GrafanaDashboardConfigMaps.mountInto(grafana, tree)).map { it.metadata.name }
+        val removed = tree.keys.first()
+
+        val after = dashboardMaps(GrafanaDashboardConfigMaps.mountInto(grafana, tree - removed)).map { it.metadata.name }
+
+        assertThat(after).hasSize(before.size - 1)
+        assertThat(before).containsAll(after)
+    }
+
+    @Test
+    fun `two paths that map to one ConfigMap name are refused, naming both`() {
+        val clashing = mapOf("a-b/c.json" to "{}", "a/b-c.json" to "{}")
+
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, clashing) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("a-b/c.json")
+            .hasMessageContaining("a/b-c.json")
+    }
+
+    @Test
+    fun `a single dashboard too large for one ConfigMap is refused, naming it`() {
+        val huge = mapOf("big/huge.json" to "x".repeat(Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES + 1))
+
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, huge) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("big/huge.json")
+    }
+
+    @Test
+    fun `a folder name that is not a DNS-1123 label is refused`() {
+        val badFolder = mapOf("Bad_Folder/x.json" to "{}")
+
+        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, badFolder) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Bad_Folder")
     }
 
     /**
@@ -81,27 +152,23 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
      * which leaves only the files as symlinks inside a real directory.
      */
     @Test
-    fun `Grafana's container sees every dashboard at its folder path under the tree root, one read-only mount per folder`() {
+    fun `each folder is one projected volume named for it, mounted read-only at its folder path`() {
         val resources = GrafanaDashboardConfigMaps.mountInto(grafana, tree)
         val pod = grafanaPod(resources)
+        val mounts = grafanaMounts(resources)
+        val folders = tree.keys.map { it.substringBefore('/') }.distinct()
 
-        val mounts =
-            pod.containers
-                .single { it.name == "grafana" }
-                .volumeMounts
-                .filter { it.mountPath.startsWith("$GRAFANA_DASHBOARD_ROOT/") }
-        assertThat(mounts.map { it.mountPath })
-            .containsExactlyInAnyOrderElementsOf(tree.keys.map { "$GRAFANA_DASHBOARD_ROOT/${it.substringBefore('/')}" }.distinct())
+        assertThat(mounts.map { it.name to it.mountPath })
+            .containsExactlyInAnyOrderElementsOf(folders.map { "dashboards-$it" to "$GRAFANA_DASHBOARD_ROOT/$it" })
         assertThat(mounts).allSatisfy { assertThat(it.readOnly).isTrue() }
-        val keyToMap = dashboardMaps(resources).flatMap { map -> map.data.keys.map { it to map } }.toMap()
+        val byName = dashboardMaps(resources).associateBy { it.metadata.name }
         val paths =
             mounts.flatMap { mount ->
                 pod.volumes.single { it.name == mount.name }.projected.sources.flatMap { source ->
                     source.configMap.items.map { item ->
                         assertThat(item.path).describedAs("a file directly in its folder").doesNotContain("/")
-                        assertThat(keyToMap.getValue(item.key).metadata.name).isEqualTo(source.configMap.name)
                         "${mount.mountPath.removePrefix("$GRAFANA_DASHBOARD_ROOT/")}/${item.path}" to
-                            keyToMap.getValue(item.key).data.getValue(item.key)
+                            byName.getValue(source.configMap.name).data.getValue(item.key)
                     }
                 }
             }
@@ -113,7 +180,21 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a dashboard change changes Grafana's config hash`() {
+    fun `the home dashboard lies under a mounted folder`() {
+        val mounts = grafanaMounts(GrafanaDashboardConfigMaps.mountInto(grafana, tree))
+        val home =
+            grafanaPod(grafana)
+                .containers
+                .single { it.name == "grafana" }
+                .env
+                .single { it.name == "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" }
+                .value
+
+        assertThat(mounts.map { it.mountPath }).anySatisfy { assertThat(home).startsWith("$it/") }
+    }
+
+    @Test
+    fun `editing one dashboard changes Grafana's config hash`() {
         fun hash(tree: Map<String, String>): String? =
             ConfigHashAnnotator
                 .annotate(GrafanaDashboardConfigMaps.mountInto(grafana, tree), mapOf("grafana-datasources" to emptyMap()))
@@ -121,19 +202,9 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
                 .single()
                 .spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
 
-        // Same length, so the packing and the pod template stay the same and only the ConfigMap data differs.
         val (path, json) = tree.entries.first()
         val edited = tree + (path to json.replaceFirst("\"title\"", "\"Title\""))
         assertThat(edited.getValue(path)).isNotEqualTo(json).hasSameSizeAs(json)
         assertThat(hash(tree)).isNotNull().isEqualTo(hash(tree)).isNotEqualTo(hash(edited))
-    }
-
-    @Test
-    fun `a single dashboard too large for one ConfigMap is refused`() {
-        val huge = mapOf("big/huge.json" to "x".repeat(Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES))
-
-        assertThatThrownBy { GrafanaDashboardConfigMaps.mountInto(grafana, huge) }
-            .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("big/huge.json")
     }
 }

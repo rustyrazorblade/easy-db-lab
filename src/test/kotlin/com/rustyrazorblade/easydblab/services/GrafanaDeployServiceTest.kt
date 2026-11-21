@@ -311,14 +311,14 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         val trees =
             applied.allValues.filterIsInstance<ConfigMap>().filter {
                 it.metadata.name.startsWith(
-                    GrafanaDashboardConfigMaps.NAME_PREFIX,
+                    Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX,
                 )
             }
         assertThat(trees).isNotEmpty()
         val pyroscopeLinks = trees.flatMap { it.data.values }.filter { "Pyroscope UI" in it }
         assertThat(pyroscopeLinks).isNotEmpty().allSatisfy { assertThat(it).contains("http://pyroscope.default.svc:4040") }
         val kinds = applied.allValues.map { "${it.kind}/${it.metadata.name}" }
-        assertThat(kinds.indexOfFirst { it.startsWith("ConfigMap/${GrafanaDashboardConfigMaps.NAME_PREFIX}") })
+        assertThat(kinds.indexOfFirst { it.startsWith("ConfigMap/${Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX}") })
             .isNotNegative()
             .isLessThan(kinds.indexOf("Deployment/grafana"))
     }

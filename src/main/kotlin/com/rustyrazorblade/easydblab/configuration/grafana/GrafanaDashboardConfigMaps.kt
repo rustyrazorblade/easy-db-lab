@@ -14,76 +14,98 @@ import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 
 /**
- * The dashboard tree delivered through the K8s API, for an environment whose Grafana keeps its state
- * on a claim: there is no node directory to copy the tree into, and no node to SSH to.
+ * The only way core dashboards reach Grafana, on every environment: through the K8s API, with no
+ * copy to a node and no SSH.
  *
- * The rendered tree is packed, in catalog order, into `grafana-dashboard-tree-<n>` ConfigMaps of at
- * most [Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES] each (one ConfigMap cannot hold the whole
- * tree under the API's 1 MiB object limit), and one projected volume per folder mounts its files
- * read-only at `<folder>/<file>.json` under [GRAFANA_DASHBOARD_ROOT] in the Grafana container, where
- * the file provider sweeps them. The ConfigMaps are applied with the Deployment, so `ConfigHashAnnotator`
- * hashes them and a dashboard change rolls Grafana.
+ * Each rendered dashboard `<folder>/<file>.json` becomes its own ConfigMap,
+ * `grafana-dashboard-<folder>-<stem>`, holding one key, the file name, and labelled
+ * [Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL] so a deploy can prune the maps of dashboards it no
+ * longer renders. One map per file gives each dashboard a stable name: removing one leaves every
+ * other map as it was. One projected volume per folder, `dashboards-<folder>`, mounts its files
+ * read-only at `<folder>/<file>.json` under [GRAFANA_DASHBOARD_ROOT], where the file provider sweeps
+ * them. The maps are applied with the Deployment, so `ConfigHashAnnotator` hashes them and a
+ * dashboard change rolls Grafana.
+ *
+ * Everything that would make a dashboard undeliverable (one over budget, two paths with one map
+ * name, a folder that is no valid volume name) is refused here, before anything is applied.
  */
 object GrafanaDashboardConfigMaps {
-    /** The name every dashboard ConfigMap starts with, followed by its index. */
-    const val NAME_PREFIX = "grafana-dashboard-tree-"
-
-    private const val VOLUME = "dashboard-tree"
+    private const val VOLUME_PREFIX = "dashboards-"
     private const val GRAFANA_CONTAINER = "grafana"
+    private const val DNS_1123_LABEL_MAX = 63
+    private val DNS_1123_LABEL = Regex("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
+    private val NOT_NAME_CHARACTERS = Regex("[^a-z0-9]+")
 
-    /** A ConfigMap key may not hold `/`, so a folder separator is written as this. */
-    private const val KEY_SEPARATOR = "__"
+    /** One dashboard on its way into a ConfigMap. */
+    private data class Entry(
+        val path: String,
+        val json: String,
+    ) {
+        val folder: String = path.substringBefore('/')
+        val fileName: String = path.substringAfter('/')
+        val mapName: String =
+            Constants.Grafana.DASHBOARD_CONFIGMAP_PREFIX +
+                "$folder-${fileName.removeSuffix(".json")}".lowercase().replace(NOT_NAME_CHARACTERS, "-").trim('-')
+        val bytes: Int = fileName.toByteArray().size + json.toByteArray().size
+    }
 
     /**
-     * [resources] (Grafana's, as `GrafanaManifestBuilder` builds them) preceded by the ConfigMaps
-     * holding [tree], with the Grafana container mounting them at [GRAFANA_DASHBOARD_ROOT].
+     * [resources] (Grafana's, as `GrafanaManifestBuilder` builds them) preceded by one ConfigMap per
+     * dashboard in [tree], with the Grafana container mounting them at [GRAFANA_DASHBOARD_ROOT].
      *
      * @param tree each dashboard's JSON keyed by its path relative to the tree root
-     * @throws IllegalArgumentException when one dashboard alone exceeds the per-ConfigMap budget
+     * @throws IllegalArgumentException naming the file or files when a dashboard exceeds the
+     *   per-ConfigMap budget, two paths map to one ConfigMap name, or a folder is not a DNS-1123 label
      */
     fun mountInto(
         resources: List<HasMetadata>,
         tree: Map<String, String>,
     ): List<HasMetadata> {
+        val entries = tree.map { (path, json) -> Entry(path, json) }
+        validate(entries)
         val deployment = resources.filterIsInstance<Deployment>().single()
-        val groups = pack(tree)
-        val maps = groups.mapIndexed { index, files -> configMap(index, files, deployment.metadata.namespace) }
-        val mounted = mount(deployment, maps.zip(groups) { map, files -> map.metadata.name to files.keys })
+        val maps = entries.map { configMap(it, deployment.metadata.namespace) }
+        val mounted = mount(deployment, entries.groupBy { it.folder })
         return maps + resources.map { if (it === deployment) mounted else it }
     }
 
-    private fun keyOf(path: String): String = path.replace("/", KEY_SEPARATOR)
+    /** The ConfigMap names [tree] renders to, the set a deploy keeps when it prunes. */
+    fun namesOf(tree: Map<String, String>): Set<String> = tree.keys.map { Entry(it, "").mapName }.toSet()
 
-    private fun sizeOf(entry: Map.Entry<String, String>): Int = keyOf(entry.key).toByteArray().size + entry.value.toByteArray().size
-
-    /** [tree] in catalog order, cut into consecutive groups that each fit the budget. */
-    private fun pack(tree: Map<String, String>): List<Map<String, String>> {
+    private fun validate(entries: List<Entry>) {
         val budget = Constants.Grafana.DASHBOARD_CONFIGMAP_MAX_BYTES
-        val oversized = tree.entries.filter { sizeOf(it) > budget }.map { it.key }
+        val oversized = entries.filter { it.bytes > budget }.map { it.path }
         require(oversized.isEmpty()) {
             "These dashboards are each larger than one ConfigMap's $budget-byte budget: ${oversized.joinToString(", ")}."
         }
-        return tree.entries.fold(listOf<Map<String, String>>()) { groups, entry ->
-            val last = groups.lastOrNull()
-            when {
-                last != null && last.entries.sumOf(::sizeOf) + sizeOf(entry) <= budget -> groups.dropLast(1) + listOf(last + entry.toPair())
-                else -> groups + listOf(mapOf(entry.toPair()))
+        val badFolders =
+            entries.map { it.folder }.distinct().filter { folder ->
+                val volume = VOLUME_PREFIX + folder
+                !DNS_1123_LABEL.matches(volume) || volume.length > DNS_1123_LABEL_MAX
             }
+        require(badFolders.isEmpty()) {
+            "These dashboard folders do not make a valid volume name (lowercase letters, digits and '-', " +
+                "at most ${DNS_1123_LABEL_MAX - VOLUME_PREFIX.length} characters): ${badFolders.joinToString(", ")}."
+        }
+        val clashes = entries.groupBy { it.mapName }.filterValues { it.size > 1 }
+        require(clashes.isEmpty()) {
+            "These dashboards map to the same ConfigMap name: " +
+                clashes.entries.joinToString("; ") { (name, same) -> "$name <- ${same.joinToString(", ") { it.path }}" } + "."
         }
     }
 
     private fun configMap(
-        index: Int,
-        files: Map<String, String>,
+        entry: Entry,
         namespace: String?,
     ): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
-            .withName("$NAME_PREFIX$index")
+            .withName(entry.mapName)
             .withNamespace(namespace)
             .addToLabels("app.kubernetes.io/name", GRAFANA_CONTAINER)
+            .addToLabels(Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL, Constants.Grafana.DASHBOARD_CONFIGMAP_LABEL_VALUE)
             .endMetadata()
-            .withData<String, String>(files.mapKeys { (path, _) -> keyOf(path) })
+            .withData<String, String>(mapOf(entry.fileName to entry.json))
             .build()
 
     /**
@@ -94,15 +116,10 @@ object GrafanaDashboardConfigMaps {
      */
     private fun mount(
         deployment: Deployment,
-        maps: List<Pair<String, Set<String>>>,
+        folders: Map<String, List<Entry>>,
     ): Deployment {
         val pod = deployment.spec.template.spec
-        val folders: Map<String, List<Pair<String, String>>> =
-            maps
-                .flatMap { (name, paths) -> paths.map { path -> Triple(path.substringBefore('/'), name, path) } }
-                .groupBy({ it.first }, { it.second to it.third })
-        val volumes: List<Pair<String, Volume>> =
-            folders.keys.mapIndexed { index, folder -> folder to folderVolume("$VOLUME-$index", folders.getValue(folder)) }
+        val volumes = folders.map { (folder, entries) -> folder to folderVolume(VOLUME_PREFIX + folder, entries) }
         val containers =
             pod.containers.map { container ->
                 when (container.name) {
@@ -132,25 +149,23 @@ object GrafanaDashboardConfigMaps {
             .build()
     }
 
-    /** A projected volume named [name] holding [files] (ConfigMap name to tree path) by file name. */
+    /** A projected volume named [name] holding each of [entries] from its own ConfigMap, by file name. */
     private fun folderVolume(
         name: String,
-        files: List<Pair<String, String>>,
-    ): Volume {
-        val sources =
-            files.groupBy({ it.first }, { it.second }).map { (map, paths) ->
-                VolumeProjectionBuilder()
-                    .withNewConfigMap()
-                    .withName(map)
-                    .withItems(paths.map { KeyToPathBuilder().withKey(keyOf(it)).withPath(it.substringAfter('/')).build() })
-                    .endConfigMap()
-                    .build()
-            }
-        return VolumeBuilder()
+        entries: List<Entry>,
+    ): Volume =
+        VolumeBuilder()
             .withName(name)
             .withNewProjected()
-            .withSources(sources)
-            .endProjected()
+            .withSources(
+                entries.map { entry ->
+                    VolumeProjectionBuilder()
+                        .withNewConfigMap()
+                        .withName(entry.mapName)
+                        .withItems(KeyToPathBuilder().withKey(entry.fileName).withPath(entry.fileName).build())
+                        .endConfigMap()
+                        .build()
+                },
+            ).endProjected()
             .build()
-    }
 }

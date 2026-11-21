@@ -1824,11 +1824,20 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
-         * The most dashboard JSON one `grafana-dashboard-tree-<n>` ConfigMap carries, keys included, where
-         * the tree reaches Grafana through the K8s API. Half the API's 1 MiB object limit, so a
-         * dashboard that grows does not push its ConfigMap over it.
+         * The largest core dashboard, its file name key included, that one dashboard ConfigMap carries.
+         * Each dashboard is its own ConfigMap; one over this budget fails the deploy, naming the file.
+         * Half the API's 1 MiB object limit, so a dashboard that grows does not push its ConfigMap over it.
          */
         const val DASHBOARD_CONFIGMAP_MAX_BYTES = 512 * 1024
+
+        /** Label every core dashboard ConfigMap carries, so a deploy prunes exactly those it no longer renders. */
+        const val DASHBOARD_CONFIGMAP_LABEL = "easydblab.com/grafana-dashboard"
+
+        /** Value of [DASHBOARD_CONFIGMAP_LABEL] on a core dashboard ConfigMap. */
+        const val DASHBOARD_CONFIGMAP_LABEL_VALUE = "core"
+
+        /** The name every core dashboard ConfigMap starts with, followed by `<folder>-<stem>`. */
+        const val DASHBOARD_CONFIGMAP_PREFIX = "grafana-dashboard-"
 
         /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in

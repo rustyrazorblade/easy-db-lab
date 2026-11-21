@@ -2,7 +2,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 1. ConfigMap per dashboard
 
-- [ ] 1.1 In `GrafanaDashboardConfigMapsTest`, write failing tests for:
+- [x] 1.1 In `GrafanaDashboardConfigMapsTest`, write failing tests for:
   - one ConfigMap per file, named `grafana-dashboard-<folder>-<stem>`, whose only key is the file name;
   - both labels;
   - removing one dashboard leaves every other name unchanged;
@@ -12,7 +12,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
   - one projected volume per folder, `dashboards-<folder>`, mounted read-only at `/var/lib/grafana/dashboards/<folder>`;
   - the home dashboard path lies under a mounted folder;
   - editing one dashboard changes Grafana's config hash.
-- [ ] 1.2 Rewrite `GrafanaDashboardConfigMaps` to make them pass. Add `DASHBOARD_CONFIGMAP_LABEL` and `DASHBOARD_CONFIGMAP_PREFIX` to `Constants.Grafana`, and rewrite the `DASHBOARD_CONFIGMAP_MAX_BYTES` KDoc. Update the class KDoc: this is the only delivery path.
+- [x] 1.2 Rewrite `GrafanaDashboardConfigMaps` to make them pass. Add `DASHBOARD_CONFIGMAP_LABEL` and `DASHBOARD_CONFIGMAP_PREFIX` to `Constants.Grafana`, and rewrite the `DASHBOARD_CONFIGMAP_MAX_BYTES` KDoc. Update the class KDoc: this is the only delivery path.
 
 ## 2. Pruning
 

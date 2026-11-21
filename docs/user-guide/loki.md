@@ -21,7 +21,7 @@ The collector sends everything to Loki's OTLP endpoint, `http://loki.default.svc
 
 ### When Loki restarts or is down
 
-A Loki restart or outage of up to 30 minutes loses no log line. While Loki cannot take a write, each collector keeps the batches in an in-memory queue (20000 batches) and retries without a time limit; when Loki is back, it sends them. The limit is Loki's out-of-order window (see [Configuration](#configuration)): after 30 minutes, the oldest held lines are more than 30 minutes behind the newest line of their stream and Loki refuses them.
+A Loki restart or outage of up to 30 minutes loses no log line. While Loki cannot take a write, each collector keeps the batches in an in-memory queue (256 MiB) and retries without a time limit; when Loki is back, it sends them. The limit is Loki's out-of-order window (see [Configuration](#configuration)): after 30 minutes, the oldest held lines are more than 30 minutes behind the newest line of their stream and Loki refuses them.
 
 The collector reaches Loki through its Service, which sends traffic to Loki only once it answers `/ready`. A Loki that is starting is therefore a connection error to the collector, which it retries. The queue is in memory: a collector that restarts while Loki is down loses what it held. `otelcol_exporter_queue_size{exporter="otlp_http/logs"}` in Mimir shows a backlog.
 

@@ -63,7 +63,8 @@ processors:
 exporters:
   # The control collector restarts on every kit start and stop (its config changes). This
   # exporter holds what it cannot send in memory and retries without a time limit, as the node
-  # collector's backend exporters do (issue 991). No on-disk queue.
+  # collector's backend exporters do (issue 991). No on-disk queue. The queue is bounded at 256 MiB
+  # of OTLP proto bytes (issue 1002), the same bound as each of the node collector's queues.
   otlp_grpc/control:
     endpoint: __CONTROL_NODE_IP__:4317
     tls:
@@ -73,7 +74,8 @@ exporters:
       max_elapsed_time: 0
     sending_queue:
       enabled: true
-      queue_size: 20000
+      sizer: bytes
+      queue_size: 268435456
 
 extensions:
   health_check:

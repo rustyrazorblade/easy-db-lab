@@ -230,6 +230,38 @@ The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state
 - **WHEN** the Pyroscope pod is restarted
 - **THEN** profiles written before the restart are still returned by queries
 
+### Requirement: Tempo's memory is bounded without dropping spans
+
+Tempo SHALL bound its memory with its own settings, so an ingest rate faster than it can write traces to its WAL slows the senders instead of getting Tempo OOM-killed:
+
+- The live store SHALL bound the bytes of live traces (`live_store.max_live_traces_bytes`). Past the bound, a push SHALL wait for live traces to drain. Neither a discard nor a refusal SHALL be configured: the sender retries a push whose deadline ends.
+- Tempo SHALL set its Go memory limit from its container's memory limit (`memory.automemlimit_enabled`).
+- The Tempo container SHALL have a memory request and a memory limit sized for the default control node.
+- Nothing SHALL be added to Tempo that refuses or drops spans under load. No `memory_limiter` processor, no ingestion limit that discards spans, and no retention SHALL be added. The only bound on a backlog is the size of each sender's queue (see "Collector queues are bounded by size").
+
+#### Scenario: Overload does not kill Tempo
+- **WHEN** senders offer spans faster than Tempo can write them to its WAL, for minutes
+- **THEN** Tempo's resident memory stays below its container limit and the pod does not restart
+- **AND** `tempo_discarded_spans_total` does not increase
+
+#### Scenario: Sustained heavy load stays queryable
+- **WHEN** a heavy trace load that Tempo can sustain runs for 30 minutes
+- **THEN** Tempo does not restart and traces from the whole window are returned by a search
+
+### Requirement: Collector queues are bounded by size
+
+Every OTel collector exporter queue SHALL be bounded by its size in memory, so that a backend outage or a slow backend can never grow a collector past its node's memory and get it OOM-killed with every queue on it lost:
+
+- An exporter that supports the bytes sizer SHALL use it (`sending_queue.sizer: bytes`). The node collector's Loki and Tempo queues and the EMR collector's queue SHALL hold at most 256 MiB each; the stress sidecar's queue at most 64 MiB.
+- `prometheus_remote_write` 0.161.0 can only count batches, so its `remote_write_queue` SHALL hold at most 500 batches and the batch processor SHALL cap every batch at 1024 points (`send_batch_max_size`).
+- The node collector container SHALL have a memory request and a memory limit no larger than a quarter of the smallest default node, and `GOMEMLIMIT` below that limit. The limit SHALL hold every queue full, as measured, with a quarter of headroom.
+- The queues SHALL stay in memory, and retries SHALL never give up. No `file_storage`, WAL or `memory_limiter` SHALL be added.
+- A full queue SHALL keep what it holds and refuse new items, which the collector counts in `otelcol_exporter_enqueue_failed_*`.
+
+#### Scenario: Every queue full stays under the collector's limit
+- **WHEN** every backend is unreachable and the senders keep sending until every queue of a node collector is full
+- **THEN** each queue sits at its cap, the collector's resident memory stays below its container limit, and the pod does not restart
+
 ### Requirement: Every series and every log line carries its cluster
 
 Every metric series and every log line SHALL carry `cluster=<name>-<id>`.  Loki SHALL index `cluster`, `host.name`, `node_role` and `source` as labels.  Readers the tool runs (`logs query`, `spark logs`, the EMR step log lookup and `metrics stream`) SHALL scope their queries to the current cluster by default.  `logs query -q` SHALL pass raw LogQL through unchanged.

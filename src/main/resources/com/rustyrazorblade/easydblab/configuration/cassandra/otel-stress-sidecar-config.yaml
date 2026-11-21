@@ -25,7 +25,9 @@ exporters:
   # The node collector restarts on every kit start and stop (its config changes). This exporter
   # holds what it cannot send in memory and retries without a time limit, as the node collector's
   # backend exporters do (issue 991). No on-disk queue. The sidecar sets no GOMEMLIMIT, so a long
-  # outage grows the heap with the queue instead of running the Go GC against a soft limit.
+  # outage grows the heap with the queue instead of running the Go GC against a soft limit. The
+  # queue is bounded at 64 MiB of OTLP proto bytes (issue 1002): the sidecar carries only the stress
+  # process's own metrics, and it shares the app node with the stress job.
   otlp_grpc:
     endpoint: ${env:HOST_IP}:4317
     tls:
@@ -35,7 +37,8 @@ exporters:
       max_elapsed_time: 0
     sending_queue:
       enabled: true
-      queue_size: 20000
+      sizer: bytes
+      queue_size: 67108864
 
 service:
   telemetry:

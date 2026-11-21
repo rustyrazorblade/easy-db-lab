@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.containers
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
+import org.junit.jupiter.params.provider.ValueSource
 import java.util.stream.Stream
 
 /**
@@ -93,5 +94,17 @@ class BuilderCleanerTest {
         assertThat(instances.terminated).`as`("terminate calls").isEqualTo(case.expectedTerminated)
         val found = case.listed.getOrDefault(emptyList())
         assertThat(inspected).`as`("builders inspected before teardown").isEqualTo(listOfNotNull(found.takeIf { it.isNotEmpty() }))
+    }
+
+    @ParameterizedTest(name = "keepUp={0}")
+    @ValueSource(booleans = [false, true])
+    fun `a failed inspection still keeps or terminates every builder`(keepUp: Boolean) {
+        val two = listOf("i-1", "i-2")
+        val instances = FakeInstances(Result.success(two))
+
+        val result = BuilderCleaner(instances).cleanUp(keepUp) { error("ssh refused") }
+
+        assertThat(result).isEqualTo(if (keepUp) BuilderCleanup.Kept(two) else BuilderCleanup.Terminated(two))
+        assertThat(instances.terminated).isEqualTo(if (keepUp) emptyList() else listOf(two))
     }
 }

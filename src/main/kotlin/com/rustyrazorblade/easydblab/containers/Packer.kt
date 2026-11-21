@@ -245,14 +245,15 @@ class Packer(
                     }.getOrDefault(emptyMap())
                 instanceIds.forEach { id -> ips[id]?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, id) } }
             }
-        println(describe(cleanup, ips))
+        describe(cleanup, ips)?.let { println(it) }
         return cleanup
     }
 
+    /** What became of the builders, or null for an unresolved cleanup, which the attempt's event reports. */
     private fun describe(
         cleanup: BuilderCleanup,
         ips: Map<String, String?>,
-    ): String =
+    ): String? =
         when (cleanup) {
             is BuilderCleanup.NotFound -> "Build failed. The packer VPC holds no build instance to capture or clean up."
             is BuilderCleanup.Terminated ->
@@ -266,7 +267,7 @@ class Packer(
                 "\nBuild instance $ids left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).\n" +
                     "$sshLines\nTerminate when done: aws ec2 terminate-instances --instance-ids $ids"
             }
-            is BuilderCleanup.Unresolved -> "WARNING: the build instance may still be running: ${cleanup.reason}"
+            is BuilderCleanup.Unresolved -> null
         }
 
     /**

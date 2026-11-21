@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.containers
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.io.File
@@ -32,17 +34,21 @@ sealed interface BuilderCleanup {
     /** The packer VPC held no build instance. */
     data object NotFound : BuilderCleanup
 
-    /** Every build instance in the packer VPC was terminated. */
-    data object Terminated : BuilderCleanup
+    /** Every build instance in the packer VPC, [instanceIds], was terminated. */
+    data class Terminated(
+        val instanceIds: List<String>,
+    ) : BuilderCleanup
 
-    /** Left running for --keep-on-error. */
-    data object Kept : BuilderCleanup
+    /** [instanceIds] were left running for --keep-on-error. */
+    data class Kept(
+        val instanceIds: List<String>,
+    ) : BuilderCleanup
 
     /** The build instances could not be listed. */
     data class LookupFailed(
         val error: String,
     ) : Unresolved {
-        override val reason: String get() = "its build instance could not be looked up ($error)"
+        override val reason: String get() = "the packer VPC's instances could not be listed ($error)"
     }
 
     /** The terminate call failed, so [instanceIds] may still be running. */
@@ -50,7 +56,14 @@ sealed interface BuilderCleanup {
         val instanceIds: List<String>,
         val error: String,
     ) : Unresolved {
-        override val reason: String get() = "build instance ${instanceIds.joinToString()} could not be terminated ($error)"
+        override val reason: String get() = "${instanceIds.joinToString()} could not be terminated ($error)"
+    }
+
+    /** The cleanup itself threw, so nothing is known about the builders. */
+    data class CleanupFailed(
+        val error: String,
+    ) : Unresolved {
+        override val reason: String get() = "its cleanup failed ($error)"
     }
 }
 
@@ -99,7 +112,7 @@ class PackerBuildAttempts(
                 .maxAttempts(maxAttempts)
                 .intervalFunction { _ -> delay.toMillis() }
                 .retryOnResult { retryNext }
-                // Only a dropped session runs again: a throw from an attempt or its cleanup is final.
+                // Only a dropped session runs again: a throw from an attempt or its report is final.
                 .retryOnException { false }
                 .build()
         return Retry
@@ -123,7 +136,10 @@ class PackerBuildAttempts(
         report: (Int, PackerBuildOutcome.Failed, Boolean, BuilderCleanup) -> Unit,
     ): Boolean {
         val retryWanted = failed.failure is PackerFailure.SessionDropped && attempt < maxAttempts
-        val cleanup = cleanUp(attempt, failed, retryWanted)
+        // A cleanup that throws still leaves the attempt reported, with its reason and log path.
+        val cleanup =
+            runCatchingException { cleanUp(attempt, failed, retryWanted) }
+                .getOrElse { BuilderCleanup.CleanupFailed(it.messageOrString()) }
         val willRetry = retryWanted && cleanup !is BuilderCleanup.Unresolved
         report(attempt, failed, willRetry, cleanup)
         return willRetry

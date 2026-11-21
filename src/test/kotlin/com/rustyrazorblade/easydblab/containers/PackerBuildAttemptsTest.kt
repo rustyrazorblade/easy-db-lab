@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.containers
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
@@ -20,7 +21,7 @@ class PackerBuildAttemptsTest {
         private val log = File("packer.log")
         private val dropped = PackerBuildOutcome.Failed(PackerFailure.SessionDropped("EOF"), log)
         private val scriptFailed = PackerBuildOutcome.Failed(PackerFailure.BuildError("Script exited with non-zero exit status: 1"), log)
-        private val terminated = BuilderCleanup.Terminated
+        private val terminated = BuilderCleanup.Terminated(listOf("i-1"))
         private val notFound = BuilderCleanup.NotFound
         private val lookupFailed = BuilderCleanup.LookupFailed("throttled")
         private val terminateFailed = BuilderCleanup.TerminateFailed(listOf("i-1", "i-2"), "denied")
@@ -171,7 +172,7 @@ class PackerBuildAttemptsTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = ["the attempt", "its cleanup", "its report"])
+    @ValueSource(strings = ["the attempt", "its report"])
     fun `a throw ends the build without another attempt`(thrower: String) {
         var attempts = 0
         val attemptsRunner = PackerBuildAttempts(3, Duration.ZERO)
@@ -182,10 +183,30 @@ class PackerBuildAttemptsTest {
                     attempts++
                     if (thrower == "the attempt") error("boom") else dropped
                 },
-                cleanUp = { _, _, _ -> if (thrower == "its cleanup") error("boom") else BuilderCleanup.Terminated },
+                cleanUp = { _, _, _ -> terminated },
                 report = { _, _, _, _ -> if (thrower == "its report") error("boom") },
             )
         }.hasMessage("boom")
         assertThat(attempts).`as`(thrower).isEqualTo(1)
+    }
+
+    @Test
+    fun `a cleanup that throws is still reported, and stops the retry`() {
+        var attempts = 0
+        val reported = mutableListOf<Reported>()
+
+        val result =
+            PackerBuildAttempts(3, Duration.ZERO).run(
+                build = {
+                    attempts++
+                    dropped
+                },
+                cleanUp = { _, _, _ -> error("boom") },
+                report = { attempt, _, willRetry, cleanup -> reported.add(Reported(attempt, willRetry, cleanup)) },
+            )
+
+        assertThat(result).isEqualTo(dropped)
+        assertThat(attempts).isEqualTo(1)
+        assertThat(reported).containsExactly(Reported(1, false, BuilderCleanup.CleanupFailed("boom")))
     }
 }

@@ -5087,7 +5087,7 @@ sealed interface Event {
          * timeout); only such an attempt is run again, from a new builder, while [willRetry].
          * [reason] is Packer's own error and [logPath] the attempt's full Packer debug log.
          * [builderNotCleared] is set when the failed builder may still be running (it could not be
-         * looked up or terminated), which stops a retry; it says why.
+         * listed or terminated) and says why; a lost session within the limit is then not retried.
          */
         @Serializable
         @SerialName("Ami.BuildAttemptFailed")
@@ -5106,11 +5106,12 @@ sealed interface Event {
                 val next =
                     when {
                         willRetry -> "Running it again on a new build instance."
-                        builderNotCleared != null -> "Not retried: $builderNotCleared."
-                        sessionDropped -> "No attempts left."
-                        else -> "Not retried: only a lost session is."
+                        !sessionDropped -> "Not retried: only a lost session is."
+                        attempt >= maxAttempts -> "No attempts left."
+                        else -> "Not retried while its build instance may still be running."
                     }
-                return "AMI build $template attempt $attempt of $maxAttempts $cause: $reason\n$next Packer log: $logPath"
+                val stranded = builderNotCleared?.let { "\nThe build instance may still be running: $it." }.orEmpty()
+                return "AMI build $template attempt $attempt of $maxAttempts $cause: $reason$stranded\n$next Packer log: $logPath"
             }
 
             override fun isError(): Boolean = true

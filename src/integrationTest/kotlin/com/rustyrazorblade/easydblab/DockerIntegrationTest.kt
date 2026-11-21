@@ -20,6 +20,7 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 class DockerIntegrationTest : BaseKoinTest() {
     val bufferedOutputHandler = BufferedOutputHandler()
@@ -154,6 +155,16 @@ class DockerIntegrationTest : BaseKoinTest() {
         verify(mockContainerCreationCommand).withWorkingDir("/workspace")
         assertThat(bufferedOutputHandler.messages)
             .anyMatch { it.contains("Setting working directory inside container to /workspace") }
+    }
+
+    @Test
+    fun `a container still running when its wait ends is removed, not left running`() {
+        whenever(mockContainerState.running).thenReturn(true)
+
+        assertThatThrownBy { docker.runContainer("test:latest", mutableListOf("sleep"), "", Duration.ofMillis(1)) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("did not complete")
+        verify(mockDockerClient).removeContainer("container123456789", true)
     }
 
     @Test

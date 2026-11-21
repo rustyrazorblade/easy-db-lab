@@ -1,4 +1,4 @@
-Do not start until the owner approves the design decisions D1-D6 in `design.md`.
+The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 1. ConfigMap per dashboard
 

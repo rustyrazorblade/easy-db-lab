@@ -29,9 +29,9 @@ Facts this design relies on:
 
 ## Decisions
 
-Every decision below is **proposed, pending owner approval**. Each one gives the recommended option first and then the alternatives, as the architect framed them.
+Every decision below was **approved by the owner on 2026-11-20** with the spec (AC1 read as "no SSH command delivers, copies or replaces a dashboard"). Each one gives the recommended option first and then the alternatives, as the architect framed them.
 
-### D1. Delivery mechanism: ConfigMaps and projected volumes on every environment (proposed)
+### D1. Delivery mechanism: ConfigMaps and projected volumes on every environment (approved)
 
 The `when (hosting.storage)` branch goes away, and both storage modes take the ConfigMap path. On a host path, the per-folder projected volumes mount under the hostPath data mount at `/var/lib/grafana/dashboards/<folder>`. The claim path already does this, and `PortableObservabilityPlacementIntegrationTest` shows that Grafana files those dashboards into their folders.
 
@@ -50,7 +50,7 @@ The `when (hosting.storage)` branch goes away, and both storage modes take the C
   - Adds an image, plus a ServiceAccount, Role and RoleBinding to watch ConfigMaps (which matters on EKS), plus folder annotations.
   - Worth it only if "never restart Grafana for a dashboard edit" is a hard requirement.
 
-### D2. Granularity: one ConfigMap per file, and refuse a file over budget (proposed)
+### D2. Granularity: one ConfigMap per file, and refuse a file over budget (approved)
 
 - **Recommended: one ConfigMap per file.**
   - The packed scheme folds the tree in catalog order (`GrafanaDashboardConfigMaps.kt:63-76`), so removing one dashboard shifts every later index and rewrites every later map.
@@ -60,7 +60,7 @@ The `when (hosting.storage)` branch goes away, and both storage modes take the C
 - **Alternative: keep the packed maps.** Fewer objects, but the index churn on removal makes pruning and diffs noisy.
 - **Alternative: split an oversized file across maps, as the issue allows.** Deferred until a file approaches the limit, because it needs reassembly logic.
 
-### D3. Naming: readable names with a collision check (proposed)
+### D3. Naming: readable names with a collision check (approved)
 
 - **Recommended: `grafana-dashboard-<folder>-<stem>`.**
   - Lowercased, and every run of characters outside `[a-z0-9]` becomes `-`, trimmed. For example, `cassandra/ab-comparison.json` becomes `grafana-dashboard-cassandra-ab-comparison`. The longest name today is about 51 characters.
@@ -70,7 +70,7 @@ The `when (hosting.storage)` branch goes away, and both storage modes take the C
   - Readable in `kubectl get cm`.
 - **Alternative: append 8 hex characters of the path's sha256.** Collision-proof without a check, but the names are unreadable.
 
-### D4. How an edit reaches Grafana: the hash rolls Grafana (proposed)
+### D4. How an edit reaches Grafana: the hash rolls Grafana (approved)
 
 - **Recommended: keep the dashboard maps in the config hash.**
   - When `grafana update-config` or `up` returns, Grafana already shows the change. This is stronger than AC2's "after its provisioning interval".
@@ -84,7 +84,7 @@ The `when (hosting.storage)` branch goes away, and both storage modes take the C
 
 If D4 is approved as recommended, the delta's edit scenario says the change is served "when `grafana update-config` returns".
 
-### D5. SSH remnants (proposed)
+### D5. SSH remnants (approved)
 
 - **(a) `RemoteOperationsService.replaceDirectory`: recommended to delete it** with its implementation and its fakes (`TestModules.kt`, `UpTestFixture.kt`, `FakeNodes.kt`, `InstallFileTest.kt`, `DefaultRemoteOperationsServiceTest.kt`). It has no other production caller. Alternative: keep it for a later use that nothing plans.
 - **(b) Pyroscope link: recommended to choose the URL by `hosting.publishing`, in `GrafanaStage`.** Add `pyroscopeBrowserUrl(publishing, controlHost)` to `profiling/ProfilingConfig.kt`:
@@ -95,7 +95,7 @@ If D4 is approved as recommended, the delta's edit scenario says the change is s
   - Always use the in-cluster URL. Simpler, but it breaks the AWS "Pyroscope UI" link, because a browser going through SOCKS resolves names on the control node, which does not know `.svc` names.
   - Keep `controlHost` in the deploy signature. Less churn, but it keeps the coupling that #1089 (removing node dependencies from the observability deploy) is removing.
 
-### D6. Events (proposed)
+### D6. Events (approved)
 
 - **Recommended:** replace `Grafana.DashboardTreeUploading(count, path)` and `DashboardTreeUploaded` with one `Grafana.DashboardsRendered(count)`, and emit the existing `K8s.ConfigMapDeleted` for each map pruned. The upload events and their `path` no longer describe anything real.
 - **Alternative:** also apply the dashboard maps outside the per-resource loop with one summary event. This removes 32 `ResourceApplying` console lines, at the cost of a second apply path in `deploy`.

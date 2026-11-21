@@ -83,7 +83,8 @@ fi
 # Not `netstat`: on macOS 27, run from Homebrew's bash (the `bash` a Gradle task finds first on
 # PATH), it prints no TCP table at all and still exits 0, so an empty table read as "nothing is
 # listening" while the socket was plainly listening. Run from /bin/bash it prints the table. `lsof`
-# answers the same under both.
+# answers the same under both. Run as a non-root user, `lsof` lists only that user's sockets; that
+# covers its one use, a developer's own test process, and on the nodes `ss` answers first.
 #
 # Answers `listening`, `quiet`, or `unknown` when neither tool is present and the socket table
 # cannot be read at all.

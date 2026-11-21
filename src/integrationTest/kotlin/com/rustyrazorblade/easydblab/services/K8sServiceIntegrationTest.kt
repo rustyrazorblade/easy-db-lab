@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
@@ -29,20 +30,20 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kits.BuiltinKitFixture
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.Quantity
-import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
-import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
+import io.fabric8.kubernetes.client.utils.KubernetesSerialization
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -53,6 +54,7 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
+import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.slf4j.LoggerFactory
@@ -61,6 +63,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
+import java.io.File
 
 /**
  * Integration tests for K8s manifest application using TestContainers with K3s.
@@ -716,35 +719,61 @@ class K8sServiceIntegrationTest {
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
 
+    /**
+     * A database must use all of its node's hardware, so no database workload may set a CPU or memory
+     * request or limit. Observability and other control-node pods may, since they share the control
+     * node; Tempo does.
+     *
+     * A database workload is every object rendered from a built-in kit whose `kit.yaml` declares
+     * `type: db`, so a new database kit is checked without a change here. The operator custom
+     * resources those kits apply (CNPG `Cluster`, `ClickHouseInstallation`, `TidbCluster`,
+     * `KafkaNodePool`) put a pod's resources at different paths, so each object's whole tree is
+     * walked by [computeResourcePaths]. `storage` is allowed: it sizes a claim, not a pod's share of
+     * its node.
+     */
     @Test
     @Order(41)
-    fun `no builder other than Tempo should set resource limits or requests`() {
-        // Tempo is the one exception (issue 1002): it sets GOMEMLIMIT from its memory limit, and
-        // without one it was the first pod the kernel killed. TempoManifestBuilderTest covers it.
-        val allResources = collectAllResources().filterNot { it.metadata?.name == Constants.K8s.TEMPO_APP_LABEL }
-        val violations = mutableListOf<String>()
+    fun `no database workload should set CPU or memory requests or limits`(
+        @TempDir profileHome: File,
+    ) {
+        val context = Context(profileHome)
+        val resolver = InstallTemplateResolver(context, KitSourcesProvider(context))
+        val dbKits =
+            resolver
+                .listAvailableTemplates()
+                .mapNotNull { resolver.loadInstallConfig(resolver.resolve(it)) }
+                .filter { it.type == KitType.DB }
+        assertThat(dbKits.map { it.name })
+            .contains("clickhouse", "ferrosa", "ignite3", "kafka", "memcached", "neo4j", "postgres", "tidb")
 
-        for (resource in allResources) {
-            val containers = extractContainers(resource)
-            for (container in containers) {
-                val res = container.resources
-                if (res != null && (res.limits?.isNotEmpty() == true || res.requests?.isNotEmpty() == true)) {
-                    violations.add(
-                        "${resource.kind}/${resource.metadata?.name} container '${container.name}' " +
-                            "has resource limits/requests",
-                    )
-                }
+        val violations =
+            dbKits.flatMap { kit ->
+                val fixture = BuiltinKitFixture(kit.name, templateService)
+                resolver
+                    .listTemplateFiles(resolver.resolve(kit.name))
+                    .map { it.name }
+                    .filter { it.endsWith(".yaml.template") && "/" !in it }
+                    .flatMap { fixture.render(it, DB_KIT_INSTALL_TIME_VARS) }
+                    .flatMap { obj -> computeResourcePaths(obj).map { "${kit.name}: ${obj.kind}/${obj.metadata?.name} $it" } }
             }
-        }
 
         assertThat(violations)
             .withFailMessage(
-                "Resource limits/requests must never be set on K8s manifests:\n${violations.joinToString("\n")}",
+                "Database workloads must never set CPU or memory requests or limits:\n${violations.joinToString("\n")}",
             ).isEmpty()
     }
 
     @Test
     @Order(42)
+    fun `the database resource check finds a container memory limit`() {
+        val tempo = TempoManifestBuilder(templateService).buildAllResources().filterIsInstance<Deployment>()
+
+        assertThat(tempo.flatMap { computeResourcePaths(it) })
+            .contains("spec.template.spec.containers[0].resources.limits.memory")
+    }
+
+    @Test
+    @Order(43)
     fun `all deployments should use Recreate strategy for hostNetwork compatibility`() {
         val allResources = collectAllResources()
         val violations = mutableListOf<String>()
@@ -1038,26 +1067,31 @@ class K8sServiceIntegrationTest {
         )
     }
 
-    private fun extractContainers(resource: HasMetadata): List<io.fabric8.kubernetes.api.model.Container> =
-        when (resource) {
-            is Deployment ->
-                resource.spec
-                    ?.template
-                    ?.spec
-                    ?.containers
-                    .orEmpty()
-            is DaemonSet ->
-                resource.spec
-                    ?.template
-                    ?.spec
-                    ?.containers
-                    .orEmpty()
-            is StatefulSet ->
-                resource.spec
-                    ?.template
-                    ?.spec
-                    ?.containers
-                    .orEmpty()
+    /**
+     * Every compute quota [resource] sets, as a dotted path such as
+     * `spec.template.spec.containers[0].resources.limits.memory`. A quota is any entry other than
+     * `storage` in a `requests` or `limits` map anywhere in the object's tree. The tree is walked
+     * rather than a known path read because operator custom resources place them differently: the
+     * TiDB operator puts `requests` and `limits` directly on each component's spec.
+     */
+    private fun computeResourcePaths(resource: HasMetadata): List<String> =
+        quotaPaths(KubernetesSerialization().convertValue(resource, Map::class.java), "")
+
+    private fun quotaPaths(
+        node: Any?,
+        path: String,
+    ): List<String> =
+        when (node) {
+            is Map<*, *> ->
+                node.entries.flatMap { (key, value) ->
+                    val child = if (path.isEmpty()) "$key" else "$path.$key"
+                    when {
+                        key in QUOTA_KEYS && value is Map<*, *> ->
+                            value.keys.filterNot { it == "storage" }.map { "$child.$it" }
+                        else -> quotaPaths(value, child)
+                    }
+                }
+            is List<*> -> node.flatMapIndexed { index, value -> quotaPaths(value, "$path[$index]") }
             else -> emptyList()
         }
 }
@@ -1067,3 +1101,24 @@ private const val POLL_INTERVAL_MS = 2000L
 
 /** How long a pod the scheduler must not place is given before its claim is checked still Pending. */
 private const val UNSCHEDULABLE_WAIT_MS = 15_000L
+
+/** The keys under which K8s and the database operators hold a workload's compute quota. */
+private val QUOTA_KEYS = setOf("requests", "limits")
+
+/**
+ * The variables `kit install` computes rather than reads from arg defaults (the postgres extension's
+ * image, uid and ports, and tidb's replica count, which defaults to the db node count); their values
+ * do not affect resources.
+ */
+private val DB_KIT_INSTALL_TIME_VARS =
+    mapOf(
+        "IMAGE" to "ghcr.io/cloudnative-pg/postgresql:17",
+        "PG_MAJOR_VERSION" to "17",
+        "POSTGRES_UID" to "26",
+        "POSTGRES_GID" to "26",
+        "SHARED_PRELOAD_LIBRARIES" to "[]",
+        "POST_INIT_SQL" to "[]",
+        "POSTGRES_PORT" to "30432",
+        "METRICS_PORT" to "30987",
+        "REPLICAS" to "3",
+    )

@@ -43,7 +43,8 @@ class TempoManifestBuilder(
         const val TEMPO_UID = 10001L
 
         /**
-         * Tempo's memory limit, the one exception to the no-limits rule for control-node pods.
+         * Tempo's memory limit. Tempo is an observability pod that shares the control node, so it is
+         * sized; only database pods never set a limit.
          *
          * Tempo sets GOMEMLIMIT from it (`memory.automemlimit_enabled` in tempo.yaml), so the Go
          * collector works to stay under it, and the pod is no longer BestEffort, the first pod the

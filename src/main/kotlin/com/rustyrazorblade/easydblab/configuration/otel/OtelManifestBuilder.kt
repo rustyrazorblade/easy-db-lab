@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -55,6 +56,24 @@ class OtelManifestBuilder(
         private const val READINESS_PERIOD = 10
         private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
         private const val SCRAPE_INTERVAL = "15s"
+
+        /**
+         * The collector's memory limit. The exporter queues are bounded so that all three, full,
+         * fit inside it (see the sizing comment in `otel-collector-config.yaml`, issue 1002): with
+         * every backend down and every queue full, 0.161.0 measured a 2.3-2.7 GB heap and 3.2 GB
+         * resident. 4 GiB is a quarter of the smallest default node this DaemonSet runs on (16 GiB).
+         * Without a limit the pod was BestEffort, and a backlog grew it to 12.2 GB on an app node.
+         */
+        const val MEMORY_LIMIT = "4Gi"
+
+        /** What an idle-to-busy collector uses with empty queues, so the scheduler reserves it. */
+        const val MEMORY_REQUEST = "512Mi"
+
+        /**
+         * The Go runtime's soft limit, three quarters of [MEMORY_LIMIT]: the collector collects
+         * garbage harder as a full queue nears it, instead of letting the heap double before a cycle.
+         */
+        const val GO_MEM_LIMIT = "3GiB"
 
         /** Volume carrying the node's root filesystem into the collector container. */
         const val HOST_ROOT_VOLUME = "host-root"
@@ -569,6 +588,14 @@ class OtelManifestBuilder(
                     .withRunAsGroup(0L)
                     .build(),
             ).withArgs("--config=/etc/otel-collector-config.yaml")
+            .withNewResources()
+            .addToRequests("memory", Quantity(MEMORY_REQUEST))
+            .addToLimits("memory", Quantity(MEMORY_LIMIT))
+            .endResources()
+            .addNewEnv()
+            .withName("GOMEMLIMIT")
+            .withValue(GO_MEM_LIMIT)
+            .endEnv()
             .addNewPort()
             .withContainerPort(Constants.K8s.OTEL_GRPC_PORT)
             .withHostPort(Constants.K8s.OTEL_GRPC_PORT)

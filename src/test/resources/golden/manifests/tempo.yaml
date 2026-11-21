@@ -54,8 +54,11 @@ data:
       max_block_duration: 1m
       # Tempo's only ingest flow control (issue 1002). Past this many bytes of live traces, a push waits
       # a second at a time for them to drain into the WAL instead of growing the heap. The sender's
-      # deadline then ends the push and the collector retries it from its queue. Tempo drops nothing,
-      # and the push is not acknowledged until it is stored. At 0 (no bound), an ingest rate faster
+      # deadline then ends the push and the collector retries it from its queue. Tempo drops nothing:
+      # a push whose context ends while it waits returns before it stores anything (livestore
+      # instance.pushBytes checks ctx.Err() after the wait), and its sender has already seen
+      # DeadlineExceeded, which the collector retries. A push whose context ends after that check is
+      # stored and retried, and Tempo merges the duplicate spans. At 0 (no bound), an ingest rate faster
       # than Tempo can cut traces into the WAL grew live traces to 1.9 GB and the heap past 12 GB in
       # minutes, and the kernel killed Tempo. Every span acknowledged but not yet in the WAL was lost.
       # At 500 MB under the same load, Tempo's peak was 5.1 GB.

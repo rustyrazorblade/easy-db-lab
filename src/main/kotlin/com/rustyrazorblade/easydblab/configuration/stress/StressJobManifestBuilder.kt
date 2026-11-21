@@ -240,7 +240,7 @@ object StressJobManifestBuilder {
                     .withName("CLUSTER_NAME")
                     .withValue(clusterName)
                     .build(),
-                // No GOMEMLIMIT: the sidecar queues up to 20000 batches through a node collector
+                // No GOMEMLIMIT: the sidecar queues up to 64 MiB through a node collector
                 // outage (issue 991), and a soft limit below that queue would keep the Go GC
                 // running and take CPU from the workload under test.
                 EnvVarBuilder()

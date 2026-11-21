@@ -44,11 +44,13 @@ Each node's collector holds what it cannot deliver while Mimir, Loki or Tempo is
 
 | Exporter | Backend | Queue | Retry |
 |----------|---------|-------|-------|
-| `prometheus_remote_write` | Mimir | `remote_write_queue`, 20000 batches | every 5s, no time limit |
-| `otlp_http/logs` | Loki | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
-| `otlp_grpc/tempo` | Tempo | `sending_queue`, 20000 batches | 5s backoff growing to 30s, no time limit |
+| `prometheus_remote_write` | Mimir | `remote_write_queue`, 500 batches of at most 1024 points | every 5s, no time limit |
+| `otlp_http/logs` | Loki | `sending_queue`, 256 MiB | 5s backoff growing to 30s, no time limit |
+| `otlp_grpc/tempo` | Tempo | `sending_queue`, 256 MiB | 5s backoff growing to 30s, no time limit |
 
-The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep a 20000-batch in-memory `sending_queue` and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart. Fluent Bit, which sends each node's systemd journal to its node's collector, retries without a limit (`retry_limit: no_limits`) and holds the chunks in memory. Its retries back off to at most 30 seconds apart (`scheduler.cap: 30`; the default is 2000), so a chunk is sent soon after the collector is back.
+The queues are bounded by size so that all three, full, fit inside the collector's 4 GiB memory limit, a quarter of the smallest default node (16 GiB). The Loki and Tempo queues count the OTLP size of what they hold (`sizer: bytes`). The remote write exporter in 0.161.0 can only count batches, so the batch processor caps each batch at 1024 points (`send_batch_max_size`). With every backend down and every queue full, the collector measured 3.2 GB resident. It runs with a 512 MiB memory request, a 4 GiB limit and `GOMEMLIMIT=3GiB`. Before these bounds, a Tempo backlog grew one app node's collector to 12.2 GB, the kernel killed it, and every queue on it was lost. A full queue refuses new batches and keeps what it already holds; each refused item is counted in `otelcol_exporter_enqueue_failed_metric_points_total`, `..._log_records_total` or `..._spans_total`.
+
+The collectors that send to a cluster collector, rather than to a backend, do the same: the EMR collector (`otlp_grpc/control`, to the control node's collector) and the stress-job sidecar collector (`otlp_grpc`, to its node's collector) each keep an in-memory `sending_queue` bounded by bytes (256 MiB for EMR, 64 MiB for the sidecar, which shares the app node with the stress job) and retry without a time limit. The cluster collector restarts whenever a kit starts or stops, and the senders hold their data through that restart. Fluent Bit, which sends each node's systemd journal to its node's collector, retries without a limit (`retry_limit: no_limits`) and holds the chunks in memory. Its retries back off to at most 30 seconds apart (`scheduler.cap: 30`; the default is 2000), so a chunk is sent soon after the collector is back.
 
 Unlimited retry also slows a collector's shutdown during an outage. A stopping collector tries to send what it holds before it exits, and with no time limit it keeps trying until it is killed. During a backend outage, a cluster collector pod takes its full termination grace period to stop: 30 seconds, the Kubernetes default, which the DaemonSet does not change. So a kit start or stop, which rolls the DaemonSet, waits about 30 seconds per node longer while Mimir, Loki or Tempo is down. The stress-job sidecar collector waits the same 30 seconds when its node's collector is down, and the EMR collector waits systemd's default stop timeout of 90 seconds when the control node's collector is down. What the collector still held when it was killed is lost, as for any restart during an outage.
 
@@ -62,7 +64,7 @@ Notes on `prometheus_remote_write` in collector 0.161.0:
 - It retries 5xx responses and connection errors. Any other 4xx (including 429) is a rejected batch and is not retried.
 - `endpoint`, `tls` and `headers` sit under `http:`. Once `http` is set, the deprecated top-level fields are ignored.
 
-How long an outage loses nothing depends on the backend: metrics for an hour (Mimir's `out_of_order_time_window: 1h`) while the collector sends under about 5,600 data points a second (see [Mimir](../user-guide/mimir.md)), logs for 30 minutes (Loki's out-of-order window), and traces for as long as the queue holds. The Pyroscope Java agent retries uploads without limit (`-Dpyroscope.ingest.max.tries=-1`) and holds 360 snapshots, about an hour (`-Dpyroscope.push.queue.capacity=360`); see [Profiling](../user-guide/profiling.md) for the eBPF agent.
+How long an outage loses nothing depends on the backend: metrics for as long as 500 batches last, at most an hour (Mimir's `out_of_order_time_window: 1h`; see [Mimir](../user-guide/mimir.md)), logs for as long as 256 MiB lasts and at most 30 minutes (Loki's out-of-order window), and traces for as long as 256 MiB lasts. The Pyroscope Java agent retries uploads without limit (`-Dpyroscope.ingest.max.tries=-1`) and holds 360 snapshots, about an hour (`-Dpyroscope.push.queue.capacity=360`); see [Profiling](../user-guide/profiling.md) for the eBPF agent.
 
 `otelcol_exporter_queue_size` (by `exporter`) in Mimir shows a backlog; `otelcol_exporter_send_failed_metric_points_total`, `..._log_records_total` and `..._spans_total` count what was dropped. These reach Mimir through the `prometheus_remote_write` queue too, so during a Mimir outage they cannot be queried; they fill in once Mimir is back. During the outage, the collector's log shows each retry.
 
@@ -348,7 +350,7 @@ sum by (cluster, exporter) (rate(otelcol_exporter_send_failed_spans_total[5m]))
 
 Tempo cuts a block at most every minute, so a trace is in S3 under `tempo/<tenant>/` within about two minutes of arriving; before that Tempo serves it from its live store. At `down`, the collector is stopped first, and `down` then waits until Tempo holds no live trace and has uploaded every block.
 
-When the collector offers spans faster than Tempo can write them, Tempo holds pushes back (its live traces are capped at 500 MB) instead of growing until it is killed. The collector logs `Exporting failed. Will retry the request after interval.` for `otlp_grpc/tempo`, and the backlog shows in its queue:
+When the collector offers spans faster than Tempo can write them, Tempo holds pushes back (its live traces are capped at 500 MB) instead of growing until it is killed. The collector logs `Exporting failed. Will retry the request after interval.` for `otlp_grpc/tempo`, and the backlog shows in its queue, which holds at most 256 MiB:
 
 ```promql
 max by (cluster, host_name) (otelcol_exporter_queue_size{exporter="otlp_grpc/tempo"})

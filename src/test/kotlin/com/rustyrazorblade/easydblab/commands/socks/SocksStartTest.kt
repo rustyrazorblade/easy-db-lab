@@ -145,7 +145,7 @@ class SocksStartTest : BaseKoinTest() {
         assertThat(events).containsExactly(Event.Proxy.NoRunningCluster(context.workingDirectory.absolutePath))
     }
 
-    private fun save(state: ClusterState) = get<ClusterStateManager>().save(state)
+    private fun save(state: ClusterState) = get<ClusterStateManager>().replace(state)
 
     private fun clusterState(mode: NetworkMode): ClusterState =
         ClusterState(

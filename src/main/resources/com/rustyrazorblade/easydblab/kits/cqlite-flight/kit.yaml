@@ -1,0 +1,50 @@
+name: cqlite-flight
+type: db
+description: "Arrow Flight server exposing each Cassandra node's local SSTables as queryable Arrow streams (one co-located pod per db node)"
+version: "1.0.0"
+collision-check: true
+
+endpoints:
+  - name: "Arrow Flight gRPC"
+    node-type: db
+    # The NodePort of cqlite-flight-nodeport (daemonset.yaml.template). It is node-local
+    # (externalTrafficPolicy: Local): <db-node-ip>:30816 reaches that node's own Flight pod.
+    port: 30816
+    type: native
+
+args:
+  - flag: --tag
+    variable: TAG
+    description: "cqlite-flight image tag (ghcr.io/pmcfadin/cqlite-flight:<tag>), for example v0.18.0. Required, so every run names the build it tests; pass dev or latest only to follow a moving tag on purpose"
+    type: string
+    required: true
+  - flag: --flight-port
+    variable: FLIGHT_PORT
+    description: "Arrow Flight gRPC container port. Clients connect to NodePort 30816 on each db node, which forwards to it"
+    type: int
+    default: "8815"
+  - flag: --data-dir
+    variable: CASSANDRA_DATA_DIR
+    description: "Host path to the Cassandra data directory, mounted read-only into the pod. cqlite-flight serves EXACTLY ONE dir — on a multi-disk node (data spread across /mnt/db1, /mnt/db2, ...) the other disks are silently missed; see --data-root (pmcfadin/cqlite#2114)"
+    type: string
+    default: "/mnt/db1/cassandra/data"
+  - flag: --data-root
+    variable: CASSANDRA_DATA_ROOT
+    description: "Host path under which per-disk Cassandra data dirs live (e.g. /mnt, with /mnt/db1, /mnt/db2). An init container scans this read-only; the layout check only warns. It warns when more than one <root>/*/cassandra/data dir exists, empty ones included, since cqlite-flight serves one and reads miss the rest. It warns that it cannot verify the layout when the served --data-dir is not the only data dir there. The root must exist: a missing one fails the pod at start"
+    type: string
+    default: "/mnt"
+  - flag: --data-gid
+    variable: CASSANDRA_DATA_GID
+    description: "Host GID that owns the Cassandra data dir; added as a pod supplementalGroup so the image's uid-10001 process can read it. The init container fails the pod at start, naming --data-gid, when the data dir is not readable with it"
+    type: int
+    default: "999"
+  - flag: --otel-endpoint
+    variable: OTEL_ENDPOINT
+    description: "OTLP gRPC endpoint for metrics/traces (default: the OTel collector on the pod's node, at the downward-API host IP)"
+    type: string
+    default: "http://$(HOST_IP):4317"
+  - flag: --rollout-timeout
+    variable: ROLLOUT_TIMEOUT_SECONDS
+    description: "Seconds start waits for the DaemonSet to roll out on every db node. The first start on a node pulls the image, which on a slow registry can take longer than the default"
+    type: int
+    default: "180"

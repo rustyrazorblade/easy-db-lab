@@ -85,7 +85,7 @@ class OpenSearchStart : PicoBaseCommand() {
         val config = buildDomainConfig(domainName, subnetId, securityGroupId)
         val result = openSearchService.createDomain(config)
 
-        saveOpenSearchState(result)
+        clusterStateManager.update { it.updateOpenSearchDomain(domainRecord(result)) }
 
         if (wait) {
             waitForDomainAndUpdateState(domainName)
@@ -114,33 +114,22 @@ class OpenSearchStart : PicoBaseCommand() {
             Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId),
     )
 
-    private fun saveOpenSearchState(result: OpenSearchDomainResult) {
-        clusterState.updateOpenSearchDomain(
-            OpenSearchClusterState(
-                domainName = result.domainName,
-                domainId = result.domainId,
-                endpoint = result.endpoint,
-                dashboardsEndpoint = result.dashboardsEndpoint,
-                state = result.state.name,
-            ),
+    private fun domainRecord(result: OpenSearchDomainResult) =
+        OpenSearchClusterState(
+            domainName = result.domainName,
+            domainId = result.domainId,
+            endpoint = result.endpoint,
+            dashboardsEndpoint = result.dashboardsEndpoint,
+            state = result.state.name,
         )
-        clusterStateManager.save(clusterState)
-    }
 
     private fun waitForDomainAndUpdateState(domainName: String) {
         eventBus.emit(Event.OpenSearch.Waiting)
         val activeResult = openSearchService.waitForDomainActive(domainName)
-
-        clusterState.updateOpenSearchDomain(
-            OpenSearchClusterState(
-                domainName = activeResult.domainName,
-                domainId = activeResult.domainId,
-                endpoint = activeResult.endpoint,
-                dashboardsEndpoint = activeResult.dashboardsEndpoint,
-                state = activeResult.state.name,
-            ),
-        )
-        clusterStateManager.save(clusterState)
+        // A domain `opensearch stop` cleared during the wait stays cleared.
+        clusterStateManager.update {
+            if (it.openSearchDomain?.domainName == activeResult.domainName) it.updateOpenSearchDomain(domainRecord(activeResult))
+        }
 
         displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
     }

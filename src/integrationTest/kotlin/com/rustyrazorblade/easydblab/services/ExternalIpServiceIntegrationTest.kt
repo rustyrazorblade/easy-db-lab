@@ -54,7 +54,7 @@ class ExternalIpServiceIntegrationTest {
     ) {
         thread(isDaemon = true) { accepted.add(server.accept()) }
         val stateManager = ClusterStateManager(File(workspace, "state.json"))
-        stateManager.save(
+        stateManager.replace(
             ClusterState(
                 name = "test-cluster",
                 infrastructure = InfrastructureState(vpcId = "vpc-1", region = "us-west-2", securityGroupId = "sg-1"),

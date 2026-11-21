@@ -102,7 +102,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
         val user = getKoin().get<User>().copy(sshTransport = transport)
         getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
         val service = getKoin().get<SocksProxyService>() as ProcessSocksProxyService
-        getKoin().get<ClusterStateManager>().save(
+        getKoin().get<ClusterStateManager>().replace(
             ClusterState(name = "test-cluster", initConfig = InitConfig(open = open)),
         )
         afterSave()

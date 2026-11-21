@@ -6,7 +6,7 @@ metrics on port 9150.
 
 The collector on the pod's own node finds the pod by Kubernetes pod discovery
 (`pod-selector: app=memcached`) and scrapes it on the pod IP. Every series carries
-`job="memcached"`, `instance=<pod name>`, and `cluster=<cluster name>`.
+`job="memcached"`, `instance=<pod name>`, and `cluster=<cluster name>-<cluster id>`.
 
 This list matches the live cluster's `metrics-catalog.json` (`bin/export-workload-metrics memcached`).
 The exporter's own Go runtime and process metrics (`go_*`, `process_*`, `promhttp_*`) are also

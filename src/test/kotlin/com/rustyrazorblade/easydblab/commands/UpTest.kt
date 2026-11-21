@@ -148,7 +148,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up fails before any EC2 instance is launched when configuration produces no control node`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(controlInstances = 0))
+        clusterStateManager.replace(happyState(controlInstances = 0))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -163,7 +163,7 @@ class UpTest : UpTestFixture() {
         val state = happyState()
         val redirect =
             TelemetryRedirect.fromBaseHost("10.9.9.9").copy(traces = "http://10.9.9.9:4320")
-        whenever(mockClusterStateManager.load()).thenReturn(
+        clusterStateManager.replace(
             state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
         )
 
@@ -179,7 +179,7 @@ class UpTest : UpTestFixture() {
     fun `up provisions successfully when a redirect target is well-formed`() {
         val state = happyState()
         val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
-        whenever(mockClusterStateManager.load()).thenReturn(
+        clusterStateManager.replace(
             state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
         )
 
@@ -199,7 +199,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up provisions successfully with zero db nodes and emits no error output`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 0))
+        clusterStateManager.replace(happyState(cassandraInstances = 0))
         launching(mapOf(ServerType.Control to listOf(testControlHost), ServerType.Stress to listOf(testAppHost)))
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
@@ -217,7 +217,7 @@ class UpTest : UpTestFixture() {
      */
     @Test
     fun `up discovers the existing instances once and launches only what is missing`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 3))
+        clusterStateManager.replace(happyState(cassandraInstances = 3))
         val db0 =
             DiscoveredInstance(
                 instanceId = "i-db0",
@@ -260,7 +260,7 @@ class UpTest : UpTestFixture() {
         state: String,
         publicIp: String?,
     ) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 2))
+        clusterStateManager.replace(happyState(cassandraInstances = 2))
         val pendingDb0 =
             DiscoveredInstance(
                 instanceId = "i-db0",
@@ -295,7 +295,7 @@ class UpTest : UpTestFixture() {
      */
     @Test
     fun `up fills the ordinals a partial launch left missing, and checks capacity for exactly those`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 9))
+        clusterStateManager.replace(happyState(cassandraInstances = 9))
         val existing =
             listOf(0, 3, 6).map {
                 DiscoveredInstance(
@@ -344,7 +344,7 @@ class UpTest : UpTestFixture() {
             ordinal: Int,
             publicIp: String,
         ) = ClusterHost(publicIp, "10.0.0.$ordinal", "db$ordinal", "us-west-2a", "i-db$ordinal")
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = (held + launched).max() + 1))
+        clusterStateManager.replace(happyState(cassandraInstances = (held + launched).max() + 1))
         whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(
             mapOf(
                 ServerType.Cassandra to
@@ -366,9 +366,8 @@ class UpTest : UpTestFixture() {
         launched.forEach { publicIps["i-db$it"] = "54.9.9.$it" }
         val launchThread = AtomicReference<Thread>()
         val saves = Collections.synchronizedList(mutableListOf<List<ClusterHost>>())
-        whenever(mockClusterStateManager.save(any())).thenAnswer {
-            if (Thread.currentThread() == launchThread.get()) saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
-            Unit
+        recordSaves { state ->
+            if (Thread.currentThread() == launchThread.get()) saves += state.hosts[ServerType.Cassandra].orEmpty()
         }
         whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
             launchThread.set(Thread.currentThread())
@@ -397,7 +396,7 @@ class UpTest : UpTestFixture() {
     fun `up does not resolve an AMI for the application architecture when there are zero app nodes`() {
         // A mixed-arch spec whose only arm64 group is the application group, sized to zero. `up`
         // must not demand (nor resolve) an arm64 image it will never launch.
-        whenever(mockClusterStateManager.load()).thenReturn(
+        clusterStateManager.replace(
             ClusterState(
                 name = "test-cluster",
                 networkMode = NetworkMode.Tailscale,
@@ -719,7 +718,7 @@ class UpTest : UpTestFixture() {
     fun `up continues when Tailscale starts but the previously recorded device cannot be removed`() {
         overrideUser(tailscaleUser())
         val state = happyState().apply { tailscaleDeviceId = "nOldCNTRL" }
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
         val tailscaleService = mock<TailscaleService>()
         whenever(tailscaleService.isConnected(any())).thenReturn(Result.success(false))
         whenever(tailscaleService.generateAuthKey(any(), any(), any()))
@@ -738,7 +737,7 @@ class UpTest : UpTestFixture() {
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
-        assertThat(state.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+        assertThat(clusterStateManager.load().tailscaleDeviceId).isEqualTo("nNewCNTRL")
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("nOldCNTRL")
         verify(mockK3sClusterService).startServer(any(), any(), anyOrNull(), any())
     }
@@ -886,7 +885,7 @@ class UpTest : UpTestFixture() {
     @ParameterizedTest
     @EnumSource(value = NetworkMode::class, names = ["Socks", "Direct"])
     fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`(mode: NetworkMode) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = mode))
+        clusterStateManager.replace(happyState().copy(networkMode = mode))
         // Both checks would fail outright if they ran; a non-Tailscale cluster must not consult
         // them at all, and must not pay for a local process invocation or a socket connect.
         localTailscaleState = LocalTailscaleState.NotInstalled
@@ -900,7 +899,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up reports the SOCKS tunnel it started on a cluster that does not use Tailscale`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
+        clusterStateManager.replace(happyState().copy(networkMode = NetworkMode.Socks))
         val events = captureEvents()
 
         newUp().execute()
@@ -911,7 +910,7 @@ class UpTest : UpTestFixture() {
     @Test
     fun `up --no-setup reports the SOCKS tunnel it starts or reuses, once`() {
         // Under --no-setup the tunnel may already come from the @RequiresProxy preflight, which reports nothing.
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
+        clusterStateManager.replace(happyState().copy(networkMode = NetworkMode.Socks))
         val events = captureEvents()
 
         newUp().apply { noSetup = true }.execute()
@@ -1009,14 +1008,13 @@ class UpTest : UpTestFixture() {
             .thenAnswer { invocation -> tunnel(invocation.getArgument(0), port = TUNNEL_PORT, reused = reused) }
             .thenAnswer { invocation -> later(invocation.getArgument(0)) }
         // The preflight starts a tunnel only for a cluster whose infrastructure is up.
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
-        whenever(mockClusterStateManager.load()).thenReturn(
+        clusterStateManager.replace(
             happyState()
                 .copy(networkMode = NetworkMode.Socks, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
                 .apply { markInfrastructureUp() },
         )
         getKoin().get<ProxyPreflight>().ensureTunnel()
-        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(networkMode = NetworkMode.Socks))
+        clusterStateManager.replace(happyState().copy(networkMode = NetworkMode.Socks))
     }
 
     @Test
@@ -1259,11 +1257,7 @@ class UpTest : UpTestFixture() {
     /** A copy of the state at every save, in order. */
     private fun captureSaves(): List<ClusterState> {
         val saved = Collections.synchronizedList(mutableListOf<ClusterState>())
-        whenever(mockClusterStateManager.save(any())).thenAnswer {
-            val state = it.getArgument<ClusterState>(0)
-            synchronized(saved) { saved += state.copy(hosts = state.hosts) }
-            Unit
-        }
+        recordSaves { state -> synchronized(saved) { saved += state.copy(hosts = state.hosts) } }
         return saved
     }
 

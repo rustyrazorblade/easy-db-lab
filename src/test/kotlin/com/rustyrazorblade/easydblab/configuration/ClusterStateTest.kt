@@ -41,7 +41,7 @@ class ClusterStateTest {
                     ),
             )
 
-        manager.save(state)
+        manager.replace(state)
         val loaded = manager.load()
 
         assertThat(loaded.nodes["db0"]).isEqualTo(state.nodes["db0"])
@@ -106,7 +106,7 @@ class ClusterStateTest {
                 name = "test-cluster",
                 initConfig = initConfig,
             )
-        manager.save(originalState)
+        manager.replace(originalState)
 
         // Verify file was created
         assertThat(stateFile).exists()
@@ -155,7 +155,7 @@ class ClusterStateTest {
                 name = "legacy-cluster",
                 initConfig = null,
             )
-        manager.save(state)
+        manager.replace(state)
 
         // Load it back
         val loadedState = manager.load()
@@ -332,7 +332,7 @@ class ClusterStateTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "c", initConfig = InitConfig(tenant = "acme")))
+        manager.replace(ClusterState(name = "c", initConfig = InitConfig(tenant = "acme")))
 
         assertThat(manager.load().tenant()).isEqualTo("acme")
     }
@@ -369,7 +369,7 @@ class ClusterStateTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "c", initConfig = InitConfig(cni = CniMode.Cilium)))
+        manager.replace(ClusterState(name = "c", initConfig = InitConfig(cni = CniMode.Cilium)))
 
         assertThat(manager.load().initConfig?.cni).isEqualTo(CniMode.Cilium)
     }
@@ -457,7 +457,7 @@ class ClusterStateTest {
                 name = "test-cluster",
                 hosts = hosts,
             )
-        manager.save(state)
+        manager.replace(state)
 
         // Load it back
         val loadedState = manager.load()
@@ -496,7 +496,7 @@ class ClusterStateTest {
 
         // Mark as UP
         state.markInfrastructureUp()
-        manager.save(state)
+        manager.replace(state)
         assertThat(state.infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
         assertThat(state.isInfrastructureUp()).isTrue()
 
@@ -507,7 +507,7 @@ class ClusterStateTest {
 
         // Mark as DOWN
         loadedState.markInfrastructureDown()
-        manager.save(loadedState)
+        manager.replace(loadedState)
         assertThat(loadedState.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
         assertThat(loadedState.isInfrastructureUp()).isFalse()
 
@@ -548,7 +548,7 @@ class ClusterStateTest {
             ClusterState(
                 name = "test-cluster",
             )
-        manager.save(state)
+        manager.replace(state)
 
         val originalTimestamp = state.lastAccessedAt
 
@@ -569,7 +569,7 @@ class ClusterStateTest {
             )
 
         state.updateHosts(hosts)
-        manager.save(state)
+        manager.replace(state)
 
         // Verify timestamp was updated
         assertThat(state.lastAccessedAt).isAfter(originalTimestamp)
@@ -739,7 +739,7 @@ class ClusterStateTest {
                 name = "test-cluster",
             )
         val originalId = originalState.clusterId
-        manager.save(originalState)
+        manager.replace(originalState)
 
         val loadedState = manager.load()
         assertThat(loadedState.clusterId).isEqualTo(originalId)
@@ -767,7 +767,7 @@ class ClusterStateTest {
         assertThat(state.createdAt).isBetween(beforeCreate, afterCreate)
         assertThat(state.lastAccessedAt).isBetween(beforeCreate, afterCreate)
 
-        manager.save(state)
+        manager.replace(state)
         val loadedState = manager.load()
 
         // Timestamps should be preserved
@@ -816,14 +816,14 @@ class ClusterStateTest {
                 name = "test-cluster",
             )
         state.updateTailscaleAuthKeyId("tskey-auth-abc123")
-        manager.save(state)
+        manager.replace(state)
 
         val loadedState = manager.load()
         assertThat(loadedState.tailscaleAuthKeyId).isEqualTo("tskey-auth-abc123")
 
         // Clear and verify null roundtrip
         loadedState.updateTailscaleAuthKeyId(null)
-        manager.save(loadedState)
+        manager.replace(loadedState)
 
         val clearedState = manager.load()
         assertThat(clearedState.tailscaleAuthKeyId).isNull()
@@ -877,7 +877,7 @@ class ClusterStateTest {
                 name = "test-cluster",
                 dataBucket = "easy-db-lab-data-test-id",
             )
-        manager.save(state)
+        manager.replace(state)
 
         val loadedState = manager.load()
         assertThat(loadedState.dataBucket).isEqualTo("easy-db-lab-data-test-id")

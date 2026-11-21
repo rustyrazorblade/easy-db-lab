@@ -1,0 +1,186 @@
+# cqlite-flight DaemonSet — one Arrow Flight server pod per Cassandra ("db") node.
+#
+# Runs on the pod network. Each pod serves only the SSTables of the db node it runs on, so a
+# client must reach one particular node's pod: the NodePort Service at the end of this file
+# uses externalTrafficPolicy: Local, which sends <db-node-ip>:30816 to the pod on that node and
+# never to another node's. Telemetry goes to the OTel collector on the pod's node, at the
+# downward-API host IP (the collector listens on the host network).
+#
+# Reads the Cassandra data dir directly off the host (read-only) — no data of its own.
+# Default read path here is the LIVE data dir; a Sidecar-snapshot read (for a stable file
+# set while compaction runs underneath) is driven by the trino-connector's ticket
+# ("snapshot" field), not by this kit — see cqlite-flight/README.md.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cqlite-flight
+  namespace: default
+  labels:
+    app.kubernetes.io/name: cqlite-flight
+    easydblab/kit: cqlite-flight
+    easydblab/role: flight
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cqlite-flight
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cqlite-flight
+        easydblab/kit: cqlite-flight
+        easydblab/role: flight
+    spec:
+      nodeSelector:
+        type: db
+      securityContext:
+        # The image's Dockerfile declares `USER flight` (a NAME, not a numeric
+        # uid: `useradd -r -u 10001 flight`). With runAsNonRoot: true but no
+        # numeric runAsUser, the kubelet cannot resolve "flight" to a uid to
+        # verify it is non-root, and refuses to create the container:
+        # "container has runAsNonRoot and image has non-numeric user (flight),
+        # cannot verify user is non-root" (issue #2118). runAsUser/runAsGroup
+        # must be stated numerically here to match the image's fixed identity.
+        # supplementalGroups adds the host GID that owns the Cassandra data
+        # dir so that uid can read it.
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        supplementalGroups:
+          - __CASSANDRA_DATA_GID__
+      initContainers:
+        # cqlite-flight serves exactly one --data-dir. On a node whose Cassandra spreads
+        # data_file_directories over several disks, the other disks' SSTables are missing from
+        # every read, with no error (pmcfadin/cqlite#2114). This container runs
+        # pod/detect-multidisk.sh (ConfigMap cqlite-flight-detect-multidisk, created by start),
+        # which scans --data-root read-only and warns in `kubectl logs <pod> -c detect-multidisk`.
+        # It then checks the pod can read the served dir: it runs with the pod's uid and
+        # --data-gid and mounts the data dir as the Flight container does, and fails the pod start,
+        # naming --data-gid, when it cannot. It reuses the flight image, so there is no extra pull.
+        - name: detect-multidisk
+          image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
+          imagePullPolicy: Always
+          command: ["/bin/sh", "/detect/detect-multidisk.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: DETECT_SERVED
+              value: "__CASSANDRA_DATA_DIR__"
+            - name: DETECT_ROOT_HOST
+              value: "__CASSANDRA_DATA_ROOT__"
+            - name: DETECT_ROOT
+              value: /data-root
+            - name: DETECT_DATA
+              value: /data
+            - name: DETECT_DATA_GID
+              value: "__CASSANDRA_DATA_GID__"
+          volumeMounts:
+            - name: cassandra-data-root
+              mountPath: /data-root
+              readOnly: true
+            - name: cassandra-data
+              mountPath: /data
+              readOnly: true
+            - name: detect-multidisk-script
+              mountPath: /detect
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: cqlite-flight
+          image: "ghcr.io/pmcfadin/cqlite-flight:__TAG__"
+          # Always: --tag may name a MOVING tag (dev, latest) on purpose. The k8s
+          # default (IfNotPresent for non-latest tags) would pin the first pull
+          # of a reused tag forever and silently ignore rebuilt dev images.
+          imagePullPolicy: Always
+          # Least privilege: the server only reads the data dir and serves gRPC on an unprivileged
+          # port. The root filesystem is read-only; /tmp is a pod-local emptyDir for any scratch file.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          args:
+            - "--data-dir=/data"
+            - "--listen=0.0.0.0:__FLIGHT_PORT__"
+          ports:
+            - name: flight-grpc
+              containerPort: __FLIGHT_PORT__
+              protocol: TCP
+          env:
+            # HOST_IP must precede the endpoint that references it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: RUST_LOG
+              value: "info"
+            - name: CQLITE_OTEL_ENABLED
+              value: "true"
+            - name: CQLITE_OTEL_ENDPOINT
+              value: "__OTEL_ENDPOINT__"
+            - name: CQLITE_OTEL_PROTOCOL
+              value: "grpc"
+            - name: CQLITE_OTEL_SERVICE_NAME
+              value: "cqlite-flight"
+          volumeMounts:
+            - name: cassandra-data
+              mountPath: /data
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            tcpSocket:
+              port: __FLIGHT_PORT__
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: __FLIGHT_PORT__
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: cassandra-data
+          hostPath:
+            path: "__CASSANDRA_DATA_DIR__"
+            type: Directory
+        # Read-only detection mount for the #2114 multi-disk check init container.
+        # Directory, like the data dir: a mistyped --data-root fails the pod at
+        # start (kubectl describe pod shows "hostPath type check failed ... is not
+        # a directory") and the rollout times out, instead of the kubelet creating
+        # the mistyped path on the node as root.
+        - name: cassandra-data-root
+          hostPath:
+            path: "__CASSANDRA_DATA_ROOT__"
+            type: Directory
+        - name: detect-multidisk-script
+          configMap:
+            name: cqlite-flight-detect-multidisk
+        # Writable scratch space for both containers, whose root filesystems are read-only.
+        - name: tmp
+          emptyDir: {}
+---
+# The Flight endpoint. externalTrafficPolicy: Local keeps <db-node-ip>:30816 on that node's own
+# pod, which is the only pod holding that node's SSTables; with Cluster, kube-proxy would send it
+# to any node's pod and a read would silently return another node's data.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cqlite-flight-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: cqlite-flight
+    easydblab/role: flight
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: cqlite-flight
+  ports:
+    - name: flight-grpc
+      port: __FLIGHT_PORT__
+      targetPort: flight-grpc
+      nodePort: 30816
+      protocol: TCP

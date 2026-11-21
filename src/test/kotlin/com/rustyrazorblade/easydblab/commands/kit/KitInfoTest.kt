@@ -92,7 +92,7 @@ class KitInfoTest : BaseKoinTest() {
 
     @Test
     fun `kit info in a cluster workspace resolves endpoints to the node private IP`() {
-        ClusterStateManager(stateFile).save(
+        ClusterStateManager(stateFile).replace(
             ClusterState(
                 name = "test-cluster",
                 initConfig = InitConfig(region = "us-west-2"),

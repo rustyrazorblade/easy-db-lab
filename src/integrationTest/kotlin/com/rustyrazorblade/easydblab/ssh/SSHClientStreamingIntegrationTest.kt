@@ -19,6 +19,7 @@ import org.testcontainers.images.builder.Transferable
 import java.io.File
 import java.time.Duration
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -122,6 +123,41 @@ internal class SSHClientStreamingIntegrationTest {
     }
 
     /**
+     * Ctrl-C in the REPL interrupts the command thread. MINA's own wait ignores an interrupt, so the
+     * command ran to its end; the interrupt must end the call now, and the session must still run
+     * the next command.
+     */
+    @Test
+    fun `an interrupted caller stops a running command, and the session runs the next one`() {
+        val outcome = CompletableFuture<Throwable?>()
+        val caller =
+            Thread.ofVirtual().start {
+                val failure = runCatching { client().executeRemoteCommand("echo long-start; sleep 60", sink, secret = false) }
+                outcome.complete(failure.exceptionOrNull())
+            }
+        await("long-start") { lines(NodeStream.Stdout).contains("long-start") }
+        val interruptedAt = System.nanoTime()
+
+        caller.interrupt()
+        val failure = outcome.get(SATURATION_DEADLINE_SECONDS, TimeUnit.SECONDS)
+
+        assertThat(failure).isInstanceOf(InterruptedException::class.java)
+        assertThat(Duration.ofNanos(System.nanoTime() - interruptedAt)).isLessThan(Duration.ofSeconds(INTERRUPT_STOP_SECONDS))
+        assertThat(client().executeRemoteCommand("echo after", null, secret = false).text.trim()).isEqualTo("after")
+    }
+
+    private fun await(
+        what: String,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(SATURATION_DEADLINE_SECONDS).toNanos()
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "timed out waiting for $what" }
+            Thread.sleep(POLL_MS)
+        }
+    }
+
+    /**
      * A virtual caller's SCP calls run on a platform thread; the SCP client must be in hand before
      * that hop, or the platform thread waits for the lock its virtual caller holds.
      */
@@ -154,6 +190,8 @@ internal class SSHClientStreamingIntegrationTest {
         private const val CALLERS_PER_CARRIER = 3
         private const val SLOW_SINK_MS = 200L
         private const val SATURATION_DEADLINE_SECONDS = 60L
+        private const val INTERRUPT_STOP_SECONDS = 10L
+        private const val POLL_MS = 50L
 
         /** `0600`: sshd refuses an `authorized_keys` others can write. */
         private const val AUTHORIZED_KEYS_MODE = 384

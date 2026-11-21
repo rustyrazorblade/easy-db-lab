@@ -14,8 +14,9 @@ import picocli.CommandLine
  * fail. This strategy clears the flag, prints one `Interrupted` line to the command's error
  * stream and returns the error exit code, so the REPL is ready for the next line.
  *
- * A command that is not a [PicoCommand] (a group with no command of its own) runs as picocli
- * runs it, through [CommandLine.RunLast].
+ * A command that is not a [PicoCommand] (a plain picocli `Runnable` or `Callable`) runs as
+ * picocli runs it, through [CommandLine.RunLast], which wraps the command's exception in a
+ * [CommandLine.ExecutionException]; an interrupt there ends the line the same way.
  */
 class ReplExecutionStrategy(
     private val runCommand: (PicoCommand) -> Int,
@@ -27,14 +28,22 @@ class ReplExecutionStrategy(
         return try {
             if (command != null) runCommand(command) else CommandLine.RunLast().execute(parseResult)
         } catch (_: InterruptedException) {
-            Thread.interrupted()
-            deepest
-                .commandSpec()
-                .commandLine()
-                .err
-                .println(INTERRUPTED_MESSAGE)
-            Constants.ExitCodes.ERROR
+            interrupted(deepest)
+        } catch (e: CommandLine.ExecutionException) {
+            if (e.cause !is InterruptedException) throw e
+            interrupted(deepest)
         }
+    }
+
+    /** Clears the interrupt flag and reports the cancelled line on [line]'s error stream. */
+    private fun interrupted(line: CommandLine.ParseResult): Int {
+        Thread.interrupted()
+        line
+            .commandSpec()
+            .commandLine()
+            .err
+            .println(INTERRUPTED_MESSAGE)
+        return Constants.ExitCodes.ERROR
     }
 
     private companion object {

@@ -25,6 +25,7 @@ import java.io.InputStream
 import java.io.PrintStream
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.util.concurrent.Callable
 
 class ReplTest : BaseKoinTest() {
     @Command(name = "", subcommands = [Db::class, Info::class, Run::class, Secret::class])
@@ -81,7 +82,7 @@ class ReplTest : BaseKoinTest() {
     }
 
     /** A root like the REPL's: a lifecycle command and a plain picocli command. */
-    @Command(name = "", subcommands = [Work::class, Plain::class])
+    @Command(name = "", subcommands = [Work::class, Plain::class, Cancelled::class])
     class PicoRoot : Runnable {
         override fun run() = Unit
     }
@@ -94,6 +95,15 @@ class ReplTest : BaseKoinTest() {
     @Command(name = "plain")
     class Plain : Runnable {
         override fun run() = Unit
+    }
+
+    /** A plain picocli command cancelled as jline cancels it: the flag set, then the throw. */
+    @Command(name = "cancelled")
+    class Cancelled : Callable<Int> {
+        override fun call(): Int {
+            Thread.currentThread().interrupt()
+            throw InterruptedException("sleep interrupted")
+        }
     }
 
     private val terminal: Terminal = testTerminal(ByteArrayInputStream(ByteArray(0)), ByteArrayOutputStream())
@@ -267,7 +277,7 @@ class ReplTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a line naming a group with no command of its own runs as picocli runs it`() {
+    fun `a line naming a non-lifecycle command runs as picocli runs it`() {
         val ranThroughLifecycle = mutableListOf<PicoCommand>()
         val root =
             CommandLine(PicoRoot()).also {
@@ -281,6 +291,24 @@ class ReplTest : BaseKoinTest() {
         assertThat(plain).isEqualTo(0)
         assertThat(work).isEqualTo(EXIT_CODE)
         assertThat(ranThroughLifecycle.single()).isInstanceOf(Work::class.java)
+    }
+
+    @Test
+    fun `Ctrl-C in a non-lifecycle command ends the line with one message`() {
+        val err = StringWriter()
+        val root =
+            CommandLine(PicoRoot()).also {
+                it.executionStrategy = ReplExecutionStrategy { EXIT_CODE }
+                it.err = PrintWriter(err, true)
+            }
+        val dispatcher = replShell(root, ByteArrayOutputStream()).dispatcher()
+
+        val cancelled = dispatcher.execute("cancelled")
+
+        assertThat(cancelled).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(err.toString().trim()).isEqualTo("Interrupted")
+        assertThat(Thread.interrupted()).isFalse()
+        assertThat(dispatcher.execute("plain")).isEqualTo(0)
     }
 
     @Test

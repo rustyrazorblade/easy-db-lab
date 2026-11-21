@@ -356,7 +356,7 @@ When the collector offers spans faster than Tempo can write them, Tempo holds pu
 max by (cluster, host_name) (otelcol_exporter_queue_size{exporter="otlp_grpc/tempo"})
 ```
 
-Tempo's time spent holding pushes is `tempo_live_store_back_pressure_seconds_total{reason="waiting_for_live_traces"}`.
+Tempo's time spent holding pushes is `tempo_live_store_back_pressure_seconds_total{reason="waiting_for_live_traces"}`. The Tempo dashboard graphs it as "Push Stall Time", beside "Live Trace Bytes" and "Spans Lost Sending to Tempo (collector)".
 
 ### High Latency
 

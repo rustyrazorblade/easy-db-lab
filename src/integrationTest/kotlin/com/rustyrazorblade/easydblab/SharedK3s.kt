@@ -2,15 +2,18 @@ package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.readiness.Readiness
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -47,8 +50,11 @@ object SharedK3s {
     /** The documents web server image, preloaded for the web server test. */
     const val WEB_SERVER_IMAGE = Constants.Grafana.Documents.WEB_SERVER_IMAGE
 
-    private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
+    private val NAMESPACE_READY_TIMEOUT: Duration = Duration.ofSeconds(60)
+    private val SERVICE_ACCOUNT_POLL: Duration = Duration.ofMillis(250)
     private const val LOG_TAIL_CHARS = 6000
+    private const val CONTROL_PLANE_LOG_TAIL_CHARS = 20_000
+    private val ORPHAN_CGROUP_NOISE = listOf("orphaned pod cgroup", "Failed to kill all the processes attached to cgroup")
 
     private const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
 
@@ -135,6 +141,18 @@ object SharedK3s {
     fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
 
     /**
+     * The last part of the K3s container's log without the kubelet's orphaned-pod-cgroup lines.
+     * Every K3s test container shares the host cgroup tree, so each kubelet sees the others' pod
+     * cgroups as orphans and logs several lines a second about them; unfiltered, they fill the tail.
+     */
+    private fun controlPlaneLogTail(): String =
+        container.logs
+            .lineSequence()
+            .filterNot { line -> ORPHAN_CGROUP_NOISE.any { it in line } }
+            .joinToString("\n")
+            .takeLast(CONTROL_PLANE_LOG_TAIL_CHARS)
+
+    /**
      * Creates [name] and waits for its `default` ServiceAccount, which the API server requires
      * before it admits a pod into the namespace.
      */
@@ -148,16 +166,16 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
-            try {
-                client
-                    .serviceAccounts()
-                    .inNamespace(name)
-                    .withName("default")
-                    .waitUntilCondition({ it != null }, NAMESPACE_READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            } catch (e: KubernetesClientTimeoutException) {
+            val lastRead = awaitDefaultServiceAccount(client, name)
+            if (lastRead !is ServiceAccountRead.Found) {
+                val lastReadFailure = (lastRead as? ServiceAccountRead.ReadFailure)?.cause
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
-                    "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
+                    "no default ServiceAccount in $name (the wait allows ${NAMESPACE_READY_TIMEOUT.toSeconds()}s); " +
+                        "last read: ${lastRead.describe()}\n" +
+                        "${runCatching { serviceAccountState(client, name) }.getOrElse {
+                            "service account state unavailable: ${it.messageOrString()}"
+                        }}\n" +
                         "${runCatching {
                             K3sDiagnostics.clusterDiagnostics(
                                 client,
@@ -165,10 +183,118 @@ object SharedK3s {
                             )
                         }.getOrElse {
                             "cluster diagnostics unavailable: ${it.messageOrString()}"
-                        }}\nK3s log tail:\n${logTail()}",
-                    e,
+                        }}\nK3s log tail, without orphaned pod cgroup lines:\n${controlPlaneLogTail()}",
+                    lastReadFailure,
                 )
             }
         }
+    }
+
+    /** One direct read of a namespace's `default` ServiceAccount. */
+    private sealed interface ServiceAccountRead {
+        fun describe(): String
+
+        data object Found : ServiceAccountRead {
+            override fun describe() = "found"
+        }
+
+        data object Absent : ServiceAccountRead {
+            override fun describe() = "absent"
+        }
+
+        /**
+         * A read that threw, unanswered ([Failed]) or refused ([Rejected]); the report names its
+         * exception as the failure's cause.
+         */
+        sealed interface ReadFailure : ServiceAccountRead {
+            val cause: KubernetesClientException
+        }
+
+        /** The read failed in a way the next read may not: a dropped connection or a 5xx. */
+        data class Failed(
+            override val cause: KubernetesClientException,
+        ) : ReadFailure {
+            override fun describe() = "failed: ${cause.messageOrString()}"
+        }
+
+        /** The server refused the read (a 403, a bad request); every next read would fail the same way. */
+        data class Rejected(
+            override val cause: KubernetesClientException,
+        ) : ReadFailure {
+            override fun describe() = "rejected (${cause.code}): ${cause.messageOrString()}"
+        }
+    }
+
+    /**
+     * Reads [namespace]'s `default` ServiceAccount directly until it exists, for at most
+     * [NAMESPACE_READY_TIMEOUT], and returns the last read. Each read is a plain GET, not a watch:
+     * in CI an informer's watch on this account sometimes never delivered the ADDED event, and the
+     * wait timed out with the account in place since the second the wait began.
+     *
+     * A read that the API server could not answer (no status code, so the connection failed) or
+     * answered with a 5xx is tried again within the budget. Any other failure (a 403, a bad request)
+     * would fail the same way every time, so it ends the wait at once and is returned as
+     * [ServiceAccountRead.Rejected], so the caller's report still carries the cluster's state. An
+     * interrupt ends the wait by throwing.
+     */
+    private fun awaitDefaultServiceAccount(
+        client: KubernetesClient,
+        namespace: String,
+    ): ServiceAccountRead {
+        val account =
+            client
+                .serviceAccounts()
+                .inNamespace(namespace)
+                .withName("default")
+        return pollUntil(
+            operationName = "default ServiceAccount in $namespace",
+            maxAttempts = Int.MAX_VALUE,
+            interval = SERVICE_ACCOUNT_POLL,
+            deadline = Instant.now().plus(NAMESPACE_READY_TIMEOUT),
+            isTransient = { false },
+            done = { it is ServiceAccountRead.Found || it is ServiceAccountRead.Rejected },
+        ) {
+            try {
+                if (account.get() == null) ServiceAccountRead.Absent else ServiceAccountRead.Found
+            } catch (e: KubernetesClientException) {
+                // fabric8 turns an interrupted read into a KubernetesClientException and sets the
+                // interrupt flag again; that read ends the wait, as any interrupt does.
+                if (Thread.currentThread().isInterrupted) throw e
+                if (e.isTransient()) ServiceAccountRead.Failed(e) else ServiceAccountRead.Rejected(e)
+            }
+        }
+    }
+
+    /**
+     * A code of 0 or less means the request never got an answer: fabric8 7.8 gives a laundered
+     * connection failure -1. A 5xx is the server's own fault.
+     */
+    private fun KubernetesClientException.isTransient(): Boolean = code <= 0 || code >= Constants.HttpStatus.SERVER_ERROR_MIN
+
+    /**
+     * Whether the ServiceAccount exists now (read directly, not through a watch) and when the
+     * controller-manager last renewed its leader lease. An existing account means the wait missed
+     * its event; a stale lease means the controller that creates the account had stalled.
+     */
+    private fun serviceAccountState(
+        client: KubernetesClient,
+        namespace: String,
+    ): String {
+        val account =
+            client
+                .serviceAccounts()
+                .inNamespace(namespace)
+                .withName("default")
+                .get()
+        val lease =
+            client
+                .leases()
+                .inNamespace("kube-system")
+                .withName("kube-controller-manager")
+                .get()
+        return "default ServiceAccount read directly: " +
+            (account?.metadata?.creationTimestamp?.let { "exists, created $it" } ?: "absent") +
+            "; kube-controller-manager lease: holder=${lease?.spec?.holderIdentity} " +
+            "renewed=${lease?.spec?.renewTime} now=${Instant.now()}"
     }
 }

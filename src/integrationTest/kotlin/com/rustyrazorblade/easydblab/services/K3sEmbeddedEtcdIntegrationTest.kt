@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.charleskorn.kaml.Yaml
 import com.github.dockerjava.api.model.Network.Ipam
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.SharedK3s
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.testcontainers.containers.Network
@@ -33,6 +37,12 @@ class K3sEmbeddedEtcdIntegrationTest {
         const val SUBNET = "172.31.250.0/28"
         const val GATEWAY = "172.31.250.1"
         const val CONTAINER_IP = "172.31.250.10"
+
+        // Pins the address K3s advertises, as an EC2 node's single private IP does. Once any class
+        // in the JVM has called Testcontainers.exposeHostPorts, every new container also joins the
+        // port-forwarding container's default-bridge network, and K3s then picked the bridge
+        // address, which a restart changes.
+        const val NODE_IP_DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/10-node-ip.yaml"
     }
 
     /** A network whose subnet is fixed, so [CONTAINER_IP] can be assigned statically. */
@@ -92,6 +102,10 @@ class K3sEmbeddedEtcdIntegrationTest {
                     cmd.withIpv4Address(CONTAINER_IP)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
         container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
+        container.withCopyToContainer(
+            Transferable.of(Yaml.default.encodeToString(K3sNodeIpConfig(nodeIp = CONTAINER_IP))),
+            NODE_IP_DROP_IN_PATH,
+        )
 
         network.use { _ ->
             container.use {
@@ -123,3 +137,9 @@ class K3sEmbeddedEtcdIntegrationTest {
             ?.firstOrNull { it.networkID == network.id }
             ?.ipAddress
 }
+
+/** The K3s config drop-in that pins the address the node advertises. */
+@Serializable
+private data class K3sNodeIpConfig(
+    @SerialName("node-ip") val nodeIp: String,
+)

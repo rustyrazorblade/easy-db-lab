@@ -145,17 +145,8 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         pyroscope: GenericContainer<*>,
         service: String,
         folded: String,
-    ): HttpResponse<String> {
-        val name = URLEncoder.encode("$service{cluster=${state.clusterLabelName()}}", Charsets.UTF_8)
-        val request =
-            HttpRequest
-                .newBuilder(URI("${baseUrl(pyroscope)}/ingest?name=$name&format=folded"))
-                .header(Constants.Observability.TENANT_HEADER, TENANT)
-                .timeout(PUSH_TIMEOUT)
-                .POST(HttpRequest.BodyPublishers.ofString(folded))
-                .build()
-        return http.send(request, HttpResponse.BodyHandlers.ofString())
-    }
+    ): HttpResponse<String> =
+        ObservabilityBackends.pushFolded(pyroscope, TENANT, "$service{cluster=${state.clusterLabelName()}}", folded, PUSH_TIMEOUT)
 
     /**
      * Releases [pyroscope]'s start gate, pushes a small profile every [PUSH_PERIOD] for

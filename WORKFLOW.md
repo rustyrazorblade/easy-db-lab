@@ -50,7 +50,7 @@ To improve throughput, batch small changes into one review train.
 
 - **Lifecycle**, one at a time, in this order:
   - `status:ready`: groomed and ready to start.
-  - `status:spec-review`: a feature's OpenSpec change waits for owner approval.
+  - `status:spec-review`: a feature's OpenSpec change passed its plan panel and waits for owner approval.
   - `status:in-progress`: implementation is in progress.
   - `status:in-review`: the PR is open and goes through review and CI.
   - `status:addressing`: the agent fixes review or CI findings.
@@ -59,16 +59,19 @@ To improve throughput, batch small changes into one review train.
   - `agent:active`: an agent works on the issue now.  Do not start a second one.
   - `blocked`: a hard dependency stops the issue.  Do not start it.
 - **Gates:**
-  - `requires-aws`: the change must pass a real AWS test before merge.
+  - `requires-aws`: the change makes AWS calls, and the PR must hold the AWS-side result of a real-cluster test (see "Real-cluster tests").
   - `requires-ami-bake`: the change touches `packer/` or something else baked into the AMI.
 
 The lead sets `requires-aws` and `requires-ami-bake` before it delegates.  It determines them from the issue's scope and the tree.  A later agent never decides either one.
 
 ## Agents and models
 
-- **Kotlin work:** `dev-skills:kotlin-dev`, in its own worktree.
+- **Plans:** an Opus agent writes the plan for each feature (see "Planning new work").  It owns the design decisions of that work.
+- **Builds of a plan:** `dev-skills:kotlin-dev` on Sonnet, in its own worktree, builds the mechanical tasks of an approved plan.  By default, judgement tasks and hard problems (concurrency, a design gap found during the build, a hard bug) go to Opus.  A step that the Sonnet agent fails twice goes back to Opus.
+- **Other Kotlin work:** `dev-skills:kotlin-dev`, in its own worktree.
 - **Small work** (bug fixes, chores, small changes): a Sonnet agent.
 - **Builds and tests:** a Sonnet `build-engineer` with a narrow brief: run the given Gradle tasks and return only the result and the failures.  The issue agent never runs a Gradle build in its own context.
+- **Load, stress and performance tests:** the `easy-db-lab-tester` agent, never inline.
 - **Other work:** the default model.
 
 The lead states the chosen agent and model in `lead.md`.
@@ -80,14 +83,33 @@ The lead states the chosen agent and model in `lead.md`.
 - An approved main-checkout change may be committed and pushed straight to `main` when the owner says so.  Otherwise it uses a branch and a PR.
 - The lead records each agent's worktree path and branch in `lead.md`.
 
-## Specs before code
+## Planning new work
 
-- **Features and behavior changes** need an owner-approved OpenSpec change before any code.
-  1. The agent writes the OpenSpec change: proposal, design, and spec deltas.
-  2. The agent renders the change as one self-contained HTML file and opens it with `open <file>`.  Use `dev-skills:ide-explain` or `dev-skills:walkthrough` to render it.
-  3. The agent sets `status:spec-review` and stops.  The lead tells the owner at once.
-  4. Code starts only after the owner approves.
-- **Bug fixes, chores and small changes** go straight to code.  Spec edits go in the same PR.
+The owner set this process on 2026-11-21 for all new work.  Work already in progress finishes in its own way.
+
+A **feature** is a new capability or a behavior change.  Bug fixes, chores, test-only work, docs and pure refactors are not features; they go straight to code, and spec edits go in the same PR.
+
+1. **Issue.**  Each piece of work has an issue.  In prose, write `#NNN (description)`, never a bare number.
+2. **Plan.**  An Opus plan agent writes the OpenSpec change under `openspec/changes/<name>/` and validates it with `openspec validate`.  Before any code, the change holds three parts:
+   - **The architecture plan** (`design.md`): the design, the alternatives, and how the design keeps provider types behind provider-neutral ports.
+   - **The test plan** (a "Test plan" section in `design.md`): for each requirement, its tests by name and tier (unit, integration, or real AWS).  Each test has a control that is seen to fail: break the check on purpose, see the test fail, then revert.  The plan states what runs in CI and what runs on a real cluster.
+   - **The task list** (`tasks.md`): each task is marked mechanical or judgement.
+3. **Pre-work plan panel.**  Four reviewers read the three parts, at the same time, before the first build task:
+   - **Adversarial:** tries to break the design: failure modes, races, wrong assumptions, partial failures of AWS or SSH calls, and concurrent commands in one workspace.
+   - **Test gaps:** finds requirements and failure paths with no test, tests that cannot fail, missing controls, timing-based tests, and mock-echo tests.
+   - **Tech debt:** finds coupling, duplication, new provider coupling, complexity, and work that the next step will throw away.
+   - **Performance and scale:** checks the design at the largest clusters the tool runs (about 100 nodes), and checks `up` and `down` time, AWS API call counts and rate limits, SSH fan-out, and observability volume and cardinality.  It flags any cost that grows with the node count in a loop that runs one node at a time.
+
+   Each reviewer grades each finding on one scale:
+   - **CRITICAL:** the design does not work, loses data, or breaks a `CLAUDE.md` rule.
+   - **MAJOR:** a real failure mode, a missing test on a decision path, or a cost that does not scale.  The plan must change.
+   - **MINOR:** a clarity or style point.  The planner may accept or decline it, with a reason.
+4. **Refinement.**  The panel writes one HTML report, linked from the change.  The planner revises the plan, and the same four reviewers review it again, up to 3 rounds.  Each round's report keeps the earlier findings and states how each one was closed.  Stop early when a round has no CRITICAL or MAJOR finding.  Never waive a performance or scale finding to end the loop.  If a CRITICAL or MAJOR finding is still open after round 3, it goes to the owner.
+5. **Zoom out.**  If a review finds a MAJOR error in something just revised, stop patching and re-examine the approach.  Put "refactor the abstraction above this" next to "patch this spot", and compare them on risk, size and how many future bugs each removes.  If a plan file passes 300 lines, split the change.
+6. **Real-cluster proof.**  A change that targets a measured limit (provisioning time, throughput, a scale limit) names a validation plan in the spec before code: the limit with today's baseline, the workload, the expected effect, and the pass criterion.  Run the same workload on the same cluster shape before and after, and put the numbers in the PR.
+7. **Owner approval.**  After the panel closes, the agent renders the change as one self-contained HTML file and opens it with `open <file>`.  Use `dev-skills:ide-explain` or `dev-skills:walkthrough` to render it.  The HTML links the panel report.  The agent sets `status:spec-review` and stops.  The lead tells the owner at once.  Code starts only after the owner approves.
+8. **The brief.**  Each build step gets a brief in `$CLAUDE_JOB_DIR/tmp/state/briefs/<name>.md`: the worktree and git rules, the sources, the edit points as `file:line`, the tests and controls by name, and the hand-back.  A brief has no context-size stop.
+9. **Build.**  A Sonnet agent builds the mechanical tasks; by default, judgement tasks go to Opus (see "Agents and models").  The review, CI and merge rules below still apply.
 
 Specs are the source of truth.  If a change conflicts with an existing spec, stop and tell the owner.
 
@@ -107,15 +129,17 @@ The compiler enforces the split.  `testcontainers`, `fabric8 kubernetes-server-m
 
 The integration tier needs a running Docker daemon.  If TestContainers does not start, local Docker is broken.  Say so and stop.  Never record a TestContainers failure as pre-existing or environment-specific.
 
-### Real AWS tests (`requires-aws`)
+### Real-cluster tests
 
 A mocked AWS client accepts a wrong parameter, a wrong region, or a missing permission.  Static review cannot prove an AWS call works.
+
+Every PR that is not docs-only gets a real-cluster QA run before it is marked ready (see "Merge").  The `requires-aws` label is the stricter case: the change makes AWS calls, and the PR must also hold the AWS-side result of those calls.  These rules apply to every real-cluster run:
 
 - The issue agent starts its own cluster, runs the test, and tears the cluster down.  It does not ask the owner first.
 - It uses the `easy-db-lab` profile and adds the tag `embark_offhours=off`.
 - It records the cluster name and workspace in its state file when the cluster starts.
 - It never leaves a cluster idle.
-- The PR holds the evidence: the commands, their output, and the AWS-side result.  "Verified manually" is not evidence.
+- The PR holds the evidence: the commands and their output, plus the AWS-side result for a `requires-aws` change.  "Verified manually" is not evidence.
 
 ### AMI bakes (`requires-ami-bake`)
 
@@ -169,10 +193,13 @@ Backwards compatibility is never a finding; clusters are ephemeral.  Large `stor
 
 ## CI
 
-`.github/workflows/pr-checks.yml` runs two jobs on every pull request and every push to `main`:
+`.github/workflows/pr-checks.yml` runs on every pull request and every push to `main`.  Its `changes` job classifies the changed paths (see "Docs-only PRs").  It gates these jobs:
 
+- `openspec`: `openspec validate --all`, when the PR changes `openspec/`.
 - `test`: `./gradlew test integrationTest testScripts koverXmlReport` on JDK 21.  `testScripts` runs every Docker-free shell-script test.
 - `quality`: `./gradlew ktlintCheck`, then `./gradlew detekt`, on JDK 21.
+
+If the `changes` job fails, all three jobs run.  Pushes to `main` always run all three.
 
 Path-filtered workflows run the Docker-backed script tests:
 
@@ -181,19 +208,41 @@ Path-filtered workflows run the Docker-backed script tests:
 
 Kover reports coverage on the PR, with an 80% floor overall and on changed files.
 
+### Docs-only PRs
+
+This section is the one definition of "docs-only".  Two sets of paths matter:
+
+- **CI docs-only paths:** `openspec/**` and the root process docs (`WORKFLOW.md`, `README.md`, `CONTRIBUTING.md`, `DEVELOPERS.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `history.md`).  Nothing in the build or the tests reads them.  The `changes` job in `pr-checks.yml` holds the same list.
+- **QA-exempt paths:** the CI docs-only paths, plus `docs/` and `test-plans/`.
+
+A PR that changes only CI docs-only paths gets `test` and `quality` as "skipped".  A required check accepts "skipped", so the PR can merge.  A PR that changes only QA-exempt paths needs no real-cluster QA run.
+
+- `docs/` and `test-plans/` are QA-exempt but not CI docs-only: unit tests read them.  `.claude/` and the root `CLAUDE.md` are neither.
+- Before you add a path to the CI list, check that no test or build task reads it.
+- If a PR changes `openspec/`, the `openspec` job runs `openspec validate --all`.
+- Pushes to `main` always run the full suite.
+
 If a test fails, the `test` job uploads the `spec-flow-failures` artifact.  It lists each failing test ID, one per line, across both tiers.  Script tests appear as `scripts.<task>`; run one with `./gradlew <task>`.  Use it to find the failing tests with `gh run download`.
 
 ## Merge
 
-Every issue agent's change reaches `main` through a pull request.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
+Every issue agent's change reaches `main` through a pull request.
 
-A ruleset named `main` lists the `test`, `quality` and `claude-review` checks, but its enforcement is disabled, so GitHub does not enforce them.  The agent holds the gate itself.  Read the ruleset with `gh api repos/OWNER/REPO/rulesets/<id>`; the classic branch-protection endpoint is misleading.
+Open each PR as a draft.  Mark it ready only after a real-cluster QA run with the easy-db-lab plugin (`/easy-db-lab:run`), and after a PR comment that says what was tested.  Use an existing plan in `test-plans/` only if it runs the code that changed.  If a plan almost fits, extend it in the PR.  If no plan fits, write one with `/easy-db-lab:plan` and add it to the PR.  The comment names the plan and the steps that run the change, the cluster shape, the commands, the expected and seen results, and what was not tested.  A PR that changes only QA-exempt paths (see "Docs-only PRs") needs no cluster run.  `CONTRIBUTING.md` holds the same rule for outside contributors.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
+
+Two GitHub settings list required checks:
+
+- A ruleset named `main` lists `test`, `quality` and `claude-review`.  Its enforcement is disabled.
+- Classic branch protection on `main` requires `test` and `quality`.  It does not enforce them on admins, so an admin merge can pass them.
+
+The agent holds the gate itself and does not rely on either setting.  Read them with `gh api repos/OWNER/REPO/rulesets/<id>` and `gh api repos/OWNER/REPO/branches/main/protection`.
 
 The issue agent squash-merges its own PR when all of these are true:
 
 1. The five review lenses have no blocking findings.
-2. If the issue has `requires-aws`, the real AWS test passed and the PR holds the evidence.
-3. `test`, `quality` and `claude-review` are green.
+2. The real-cluster QA comment is on the PR, and the PR is marked ready.  A QA-exempt PR is marked ready with no QA comment.
+3. If the issue has `requires-aws`, the PR holds the AWS-side result.
+4. `test`, `quality` and `claude-review` are green, or `test` and `quality` are skipped for a CI docs-only PR and the `changes` job is green.  If the PR changes `openspec/`, the `openspec` job is green.  roborev passed.
 
 Rules for the merge:
 

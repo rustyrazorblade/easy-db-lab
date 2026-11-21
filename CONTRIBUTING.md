@@ -11,9 +11,10 @@ Open a pull request as a draft.  Mark it ready for review only after you have te
    /plugin install easy-db-lab@rustyrazorblade-plugins
    ```
 
-2. Write a test plan for your change with the [`plan` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/plan) (`/easy-db-lab:plan`).
+2. Find a test plan for your change.  If a plan in [`test-plans/`](test-plans/) covers the area you changed, use it.  If no plan covers it, write one with the [`plan` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/plan) (`/easy-db-lab:plan`), and add it to `test-plans/` in your pull request.
 3. Run it with the [`run` skill](https://github.com/rustyrazorblade/skills/tree/main/plugins/easy-db-lab/skills/run) (`/easy-db-lab:run`).  The skill provisions the cluster, runs each step, writes a lab report, and tears the cluster down.
 4. Post a comment on the pull request that says what you tested:
+   - the test plan you ran;
    - the cluster shape (node count, instance types, database and version);
    - the commands you ran;
    - what you expected, and what you saw;

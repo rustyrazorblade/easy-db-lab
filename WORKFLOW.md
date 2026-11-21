@@ -213,7 +213,7 @@ If a test fails, the `test` job uploads the `spec-flow-failures` artifact.  It l
 
 Every issue agent's change reaches `main` through a pull request.
 
-Open each PR as a draft.  Mark it ready only after a real-cluster QA run with the easy-db-lab plugin (`/easy-db-lab:plan`, then `/easy-db-lab:run`), and after a PR comment that says what was tested: the cluster shape, the commands, the expected and seen results, and what was not tested.  A docs-only PR needs no cluster run.  `CONTRIBUTING.md` holds the same rule for outside contributors.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
+Open each PR as a draft.  Mark it ready only after a real-cluster QA run with the easy-db-lab plugin (`/easy-db-lab:run`), and after a PR comment that says what was tested.  Use an existing plan in `test-plans/` when one covers the change; otherwise write one with `/easy-db-lab:plan` and add it to the PR.  The comment names the plan, the cluster shape, the commands, the expected and seen results, and what was not tested.  A docs-only PR needs no cluster run.  `CONTRIBUTING.md` holds the same rule for outside contributors.  The only direct pushes are main-checkout changes that the owner approved for a direct push (see "Worktrees").
 
 A ruleset named `main` lists the `test`, `quality` and `claude-review` checks, but its enforcement is disabled, so GitHub does not enforce them.  The agent holds the gate itself.  Read the ruleset with `gh api repos/OWNER/REPO/rulesets/<id>`; the classic branch-protection endpoint is misleading.
 

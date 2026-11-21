@@ -1,8 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.charleskorn.kaml.Yaml
 import com.github.dockerjava.api.model.Network.Ipam
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.SharedK3s
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.testcontainers.containers.Network
@@ -98,7 +102,10 @@ class K3sEmbeddedEtcdIntegrationTest {
                     cmd.withIpv4Address(CONTAINER_IP)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
         container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
-        container.withCopyToContainer(Transferable.of("node-ip: $CONTAINER_IP\n"), NODE_IP_DROP_IN_PATH)
+        container.withCopyToContainer(
+            Transferable.of(Yaml.default.encodeToString(K3sNodeIpConfig(nodeIp = CONTAINER_IP))),
+            NODE_IP_DROP_IN_PATH,
+        )
 
         network.use { _ ->
             container.use {
@@ -130,3 +137,9 @@ class K3sEmbeddedEtcdIntegrationTest {
             ?.firstOrNull { it.networkID == network.id }
             ?.ipAddress
 }
+
+/** The K3s config drop-in that pins the address the node advertises. */
+@Serializable
+private data class K3sNodeIpConfig(
+    @SerialName("node-ip") val nodeIp: String,
+)

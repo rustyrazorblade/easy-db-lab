@@ -55,6 +55,7 @@ endpoints:
     scheme: ""           # optional: used for JDBC URLs (jdbc type only)
     path: ""             # optional: appended to URL (http/https/jdbc only)
     database: ""         # optional: logical database name (postgresql and mysql types)
+    pod-selector: ""     # optional: label selector of the one pod serving a hostPort endpoint (see Exposing Client Ports)
 
 args:
   - flag: --workers
@@ -1049,6 +1050,38 @@ spec:
       targetPort: 1234
       nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
 ```
+
+### Endpoints served by one pod
+
+The Presto and Trino coordinators predate this rule: their helm chart patch serves 8080 as a
+`hostPort`, so only the node that runs the coordinator pod answers, and the scheduler can put it
+on any node of the type. Such an endpoint names that pod with `pod-selector` (a label selector;
+`${KIT_NAME}` is filled with the instance name):
+
+```yaml
+endpoints:
+  - name: "JDBC"
+    node-type: app
+    port: 8080
+    type: jdbc
+    scheme: presto
+    pod-selector: "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
+```
+
+Every consumer of the endpoint then lists the pods that match the selector in the kit's
+runtime namespace and uses the node of a running, ready pod that is not being deleted:
+
+- `<kit> sql` connects to that node. When no such pod exists, it fails with a message that
+  names the endpoint, the selector and the namespace, and it does not try a connection.
+- A bench kit that targets this kit gets `TARGET_*` variables that name that node. When no pod
+  serves the endpoint, it gets no variables for it, and a warning is logged.
+- `<kit> status`, the endpoints `<kit> start` reports, and `status` list the endpoint only at
+  that node, and leave it out, with a logged warning, when no pod serves it.
+- `kit info` reads no cluster API, so it lists the endpoint by its port and points at
+  `<kit> status`.
+
+An endpoint with no `pod-selector` is served on every node of its node type: the displays list
+every such node, and `sql` and `TARGET_*` use the first one.
 
 ## Adding a New Kit
 

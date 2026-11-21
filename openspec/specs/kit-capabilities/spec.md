@@ -69,6 +69,59 @@ before connecting, required for drivers that do not auto-register via ServiceLoa
 - **WHEN** no nodes of the endpoint's node type exist in cluster state
 - **THEN** an error is emitted before any connection is attempted
 
+### Requirement: Kit endpoints resolve to the nodes that serve them
+
+Any kit endpoint MAY declare a `pod-selector`: a label selector, with `${KIT_NAME}` filled
+with the kit instance name, for the one pod that serves the endpoint's port as a `hostPort`.
+Its serving node SHALL be the host IP of a pod that matches the selector in the kit's runtime
+namespace (`default` without a runtime) and is running, has every container ready, and is not
+being deleted; with several such pods, the first by name. No consumer SHALL fall back to
+another node of the endpoint's node type.
+
+An endpoint with no `pod-selector` is served on every node of its node type (a NodePort). The
+resolution SHALL be kit-generic (no kit name or driver appears in it), and every consumer SHALL
+use it (`services/KitEndpointHost`):
+
+- `sql` SHALL connect to the serving node, or to the first node of the type for a NodePort.
+- A bench kit's `TARGET_*` variables (spec `kit-cross-targeting`) SHALL name the serving node,
+  or the first node of the type for a NodePort. A `pod-selector` endpoint with no serving pod
+  yields no variables, and the skip is logged as a warning.
+- `<kit> status`, the endpoints `<kit> start` reports, and `status` / the server's status
+  (spec `server`) SHALL list a `pod-selector` endpoint only at its serving node, and leave it
+  out, with a logged warning, when no pod serves it.
+- `kit info` reads no cluster API, so it SHALL list a `pod-selector` endpoint by its bare port
+  with a pointer to `<kit> status`, never at a node address.
+
+The Presto and Trino UI and `JDBC` endpoints, both served by the coordinator's hostPort 8080,
+SHALL declare the coordinator pod as their `pod-selector`.
+
+#### Scenario: Coordinator on a node other than the first
+- **WHEN** a kit's `jdbc` endpoint declares a `pod-selector`
+- **AND** the matching ready pod runs on an app node other than the first one in cluster state
+- **THEN** `sql` connects to that pod's node, through the SOCKS bridge when one is in use
+
+#### Scenario: No pod serves the endpoint
+- **WHEN** a kit's `jdbc` endpoint declares a `pod-selector`
+- **AND** no running, ready, non-terminating pod matches it
+- **THEN** `sql` emits an error naming the endpoint, the selector and the namespace, and no connection is attempted
+
+#### Scenario: Pod query fails
+- **WHEN** listing the pods that match the selector fails
+- **THEN** `sql` emits an error that carries the cause, and no connection is attempted
+
+#### Scenario: A bench kit targets the coordinator's node
+- **WHEN** a bench kit runs with `TARGET=presto`
+- **AND** the presto coordinator runs on an app node other than the first one in cluster state
+- **THEN** `TARGET_JDBC_URL` names the coordinator's node
+
+#### Scenario: Status shows the coordinator's node only
+- **WHEN** the presto kit is running with its coordinator on the second app node
+- **THEN** `presto status` and `status` list the UI and `JDBC` endpoints at that node, and at no other app node
+
+#### Scenario: kit info does not guess the node
+- **WHEN** the user runs `kit info presto` in a cluster workspace
+- **THEN** the `JDBC` endpoint is listed by its port with a pointer to `presto status`, and no app node address
+
 ### Requirement: Capabilities and @KitCommand commands are additive
 
 Capability-generated commands and `@KitCommand`-annotated Kotlin commands SHALL both

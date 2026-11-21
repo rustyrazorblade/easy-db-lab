@@ -31,6 +31,7 @@ data class KubernetesJob(
  * @property terminating Whether the pod has been deleted and is shutting down
  * @property nodeName The node the pod is scheduled on (its host alias); empty while unscheduled
  * @property imagePullFailure The first container that cannot pull its image, or null
+ * @property hostIp The IP of the node the pod runs on (`status.hostIP`); empty while unscheduled
  */
 data class KubernetesPod(
     val namespace: String,
@@ -42,6 +43,7 @@ data class KubernetesPod(
     val terminating: Boolean = false,
     val nodeName: String = "",
     val imagePullFailure: ImagePullFailure? = null,
+    val hostIp: String = "",
 )
 
 /**

@@ -167,6 +167,29 @@ class KitInfoTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a pod-selector endpoint is never listed at a node, which may not run its pod`() {
+        val config =
+            KitConfig(
+                name = "mykit",
+                endpoints =
+                    listOf(
+                        KitEndpoint(
+                            name = "api",
+                            nodeType = "db",
+                            port = 8080,
+                            type = KitEndpoint.EndpointType.HTTP,
+                            podSelector = "app=mykit",
+                        ),
+                    ),
+            )
+
+        val output = KitInfo.buildInfoText(config, emptyList(), hosts = dbHosts)
+
+        assertThat(output).contains("api  db  :8080 (on the node that runs its pod; see 'mykit status')  http")
+        assertThat(output).doesNotContain("10.0.2.1")
+    }
+
+    @Test
     fun `presto info shows type and description`() {
         val output = buildInfo("presto")
         assertThat(output).contains("presto")

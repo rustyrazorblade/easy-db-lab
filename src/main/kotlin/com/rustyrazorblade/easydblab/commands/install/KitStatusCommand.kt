@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.podSelector
 import com.rustyrazorblade.easydblab.services.withKitName
@@ -131,7 +132,8 @@ class KitStatusCommand(
         }
 
     private fun printEndpoints() {
-        val resolved = KitEndpointAddresses.resolve(installConfig.endpoints, clusterState.hosts)
+        val resolved =
+            KitEndpointAddresses.resolve(installConfig, kitName, clusterState.hosts, KitEndpointHost.of { kubeService })
         if (resolved.isNotEmpty()) println(KitEndpointAddresses.formatLines(resolved))
     }
 

@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -163,7 +164,7 @@ class ClusterStatusCollector(
             .filter { it.name in state.runningKits }
             .sortedBy { it.name }
             .map { kitDir ->
-                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts)
+                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts, KitEndpointHost.of { k8sService })
                 KitAccess(
                     name = kitDir.name,
                     endpoints =

@@ -1,15 +1,19 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
 import com.rustyrazorblade.easydblab.services.sql.defaultJdbcConnectionFactory
+import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
@@ -44,8 +48,11 @@ class KitSqlCommand(
     private val endpoint: KitEndpoint,
     private val user: String,
     private val driverClass: String = "",
+    private val namespace: String = Constants.K8s.NAMESPACE,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
 ) : PicoBaseCommand() {
+    private val k8sRead: K8sReadOperations by inject()
+
     @Parameters(index = "0", description = ["SQL statement to execute"], arity = "0..1")
     var statement: String? = null
 
@@ -92,6 +99,7 @@ class KitSqlCommand(
             clusterStateManager = clusterStateManager,
             endpoint = endpoint,
             user = user,
+            resolveHost = { hosts -> KitEndpointHost.of { k8sRead }.resolve(endpoint, kitName, namespace, hosts) },
             connectionFactory = connectionFactory,
         ).execute(sql.trim().trimEnd(';'))
             .onSuccess { result ->

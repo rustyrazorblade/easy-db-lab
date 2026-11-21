@@ -10,9 +10,11 @@ import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallStep
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitDashboardInstance
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
@@ -63,6 +65,7 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
+    private val k8sRead: K8sReadOperations by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
     private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
@@ -415,12 +418,12 @@ class KitRunnerCommand(
     }
 
     /**
-     * Reports where to connect: every declared endpoint at its node's private IP. The kit has
+     * Reports where to connect: every declared endpoint at the private IP of each node that serves it. The kit has
      * already started, so a failure here is logged and never turns the start into a failure.
      */
     private fun reportEndpoints(config: KitConfig) {
         runCatching {
-            val resolved = KitEndpointAddresses.resolve(config.endpoints, clusterState.hosts)
+            val resolved = KitEndpointAddresses.resolve(config, kitName, clusterState.hosts, KitEndpointHost.of { k8sRead })
             if (resolved.isNotEmpty()) {
                 eventBus.emit(
                     Event.Kit.EndpointsAvailable(

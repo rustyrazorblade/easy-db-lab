@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.reason
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
@@ -26,7 +26,14 @@ interface KitEndpointResolver {
     ): Map<String, String>
 }
 
-class DefaultKitEndpointResolver : KitEndpointResolver {
+/**
+ * Reads the target kit's `kit.yaml` and turns each endpoint into TARGET_* vars at the address
+ * [endpointHost] resolves: the first node of the endpoint's node type, or for an endpoint with a
+ * `pod-selector` the node that runs its pod, so a bench kit never targets a node that does not serve.
+ */
+class DefaultKitEndpointResolver(
+    private val endpointHost: KitEndpointHost,
+) : KitEndpointResolver {
     private val log = KotlinLogging.logger {}
 
     override fun resolveTargetVars(
@@ -50,25 +57,31 @@ class DefaultKitEndpointResolver : KitEndpointResolver {
         val sqlCap = kitConfig.capabilities.firstOrNull { it.type == "sql" }
         val result = mutableMapOf<String, String>()
 
+        val namespace = KitEndpointAddresses.namespaceOf(kitConfig)
         for (endpoint in kitConfig.endpoints) {
-            val serverType =
-                try {
-                    ServerType.from(endpoint.nodeType)
-                } catch (e: Exception) {
-                    log.debug {
-                        "Unknown node-type '${endpoint.nodeType}' in '${targetKitDir.name}' endpoint '${endpoint.name}' — skipping"
-                    }
-                    continue
-                }
-            val ip = clusterState.hosts[serverType]?.firstOrNull()?.privateIp
-            if (ip == null) {
-                log.debug { "No nodes of type '${endpoint.nodeType}' in cluster state — skipping endpoint '${endpoint.name}'" }
-                continue
-            }
-
-            result.putAll(endpoint.toTargetVars(ip, sqlCap))
+            endpointHost
+                .resolve(endpoint, targetKitDir.name, namespace, clusterState.hosts)
+                .onSuccess { ip -> result.putAll(endpoint.toTargetVars(ip, sqlCap)) }
+                .onFailure { e -> logSkipped(targetKitDir.name, endpoint, e) }
         }
 
         return result
+    }
+
+    /**
+     * A NodePort endpoint with no node of its type is routine (a kit declares endpoints on several
+     * node types), so it is a debug line; a `pod-selector` endpoint with no serving pod means the
+     * target kit is not running, which the user needs to see.
+     */
+    private fun logSkipped(
+        kitName: String,
+        endpoint: KitEndpoint,
+        e: Throwable,
+    ) {
+        val message = "No TARGET_* vars for '$kitName' endpoint '${endpoint.name}': ${e.reason()}"
+        when (endpoint.podSelector) {
+            "" -> log.debug { message }
+            else -> log.warn { message }
+        }
     }
 }

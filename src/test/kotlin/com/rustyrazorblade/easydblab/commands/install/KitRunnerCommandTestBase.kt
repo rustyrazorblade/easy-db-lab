@@ -16,7 +16,9 @@ import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaClient
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
@@ -92,7 +94,8 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
-                single<KitEndpointResolver> { DefaultKitEndpointResolver() }
+                single<K8sReadOperations> { mockKubeService }
+                single<KitEndpointResolver> { DefaultKitEndpointResolver(KitEndpointHost.of { mockKubeService }) }
                 single { KitProcessEnvironment(ToolWrapperInstaller()) }
                 single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },

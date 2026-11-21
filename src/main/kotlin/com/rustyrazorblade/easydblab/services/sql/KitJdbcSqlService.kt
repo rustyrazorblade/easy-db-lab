@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.services.sql
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.sql.Connection
 import java.util.Properties
@@ -13,13 +15,16 @@ import java.util.Properties
 /**
  * Executes SQL statements against a kit's JDBC endpoint.
  *
- * Resolves the target node IP from cluster state using the endpoint's declared node type,
- * then builds the connection URL via [KitEndpoint.formatUrl]. This replaces the
- * per-kit service classes that previously hard-coded the node type and URL pattern.
+ * Resolves the target node from cluster state with [resolveHost], then builds the connection
+ * URL via [KitEndpoint.formatUrl]. This replaces the per-kit service classes that previously
+ * hard-coded the node type and URL pattern.
  *
  * @property clusterStateManager Provides cluster state for node IP resolution.
  * @property endpoint JDBC endpoint declared in kit.yaml.
  * @property user JDBC username (from the sql capability config); omitted from properties if blank.
+ * @property resolveHost The address that serves [endpoint], given the cluster's hosts; defaults to
+ *   the first node of the endpoint's node type, which serves a NodePort. The `sql` command passes
+ *   [KitEndpointHost.resolve], which finds the node running the pod of a `pod-selector` endpoint.
  * @property connectionFactory Injectable for testing; defaults to [defaultJdbcConnectionFactory].
  * @property bridgeFactory Injectable for testing; defaults to [defaultSocksTcpBridgeFactory].
  */
@@ -27,6 +32,9 @@ class KitJdbcSqlService(
     private val clusterStateManager: ClusterStateManager,
     private val endpoint: KitEndpoint,
     private val user: String,
+    private val resolveHost: (Map<ServerType, List<ClusterHost>>) -> Result<String> = {
+        KitEndpointHost.firstHostOf(endpoint, it)
+    },
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
     private val bridgeFactory: SocksTcpBridgeFactory = defaultSocksTcpBridgeFactory,
 ) {
@@ -35,18 +43,12 @@ class KitJdbcSqlService(
     /**
      * Executes [sql] against the endpoint and returns a [SqlQueryResult] on success.
      *
-     * Returns [Result.failure] if no nodes of the endpoint's node type are found in
-     * cluster state, or if the JDBC driver throws an exception.
+     * Returns [Result.failure] if no node serves the endpoint (see [resolveHost]), before any
+     * connection is attempted, or if the JDBC driver throws an exception.
      */
     fun execute(sql: String): Result<SqlQueryResult> =
         runCatching {
-            val state = clusterStateManager.load()
-            val serverType = ServerType.from(endpoint.nodeType)
-            val hosts = state.hosts[serverType]
-            if (hosts.isNullOrEmpty()) {
-                error("No ${serverType.serverType} nodes found in cluster state. Is the cluster running?")
-            }
-            val privateIp = hosts.first().privateIp
+            val privateIp = resolveHost(clusterStateManager.load().hosts).getOrThrow()
             val url = endpoint.formatUrl(privateIp)
 
             val props =

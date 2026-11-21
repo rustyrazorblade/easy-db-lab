@@ -44,6 +44,14 @@ sealed class KitMetrics {
     data object HelmNative : KitMetrics()
 }
 
+/**
+ * A client endpoint a kit declares in `kit.yaml`: a port on the nodes of [nodeType].
+ *
+ * A NodePort endpoint answers on every node of its type, so it declares no [podSelector]. An
+ * endpoint served by a `hostPort` on one pod answers only on the node that runs that pod; it names
+ * the pod with [podSelector] (a label selector, `${KIT_NAME}` filled with the instance name), and
+ * [KitEndpointHost] resolves the node from the running pod instead of the first node of the type.
+ */
 @Serializable
 data class KitEndpoint(
     val name: String,
@@ -54,6 +62,8 @@ data class KitEndpoint(
     val scheme: String = "",
     val path: String = "",
     val database: String = "",
+    @SerialName("pod-selector")
+    val podSelector: String = "",
 ) {
     @Serializable
     enum class EndpointType {

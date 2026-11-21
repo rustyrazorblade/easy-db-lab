@@ -80,25 +80,21 @@ class KitStatusCommandTest : BaseKoinTest() {
             age = Duration.ofMinutes(1),
         )
 
+    private val bolt = KitEndpoint(name = "bolt", nodeType = "db", port = 30687, type = KitEndpoint.EndpointType.NATIVE)
+
     private fun runStatus(
         pods: List<KubernetesPod>,
         runtime: KitRuntime? = KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"),
-    ): String = runStatus(Result.success(pods), runtime)
+        endpoint: KitEndpoint = bolt,
+    ): String = runStatus(Result.success(pods), runtime, endpoint)
 
     private fun runStatus(
         podQuery: Result<List<KubernetesPod>>,
         runtime: KitRuntime?,
+        endpoint: KitEndpoint = bolt,
     ): String {
         whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(podQuery)
-        val config =
-            KitConfig(
-                name = "mydb",
-                runtime = runtime,
-                endpoints =
-                    listOf(
-                        KitEndpoint(name = "bolt", nodeType = "db", port = 30687, type = KitEndpoint.EndpointType.NATIVE),
-                    ),
-            )
+        val config = KitConfig(name = "mydb", runtime = runtime, endpoints = listOf(endpoint))
         val stdout = ByteArrayOutputStream()
         val original = System.out
         System.setOut(PrintStream(stdout))
@@ -116,6 +112,15 @@ class KitStatusCommandTest : BaseKoinTest() {
 
         assertThat(output).contains("Running (1/1 pods ready)")
         assertThat(output).contains("10.0.2.1:30687", "10.0.2.2:30687")
+    }
+
+    @Test
+    fun `a pod-selector endpoint is listed only at the node that runs its pod (#1224)`() {
+        val output = runStatus(listOf(runningPod.copy(hostIp = "10.0.2.2")), endpoint = bolt.copy(podSelector = "app=mydb"))
+
+        assertThat(output).contains("Running (1/1 pods ready)")
+        assertThat(output).contains("10.0.2.2:30687")
+        assertThat(output).doesNotContain("10.0.2.1:30687")
     }
 
     @Test

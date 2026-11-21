@@ -10,10 +10,11 @@ import java.io.File
 /**
  * Resolves a kit's declared [KitEndpoint]s to concrete addresses on the cluster.
  *
- * A kit declares each endpoint against a node type (`db`, `app`, `control`) and a
- * NodePort. The address a user connects to is that port on every host of the node
- * type, at the host's private IP. `kit info`, `<kit> status`, `<kit> start` and `status`
- * all report endpoints, so the lookup and the line format live here once.
+ * A kit declares each endpoint against a node type (`db`, `app`, `control`) and a port. A
+ * NodePort endpoint is reached at that port on every host of the node type, at the host's
+ * private IP. An endpoint with a `pod-selector` is a hostPort, reached only on the node that
+ * runs its pod, which [KitEndpointHost] finds. `kit info`, `<kit> status`, `<kit> start` and
+ * `status` all report endpoints, so the lookup and the line format live here once.
  */
 object KitEndpointAddresses {
     private val log = KotlinLogging.logger {}
@@ -41,26 +42,39 @@ object KitEndpointAddresses {
         return hosts[serverType]?.map { it.privateIp }.orEmpty()
     }
 
-    /** Resolves every endpoint against every host of its node type. */
+    /** The namespace the pods of a kit declared by [config] run in. */
+    fun namespaceOf(config: KitConfig): String = config.runtime?.namespace ?: Constants.K8s.NAMESPACE
+
+    /**
+     * Resolves every endpoint [config] declares for the kit instance [kitName] to the addresses
+     * that serve it, through [endpointHost]. A `pod-selector` endpoint whose pod cannot be found
+     * is left out, so no address of a node that does not serve it is shown.
+     */
     fun resolve(
-        endpoints: List<KitEndpoint>,
+        config: KitConfig,
+        kitName: String,
         hosts: Map<ServerType, List<ClusterHost>>,
+        endpointHost: KitEndpointHost,
     ): List<Resolved> =
-        endpoints.flatMap { endpoint ->
-            privateIps(endpoint.nodeType, hosts).map { ip -> Resolved(endpoint, endpoint.formatUrl(ip)) }
+        config.endpoints.flatMap { endpoint ->
+            endpointHost
+                .displayAddresses(endpoint, kitName, namespaceOf(config), hosts)
+                .map { ip -> Resolved(endpoint, endpoint.formatUrl(ip)) }
         }
 
     /** Why a running kit shows no endpoints when its descriptor cannot be read. */
     const val UNREADABLE_DESCRIPTOR = "cannot read ${Constants.Kit.CONFIG_FILE}"
 
     /**
-     * Resolves the endpoints declared in the `kit.yaml` of the installed kit in [kitDir].
+     * Resolves the endpoints declared in the `kit.yaml` of the installed kit in [kitDir], through
+     * [endpointHost].
      * Fails, and logs why, when the descriptor cannot be read, so a caller can tell an
      * unreadable descriptor from a kit that declares no endpoints.
      */
     fun resolveInstalled(
         kitDir: File,
         hosts: Map<ServerType, List<ClusterHost>>,
+        endpointHost: KitEndpointHost,
     ): Result<List<Resolved>> =
         runCatching {
             installConfigYaml.decodeFromString(
@@ -69,7 +83,7 @@ object KitEndpointAddresses {
             )
         }.onFailure { e ->
             log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
-        }.map { config -> resolve(config.endpoints, hosts) }
+        }.map { config -> resolve(config, kitDir.name, hosts, endpointHost) }
 
     /** The structured form of one resolved endpoint, as carried by kit events. */
     fun toEndpointAddress(resolved: Resolved): Event.Kit.EndpointAddress =

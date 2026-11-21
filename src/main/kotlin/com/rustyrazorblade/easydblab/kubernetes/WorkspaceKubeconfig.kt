@@ -22,13 +22,24 @@ object WorkspaceKubeconfig {
     /**
      * The kubeconfig of [workspace], which must exist.
      *
-     * @throws IllegalStateException with the absolute path when the file is missing
+     * @throws KubeconfigNotFoundException with the absolute path when the file is missing
      */
     fun require(workspace: File): File {
         val kubeconfig = file(workspace)
-        check(kubeconfig.isFile) {
-            "kubeconfig not found at $kubeconfig. Run this from the cluster workspace, after 'up' has written it."
+        if (!kubeconfig.isFile) {
+            throw KubeconfigNotFoundException(
+                "kubeconfig not found at $kubeconfig. Run this from the cluster workspace, after 'up' has written it.",
+            )
         }
         return kubeconfig
     }
 }
+
+/**
+ * The workspace has no kubeconfig yet, so the cluster cannot be reached from it. It is its own type
+ * so a caller can tell this from any other failed check while it makes a client, and it stays an
+ * [IllegalStateException] for the callers that catch that.
+ */
+class KubeconfigNotFoundException(
+    message: String,
+) : IllegalStateException(message)

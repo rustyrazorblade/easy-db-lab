@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -43,14 +44,14 @@ class CqlSessionServiceTest : BaseKoinTest() {
             availabilityZone = "us-west-2a",
         )
 
-    private fun stateWith(tailscaleActive: Boolean) =
+    private fun stateWith(networkMode: NetworkMode) =
         ClusterState(
             name = "test",
-            tailscaleActive = tailscaleActive,
+            networkMode = networkMode,
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Cassandra to listOf(testHost)),
             // As init records it: a Tailscale cluster is a Direct one.
-            exposure = Exposure.atInit(tailscaleActive = tailscaleActive),
+            exposure = Exposure.atInit(tailscaleActive = networkMode == NetworkMode.Tailscale),
         )
 
     override fun additionalTestModules(): List<Module> =
@@ -82,8 +83,8 @@ class CqlSessionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `does not start SOCKS proxy when tailscaleActive is true`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = true))
+    fun `does not start SOCKS proxy on a Tailscale cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWith(networkMode = NetworkMode.Tailscale))
 
         val service =
             DefaultCqlSessionService(
@@ -103,7 +104,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
     @Test
     fun `a Direct cluster gets a direct session with no SOCKS port, even without Tailscale`() {
         whenever(mockClusterStateManager.load())
-            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.Direct })
+            .thenReturn(stateWith(networkMode = NetworkMode.Socks).apply { exposure = Exposure.Direct })
 
         val service =
             DefaultCqlSessionService(
@@ -121,8 +122,8 @@ class CqlSessionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `uses proxied session with port from SocksProxyService when tailscaleActive is false`() {
-        whenever(mockClusterStateManager.load()).thenReturn(stateWith(tailscaleActive = false))
+    fun `uses proxied session with port from SocksProxyService on a SOCKS cluster`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWith(networkMode = NetworkMode.Socks))
 
         val service =
             DefaultCqlSessionService(
@@ -164,7 +165,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
     @Test
     fun `a port-forwarded cluster gets a single-endpoint session on the forward, with no SOCKS tunnel`() {
         whenever(mockClusterStateManager.load())
-            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.PortForward })
+            .thenReturn(stateWith(networkMode = NetworkMode.Socks).apply { exposure = Exposure.PortForward })
 
         val service =
             DefaultCqlSessionService(
@@ -185,7 +186,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
     @Test
     fun `a forward opened for a session that could not be created is closed when the CLI exits`() {
         whenever(mockClusterStateManager.load())
-            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.PortForward })
+            .thenReturn(stateWith(networkMode = NetworkMode.Socks).apply { exposure = Exposure.PortForward })
         whenever(mockSessionFactory.createSingleEndpointSession(any(), any())).thenThrow(IllegalStateException("no node"))
         val resources = DefaultResourceManager()
         val service =
@@ -206,7 +207,7 @@ class CqlSessionServiceTest : BaseKoinTest() {
     @Test
     fun `a forward that died is reopened on the same port before the next statement, keeping the session`() {
         whenever(mockClusterStateManager.load())
-            .thenReturn(stateWith(tailscaleActive = false).apply { exposure = Exposure.PortForward })
+            .thenReturn(stateWith(networkMode = NetworkMode.Socks).apply { exposure = Exposure.PortForward })
         val service =
             DefaultCqlSessionService(
                 socksProxyService = mockSocksProxy,

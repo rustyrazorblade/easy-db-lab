@@ -47,7 +47,7 @@ class DownLocalWorkspaceTest : BaseKoinTest() {
     fun `down reports no provisioner and leaves the workspace state as it was`() {
         val manager = get<ClusterStateManager>()
         val stateFile = File(context.workingDirectory, "state.json")
-        manager.save(
+        manager.replace(
             ClusterState(name = "local", environment = Environment.K3sDocker("/data")).apply {
                 markInfrastructureUp()
             },

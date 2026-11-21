@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
@@ -81,6 +82,10 @@ class KitInstallCommand(
     }
 
     override fun execute() {
+        if (requiredCapabilityIsMissing()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
         val placement = roleNodes.placement(RoleSelectors.from(clusterState))
         if (requiredNodePoolIsMissing(placement)) {
             exitCode = Constants.ExitCodes.ERROR
@@ -168,6 +173,17 @@ class KitInstallCommand(
         for ((variable, default) in resolvedDefaults) {
             if (variable !in passed) argValues[variable] = default
         }
+    }
+
+    /**
+     * Fails fast when the cluster's recorded capabilities lack one the kit `requires`: reports
+     * [Event.Kit.CapabilityMissing] and returns true, before anything is rendered or written.
+     */
+    private fun requiredCapabilityIsMissing(): Boolean {
+        val missing = config.missingCapabilities(NodeCapabilities.from(clusterState))
+        if (missing.isEmpty()) return false
+        eventBus.emit(Event.Kit.CapabilityMissing(kit = config.name, phase = Constants.Kit.PHASE_INSTALL, missing = missing))
+        return true
     }
 
     /**

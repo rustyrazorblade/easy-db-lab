@@ -64,7 +64,7 @@ class NodeCapabilitiesTest {
         val manager = ClusterStateManager(stateFile)
         val recorded = setOf(NodeCapability.HOST_NETWORK, NodeCapability.NODE_SSH)
 
-        manager.save(state(recorded))
+        manager.replace(state(recorded))
 
         assertThat(stateFile.readText()).contains("\"host-network\"", "\"node-ssh\"")
         assertThat(manager.load().capabilities).isEqualTo(recorded)

@@ -100,9 +100,17 @@ edl_require_dns_name() {
 
 # Creates ConfigMap $1 with role $2's labels from files given as <key>=<path>, in one call, so it
 # never exists without its labels. Every file must exist and hold data, and together they must fit
-# in EDL_CONFIGMAP_MAX_BYTES. It ends with `create`, not `apply`: apply's last-applied annotation
-# would hold a second copy of the data and lower the limit.
+# in EDL_CONFIGMAP_MAX_BYTES. A leading `--flag <flag>` names the kit flag whose file the user
+# chose, so the over-limit error tells the user what to shrink. It ends with `create`, not `apply`:
+# apply's last-applied annotation would hold a second copy of the data and lower the limit.
 edl_create_configmap() {
+  local flag="" hint=""
+  if [ "${1:-}" = --flag ]; then
+    [ "$#" -ge 2 ] && [ -n "$2" ] || edl_fail "edl_create_configmap --flag needs a flag name"
+    flag="$2"
+    shift 2
+  fi
+  [ "$#" -ge 2 ] || edl_fail "edl_create_configmap needs a name and a role"
   local name="$1" role="$2" spec path total=0 size
   shift 2
   [ "$#" -gt 0 ] || edl_fail "edl_create_configmap needs at least one <key>=<path>"
@@ -115,8 +123,9 @@ edl_create_configmap() {
     total=$((total + size))
     from+=("--from-file=${spec}")
   done
+  [ -z "${flag}" ] || hint=": the file given by ${flag} is too large; use a smaller one"
   [ "${total}" -le "${EDL_CONFIGMAP_MAX_BYTES}" ] ||
-    edl_fail "ConfigMap ${name} would hold ${total} bytes, more than the limit of ${EDL_CONFIGMAP_MAX_BYTES} bytes"
+    edl_fail "ConfigMap ${name} would hold ${total} bytes, more than the limit of ${EDL_CONFIGMAP_MAX_BYTES} bytes (Kubernetes caps a ConfigMap at 1 MiB)${hint}"
   (
     set -o pipefail
     kubectl create configmap "${name}" "${from[@]}" --dry-run=client -o yaml |

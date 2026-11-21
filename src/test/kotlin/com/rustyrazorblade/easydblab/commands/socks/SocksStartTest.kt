@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
@@ -71,7 +72,7 @@ class SocksStartTest : BaseKoinTest() {
     @BeforeEach
     fun captureEvents() {
         File(context.workingDirectory, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
-        save(clusterState(tailscale = false))
+        save(clusterState(NetworkMode.Socks))
         get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -95,20 +96,20 @@ class SocksStartTest : BaseKoinTest() {
         assertThat(launched).hasSize(1)
         assertThat(
             ProxyEnvFile(context.workingDirectory).read(),
-        ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID), direct = false))
+        ).isEqualTo(ProxyEnv(networkMode = NetworkMode.Socks, tunnel = RecordedTunnel(PORT, FAKE_PID)))
         assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = PORT, reused = false))
         assertThat(events.single().toDisplayString()).contains("127.0.0.1:$PORT").doesNotContain("localhost")
     }
 
     @Test
     fun `on a Tailscale cluster it starts nothing and says no tunnel is needed`() {
-        save(clusterState(tailscale = true))
+        save(clusterState(NetworkMode.Tailscale))
 
         SocksStart().call()
 
         assertThat(launched).isEmpty()
-        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
-        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded(Event.Proxy.TunnelNotNeeded.Reason.TAILSCALE))
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = null))
+        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded("tailscale"))
         assertThat(events.single().toDisplayString()).contains("Tailscale")
     }
 
@@ -120,14 +121,37 @@ class SocksStartTest : BaseKoinTest() {
         SocksStart().call()
 
         assertThat(launched).isEmpty()
-        assertThat(ProxyEnvFile(context.workingDirectory).read().direct).isTrue()
-        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded(Event.Proxy.TunnelNotNeeded.Reason.DIRECT))
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Direct, tunnel = null))
+        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded("direct"))
         assertThat(events.single().toDisplayString()).doesNotContain("Tailscale")
     }
 
     @Test
+    fun `in direct network mode it starts nothing, records direct and says tools connect directly`() {
+        save(clusterState(NetworkMode.Direct))
+
+        SocksStart().call()
+
+        assertThat(launched).isEmpty()
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Direct, tunnel = null))
+        assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded("direct"))
+        assertThat(events.single().toDisplayString()).contains("directly").doesNotContain("Tailscale")
+    }
+
+    @Test
+    fun `it installs the packaged wrappers before it records the mode`() {
+        save(clusterState(NetworkMode.Tailscale))
+
+        SocksStart().call()
+
+        val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+        assertThat(File(bin, Constants.ToolWrappers.MARKER)).exists()
+        assertThat(Constants.ToolWrappers.WRAPPED_TOOLS).allSatisfy { assertThat(File(bin, it).canExecute()).isTrue() }
+    }
+
+    @Test
     fun `with no running cluster it fails and starts nothing`() {
-        save(clusterState(tailscale = false).apply { markInfrastructureDown() })
+        save(clusterState(NetworkMode.Socks).apply { markInfrastructureDown() })
 
         assertThatThrownBy { SocksStart().call() }.isInstanceOf(CommandFailedException::class.java)
 
@@ -135,13 +159,13 @@ class SocksStartTest : BaseKoinTest() {
         assertThat(events).containsExactly(Event.Proxy.NoRunningCluster(context.workingDirectory.absolutePath))
     }
 
-    private fun save(state: ClusterState) = get<ClusterStateManager>().save(state)
+    private fun save(state: ClusterState) = get<ClusterStateManager>().replace(state)
 
-    private fun clusterState(tailscale: Boolean): ClusterState =
+    private fun clusterState(mode: NetworkMode): ClusterState =
         ClusterState(
             name = "test-cluster",
             hosts = mapOf(ServerType.Control to listOf(ClusterHost("54.1.2.3", "10.0.1.5", "control0", "us-west-2a", "i-ctrl"))),
-            tailscaleActive = tailscale,
+            networkMode = mode,
         ).apply { markInfrastructureUp() }
 
     private companion object {

@@ -39,7 +39,6 @@ class SparkDown : PicoBaseCommand() {
         emrService.terminateCluster(clusterId)
         emrService.waitForClusterTerminated(clusterId)
 
-        state.updateEmrCluster(null)
-        clusterStateManager.save(state)
+        clusterStateManager.update { it.updateEmrCluster(null) }
     }
 }

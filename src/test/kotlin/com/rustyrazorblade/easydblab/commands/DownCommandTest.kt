@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -28,10 +29,11 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.ByteArrayInputStream
+import java.io.File
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
-    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var stateManager: ClusterStateManager
     private lateinit var outputHandler: BufferedOutputHandler
 
     private val testControlHost =
@@ -76,25 +78,24 @@ class DownCommandTest : BaseKoinTest() {
         listOf(
             module {
                 single<AwsInfrastructureService> { mockTeardownService }
-                single<ClusterStateManager> { mockClusterStateManager }
+                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockTeardownService = mock()
-        mockClusterStateManager = mock()
+        stateManager = getKoin().get()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
-        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        stateManager.replace(testClusterState)
     }
 
     @Nested
     inner class CurrentClusterMode {
         @Test
         fun `execute reports error when no cluster state`() {
-            whenever(mockClusterStateManager.exists()).thenReturn(false)
+            File(tempDir, "state.json").delete()
 
             val command = Down()
             command.autoApprove = true
@@ -110,7 +111,7 @@ class DownCommandTest : BaseKoinTest() {
                 ClusterState(
                     name = "test-cluster",
                 )
-            whenever(mockClusterStateManager.load()).thenReturn(stateNoVpc)
+            stateManager.replace(stateNoVpc)
 
             val command = Down()
             command.autoApprove = true
@@ -162,7 +163,10 @@ class DownCommandTest : BaseKoinTest() {
             command.autoApprove = true
             command.execute()
 
-            verify(mockClusterStateManager).save(any())
+            val saved = stateManager.load()
+            assertThat(saved.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
+            assertThat(saved.hosts).isEmpty()
+            assertThat(saved.infrastructure).isNull()
         }
 
         @Test

@@ -378,6 +378,38 @@ Cleanup MUST remove only what easy-db-lab wrote in `bin/`: the ten tool wrappers
 - **THEN** the wrappers and the marker are removed
 - **AND** the other file and `bin/` remain
 
+### Requirement: Concurrent commands keep each other's cluster state changes
+
+Several commands MAY run in one workspace at once, for example `spark init` while `opensearch start` runs. A command MUST NOT write back a whole copy of the cluster state that it loaded earlier. Each change MUST be applied under an exclusive lock on `state.json.lock`, next to `state.json`: the command reads `state.json` again, applies only its own change to what it read, writes a temp file and renames it over `state.json`. A command MUST hold the lock only for that read, change and rename, never while it waits on a cloud provider or a node. Only `init`, and a restore that found no `state.json`, write a whole new state.
+
+A command that cannot take the lock within 30 seconds, or cannot parse `state.json`, MUST fail with a message that names the file, and MUST write nothing. A change to a workspace with no `state.json` MUST fail and tell the user to run `init`.
+
+#### Scenario: A long command keeps a change saved while it worked
+
+- **GIVEN** `spark init` loaded the cluster state and is waiting for its cluster
+- **WHEN** `opensearch start` saves its domain, and then `spark init` saves its cluster
+- **THEN** `state.json` holds both the OpenSearch domain and the Spark cluster
+
+#### Scenario: Concurrent writers lose nothing
+
+- **GIVEN** several processes, each with its own stale copy of the cluster state
+- **WHEN** they each save their own changes at the same time
+- **THEN** `state.json` holds every change each of them saved
+- **AND** no temp file is left beside it
+
+#### Scenario: A lock that is never released fails the change
+
+- **GIVEN** another process holds `state.json.lock`
+- **WHEN** a command tries to change the cluster state for longer than the timeout
+- **THEN** the command fails with a message that names the lock file
+- **AND** `state.json` is unchanged
+
+#### Scenario: Cleanup removes the lock file
+
+- **GIVEN** a workspace whose state was changed at least once
+- **WHEN** the user runs local cleanup
+- **THEN** `state.json.lock` is removed with `state.json`
+
 ### Requirement: Cluster State Backup
 
 The system MUST back up cluster configuration files to S3 for recovery.
@@ -719,7 +751,7 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 
 `init --local` MUST record:
 
-- `tailscaleActive: false`;
+- `networkMode: direct`;
 - the local Docker capability set, with any capability overrides applied;
 - Flannel as the CNI;
 - the Docker daemon's architecture for every role, not the JVM's (they differ under Rosetta), so `init --local` needs a running Docker daemon;

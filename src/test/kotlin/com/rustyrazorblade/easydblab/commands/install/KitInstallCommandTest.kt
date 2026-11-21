@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -488,7 +489,7 @@ class KitInstallCommandTest : BaseKoinTest() {
     @Test
     fun `kubectl get ns in an install shell step succeeds, so kit install exits 0`() {
         ProxyEnvFile(workingDir).apply {
-            recordTailscale(active = false)
+            recordNetworkMode(NetworkMode.Socks)
             recordTunnel(41234, ProcessHandle.current().pid())
         }
         val stubs =

@@ -20,8 +20,8 @@ private val log = KotlinLogging.logger {}
  * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] and the production
  * [com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory] uses it to configure the
  * HTTPS proxy for this client only. The global `socksProxyHost` is intentionally not set, so only
- * cluster traffic tunnels, and AWS and other traffic stay direct. When Tailscale is active, the proxy
- * is not started (no port published) and the client connects directly.
+ * cluster traffic tunnels, and AWS and other traffic stay direct. When the network mode needs no
+ * tunnel, the proxy is not started (no port published) and the client connects directly.
  */
 class K8sClientProvider(
     private val locator: KubeApiLocator,

@@ -9,6 +9,13 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 # app.kubernetes.io/instance=<release> label, verified for this chart version.
 TRINO_CHART_VERSION="1.42.2"
 
+# DEFERRED (pmcfadin/cqlite#2869): the planned `cqlite` catalog needs the third-party
+# `cqlite_flight` connector plugin, which is not in the stock trinodb/trino image. Its
+# delivery waits on the self-contained fat jar published in the cqlite GitHub Releases.
+# Once it lands, mount it into /usr/lib/trino/plugin/cqlite_flight/ through an extra
+# values fragment declared directly against this chart. Do not reintroduce a pod-start
+# Gradle resolve or a sibling `trino-values.yaml` discovery loop.
+
 # opensearch is an infrastructure database, not a kit: its catalog is added when the endpoint is known.
 edl_collect_catalogs trino "${SCRIPT_DIR}/../catalogs" "$(cd "${SCRIPT_DIR}/../.." && pwd)" opensearch
 edl_helm_upgrade_with_catalogs trino trinodb/trino "${TRINO_CHART_VERSION}" "${SCRIPT_DIR}/../values.yaml" additionalCatalogs

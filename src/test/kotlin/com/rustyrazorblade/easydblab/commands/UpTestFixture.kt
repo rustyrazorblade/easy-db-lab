@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -21,11 +22,14 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -46,6 +50,9 @@ import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.NodeTuningFiles
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
+import com.rustyrazorblade.easydblab.services.PodNetworkSysctls
+import com.rustyrazorblade.easydblab.services.PodNetworkTuning
+import com.rustyrazorblade.easydblab.services.PodSysctlProbeResult
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -76,6 +83,7 @@ import com.rustyrazorblade.easydblab.services.bringup.k3s.ControlPlaneTools
 import com.rustyrazorblade.easydblab.services.bringup.k3s.K3sBringUpSteps
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
+import io.fabric8.kubernetes.api.model.HasMetadata
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -83,6 +91,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -112,7 +121,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         const val K3S_URL = "https://10.0.0.1:6443"
     }
 
-    protected lateinit var mockClusterStateManager: ClusterStateManager
+    protected lateinit var clusterStateManager: ClusterStateManager
     protected lateinit var mockS3BucketService: AwsS3BucketService
     protected lateinit var mockVpcService: VpcService
     protected lateinit var mockAwsInfrastructureService: AwsInfrastructureService
@@ -233,7 +242,14 @@ abstract class UpTestFixture : BaseKoinTest() {
     /** The AWS side of `up`: state, bucket, network, instances and the provisioning services. */
     private fun provisioningModule(): Module =
         module {
-            single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+            single {
+                // The real manager on the test workspace; the spy only reports each saved state to [recordSaves].
+                spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                    doAnswer { invocation -> (invocation.callRealMethod() as ClusterState).also { onSave(it) } }
+                        .whenever(manager)
+                        .update(any())
+                }
+            }
             single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
             single<OpenSearchService> { mock<OpenSearchService>() }
             single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
@@ -260,6 +276,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<DocumentService> { mock<DocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             factory { KitStorageResolver(get(), get()) }
+            // The real tuning step over the mocked manifests; the API server admits every pod tuned.
+            single { PodNetworkTuning(get<K8sService>(), { PodSysctlProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
             single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles(), get<Context>().workingDirectory) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
@@ -276,7 +294,14 @@ abstract class UpTestFixture : BaseKoinTest() {
                 }
             }
             // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
-            single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
+            single {
+                ProxyPreflight(
+                    get(),
+                    get(),
+                    WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                    get<Context>().workingDirectory,
+                )
+            }
             single<SocksProxyService> {
                 mock<SocksProxyService> {
                     on { ensureRunning(any()) } doAnswer { invocation ->
@@ -422,7 +447,7 @@ abstract class UpTestFixture : BaseKoinTest() {
 
     @BeforeEach
     fun setupMocks() {
-        mockClusterStateManager = getKoin().get()
+        clusterStateManager = getKoin().get()
         mockS3BucketService = getKoin().get()
         mockVpcService = getKoin().get()
         mockAwsInfrastructureService = getKoin().get()
@@ -442,7 +467,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         resetFakes()
 
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
+        // `init` wrote the workspace state before `up` runs.
+        clusterStateManager.replace(happyState())
 
         whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
 
@@ -476,6 +502,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         stubCiliumSuccess()
 
         whenever(mockK8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
 
         whenever(mockObservabilityStackService.deploy()).thenReturn(Result.success(Unit))
 
@@ -531,7 +558,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     ): ClusterState =
         ClusterState(
             name = "test-cluster",
-            tailscaleActive = true,
+            networkMode = NetworkMode.Tailscale,
             initConfig =
                 InitConfig(
                     cassandraInstances = cassandraInstances,
@@ -564,8 +591,15 @@ abstract class UpTestFixture : BaseKoinTest() {
      */
     protected fun newUp(): Up = Up(tailnetRetryInterval = Duration.ZERO, timing = BringUpHarness.FAST)
 
+    private var onSave: (ClusterState) -> Unit = {}
+
+    /** Hands every state `up` saves, as saved, to [onSave], on the saving thread. */
+    protected fun recordSaves(onSave: (ClusterState) -> Unit) {
+        this.onSave = onSave
+    }
+
     protected fun overrideUser(user: User) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
+        clusterStateManager.replace(happyState())
         getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
     }
 }

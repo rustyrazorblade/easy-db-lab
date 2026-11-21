@@ -159,7 +159,7 @@ class RoleSelectorsTest {
     ) {
         val manager = ClusterStateManager(File(dir, "state.json"))
         val mapped = RoleSelectors.ANYWHERE.withMappings(RoleSelectors.parse(listOf("db=pool=databases")))
-        manager.save(state(mapped))
+        manager.replace(state(mapped))
 
         assertThat(RoleSelectors.from(manager.load())).isEqualTo(mapped)
     }

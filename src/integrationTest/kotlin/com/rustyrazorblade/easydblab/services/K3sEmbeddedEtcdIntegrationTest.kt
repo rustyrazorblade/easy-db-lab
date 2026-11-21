@@ -3,8 +3,11 @@ package com.rustyrazorblade.easydblab.services
 import com.github.dockerjava.api.model.Network.Ipam
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.docker.FreeSubnetPicker
+import com.rustyrazorblade.easydblab.network.Ipv4Cidr
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.Network
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.k3s.K3sContainer
@@ -23,36 +26,48 @@ class K3sEmbeddedEtcdIntegrationTest {
     private companion object {
         const val DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
         const val DATA_DIR = "/var/lib/rancher/k3s"
-        const val SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
         const val READY_TIMEOUT_SECONDS = 180L
         const val POLL_MILLIS = 2_000L
         const val LOG_TAIL_CHARS = 4_000
 
         // A user-defined network with a fixed address: on the default bridge a restarted container
         // can come back with another IP, and etcd then refuses the peer URL it stored, which an EC2
-        // node (it keeps its private IP across a reboot) never does.
-        const val SUBNET = "172.31.250.0/28"
-        const val GATEWAY = "172.31.250.1"
-        const val CONTAINER_IP = "172.31.250.10"
+        // node (it keeps its private IP across a reboot) never does. Docker assigns a static IP only
+        // on a network with a configured subnet, so one is picked from the private ranges that no
+        // network already on the Docker host overlaps (FreeSubnetPicker).
+        const val SUBNET_PREFIX = 28
+        const val GATEWAY_OFFSET = 1
+        const val CONTAINER_OFFSET = 10
+        const val HOST_PREFIX = 32
     }
 
-    /** A network whose subnet is fixed, so [CONTAINER_IP] can be assigned statically. */
-    private fun fixedSubnetNetwork(): Network =
+    /** A free [SUBNET_PREFIX] block of the private ranges: one no existing Docker network's subnet overlaps. */
+    private fun freeSubnet(): Ipv4Cidr {
+        val taken =
+            DockerClientFactory
+                .instance()
+                .client()
+                .listNetworksCmd()
+                .exec()
+                .flatMap { it.ipam?.config.orEmpty() }
+                .mapNotNull { config -> config.subnet?.let { Ipv4Cidr.parse(it).getOrNull() } }
+        return FreeSubnetPicker.pick(taken, SUBNET_PREFIX)
+            ?: error("Every /$SUBNET_PREFIX block of ${FreeSubnetPicker.PRIVATE_RANGES} overlaps an existing Docker network: $taken")
+    }
+
+    /** The address [offset] past [subnet]'s network address. */
+    private fun addressIn(
+        subnet: Ipv4Cidr,
+        offset: Int,
+    ): String = subnet.subnet(HOST_PREFIX, offset).address
+
+    /** A network on [subnet], so the container's address can be assigned statically. */
+    private fun fixedSubnetNetwork(subnet: Ipv4Cidr): Network =
         Network
             .builder()
             .createNetworkCmdModifier { cmd ->
-                cmd.withIpam(Ipam().withConfig(Ipam.Config().withSubnet(SUBNET).withGateway(GATEWAY)))
+                cmd.withIpam(Ipam().withConfig(Ipam.Config().withSubnet(subnet.value).withGateway(addressIn(subnet, GATEWAY_OFFSET))))
             }.build()
-
-    /** The heredoc body the server script writes to the datastore drop-in. */
-    private fun datastoreDropIn(): String {
-        val script =
-            checkNotNull(this::class.java.getResourceAsStream(SCRIPT_RESOURCE)) { "$SCRIPT_RESOURCE is not packaged" }
-                .use { it.readBytes().decodeToString() }
-        val start = script.indexOf("cat > $DROP_IN_PATH <<'EOF'\n")
-        check(start >= 0) { "start-k3s-server.sh does not write $DROP_IN_PATH" }
-        return script.substring(start).substringAfter("<<'EOF'\n").substringBefore("\nEOF\n") + "\n"
-    }
 
     private fun K3sContainer.kubectl(vararg args: String): String {
         val result = execInContainer("kubectl", *args)
@@ -91,7 +106,9 @@ class K3sEmbeddedEtcdIntegrationTest {
 
     @Test
     fun `K3s with the datastore drop-in runs on etcd and keeps its objects across a restart`() {
-        val network = fixedSubnetNetwork()
+        val subnet = freeSubnet()
+        val containerIp = addressIn(subnet, CONTAINER_OFFSET)
+        val network = fixedSubnetNetwork(subnet)
         val container =
             K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
@@ -100,9 +117,9 @@ class K3sEmbeddedEtcdIntegrationTest {
                     checkNotNull(cmd.hostConfig) { "the create command has no host config" }
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                    cmd.withIpv4Address(CONTAINER_IP)
+                    cmd.withIpv4Address(containerIp)
                 }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
-        container.withCopyToContainer(Transferable.of(datastoreDropIn()), DROP_IN_PATH)
+        container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
 
         network.use { _ ->
             container.use {
@@ -115,7 +132,7 @@ class K3sEmbeddedEtcdIntegrationTest {
 
                 it.kubectl("create", "configmap", "survives-restart", "--from-literal=k=v")
                 it.dockerClient.restartContainerCmd(it.containerId).exec()
-                assertThat(it.addressOn(network)).isEqualTo(CONTAINER_IP)
+                assertThat(it.addressOn(network)).isEqualTo(containerIp)
                 it.awaitRestarted()
 
                 assertThat(it.kubectl("get", "configmap", "survives-restart", "-o", "jsonpath={.data.k}")).isEqualTo("v")

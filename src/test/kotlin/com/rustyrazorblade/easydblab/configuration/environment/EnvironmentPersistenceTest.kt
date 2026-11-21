@@ -25,7 +25,7 @@ class EnvironmentPersistenceTest {
     ) {
         val manager = ClusterStateManager(File(tempDir, "state.json"))
 
-        manager.save(ClusterState(name = "test", environment = environment))
+        manager.replace(ClusterState(name = "test", environment = environment))
 
         assertThat(manager.load().environment).isEqualTo(environment)
     }
@@ -36,7 +36,7 @@ class EnvironmentPersistenceTest {
     ) {
         val stateFile = File(tempDir, "state.json")
 
-        ClusterStateManager(stateFile).save(
+        ClusterStateManager(stateFile).replace(
             ClusterState(name = "test", environment = Environment.K3sDocker("/data")),
         )
 

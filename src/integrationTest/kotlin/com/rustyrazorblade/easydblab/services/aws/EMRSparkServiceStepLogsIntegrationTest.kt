@@ -34,7 +34,7 @@ class EMRSparkServiceStepLogsIntegrationTest {
         val s3Client = SharedLocalStack.s3Client()
         SharedLocalStack.createBucketIfMissing(s3Client, bucket)
         val clusterState = ClusterState(name = "test-cluster", clusterId = "c-steplogs", s3Bucket = bucket)
-        val clusterStateManager = ClusterStateManager(File(tempDir.toFile(), "state.json")).also { it.save(clusterState) }
+        val clusterStateManager = ClusterStateManager(File(tempDir.toFile(), "state.json")).also { it.replace(clusterState) }
         val eventBus = EventBus()
         val objectStore = S3ObjectStore(s3Client, eventBus)
         val logsDir = tempDir.resolve("logs")

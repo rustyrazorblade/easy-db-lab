@@ -255,6 +255,9 @@ data class InitConfig(
     // A Kubernetes quantity overriding the environment's default kit claim size. Null keeps the
     // default (10Ti on local volumes, Constants.K8s.DEFAULT_PROVISIONED_KIT_STORAGE_SIZE otherwise).
     val kitStorageSize: String? = null,
+    // The Kubernetes namespace the cluster installs into, as `init --namespace` gave it. Null records
+    // nothing, so the cluster contract supplies the environment default.
+    val namespace: String? = null,
 ) {
     companion object {
         /**
@@ -316,6 +319,7 @@ data class InitConfig(
                 nodeLabels = init.nodeLabels,
                 kitStorageClass = init.kitStorageClass,
                 kitStorageSize = init.kitStorageSize,
+                namespace = init.namespace,
             )
 
         /**
@@ -341,6 +345,7 @@ data class InitConfig(
                 telemetryRedirect = init.resolvedTelemetryRedirect,
                 tenant = init.tenant,
                 nodeLabels = init.nodeLabels,
+                namespace = init.namespace,
             )
     }
 }

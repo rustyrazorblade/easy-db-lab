@@ -121,6 +121,13 @@ class InitLocalTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a namespace is accepted and recorded in a local workspace`() {
+        parsed("--local", "--namespace", "lab-a").execute()
+
+        assertThat(state().initConfig?.namespace).isEqualTo("lab-a")
+    }
+
+    @Test
     fun `the default data directory is observability-data under the workspace, recorded absolute`() {
         parsed("--local").execute()
 

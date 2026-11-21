@@ -92,7 +92,13 @@ internal class GeneratedSshConfigResolutionTest {
     @Test
     fun `every other host gets none of the cluster's options`() {
         listOf("github.com", "192.0.2.10", "10.0.1.5", "db.boo.com", "dbserver.example.com", "control.example.org").forEach { host ->
-            assertThat(resolve(sshConfig, host)).describedAs(host).doesNotContain(*CLUSTER_ONLY)
+            // ssh's default user is the local login, so on a machine whose user is the cluster's
+            // (ubuntu) that line appears without any cluster block; only lines ssh would not print
+            // without the workspace file count as leaked cluster options.
+            val baseline = resolve(withoutWorkspaceFile, host).toSet()
+            val leaked = CLUSTER_ONLY.filterNot { it in baseline }
+            assertThat(leaked).describedAs(host).contains("identityfile $IDENTITY", "userknownhostsfile /dev/null")
+            assertThat(resolve(sshConfig, host)).describedAs(host).doesNotContainAnyElementsOf(leaked)
         }
     }
 

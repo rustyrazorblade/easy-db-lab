@@ -40,7 +40,7 @@ class CycleQueries(
         data class Ready(
             private val mimir: MimirQueryService,
             private val cluster: String,
-            private val stressJobs: (isStopping: () -> Boolean) -> List<Event.Stress.JobCompleted> = { emptyList() },
+            private val stressJobs: (isStopping: () -> Boolean) -> List<Event.Stress> = { emptyList() },
         ) : Target {
             /** The samples of [metric] now, or why its query failed. */
             fun query(metric: StreamMetric): Result<List<Event.Metrics.Sample>> =
@@ -50,7 +50,7 @@ class CycleQueries(
              * The stress jobs that finished since the last cycle; empty when the list failed.
              * [isStopping] tells the list whether a failure comes from the stream stopping.
              */
-            fun completedStressJobs(isStopping: () -> Boolean): List<Event.Stress.JobCompleted> = stressJobs(isStopping)
+            fun completedStressJobs(isStopping: () -> Boolean): List<Event.Stress> = stressJobs(isStopping)
         }
 
         /** No query can be sent this cycle; every metric fails for [reason]. */

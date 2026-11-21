@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.StressJobService
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -95,14 +96,16 @@ class StressListTest : BaseKoinTest() {
 
     @Test
     fun `execute fails when runCommand fails`() {
+        val denied = KubernetesClientException("K8s error", 403, null)
         whenever(mockStressJobService.runCommand(any(), any()))
-            .thenReturn(Result.failure(RuntimeException("K8s error")))
+            .thenReturn(Result.failure(denied))
 
         val command = StressList()
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Failed to run command")
+            .hasRootCause(denied)
     }
 
     @Test

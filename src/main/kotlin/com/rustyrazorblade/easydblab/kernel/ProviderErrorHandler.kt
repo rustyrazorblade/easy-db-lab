@@ -35,6 +35,14 @@ enum class ProviderErrorKind {
     /** The provider or its local daemon could not be reached or is not running. */
     @SerialName("unavailable")
     UNAVAILABLE,
+
+    /**
+     * The identity was allowed to make the request, but a policy refused its content: a Kubernetes
+     * Pod Security level, an admission webhook or a ValidatingAdmissionPolicy. Granting permissions
+     * does not fix it; changing the object or the policy does.
+     */
+    @SerialName("rejected")
+    REJECTED,
 }
 
 /**
@@ -45,6 +53,8 @@ enum class ProviderErrorKind {
  * @property detail the provider's own message
  * @property remedy what the user should do next
  * @property response what the provider's service answered, when the failure is a service answer
+ * @property request the request that failed, when the handler knows it
+ * @property policy the policy that refused the request, for a [ProviderErrorKind.REJECTED] failure
  */
 data class ErrorDescription(
     val provider: String,
@@ -52,6 +62,45 @@ data class ErrorDescription(
     val detail: String,
     val remedy: String,
     val response: ProviderResponse? = null,
+    val request: ProviderRequest? = null,
+    val policy: ProviderPolicy? = null,
+)
+
+/**
+ * The request a provider refused, in the provider's own terms, so a user can grant exactly what
+ * is missing. For Kubernetes the verb is the RBAC verb (`list`, `watch`), not the HTTP method,
+ * when the server named one.
+ *
+ * @property verb what the request tried to do, for example "list" or "create"
+ * @property resource the resource, with its subresource when there is one, for example "pods/exec"
+ * @property namespace the namespace, or null at the cluster scope
+ * @property name the object's name, when the request named one
+ * @property principal the identity the provider evaluated, when it named one
+ */
+@Serializable
+data class ProviderRequest(
+    val verb: String,
+    val resource: String,
+    val namespace: String? = null,
+    val name: String? = null,
+    val principal: String? = null,
+) {
+    /** The resource and, when known, its object name, for example "pods/x". */
+    fun target(): String = name?.let { "$resource/$it" } ?: resource
+}
+
+/**
+ * The policy that refused a request, and why.
+ *
+ * @property name the policy, for example "PodSecurity" or a webhook's name
+ * @property level the level the policy enforced, for example "restricted:latest"
+ * @property violations one entry per reason the policy gave
+ */
+@Serializable
+data class ProviderPolicy(
+    val name: String,
+    val level: String? = null,
+    val violations: List<String> = emptyList(),
 )
 
 /**

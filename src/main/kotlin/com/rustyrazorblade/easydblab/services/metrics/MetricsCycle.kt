@@ -84,7 +84,8 @@ class MetricsCycle(
     }
 
     /**
-     * Emits a `Stress.JobCompleted` for each stress job that finished since the last cycle; false
+     * Emits a `Stress.JobCompleted` for each stress job that finished since the last cycle (and a
+     * `Stress.JobListFailing` when the list fails for good); false
      * when the stream was stopped first.  With no route this cycle, the jobs are not listed.
      */
     private fun reportStressJobs(target: CycleQueries.Target): Boolean {

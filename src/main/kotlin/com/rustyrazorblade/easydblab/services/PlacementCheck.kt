@@ -18,7 +18,7 @@ class PlacementCheck(
         val selector = placement.nodeSelector
         val nodes =
             k8sService.nodesMatching(selector).getOrElse { exception ->
-                error("Could not list the nodes for the observability placement: ${exception.message}")
+                throw IllegalStateException("Could not list the nodes for the observability placement: ${exception.message}", exception)
             }
         check(nodes.isNotEmpty()) {
             val labels = selector.entries.joinToString(", ") { "${it.key}=${it.value}" }

@@ -36,7 +36,7 @@ class ConfigChangeReport(
         if (hashes.isEmpty()) return
         val running =
             k8sService.workloadConfigHashes(hashes.keys.toList(), namespace).getOrElse { exception ->
-                error("Failed to read the running workloads' configuration hashes: ${exception.message}")
+                throw IllegalStateException("Failed to read the running workloads' configuration hashes: ${exception.message}", exception)
             }
         hashes.forEach { (ref, hash) ->
             eventBus.emit(Event.Grafana.WorkloadConfigCompared(ref.toString(), changed = running[ref] != hash))

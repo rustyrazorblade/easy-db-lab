@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
+import com.rustyrazorblade.easydblab.kubernetes.isPermanentKubernetesFailure
+import com.rustyrazorblade.easydblab.kubernetes.kubernetesFailureReason
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.oshai.kotlinlogging.Level
@@ -58,6 +60,7 @@ class StressJobWatcher(
 ) {
     private val running = mutableMapOf<String, String>()
     private val failures = ListFailureLog()
+    private var reportedPermanent = false
 
     /**
      * The completions found by listing the jobs of [state] over [route] now.  [isStopping] tells a
@@ -67,16 +70,18 @@ class StressJobWatcher(
         state: ClusterState,
         route: ObservabilityRoute,
         isStopping: () -> Boolean = { false },
-    ): List<Event.Stress.JobCompleted> {
+    ): List<Event.Stress> {
         val jobs =
             runCatching { lister.list(state, route) }.getOrElse { e ->
-                val level = failures.failed(isStopping())
+                val stopping = isStopping()
+                val level = failures.failed(stopping)
                 log.at(level) {
                     message = "Could not list the stress jobs; checking again next cycle"
                     cause = e.takeIf { level == Level.WARN }
                 }
-                return emptyList()
+                return listOfNotNull(permanentFailure(e, stopping))
             }
+        reportedPermanent = false
         failures.succeeded()?.let { level -> log.at(level) { message = "Listing the stress jobs works again" } }
         val completions =
             jobs.filterIsInstance<ListedStressJob.Finished>().mapNotNull { job ->
@@ -90,6 +95,20 @@ class StressJobWatcher(
             running[job.name] = job.host.ifEmpty { running[job.name].orEmpty() }
         }
         return completions
+    }
+
+    /**
+     * [Event.Stress.JobListFailing] for the first failure of a run that no retry fixes (a missing
+     * exec auth plugin, a 401 or 403), so the user learns why no completion will come; null for a
+     * transient failure, a repeat, or a failure while the stream stops.
+     */
+    private fun permanentFailure(
+        error: Throwable,
+        stopping: Boolean,
+    ): Event.Stress.JobListFailing? {
+        if (stopping || reportedPermanent || !error.isPermanentKubernetesFailure()) return null
+        reportedPermanent = true
+        return Event.Stress.JobListFailing(error.kubernetesFailureReason())
     }
 
     private companion object {

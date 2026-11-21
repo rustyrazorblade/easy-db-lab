@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
+import com.rustyrazorblade.easydblab.kubernetes.kubernetesFailureReason
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -364,9 +365,10 @@ class ClusterStatusCollector(
                         },
                 )
             },
+            // The reason is kept, so a missing exec plugin or a denial is not reported as no pods.
             onFailure = { e ->
-                log.debug(e) { "Failed to get Kubernetes pods" }
-                null
+                log.warn(e) { "Failed to get Kubernetes pods" }
+                KubernetesInfo(pods = emptyList(), error = e.kubernetesFailureReason())
             },
         )
     }
@@ -398,7 +400,7 @@ class ClusterStatusCollector(
                     throw e
                 }
                 log.warn(e) { "Failed to get stress jobs" }
-                StressOutcome(error = e.message ?: "unknown error")
+                StressOutcome(error = e.kubernetesFailureReason())
             },
         )
     }

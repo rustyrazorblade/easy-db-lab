@@ -22,14 +22,19 @@ data class KubeApi(
  * paths resolve against the kubeconfig's directory; the JVM-global kubeconfig property and the
  * `KUBECONFIG` env var are never read. A context the file does not hold fails fast naming the
  * context, the path and the contexts it does hold, rather than yielding a config with no master URL.
+ * A context whose user runs an exec auth plugin that cannot be found fails with
+ * [ExecPluginNotFoundException] (see [ExecPluginCheck]), instead of a client that sends no credential.
  */
-fun KubeApi.loadConfig(): Config {
+fun KubeApi.loadConfig(execPluginCheck: ExecPluginCheck = ExecPluginCheck()): Config {
     val file = kubeconfig.toFile()
-    val contexts = parseKubeconfig(kubeconfig).contexts.orEmpty()
+    // Parsed once for both checks; Fabric8 reads the file itself below, keeping its location.
+    val parsed = parseKubeconfig(kubeconfig)
+    val contexts = parsed.contexts.orEmpty()
     require(contexts.any { it.name == context }) {
         "Context '$context' not found in kubeconfig ${file.absolutePath}. " +
             "Available contexts: ${contexts.joinToString(", ") { it.name }}. " +
             "Re-run `up` to rewrite the kubeconfig and re-pin the context."
     }
+    execPluginCheck.check(kubeconfig, parsed, context)
     return Config.fromKubeconfig(context, file)
 }

@@ -37,7 +37,7 @@ class StressStatus : PicoBaseCommand() {
             stressJobService
                 .listJobs()
                 .getOrElse { e ->
-                    error("Failed to get stress jobs: ${e.message}")
+                    throw IllegalStateException("Failed to get stress jobs: ${e.message}", e)
                 }
 
         // Filter by name if specified

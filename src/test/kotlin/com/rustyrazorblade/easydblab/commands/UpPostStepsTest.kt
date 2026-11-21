@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 import com.rustyrazorblade.easydblab.services.PodSysctlProbeResult
 import com.rustyrazorblade.easydblab.services.RecordingManifests
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -23,7 +24,8 @@ import java.time.Duration
 /**
  * Tests for [UpPostSteps]: the pod network sysctl policy is a gate that comes first, so when it never
  * takes effect no kit StorageClass is checked and no observability pod or annotation is created with
- * the kernel defaults.
+ * the kernel defaults, and a failed observability deploy keeps the Fabric8 failure as its cause, so a
+ * 403 on a cluster without RBAC is described as a Kubernetes permission denial, not as rebuilt text.
  */
 class UpPostStepsTest {
     private val k8sService = mock<K8sService>()
@@ -80,5 +82,27 @@ class UpPostStepsTest {
             verify(k8sService).storageClassReclaimPolicy("kits")
             verify(observability).deploy()
         }
+    }
+
+    @Test
+    fun `an observability deploy failure keeps the Kubernetes exception as the cause`() {
+        val eventBus = EventBus()
+        val sysctls = mapOf("net.core.somaxconn" to "65535")
+        val tuning =
+            PodNetworkTuning(
+                RecordingManifests(),
+                { PodSysctlProbeResult.Admitted(sysctls) },
+                eventBus,
+                sysctls,
+                Duration.ofMillis(50),
+                Duration.ofMillis(10),
+            )
+        val denied = KubernetesClientException("forbidden", 403, null)
+        whenever(observability.deploy()).thenReturn(Result.failure(denied))
+        val steps = UpPostSteps(tuning, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
+
+        assertThatThrownBy { steps.run(localTelemetry = false, kitStorageClass = null) }
+            .hasMessageContaining("Observability stack deployment failed")
+            .hasRootCause(denied)
     }
 }

@@ -45,7 +45,7 @@ class UpPostSteps(
         kitStorageClass?.let { kitStorage.resolve(it) }
         observability
             .deploy()
-            .getOrElse { error("Observability stack deployment failed during provisioning: ${it.message}") }
+            .getOrElse { throw IllegalStateException("Observability stack deployment failed during provisioning: ${it.message}", it) }
         if (localTelemetry) postCiliumInstallAnnotations()
     }
 

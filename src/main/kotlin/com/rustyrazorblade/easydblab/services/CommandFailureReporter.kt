@@ -78,4 +78,6 @@ fun ErrorDescription.toEvent(): Event.Command.ProviderError =
         detail = detail,
         remedy = remedy,
         response = response,
+        request = request,
+        policy = policy,
     )

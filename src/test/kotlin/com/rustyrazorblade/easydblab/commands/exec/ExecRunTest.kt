@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -239,8 +240,10 @@ class ExecRunTest : BaseKoinTest() {
         val sent = argumentCaptor<String>()
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
         assertThat(sent.allValues)
-            .contains("sudo systemctl stop edl-exec-qa-sleep 2>/dev/null || ! systemctl is-active --quiet edl-exec-qa-sleep")
-            .noneMatch { it.contains("journalctl") }
+            .contains(
+                "out=\$(sudo systemctl stop edl-exec-qa-sleep 2>&1) || ! systemctl is-active --quiet edl-exec-qa-sleep" +
+                    " || { echo \"\$out\" >&2; false; }",
+            ).noneMatch { it.contains("journalctl") }
     }
 
     @Test
@@ -263,5 +266,35 @@ class ExecRunTest : BaseKoinTest() {
 
         val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
         assertThat(events).contains("db0: command failed: could not stop edl-exec-qa-sleep: db0 has no instance ID")
+    }
+
+    /** The stop runs without streaming, so systemctl's reason reaches the user only through the report. */
+    @Test
+    fun `a stop that leaves the unit running reports systemctl's reason`() {
+        doAnswer { throw InterruptedException("Ctrl-C") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any())
+        doAnswer {
+            throw RemoteCommandFailedException(
+                command = "systemctl stop",
+                stdout = "",
+                stderr = "Failed to stop edl-exec-qa-sleep.service: Access denied",
+                summary = "Remote command failed (1)",
+            )
+        }.whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemctl stop") }, any(), any())
+
+        assertThatThrownBy {
+            ExecRun()
+                .apply {
+                    command = listOf("sleep 120")
+                    unitNameOverride = "qa-sleep"
+                    hosts.hostList = "db0"
+                }.execute()
+        }.isInstanceOf(InterruptedException::class.java)
+
+        val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
+        assertThat(events).contains("could not stop edl-exec-qa-sleep: Remote command failed (1)")
+        assertThat(events).contains("Failed to stop edl-exec-qa-sleep.service: Access denied")
     }
 }

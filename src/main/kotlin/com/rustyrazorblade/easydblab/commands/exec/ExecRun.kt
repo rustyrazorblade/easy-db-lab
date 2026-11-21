@@ -184,8 +184,9 @@ class ExecRun : PicoBaseCommand() {
      * Stops [systemdUnit] on [host] after an interrupt. The interrupt flag is cleared for the stop's own
      * SSH call, which an interrupted thread could not make, and restored after it. The stop runs first
      * and only fails when the unit is still active afterwards, so a unit that ends on its own between
-     * a check and the stop is not reported. A stop that fails is reported for the host; the interrupt
-     * still goes on.
+     * a check and the stop is not reported. The stop's output is kept and printed only when the unit
+     * is still active, so a stop that fails is reported for the host with systemctl's reason; the
+     * interrupt still goes on. The stop runs without streaming, so the report carries its stderr.
      */
     private fun stopUnit(
         host: Host,
@@ -193,9 +194,12 @@ class ExecRun : PicoBaseCommand() {
     ) {
         val interrupted = Thread.interrupted()
         try {
-            val stop = "sudo systemctl stop $systemdUnit 2>/dev/null || ! systemctl is-active --quiet $systemdUnit"
+            val stop =
+                "out=\$(sudo systemctl stop $systemdUnit 2>&1) || ! systemctl is-active --quiet $systemdUnit" +
+                    " || { echo \"\$out\" >&2; false; }"
             hostFailure { remoteOps.executeRemotely(host, stop, output = false, secret = false) }?.let {
-                eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(it)}"))
+                val why = it.message ?: it::class.simpleName ?: "Unknown error"
+                eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: $why"))
             }
         } finally {
             if (interrupted) Thread.currentThread().interrupt()

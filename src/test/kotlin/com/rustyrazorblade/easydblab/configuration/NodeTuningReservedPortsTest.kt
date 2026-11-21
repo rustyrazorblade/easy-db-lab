@@ -22,6 +22,7 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -138,25 +139,30 @@ class NodeTuningReservedPortsTest : BaseKoinTest() {
     private fun workloads(): Map<String, List<HasMetadata>> {
         val templates: TemplateService = getKoin().get()
         val compactorJar = CompactorAgentJar("0".repeat(64))
-        val sidecar = SidecarManifestBuilder(templates).buildAllResources("sidecar:test", "test-1", "tenant")
+        val sidecar = SidecarManifestBuilder(templates).buildAllResources(TestScopes.EC2, "sidecar:test", "test-1", "tenant")
         return mapOf(
-            builder<LokiManifestBuilder>() to LokiManifestBuilder(templates).buildAllResources(),
-            builder<MimirManifestBuilder>() to MimirManifestBuilder(templates).buildAllResources(),
-            builder<TempoManifestBuilder>() to TempoManifestBuilder(templates).buildAllResources(),
+            builder<LokiManifestBuilder>() to LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<MimirManifestBuilder>() to MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<TempoManifestBuilder>() to TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2),
             builder<GrafanaManifestBuilder>() to
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS),
-            builder<PyroscopeManifestBuilder>() to PyroscopeManifestBuilder(templates).buildAllResources(),
-            builder<RegistryManifestBuilder>() to RegistryManifestBuilder().buildAllResources(),
-            builder<S3ManagerManifestBuilder>() to S3ManagerManifestBuilder(templates).buildAllResources(),
-            builder<YaceManifestBuilder>() to YaceManifestBuilder(templates).buildAllResources(),
-            builder<KubeStateMetricsManifestBuilder>() to KubeStateMetricsManifestBuilder().buildAllResources(),
+                GrafanaManifestBuilder(
+                    templates,
+                ).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS),
+            builder<PyroscopeManifestBuilder>() to PyroscopeManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<RegistryManifestBuilder>() to RegistryManifestBuilder().buildAllResources(TestScopes.EC2),
+            builder<S3ManagerManifestBuilder>() to S3ManagerManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<YaceManifestBuilder>() to YaceManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<KubeStateMetricsManifestBuilder>() to KubeStateMetricsManifestBuilder().buildAllResources(TestScopes.EC2),
             builder<CompactorManifestBuilder>() to
-                CompactorManifestBuilder(templates).buildAllResources(compactorJar, S3Backend(bucket = "acct", region = "eu-west-1")),
-            builder<OtelManifestBuilder>() to OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS),
-            builder<OtelHostCollectorManifestBuilder>() to OtelHostCollectorManifestBuilder(templates).buildAllResources(CniMode.Cilium),
-            builder<JournaldOtelManifestBuilder>() to JournaldOtelManifestBuilder(templates).buildAllResources(),
-            builder<EbpfExporterManifestBuilder>() to EbpfExporterManifestBuilder().buildAllResources(),
-            builder<BeylaManifestBuilder>() to BeylaManifestBuilder(templates).buildAllResources(),
+                CompactorManifestBuilder(
+                    templates,
+                ).buildAllResources(TestScopes.EC2, compactorJar, S3Backend(bucket = "acct", region = "eu-west-1")),
+            builder<OtelManifestBuilder>() to OtelManifestBuilder(templates).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS),
+            builder<OtelHostCollectorManifestBuilder>() to
+                OtelHostCollectorManifestBuilder(templates).buildAllResources(TestScopes.EC2, CniMode.Cilium),
+            builder<JournaldOtelManifestBuilder>() to JournaldOtelManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            builder<EbpfExporterManifestBuilder>() to EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2),
+            builder<BeylaManifestBuilder>() to BeylaManifestBuilder(templates).buildAllResources(TestScopes.EC2),
             builder<SidecarManifestBuilder>() to sidecar,
             // The capability probes bind no port; scanned so the host-network probe is accounted for.
             "CapabilityProbePods" to CapabilityProbePods.probes("default").values.toList(),

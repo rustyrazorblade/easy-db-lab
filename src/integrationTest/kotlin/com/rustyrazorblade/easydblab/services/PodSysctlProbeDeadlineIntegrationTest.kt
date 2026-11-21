@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import org.assertj.core.api.Assertions.assertThat
@@ -31,7 +32,7 @@ class PodSysctlProbeDeadlineIntegrationTest {
             val tuning =
                 PodNetworkTuning(
                     RecordingManifests(),
-                    Fabric8PodSysctlProbe(WorkspaceK8s.provider(silentServerKubeconfig(server.localPort))),
+                    Fabric8PodSysctlProbe(WorkspaceK8s.provider(silentServerKubeconfig(server.localPort))) { TestScopes.EC2.namespace },
                     EventBus(),
                     mapOf("net.core.somaxconn" to "65535"),
                     Duration.ofSeconds(1),

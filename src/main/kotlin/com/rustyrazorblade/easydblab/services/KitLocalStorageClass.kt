@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
 import io.fabric8.kubernetes.api.model.storage.StorageClass
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 
@@ -32,8 +32,7 @@ object KitLocalStorageClass {
         StorageClassBuilder()
             .withNewMetadata()
             .withName(name)
-            .addToLabels(Constants.K8s.MANAGED_BY_LABEL, Constants.K8s.MANAGED_BY_VALUE)
-            .addToLabels(Constants.K8s.CLUSTER_LABEL, clusterId)
+            .addToLabels(OwnershipLabels.of(clusterId))
             .endMetadata()
             .withProvisioner(PROVISIONER)
             .withVolumeBindingMode(BINDING_MODE)

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.params.ParameterizedTest
@@ -70,16 +71,22 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
             configMap.data.getValue("otel-collector-config.yaml")
         }
         val hostConfig = { cni: CniMode ->
-            OtelHostCollectorManifestBuilder(getKoin().get()).buildConfigMap(cni).data.getValue("otel-host-collector-config.yaml")
+            OtelHostCollectorManifestBuilder(
+                getKoin().get(),
+            ).buildConfigMap(TestScopes.EC2, cni).data.getValue("otel-host-collector-config.yaml")
         }
         return when (variant) {
-            "core" -> clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), null, PodLogSource.NodeFiles))
+            "core" -> clusterConfig(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), null, PodLogSource.NodeFiles))
             "core-without-pod-logs" ->
-                clusterConfig(builder.buildConfigMap(NodeCapabilities.LOCAL_DOCKER, emptyList(), null, PodLogSource.None))
+                clusterConfig(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.LOCAL_DOCKER, emptyList(), null, PodLogSource.None))
             "core-with-kits" ->
-                clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, listOf(kitJob, podJob), null, PodLogSource.NodeFiles))
+                clusterConfig(
+                    builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, listOf(kitJob, podJob), null, PodLogSource.NodeFiles),
+                )
             "core-redirect" ->
-                clusterConfig(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+                clusterConfig(
+                    builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")),
+                )
             "host-flannel" -> hostConfig(CniMode.Flannel)
             "host-cilium" -> hostConfig(CniMode.Cilium)
             "emr" ->

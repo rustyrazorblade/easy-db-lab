@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.access
 
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -54,35 +55,48 @@ class PortForwardServiceAccessTest {
 
     @Test
     fun `a Service is reached on loopback at the forward's local port`() {
-        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21001))
-        assertThat(opened.single()).isEqualTo(ClusterServices.LOKI to 21001)
+        assertThat(
+            access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)),
+        ).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21001))
+        assertThat(opened.single()).isEqualTo(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace) to 21001)
     }
 
     @Test
     fun `a command reuses one forward per Service`() {
-        access.open(ClusterServices.LOKI)
-        access.open(ClusterServices.LOKI)
-        access.open(ClusterServices.MIMIR)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
+        access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace))
 
-        assertThat(opened.map { it.first }).containsExactly(ClusterServices.LOKI, ClusterServices.MIMIR)
+        assertThat(
+            opened.map {
+                it.first
+            },
+        ).containsExactly(
+            ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace),
+            ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace),
+        )
     }
 
     @Test
     fun `a forward that died is reopened`() {
-        access.open(ClusterServices.LOKI)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
         forwards.single().alive = false
 
-        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(
+            access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)),
+        ).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
         assertThat(forwards.first().closed).isTrue()
     }
 
     @Test
     fun `a forward that stays alive but reported an error since it opened is reopened, re-resolving its pod`() {
-        access.open(ClusterServices.LOKI)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
         // Fabric8 keeps isAlive true after the Service's pod is replaced; only the error shows it.
         forwards.single().failure = IllegalStateException("pod \"loki-0\" not found")
 
-        assertThat(access.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(
+            access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)),
+        ).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
         assertThat(opened).hasSize(2)
         assertThat(forwards.first().closed).isTrue()
     }
@@ -91,7 +105,7 @@ class PortForwardServiceAccessTest {
     fun `a forward that reports an error fails naming the namespace, Service, port and error`() {
         nextFailure = IllegalStateException("pods \"loki-0\" is forbidden")
 
-        assertThatThrownBy { access.open(ClusterServices.LOKI) }
+        assertThatThrownBy { access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("default/loki")
             .hasMessageContaining("3100")
@@ -104,7 +118,7 @@ class PortForwardServiceAccessTest {
         val failing =
             PortForwardServiceAccess({ _, _ -> throw IllegalStateException("services \"loki\" not found") }) { 21001 }
 
-        assertThatThrownBy { failing.open(ClusterServices.LOKI) }
+        assertThatThrownBy { failing.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("default/loki")
             .hasMessageContaining("3100")
@@ -122,7 +136,9 @@ class PortForwardServiceAccessTest {
                 FakeForward(localPort)
             }) { ports.removeFirst() }
 
-        assertThat(racing.open(ClusterServices.LOKI)).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
+        assertThat(
+            racing.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)),
+        ).isEqualTo(ServiceEndpoint.Plain("127.0.0.1", 21002))
         assertThat(tried).containsExactly(21001, 21002)
     }
 
@@ -135,20 +151,24 @@ class PortForwardServiceAccessTest {
                 throw IllegalStateException("Unable to port forward", BindException("Address already in use"))
             }) { ports.removeFirst() }
 
-        assertThatThrownBy { alwaysTaken.open(ClusterServices.LOKI) }
+        assertThatThrownBy { alwaysTaken.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             .hasMessageContaining("default/loki")
             .hasRootCauseInstanceOf(BindException::class.java)
         assertThat(tried).containsExactly(21001, 21002)
 
         // A failure that is not a bind takes no fresh port: the one port left is the one it used.
         val forbidden = PortForwardServiceAccess({ _, _ -> throw IllegalStateException("forbidden") }) { ports.removeFirst() }
-        assertThatThrownBy { forbidden.open(ClusterServices.LOKI) }.hasMessageContaining("forbidden")
+        assertThatThrownBy { forbidden.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }.hasMessageContaining("forbidden")
         assertThat(ports).isEmpty()
     }
 
     @Test
     fun `a target with no Service named fails saying how to declare one, opening nothing`() {
-        val undeclared = ClusterServices.LOKI.copy(service = "", servicePort = 31090, nodePort = 31090)
+        val undeclared =
+            ClusterServices.LOKI
+                .inNamespace(
+                    TestScopes.EC2.namespace,
+                ).copy(service = "", servicePort = 31090, nodePort = 31090)
 
         assertThatThrownBy { access.open(undeclared) }
             .isInstanceOf(IllegalStateException::class.java)
@@ -159,8 +179,8 @@ class PortForwardServiceAccessTest {
 
     @Test
     fun `closing the access closes every forward it opened`() {
-        access.open(ClusterServices.LOKI)
-        access.open(ClusterServices.GRAFANA)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
+        access.open(ClusterServices.GRAFANA.inNamespace(TestScopes.EC2.namespace))
 
         access.close()
 
@@ -171,7 +191,9 @@ class PortForwardServiceAccessTest {
     fun `a closed access refuses to open, so no forward outlives it`() {
         access.close()
 
-        assertThatThrownBy { access.open(ClusterServices.LOKI) }.isInstanceOf(ServiceAccessClosedException::class.java)
+        assertThatThrownBy {
+            access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
+        }.isInstanceOf(ServiceAccessClosedException::class.java)
         assertThat(opened).isEmpty()
     }
 
@@ -187,7 +209,7 @@ class PortForwardServiceAccessTest {
             }) { ports.removeFirst() }
         val executor = Executors.newFixedThreadPool(2)
         try {
-            val opening = executor.submit<ServiceEndpoint> { slow.open(ClusterServices.LOKI) }
+            val opening = executor.submit<ServiceEndpoint> { slow.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             assertThat(entered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
             val closing = executor.submit { slow.close() }
 

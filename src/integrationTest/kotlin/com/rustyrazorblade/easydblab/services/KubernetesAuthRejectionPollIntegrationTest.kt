@@ -121,7 +121,7 @@ class KubernetesAuthRejectionPollIntegrationTest {
                 ).create()
         }
         deny("/api/v1/namespaces/$NAMESPACE/pods?labelSelector=app.kubernetes.io%2Fname%3Dloki", "pods")
-        val workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = POLL_INTERVAL)
+        val workloads = K8sBackendWorkloads(clientProvider, { NAMESPACE }, pollInterval = POLL_INTERVAL)
 
         val failure = runCatchingException { workloads.scaleDown("loki", TIMEOUT) }.exceptionOrNull()
 
@@ -145,7 +145,7 @@ class KubernetesAuthRejectionPollIntegrationTest {
                 ).create()
         }
         deny("/api/v1/namespaces/$NAMESPACE/pods?labelSelector=app.kubernetes.io%2Fname%3D$first", "pods")
-        val senders = K8sTelemetrySenders(clientProvider, NAMESPACE, pollInterval = POLL_INTERVAL)
+        val senders = K8sTelemetrySenders(clientProvider, { NAMESPACE }, pollInterval = POLL_INTERVAL)
 
         val failure = runCatchingException { senders.stop(TIMEOUT, {}, {}, {}) }.exceptionOrNull()
 

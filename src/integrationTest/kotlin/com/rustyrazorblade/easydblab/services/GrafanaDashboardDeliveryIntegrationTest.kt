@@ -6,19 +6,20 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardConfigMaps
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
@@ -165,7 +166,8 @@ class GrafanaDashboardDeliveryIntegrationTest {
                 DashboardInstallContext(state.clusterLabelName(), TenantSet.of(TENANT)),
                 bucket,
                 hosting.copy(storage = storage),
-                BackendEndpoints.pyroscope(),
+                ServiceDns(TestScopes.EC2.namespace).pyroscope(),
+                TestScopes.EC2,
             ).getOrThrow()
         }
         withClusterDiagnostics(client, NAMESPACE) {
@@ -188,7 +190,7 @@ class GrafanaDashboardDeliveryIntegrationTest {
     /** Runs `curl` on [path] of the grafana Service from inside the Grafana container. */
     private fun grafanaApi(path: String): String {
         val grafana = ClusterServices.GRAFANA
-        val url = "http://${BackendEndpoints.host(grafana.service)}:${grafana.servicePort}$path"
+        val url = "http://${ServiceDns(TestScopes.EC2.namespace).host(grafana.service)}:${grafana.servicePort}$path"
         val pod =
             client
                 .pods()

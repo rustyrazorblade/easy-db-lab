@@ -1,9 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
+import com.rustyrazorblade.easydblab.services.access.ClusterService
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import com.rustyrazorblade.easydblab.services.access.baseUrl
 import com.rustyrazorblade.easydblab.services.access.forEndpoint
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -29,21 +30,21 @@ data class ObservabilityResponse(
  * The one path from this tool to the observability Services (Mimir, Loki, Tempo).
  *
  * Every request carries the cluster's tenant in `X-Scope-OrgID` and goes to the endpoint the
- * service-access seam opens for its [ServiceTarget], with the proxy that endpoint names set on that
+ * service-access seam opens for its [ClusterService] in the cluster's namespace, with the proxy that endpoint names set on that
  * client alone. Readers (`logs query`, `spark logs`, `metrics stream`) and the teardown flush all go
  * through it, so none of them can forget the tenant or pick a route of its own.
  */
 interface ObservabilityHttp {
     /** GETs [pathAndQuery] from [target], waiting up to [timeout] for the answer. */
     fun get(
-        target: ServiceTarget,
+        target: ClusterService,
         pathAndQuery: String,
         timeout: Duration = DEFAULT_TIMEOUT,
     ): ObservabilityResponse
 
     /** POSTs [body] as [contentType] to [path] on [target], waiting up to [timeout]. */
     fun post(
-        target: ServiceTarget,
+        target: ClusterService,
         path: String,
         body: String = "",
         contentType: String = "application/json",
@@ -66,23 +67,25 @@ interface ObservabilityHttp {
  *
  * @property access opens the Service and names the route
  * @property tenant the cluster's tenant, sent in `X-Scope-OrgID`
+ * @property namespace the cluster's namespace, which every [ClusterService] is opened in
  * @property httpClientFactory the base HTTP client the route is applied to
  */
 class DefaultObservabilityHttp(
     val access: ServiceAccess,
     private val tenant: () -> String,
+    private val namespace: () -> K8sNamespace,
     private val httpClientFactory: HttpClientFactory,
 ) : ObservabilityHttp {
     private val log = KotlinLogging.logger {}
 
     override fun get(
-        target: ServiceTarget,
+        target: ClusterService,
         pathAndQuery: String,
         timeout: Duration,
     ): ObservabilityResponse = send(target, pathAndQuery, timeout) { it.get() }
 
     override fun post(
-        target: ServiceTarget,
+        target: ClusterService,
         path: String,
         body: String,
         contentType: String,
@@ -90,12 +93,12 @@ class DefaultObservabilityHttp(
     ): ObservabilityResponse = send(target, path, timeout) { it.post(body.toRequestBody(contentType.toMediaType())) }
 
     private fun send(
-        target: ServiceTarget,
+        target: ClusterService,
         pathAndQuery: String,
         timeout: Duration,
         method: (Request.Builder) -> Request.Builder,
     ): ObservabilityResponse {
-        val endpoint = access.open(target)
+        val endpoint = access.open(target.inNamespace(namespace()))
         // The path only: a query string can carry user input, and nothing here holds credentials.
         log.debug { "${target.service} request to ${endpoint.baseUrl()}${pathAndQuery.substringBefore('?')} via $endpoint" }
         val request =

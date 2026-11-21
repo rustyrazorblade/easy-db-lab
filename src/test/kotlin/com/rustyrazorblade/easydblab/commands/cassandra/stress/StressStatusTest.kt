@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.fabric8.kubernetes.client.KubernetesClientException
@@ -75,14 +75,14 @@ class StressStatusTest : BaseKoinTest() {
         val testJobs =
             listOf(
                 KubernetesJob(
-                    namespace = Constants.Stress.NAMESPACE,
+                    namespace = TestScopes.NAMESPACE,
                     name = "stress-test-1234567890",
                     status = "Complete",
                     completions = "1/1",
                     age = Duration.ofMinutes(5),
                 ),
                 KubernetesJob(
-                    namespace = Constants.Stress.NAMESPACE,
+                    namespace = TestScopes.NAMESPACE,
                     name = "stress-another-1234567891",
                     status = "Running",
                     completions = "0/1",

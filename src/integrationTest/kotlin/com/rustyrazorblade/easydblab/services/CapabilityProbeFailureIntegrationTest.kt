@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
@@ -34,6 +36,7 @@ import java.nio.file.Path
 class CapabilityProbeFailureIntegrationTest {
     private companion object {
         const val NAMESPACE = "probe-mock"
+        val SCOPE = InstallScope(K8sNamespace(NAMESPACE), "probe-cluster")
         const val PODS_PATH = "/api/v1/namespaces/$NAMESPACE/pods?dryRun=All"
         const val WEBHOOK = "kyverno-resource-validating-webhook-cfg"
     }
@@ -140,7 +143,7 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("get", "namespaces", "namespaces \"$NAMESPACE\"")),
             ).always()
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -153,7 +156,7 @@ class CapabilityProbeFailureIntegrationTest {
     fun `a created namespace that no ServiceAccount controller serves gets its default ServiceAccount from the probe and is probed`() {
         answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
 
-        val result = probe().probe(api, NAMESPACE)
+        val result = probe().probe(api, SCOPE)
 
         assertThat(result.capabilities.present())
             .containsExactly(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
@@ -173,7 +176,7 @@ class CapabilityProbeFailureIntegrationTest {
         createNamespace()
         answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
 
-        probe().probe(api, NAMESPACE)
+        probe().probe(api, SCOPE)
 
         server.createClient().use { client ->
             assertThat(
@@ -197,7 +200,7 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("create", "serviceaccounts", "serviceaccounts")),
             ).always()
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -229,7 +232,7 @@ class CapabilityProbeFailureIntegrationTest {
             ),
         )
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -256,7 +259,7 @@ class CapabilityProbeFailureIntegrationTest {
             ),
         )
 
-        val result = probe().probe(api, NAMESPACE)
+        val result = probe().probe(api, SCOPE)
 
         assertThat(result.capabilities.present()).containsExactly(NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
         assertThat(result.notes.keys).containsExactly(NodeCapability.PRIVILEGED)
@@ -271,7 +274,7 @@ class CapabilityProbeFailureIntegrationTest {
             status(Constants.HttpStatus.SERVER_ERROR_MIN, "InternalError", "etcdserver: request timed out"),
         )
 
-        assertThatThrownBy { probe().probe(api, NAMESPACE) }
+        assertThatThrownBy { probe().probe(api, SCOPE) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
             .hasMessageContaining("probing ${NodeCapability.HOST_PATH.serialName}")

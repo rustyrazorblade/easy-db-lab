@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.configuration.stress
 
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
 
@@ -18,8 +16,8 @@ class StressSidecarConfig(
     private val templateService: TemplateService,
     private val k8sService: K8sService,
 ) {
-    /** The sidecar config from its classpath resource, exporting to the node's core collector Service. */
-    fun render(): String =
+    /** The sidecar config from its classpath resource, exporting to the node's core collector Service in [cluster]'s namespace. */
+    fun render(cluster: StressCluster): String =
         templateService
             .fromResource(
                 this::class.java,
@@ -27,16 +25,16 @@ class StressSidecarConfig(
             ).substitute(
                 // The node's core collector, through its Service: no collector listens on the node
                 // itself unless the host add-on runs there.
-                mapOf("OTEL_CORE_GRPC_ENDPOINT" to "${OtelEndpoints.serviceHost()}:${Constants.K8s.OTEL_GRPC_PORT}"),
+                mapOf("OTEL_CORE_GRPC_ENDPOINT" to cluster.serviceDns.collectorGrpcHostPort()),
             )
 
-    /** Creates the sidecar ConfigMap in the stress namespace, or leaves it when it exists. */
-    fun ensureConfigMap() {
+    /** Creates the sidecar ConfigMap in [cluster]'s namespace, or leaves it when it exists. */
+    fun ensureConfigMap(cluster: StressCluster) {
         k8sService
             .createConfigMap(
-                namespace = Constants.Stress.NAMESPACE,
+                namespace = cluster.namespace.value,
                 name = CONFIG_MAP_NAME,
-                data = mapOf(FILE_NAME to render()),
+                data = mapOf(FILE_NAME to render(cluster)),
                 labels = mapOf("app.kubernetes.io/name" to "otel-stress-sidecar"),
             ).getOrThrow()
     }

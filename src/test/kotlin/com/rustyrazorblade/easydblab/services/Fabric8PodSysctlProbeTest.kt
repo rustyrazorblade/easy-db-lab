@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.fasterxml.jackson.core.JsonParseException
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
@@ -63,7 +64,7 @@ class Fabric8PodSysctlProbeTest {
                 ProxiedKubernetesClientFactory(),
             )
 
-        val result = Fabric8PodSysctlProbe(provider).probe()
+        val result = Fabric8PodSysctlProbe(provider) { TestScopes.EC2.namespace }.probe()
 
         assertThat(result).isInstanceOf(PodSysctlProbeResult.Unreachable::class.java)
         assertThat((result as PodSysctlProbeResult.Unreachable).reason).contains("kubeconfig not found")
@@ -80,7 +81,7 @@ class Fabric8PodSysctlProbeTest {
                 ProxiedKubernetesClientFactory(),
             )
 
-        assertThatThrownBy { Fabric8PodSysctlProbe(provider).probe() }
+        assertThatThrownBy { Fabric8PodSysctlProbe(provider) { TestScopes.EC2.namespace }.probe() }
             .isInstanceOf(IllegalStateException::class.java)
             .isNotInstanceOf(KubeconfigNotFoundException::class.java)
     }

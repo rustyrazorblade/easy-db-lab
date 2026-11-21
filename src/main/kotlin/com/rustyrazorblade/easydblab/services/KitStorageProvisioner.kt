@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
@@ -58,7 +60,7 @@ class KitStorageProvisioner(
         when (storage) {
             is KitStorage.Provisioned -> {
                 retainCheck.requireKitClass(storage.storageClass, eventBus)
-                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass)
+                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass, state)
             }
             is KitStorage.LocalVolumes -> createLocalVolumes(volumes, storage.storageClassFor(volumes.kit), state)
         }
@@ -117,7 +119,8 @@ class KitStorageProvisioner(
                     count = count,
                     storageSize = volumes.size,
                     storageClass = storageClass,
-                    namespace = Constants.K8s.NAMESPACE,
+                    namespace = InstallScope.of(state, ClusterContract.of(state)).namespace.value,
+                    clusterId = state.clusterId,
                     volumeClaimTemplateName = volumes.volumeClaimTemplateName,
                     nodeType = volumes.nodeType,
                 ),
@@ -132,8 +135,14 @@ class KitStorageProvisioner(
     private fun reopenReleased(
         kit: String,
         storageClass: String,
+        state: ClusterState,
     ) {
-        val reopened = k8sService.reopenReleasedVolumes(storageClass, Constants.K8s.NAMESPACE).getOrThrow()
+        val reopened =
+            k8sService
+                .reopenReleasedVolumes(
+                    storageClass,
+                    InstallScope.of(state, ClusterContract.of(state)).namespace.value,
+                ).getOrThrow()
         if (reopened.isNotEmpty()) log.info { "Reopened Released volumes $reopened of $storageClass for $kit" }
     }
 

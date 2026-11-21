@@ -29,47 +29,6 @@ class DefaultK8sNamespaceOperations(
     private val eventBus: EventBus,
     private val podPollInterval: Duration = Duration.ofMillis(POD_POLL_INTERVAL_MS),
 ) : K8sNamespaceOperations {
-    override fun getObservabilityStatus(): Result<String> =
-        runCatching {
-            log.debug { "Getting observability status via SOCKS proxy" }
-
-            clientProvider.createClient().use { client ->
-                formatPodStatus(client, Constants.K8s.NAMESPACE)
-            }
-        }
-
-    override fun deleteObservability(): Result<Unit> =
-        runCatching {
-            log.debug { "Deleting observability namespace via SOCKS proxy" }
-
-            eventBus.emit(Event.K8s.ObservabilityNamespaceDeleting)
-
-            clientProvider.createClient().use { client ->
-                val namespace = client.namespaces().withName(Constants.K8s.NAMESPACE).get()
-                if (namespace != null) {
-                    client.namespaces().withName(Constants.K8s.NAMESPACE).delete()
-                    log.info { "Deleted namespace: ${Constants.K8s.NAMESPACE}" }
-                } else {
-                    log.info { "Namespace ${Constants.K8s.NAMESPACE} does not exist, nothing to delete" }
-                }
-            }
-
-            eventBus.emit(Event.K8s.ObservabilityNamespaceDeleted)
-        }
-
-    override fun waitForPodsReady(timeoutSeconds: Int): Result<Unit> =
-        runCatching {
-            log.debug { "Waiting for pods to be ready in ${Constants.K8s.NAMESPACE} namespace" }
-
-            eventBus.emit(Event.K8s.ObservabilityPodsWaiting)
-
-            clientProvider.createClient().use { client ->
-                waitForPodsInNamespace(client, Constants.K8s.NAMESPACE, timeoutSeconds)
-            }
-
-            eventBus.emit(Event.K8s.ObservabilityPodsReady)
-        }
-
     override fun waitForPodsReady(
         timeoutSeconds: Int,
         namespace: String,

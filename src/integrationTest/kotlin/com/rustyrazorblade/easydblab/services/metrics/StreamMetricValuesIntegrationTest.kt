@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -67,7 +68,10 @@ class StreamMetricValuesIntegrationTest : BaseKoinTest() {
             SharedLocalStack.createBucketIfMissing(s3, bucket)
             Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
             docker.createVolumeCmd().withName(volume).exec()
-            val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+            val rendered =
+                MimirManifestBuilder(
+                    getKoin().get(),
+                ).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
             ObservabilityBackends
                 .startMimir(ObservabilityBackends.mimirConfig(rendered), volume, bucket, Constants.Observability.METRICS_ROOT)
                 .also { mimir = it }

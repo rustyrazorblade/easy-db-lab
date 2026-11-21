@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -48,7 +49,7 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
         whenever(mockK8sService.deleteConfigMapsByLabels(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockOtelSyncService.syncConfigMap()).thenReturn(Result.success(Unit))
 
-        service = DefaultMetricsRegistryService(mockK8sService, mockOtelSyncService, eventBus)
+        service = DefaultMetricsRegistryService(mockK8sService, mockOtelSyncService, eventBus) { TestScopes.EC2 }
     }
 
     @Test

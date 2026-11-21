@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -18,7 +20,7 @@ import org.junit.jupiter.api.Test
 class DashboardDatasourceTest {
     private val provisioned =
         GrafanaDatasourceSet
-            .build(TenantSet.of("t"), BackendUrls.IN_CLUSTER)
+            .build(TenantSet.of("t"), BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)))
             .datasources
             .mapNotNull { it.uid }
             .toSet()

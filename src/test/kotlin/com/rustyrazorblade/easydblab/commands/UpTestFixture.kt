@@ -40,6 +40,7 @@ import com.rustyrazorblade.easydblab.services.DefaultCassandraProfilingService
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.ImdsRegion
+import com.rustyrazorblade.easydblab.services.InstallNamespace
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sServer
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -237,7 +238,16 @@ abstract class UpTestFixture : BaseKoinTest() {
             ciliumAnnotationModule(),
             provisioningModule(),
             clusterModule(),
+            postStepsModule(),
         )
+
+    /** The first of `up`'s post-steps: the namespace (API faked; NamespaceEnsurerTest covers it) and the pod sysctls. */
+    private fun postStepsModule(): Module =
+        module {
+            single<InstallNamespace> { InstallNamespace {} }
+            // The real tuning step over the mocked manifests; the API server admits every pod tuned.
+            single { PodNetworkTuning(get<K8sService>(), { PodSysctlProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
+        }
 
     /** The AWS side of `up`: state, bucket, network, instances and the provisioning services. */
     private fun provisioningModule(): Module =
@@ -276,8 +286,6 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<DocumentService> { mock<DocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             factory { KitStorageResolver(get(), get()) }
-            // The real tuning step over the mocked manifests; the API server admits every pod tuned.
-            single { PodNetworkTuning(get<K8sService>(), { PodSysctlProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
             single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles(), get<Context>().workingDirectory) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }

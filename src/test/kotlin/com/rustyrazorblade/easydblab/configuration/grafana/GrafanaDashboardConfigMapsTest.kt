@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -48,7 +49,7 @@ class GrafanaDashboardConfigMapsTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
-        grafana = GrafanaManifestBuilder(getKoin().get()).buildAllResources(DocumentsBucket("acct", "us-west-2"), claimed)
+        grafana = GrafanaManifestBuilder(getKoin().get()).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), claimed)
     }
 
     private val tree by lazy { GrafanaDashboardTreeWriter(TestDashboardCatalog.catalog).render("http://pyroscope:4040", installContext) }

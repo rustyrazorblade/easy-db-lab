@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -56,8 +57,6 @@ class CompactorManifestBuilder(
 
         const val TEMPO_BACKEND_FILE = "tempo-backend.yaml"
         const val GATE_SCRIPT = "compactor-gate.sh"
-
-        private const val NAMESPACE = Constants.K8s.NAMESPACE
         private const val APP_LABEL_KEY = "app.kubernetes.io/name"
     }
 
@@ -68,16 +67,17 @@ class CompactorManifestBuilder(
      * @param store the account bucket's store, in the bucket's own region, which every container signs for.
      */
     fun buildAllResources(
+        scope: InstallScope,
         agentJar: CompactorAgentJar,
         store: StoreBackend,
-    ): List<HasMetadata> = listOf(buildConfigMap(), buildDeployment(agentJar, store))
+    ): List<HasMetadata> = listOf(buildConfigMap(scope), buildDeployment(scope, agentJar, store))
 
     /** The configuration files, each with its object-store block placed, and the gate script. */
-    fun buildConfigMap(): ConfigMap =
+    fun buildConfigMap(scope: InstallScope): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(APP_LABEL_KEY, NAME)
             .endMetadata()
             .addToData(MimirManifestBuilder.CONFIG_FILE, render(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE))
@@ -115,11 +115,12 @@ class CompactorManifestBuilder(
 
     /** The Deployment: one pod, replaced, never doubled, on the control node. */
     fun buildDeployment(
+        scope: InstallScope,
         agentJar: CompactorAgentJar,
         store: StoreBackend,
     ): Deployment {
         val containers = CompactorContainers(store)
-        return controlPlaneDeployment(NAME, NAMESPACE, labelKey = APP_LABEL_KEY) {
+        return controlPlaneDeployment(NAME, scope.namespace.value, labelKey = APP_LABEL_KEY) {
             withTerminationGracePeriodSeconds(Constants.Compactor.Lease.TERMINATION_GRACE_SECONDS)
                 .withInitContainers(containers.init())
                 .withContainers(listOf(containers.lease()) + containers.compactors())

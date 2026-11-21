@@ -1228,30 +1228,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("K8s.ObservabilityPodsWaiting")
-        data object ObservabilityPodsWaiting : K8s {
-            override fun toDisplayString(): String = "Waiting for observability pods to be ready..."
-        }
-
-        @Serializable
-        @SerialName("K8s.ObservabilityPodsReady")
-        data object ObservabilityPodsReady : K8s {
-            override fun toDisplayString(): String = "All observability pods are ready"
-        }
-
-        @Serializable
-        @SerialName("K8s.ObservabilityNamespaceDeleting")
-        data object ObservabilityNamespaceDeleting : K8s {
-            override fun toDisplayString(): String = "Deleting observability namespace..."
-        }
-
-        @Serializable
-        @SerialName("K8s.ObservabilityNamespaceDeleted")
-        data object ObservabilityNamespaceDeleted : K8s {
-            override fun toDisplayString(): String = "Observability namespace deleted"
-        }
-
-        @Serializable
         @SerialName("K8s.ResourcesDeleting")
         data class ResourcesDeleting(
             val labelKey: String,
@@ -1296,6 +1272,31 @@ sealed interface Event {
             val jobName: String,
         ) : K8s {
             override fun toDisplayString(): String = "Deleted job: $jobName"
+        }
+
+        /** What `up` did to the namespace the cluster installs into. */
+        @Serializable
+        enum class NamespaceOutcome(
+            val verb: String,
+        ) {
+            /** It was absent and was created with the ownership labels. */
+            CREATED("created"),
+
+            /** It existed without them; they were added and its own labels kept. */
+            ADOPTED("adopted"),
+
+            /** It existed with them already. */
+            UNCHANGED("ready"),
+        }
+
+        /** The namespace [namespace] the cluster installs into exists and is labelled as the cluster's. */
+        @Serializable
+        @SerialName("K8s.InstallNamespaceReady")
+        data class InstallNamespaceReady(
+            val namespace: String,
+            val outcome: NamespaceOutcome,
+        ) : K8s {
+            override fun toDisplayString(): String = "Namespace $namespace ${outcome.verb}"
         }
 
         @Serializable

@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.region
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -132,7 +133,7 @@ class ConfigHashRolloutIntegrationTest {
 
     private fun stack(tempoConfigEdit: (String) -> String = { it }): List<HasMetadata> {
         val tempoResources =
-            tempo.buildAllResources(CLUSTER_IP).map { resource ->
+            tempo.buildAllResources(TestScopes.EC2, CLUSTER_IP).map { resource ->
                 if (resource is ConfigMap) {
                     ConfigMapBuilder(resource)
                         .addToData("tempo.yaml", tempoConfigEdit(resource.data.getValue("tempo.yaml")))
@@ -141,7 +142,7 @@ class ConfigHashRolloutIntegrationTest {
                     resource
                 }
             }
-        return (tempoResources + pyroscope.buildServerResources(CLUSTER_IP)).onEach { it.metadata.namespace = NAMESPACE }
+        return (tempoResources + pyroscope.buildServerResources(TestScopes.EC2, CLUSTER_IP)).onEach { it.metadata.namespace = NAMESPACE }
     }
 
     private fun generation(
@@ -255,7 +256,7 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun pyroscopeServer(withStartupProbe: Boolean = true): List<HasMetadata> =
         pyroscope
-            .buildServerResources(CLUSTER_IP)
+            .buildServerResources(TestScopes.EC2, CLUSTER_IP)
             .map { resource ->
                 if (resource is Deployment && !withStartupProbe) {
                     DeploymentBuilder(resource)
@@ -332,13 +333,11 @@ class ConfigHashRolloutIntegrationTest {
         val resources =
             CollectorResources.build(
                 otel,
-                state,
-                state.region(ProfileRegion.NONE),
+                CollectorInputs(state, state.region(ProfileRegion.NONE), NodeCapabilities.AWS, TestScopes.EC2),
                 scrapeConfigs,
-                NodeCapabilities.AWS,
             )
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
-        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(resources, Constants.K8s.NAMESPACE)
+        ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(resources, TestScopes.NAMESPACE)
         resources.forEach { manifests.applyResource(it).getOrThrow() }
         return emitted
     }
@@ -347,7 +346,7 @@ class ConfigHashRolloutIntegrationTest {
         client
             .apps()
             .daemonSets()
-            .inNamespace(Constants.K8s.NAMESPACE)
+            .inNamespace(TestScopes.NAMESPACE)
             .withName(Constants.OtelCollector.SERVICE_NAME)
             .get()
             .metadata.generation
@@ -393,7 +392,7 @@ class ConfigHashRolloutIntegrationTest {
             assertThat(collectorGeneration()).isEqualTo(syncedGeneration)
         } finally {
             client.resource(kitMetrics).delete()
-            client.resourceList(otel.buildAllResources(NodeCapabilities.AWS)).delete()
+            client.resourceList(otel.buildAllResources(TestScopes.EC2, NodeCapabilities.AWS)).delete()
         }
     }
 }

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.InstallNamespace
 import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.NodeSetupService
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
@@ -14,10 +15,11 @@ import com.rustyrazorblade.easydblab.services.PodNetworkTuning
 
 /**
  * The cluster-wide steps `up` runs once, after every node's pipeline has ended (design D2): the
- * pod network sysctl policy, the recorded kit StorageClass check, the observability stack, and on a
+ * install namespace, the pod network sysctl policy, the recorded kit StorageClass check, the observability stack, and on a
  * local-stack cluster the Cilium install annotations, which need Grafana to exist.
  *
- * The sysctl policy comes first, so every pod made after it, the observability stack's and every
+ * The namespace comes first, created or adopted and labelled (issue 1094, D11), since every later
+ * step applies into it. The sysctl policy comes next, so every pod made after it, the observability stack's and every
  * kit's, runs with the tuned network values (pod-network-tuning).
  *
  * Bring-up drives the observability stack service directly rather than `grafana update-config`:
@@ -25,6 +27,7 @@ import com.rustyrazorblade.easydblab.services.PodNetworkTuning
  * pointed at the external stack.
  */
 class UpPostSteps(
+    private val installNamespace: InstallNamespace,
     private val podNetworkTuning: PodNetworkTuning,
     private val kitStorage: KitStorageResolver,
     private val observability: ObservabilityStackService,
@@ -39,6 +42,7 @@ class UpPostSteps(
         localTelemetry: Boolean,
         kitStorageClass: String?,
     ) {
+        installNamespace.ensure()
         podNetworkTuning.apply()
         // Kits on local volumes get their own class at install (`kit-storage`). A recorded kit class is
         // checked here, before anything claims from it.

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -104,7 +105,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     }
 
     private fun startPyroscope(): GenericContainer<*> {
-        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml")
+        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml")
         val pyroscope = ObservabilityBackends.startPyroscope(ObservabilityBackends.pyroscopeConfig(rendered), volume)
         containers.add(pyroscope)
         ObservabilityBackends.attachAsService(pyroscope, network.id, PYROSCOPE_HOST)

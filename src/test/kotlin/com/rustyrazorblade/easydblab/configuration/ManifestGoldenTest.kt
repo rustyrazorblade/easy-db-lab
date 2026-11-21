@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -67,28 +68,28 @@ class ManifestGoldenTest : BaseKoinTest() {
     private fun manifests(): Map<String, List<HasMetadata>> {
         val templates: TemplateService = getKoin().get()
         return mapOf(
-            "loki" to LokiManifestBuilder(templates).buildAllResources(),
-            "mimir" to MimirManifestBuilder(templates).buildAllResources(),
-            "tempo" to TempoManifestBuilder(templates).buildAllResources(),
+            "loki" to LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "mimir" to MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "tempo" to TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2),
             "grafana" to
                 GrafanaManifestBuilder(
                     templates,
-                ).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS),
-            "pyroscope" to PyroscopeManifestBuilder(templates).buildAllResources(),
-            "registry" to RegistryManifestBuilder().buildAllResources(),
-            "s3manager" to S3ManagerManifestBuilder(templates).buildAllResources(),
-            "yace" to YaceManifestBuilder(templates).buildAllResources(),
-            "kube-state-metrics" to KubeStateMetricsManifestBuilder().buildAllResources(),
+                ).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS),
+            "pyroscope" to PyroscopeManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "registry" to RegistryManifestBuilder().buildAllResources(TestScopes.EC2),
+            "s3manager" to S3ManagerManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "yace" to YaceManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "kube-state-metrics" to KubeStateMetricsManifestBuilder().buildAllResources(TestScopes.EC2),
             "compactor" to
                 CompactorManifestBuilder(
                     templates,
-                ).buildAllResources(CompactorAgentJar(SHA), S3Backend(bucket = "acct", region = "eu-west-1")),
-            "otel" to OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS),
-            "otel-host" to OtelHostCollectorManifestBuilder(templates).buildAllResources(CniMode.Cilium),
-            "journald-otel" to JournaldOtelManifestBuilder(templates).buildAllResources(),
-            "ebpf-exporter" to EbpfExporterManifestBuilder().buildAllResources(),
-            "beyla" to BeylaManifestBuilder(templates).buildAllResources(),
-            "sidecar" to SidecarManifestBuilder(templates).buildAllResources("sidecar:test", "test-1", "tenant"),
+                ).buildAllResources(TestScopes.EC2, CompactorAgentJar(SHA), S3Backend(bucket = "acct", region = "eu-west-1")),
+            "otel" to OtelManifestBuilder(templates).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS),
+            "otel-host" to OtelHostCollectorManifestBuilder(templates).buildAllResources(TestScopes.EC2, CniMode.Cilium),
+            "journald-otel" to JournaldOtelManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "ebpf-exporter" to EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2),
+            "beyla" to BeylaManifestBuilder(templates).buildAllResources(TestScopes.EC2),
+            "sidecar" to SidecarManifestBuilder(templates).buildAllResources(TestScopes.EC2, "sidecar:test", "test-1", "tenant"),
         )
     }
 

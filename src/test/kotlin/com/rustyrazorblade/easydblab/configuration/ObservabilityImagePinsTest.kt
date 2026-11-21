@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuil
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -62,17 +63,19 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
     private fun observabilityImages(): List<String> {
         val templates: TemplateService = getKoin().get()
         val resources =
-            OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
-                JournaldOtelManifestBuilder(templates).buildAllResources() +
-                EbpfExporterManifestBuilder().buildAllResources() +
-                BeylaManifestBuilder(templates).buildAllResources() +
-                MimirManifestBuilder(templates).buildAllResources() +
-                LokiManifestBuilder(templates).buildAllResources() +
-                TempoManifestBuilder(templates).buildAllResources() +
-                PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
-                YaceManifestBuilder(templates).buildAllResources() +
-                KubeStateMetricsManifestBuilder().buildAllResources()
+            OtelManifestBuilder(templates).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS) +
+                JournaldOtelManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2) +
+                BeylaManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                PyroscopeManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                GrafanaManifestBuilder(
+                    templates,
+                ).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
+                YaceManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                KubeStateMetricsManifestBuilder().buildAllResources(TestScopes.EC2)
         return podSpecs(resources).flatMap { pod ->
             (pod.containers.orEmpty() + pod.initContainers.orEmpty()).map { it.image }
         }

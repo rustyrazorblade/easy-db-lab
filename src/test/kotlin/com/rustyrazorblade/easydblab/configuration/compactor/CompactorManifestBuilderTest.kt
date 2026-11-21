@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.Container
@@ -57,7 +58,7 @@ class CompactorManifestBuilderTest : BaseKoinTest() {
         builder = CompactorManifestBuilder(getKoin().get())
     }
 
-    private val resources by lazy { builder.buildAllResources(CompactorAgentJar(SHA), STORE) }
+    private val resources by lazy { builder.buildAllResources(TestScopes.EC2, CompactorAgentJar(SHA), STORE) }
     private val deployment by lazy { resources.filterIsInstance<Deployment>().single() }
     private val configMap by lazy { resources.filterIsInstance<ConfigMap>().single() }
     private val pod by lazy { deployment.spec.template.spec }
@@ -119,10 +120,10 @@ class CompactorManifestBuilderTest : BaseKoinTest() {
     fun `the compactors read the cluster's own Mimir and Loki configuration`() {
         assertThat(
             file(MimirManifestBuilder.CONFIG_FILE),
-        ).isEqualTo(MimirManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("mimir.yaml"))
+        ).isEqualTo(MimirManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue("mimir.yaml"))
         assertThat(
             file(LokiManifestBuilder.CONFIG_FILE),
-        ).isEqualTo(LokiManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("loki.yaml"))
+        ).isEqualTo(LokiManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue("loki.yaml"))
     }
 
     @Test
@@ -224,7 +225,14 @@ class CompactorManifestBuilderTest : BaseKoinTest() {
         assertThat(lease.command + lease.args.orEmpty()).contains("-jar", "/agent/compactor-lease.jar")
         assertThat(lease.image).isEqualTo(Constants.Compactor.AGENT_IMAGE)
 
-        val other = builder.buildAllResources(CompactorAgentJar(SHA.reversed()), STORE).filterIsInstance<Deployment>().single()
+        val other =
+            builder
+                .buildAllResources(
+                    TestScopes.EC2,
+                    CompactorAgentJar(SHA.reversed()),
+                    STORE,
+                ).filterIsInstance<Deployment>()
+                .single()
         assertThat(other.spec.template).isNotEqualTo(deployment.spec.template)
     }
 

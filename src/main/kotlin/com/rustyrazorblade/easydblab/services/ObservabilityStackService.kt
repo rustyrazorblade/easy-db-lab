@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
@@ -68,10 +69,6 @@ class DefaultObservabilityStackService(
     private val grafana: GrafanaStage,
     private val configChangeReport: ConfigChangeReport,
 ) : ObservabilityStackService {
-    companion object {
-        private const val DEFAULT_NAMESPACE = "default"
-    }
-
     /**
      * One deploy stage: a human label and the resources it applies. Every workload in
      * [rolledOutFirst] has finished rolling out before the stage is applied.
@@ -125,7 +122,7 @@ class DefaultObservabilityStackService(
             // Grafana is local-mode only. Rendered and checked before anything is written, so a
             // dashboard that cannot become a ConfigMap fails the deploy naming the files, with the
             // cluster untouched.
-            val grafanaRelease = if (telemetryRedirect == null) grafana.prepare(clusterState, hosting) else null
+            val grafanaRelease = if (telemetryRedirect == null) grafana.prepare(clusterState, hosting, reading.scope) else null
 
             val clusterConfig = createClusterConfigMap(reading)
             val collector = Stage("OTel Collector", manifests.coreCollector.resources(reading))
@@ -134,22 +131,30 @@ class DefaultObservabilityStackService(
             // Gated before any resource is built: building the account compactor's prepares the
             // control node over SSH, which an environment without it must never attempt.
             val runnable = applyCapabilityGate(ObservabilityStage.declared(telemetryRedirect), contract.nodeCapabilities)
-            val stages = buildStages(runnable, clusterState, hosting)
+            val stages = buildStages(runnable, clusterState, hosting, reading.scope)
             backendNode?.let { stateDirectories.prepareBackends(it) }
 
-            val appliedResources = applyHashed(collector, stages, clusterConfig)
+            val namespace = reading.scope.namespace.value
+            val appliedResources = applyHashed(collector, stages, clusterConfig, namespace)
 
             backendNode?.let { stateDirectories.prepareGrafana(it) }
             grafanaRelease?.let { grafana.apply(it) }
 
-            awaitStack(appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect), readyTimeoutSeconds(clusterState))
+            awaitStack(
+                appliedWorkloads(appliedResources) + grafanaWorkloads(telemetryRedirect),
+                namespace,
+                readyTimeoutSeconds(clusterState),
+            )
         }
 
     /** Waits for [workloads] to finish rolling out, failing the deploy if they do not. */
-    private fun awaitRollouts(workloads: List<WorkloadRef>) {
+    private fun awaitRollouts(
+        workloads: List<WorkloadRef>,
+        namespace: String,
+    ) {
         if (workloads.isEmpty()) return
         k8sService
-            .waitForRollouts(workloads, DEFAULT_NAMESPACE, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
+            .waitForRollouts(workloads, namespace, Constants.K8s.OBSERVABILITY_READY_TIMEOUT_SECONDS)
             .getOrElse { exception ->
                 throw IllegalStateException("$workloads did not finish rolling out: ${exception.messageOrString()}", exception)
             }
@@ -187,6 +192,7 @@ class DefaultObservabilityStackService(
         collector: Stage,
         stages: List<Stage>,
         clusterConfig: Map<String, String>,
+        namespace: String,
     ): List<HasMetadata> {
         // Every ConfigMap this deploy knows the contents of, so a workload that reads one from
         // another stage, or the runtime cluster-config, is hashed on it too.
@@ -200,9 +206,9 @@ class DefaultObservabilityStackService(
         val hashedStages =
             listOf(collector) + stages.map { it.copy(resources = ConfigHashAnnotator.annotate(it.resources, knownConfigMaps)) }
         val appliedResources = hashedStages.flatMap { it.resources }
-        configChangeReport.report(appliedResources, DEFAULT_NAMESPACE)
+        configChangeReport.report(appliedResources, namespace)
         for (stage in hashedStages) {
-            awaitRollouts(stage.rolledOutFirst)
+            awaitRollouts(stage.rolledOutFirst, namespace)
             applyStage(stage)
         }
         return appliedResources
@@ -227,15 +233,16 @@ class DefaultObservabilityStackService(
      */
     private fun awaitStack(
         workloads: List<WorkloadRef>,
+        namespace: String,
         timeoutSeconds: Int,
     ) {
         k8sService
-            .waitForRollouts(workloads, DEFAULT_NAMESPACE, timeoutSeconds)
+            .waitForRollouts(workloads, namespace, timeoutSeconds)
             .getOrElse { exception ->
                 throw IllegalStateException("Observability stack did not finish rolling out: ${exception.messageOrString()}", exception)
             }
         k8sService
-            .waitForPodsReady(timeoutSeconds)
+            .waitForPodsReady(timeoutSeconds, namespace)
             .getOrElse { exception ->
                 throw IllegalStateException("Observability stack did not become ready: ${exception.messageOrString()}", exception)
             }
@@ -263,9 +270,10 @@ class DefaultObservabilityStackService(
         stages: List<ObservabilityStage>,
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
+        scope: InstallScope,
     ): List<Stage> =
         stages.map { stage ->
-            Stage(stage.label, manifests.resourcesOf(stage, clusterState, hosting), rolledOutFirstFor(stage))
+            Stage(stage.label, manifests.resourcesOf(stage, clusterState, hosting, scope), rolledOutFirstFor(stage))
         }
 
     private fun rolledOutFirstFor(stage: ObservabilityStage): List<WorkloadRef> =
@@ -311,10 +319,10 @@ class DefaultObservabilityStackService(
 
         k8sService
             .createConfigMap(
-                namespace = DEFAULT_NAMESPACE,
+                namespace = reading.scope.namespace.value,
                 name = ClusterConfigData.NAME,
                 data = configData,
-                labels = mapOf("app.kubernetes.io/managed-by" to "easy-db-lab"),
+                labels = reading.scope.labels,
             ).getOrElse { exception ->
                 // The cluster-config ConfigMap is the source of the `cluster` label every signal
                 // ships with (origin identity). If it is missing, metrics/logs/traces/profiles

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeconfigNotFoundException
 import com.rustyrazorblade.easydblab.messageOrString
@@ -45,8 +46,8 @@ fun interface PodSysctlProbe {
 }
 
 /**
- * [PodSysctlProbe] over fabric8: a `dryRun=All` create of a plain pod in
- * [Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE].
+ * [PodSysctlProbe] over fabric8: a `dryRun=All` create of a plain pod in the namespace easy-db-lab
+ * installs into, which [namespace] resolves on each probe.
  *
  * An answer from the API server that refuses the pod is a [PodSysctlProbeResult.Refused]; a client exception
  * with no HTTP status that a transport failure caused is a [PodSysctlProbeResult.Unreachable] (see [resultOf]).
@@ -57,6 +58,7 @@ fun interface PodSysctlProbe {
  */
 class Fabric8PodSysctlProbe(
     private val clientProvider: K8sClientProvider,
+    private val namespace: () -> K8sNamespace,
 ) : PodSysctlProbe {
     /**
      * Only a workspace with no kubeconfig, or one that could not be read, is an unreachable cluster
@@ -87,7 +89,7 @@ class Fabric8PodSysctlProbe(
     ): Pod =
         client
             .pods()
-            .inNamespace(Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE)
+            .inNamespace(namespace().value)
             .resource(pod)
             .dryRun()
             .create()

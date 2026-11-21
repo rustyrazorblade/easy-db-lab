@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -40,8 +42,17 @@ class StressClusterTest {
                     tenant = "default",
                     telemetryRedirect = null,
                     appSelector = RoleSelectors.OWNED_NODES.app,
+                    namespace = TestScopes.EC2.namespace,
                 ),
             )
+    }
+
+    @Test
+    fun `carries the namespace init recorded`() {
+        val cluster = StressCluster.from(state(initConfig = InitConfig(namespace = "lab-a")))
+
+        assertThat(cluster.namespace).isEqualTo(K8sNamespace("lab-a"))
+        assertThat(cluster.serviceDns.otlpHttpEndpoint()).isEqualTo("http://otel-collector.lab-a.svc:4318")
     }
 
     @Test

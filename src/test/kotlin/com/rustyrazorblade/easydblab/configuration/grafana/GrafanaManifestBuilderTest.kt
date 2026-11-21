@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
@@ -61,7 +62,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     private fun grafanaContainer() =
         builder
-            .buildDeployment(documents, ObservabilityHosting.AWS)
+            .buildDeployment(TestScopes.EC2, documents, ObservabilityHosting.AWS)
             .spec.template.spec.containers
             .first { it.name == "grafana" }
 
@@ -69,7 +70,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     fun `the provisioning ConfigMap carries the dashboard tree provider config`() {
         // The shape of that config is pinned in GrafanaDashboardProvisioningConfigTest; here only
         // that the ConfigMap ships it unchanged under the key Grafana mounts.
-        val yaml = builder.buildDashboardProvisioningConfigMap().data["dashboards.yaml"]
+        val yaml = builder.buildDashboardProvisioningConfigMap(TestScopes.EC2).data["dashboards.yaml"]
 
         assertThat(yaml).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml())
     }
@@ -88,7 +89,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     fun `buildAllResources is the provisioning ConfigMap, the front's ConfigMap, the Deployment and the Service`() {
         // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
         // may vary with the catalog's contents.
-        val resources = builder.buildAllResources(documents, ObservabilityHosting.AWS)
+        val resources = builder.buildAllResources(TestScopes.EC2, documents, ObservabilityHosting.AWS)
 
         assertThat(resources.map { it.metadata.name })
             .containsExactly("grafana-dashboards-config", GrafanaFront.CONFIGMAP_NAME, "grafana", "grafana")
@@ -98,15 +99,15 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     /** The Service targets the front's port: Grafana itself listens only on loopback behind it. */
     @Test
     fun `the Grafana Service is a ClusterIP on the front's port that selects the Deployment's pods`() {
-        val service = builder.buildService()
+        val service = builder.buildService(TestScopes.EC2)
         val pod =
             builder
-                .buildDeployment(documents, ObservabilityHosting.AWS)
+                .buildDeployment(TestScopes.EC2, documents, ObservabilityHosting.AWS)
                 .spec.template
         val front = pod.spec.containers.single { it.name == GrafanaFront.FRONT_CONTAINER }
 
         assertThat(service.spec.type).isEqualTo("ClusterIP")
-        assertThat(service.metadata.namespace).isEqualTo(Constants.K8s.NAMESPACE)
+        assertThat(service.metadata.namespace).isEqualTo(TestScopes.NAMESPACE)
         assertThat(service.spec.ports.map { it.port }).containsExactly(Constants.K8s.GRAFANA_PORT)
         assertThat(
             service.spec.ports
@@ -121,7 +122,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `the renderer is reached on its port and calls Grafana back on Grafana's loopback port`() {
-        val deployment = builder.buildDeployment(documents, ObservabilityHosting.AWS)
+        val deployment = builder.buildDeployment(TestScopes.EC2, documents, ObservabilityHosting.AWS)
         val containers = deployment.spec.template.spec.containers
         val grafanaContainer = containers.first { it.name == "grafana" }
         val rendererContainer = containers.first { it.name == "grafana-image-renderer" }
@@ -153,7 +154,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildDeployment mounts the data hostPath that holds the dashboard tree and nothing per dashboard`() {
-        val deployment = builder.buildDeployment(documents, ObservabilityHosting.AWS)
+        val deployment = builder.buildDeployment(TestScopes.EC2, documents, ObservabilityHosting.AWS)
         val volumes = deployment.spec.template.spec.volumes
         val mounts = grafanaContainer().volumeMounts
 
@@ -179,7 +180,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     fun `the pod runs the front and the documents proxy beside Grafana and the renderer, Grafana first for kubectl logs`() {
         val containers =
             builder
-                .buildDeployment(documents, ObservabilityHosting.AWS)
+                .buildDeployment(TestScopes.EC2, documents, ObservabilityHosting.AWS)
                 .spec.template.spec.containers
 
         assertThat(containers.map { it.name })
@@ -217,7 +218,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
                 StoreCredentials.InstanceRole,
             )
 
-        val resources = builder.buildAllResources(documents, claimed)
+        val resources = builder.buildAllResources(TestScopes.EC2, documents, claimed)
         val pod =
             resources
                 .filterIsInstance<Deployment>()

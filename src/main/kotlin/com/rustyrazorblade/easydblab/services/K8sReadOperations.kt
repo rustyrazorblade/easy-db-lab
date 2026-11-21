@@ -37,12 +37,12 @@ interface K8sReadOperations {
      * List pods matching a label selector in the given namespace.
      *
      * @param labelSelector Kubernetes label selector string (e.g. "app.kubernetes.io/name=presto")
-     * @param namespace Namespace to search in (defaults to "default")
+     * @param namespace Namespace to search in
      * @return Result containing matching pods or an error
      */
     fun listPodsByLabel(
         labelSelector: String,
-        namespace: String = "default",
+        namespace: String,
     ): Result<List<KubernetesPod>>
 
     /**

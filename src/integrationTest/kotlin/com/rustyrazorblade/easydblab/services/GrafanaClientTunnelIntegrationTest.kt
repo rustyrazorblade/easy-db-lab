@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
@@ -46,7 +47,7 @@ class GrafanaClientTunnelIntegrationTest {
                 val access = ServiceAccess { target -> ServiceEndpoint.ViaSocks("10.0.1.5", target.nodePort, current.localPort) }
 
                 assertThatThrownBy {
-                    DefaultGrafanaClient(EventBus(), access, factory)
+                    DefaultGrafanaClient(EventBus(), access, factory) { TestScopes.EC2 }
                         .createAnnotation(GrafanaAnnotationRequest(text = "down", time = 1L))
                 }.isInstanceOf(IllegalStateException::class.java)
 

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
@@ -90,8 +91,9 @@ class TelemetryOutageConfigTest : BaseKoinTest() {
      */
     @Test
     fun `remote write sets its connection only under http, locally and under redirect`() {
-        val local = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
-        val redirected = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        val local = yamlFrom(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
+        val redirected =
+            yamlFrom(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
 
         for (yaml in listOf(local, redirected)) {
             assertThat(keysAt(yaml, "exporters", "prometheus_remote_write")).doesNotContain("endpoint", "tls", "headers")
@@ -107,8 +109,9 @@ class TelemetryOutageConfigTest : BaseKoinTest() {
      */
     @Test
     fun `every backend exporter queues in memory and retries without a limit, locally and under redirect`() {
-        val local = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
-        val redirected = yamlFrom(builder.buildConfigMap(NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+        val local = yamlFrom(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), telemetryRedirect = null))
+        val redirected =
+            yamlFrom(builder.buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
         assertQueuesAndRetriesWithoutLimit(local)
         assertQueuesAndRetriesWithoutLimit(redirected)
     }

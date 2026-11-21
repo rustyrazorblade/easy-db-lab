@@ -1,11 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.Container
@@ -57,7 +58,6 @@ class OtelManifestBuilder(
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
-        private val NAMESPACE = Constants.K8s.NAMESPACE
         private const val APP_LABEL = Constants.K8s.OTEL_COLLECTOR_APP_LABEL
         private const val NAME_LABEL = "app.kubernetes.io/name"
         private const val CONFIGMAP_NAME = "otel-collector-config"
@@ -83,11 +83,6 @@ class OtelManifestBuilder(
          * as a Cassandra log record.
          */
         const val NOT_A_HOST_LOG = "resource.attributes[\"source\"] == nil"
-
-        /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
-        private val LOCAL_METRICS_ENDPOINT = BackendEndpoints.mimirPush()
-        private val LOCAL_LOGS_ENDPOINT = BackendEndpoints.lokiOtlp()
-        private val LOCAL_TEMPO_ENDPOINT = BackendEndpoints.tempoOtlpGrpc()
 
         /** The pod-log pipeline, rendered into `service.pipelines` only with [PodLogSource.NodeFiles]. */
         private val POD_LOG_PIPELINE =
@@ -140,29 +135,30 @@ class OtelManifestBuilder(
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
     fun buildAllResources(
+        scope: InstallScope,
         capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         podLogSource: PodLogSource = PodLogSource.NodeFiles,
     ): List<HasMetadata> =
         listOf(
-            buildServiceAccount(),
-            buildClusterRole(),
-            buildClusterRoleBinding(),
-            buildConfigMap(capabilities, scrapeConfigs, telemetryRedirect, podLogSource),
-            buildDaemonSet(podLogSource),
-            buildService(),
+            buildServiceAccount(scope),
+            buildClusterRole(scope),
+            buildClusterRoleBinding(scope),
+            buildConfigMap(scope, capabilities, scrapeConfigs, telemetryRedirect, podLogSource),
+            buildDaemonSet(scope, podLogSource),
+            buildService(scope),
         )
 
     /**
      * Builds the ServiceAccount for OTel Collector pods.
      * Required by the k8s_attributes processor and the kubelet_stats receiver for K8s API access.
      */
-    fun buildServiceAccount() =
+    fun buildServiceAccount(scope: InstallScope) =
         ServiceAccountBuilder()
             .withNewMetadata()
             .withName(SERVICE_ACCOUNT_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .build()
@@ -171,10 +167,10 @@ class OtelManifestBuilder(
      * Builds the ClusterRole: read access to pods and nodes for k8s_attributes and pod discovery,
      * and `nodes/stats` for the kubelet_stats receiver.
      */
-    fun buildClusterRole() =
+    fun buildClusterRole(scope: InstallScope) =
         ClusterRoleBuilder()
             .withNewMetadata()
-            .withName(CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(CLUSTER_ROLE_NAME))
             .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .addNewRule()
@@ -192,21 +188,21 @@ class OtelManifestBuilder(
     /**
      * Builds the ClusterRoleBinding linking the ServiceAccount to the ClusterRole.
      */
-    fun buildClusterRoleBinding() =
+    fun buildClusterRoleBinding(scope: InstallScope) =
         ClusterRoleBindingBuilder()
             .withNewMetadata()
-            .withName(CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(CLUSTER_ROLE_NAME))
             .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .withNewRoleRef()
             .withApiGroup("rbac.authorization.k8s.io")
             .withKind("ClusterRole")
-            .withName(CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(CLUSTER_ROLE_NAME))
             .endRoleRef()
             .addNewSubject()
             .withKind("ServiceAccount")
             .withName(SERVICE_ACCOUNT_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .endSubject()
             .build()
 
@@ -222,6 +218,7 @@ class OtelManifestBuilder(
      *   [PodLogSource.None] renders neither.
      */
     fun buildConfigMap(
+        scope: InstallScope,
         capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
@@ -229,18 +226,20 @@ class OtelManifestBuilder(
     ) = ConfigMapBuilder()
         .withNewMetadata()
         .withName(CONFIGMAP_NAME)
-        .withNamespace(NAMESPACE)
+        .withNamespace(scope.namespace.value)
         .addToLabels(NAME_LABEL, APP_LABEL)
         .endMetadata()
-        .addToData(CONFIG_DATA_KEY, renderConfig(capabilities, scrapeConfigs, telemetryRedirect, podLogSource))
+        .addToData(CONFIG_DATA_KEY, renderConfig(scope, capabilities, scrapeConfigs, telemetryRedirect, podLogSource))
         .build()
 
     private fun renderConfig(
+        scope: InstallScope,
         capabilities: NodeCapabilities,
         scrapeConfigs: List<WorkloadScrapeConfig>,
         telemetryRedirect: TelemetryRedirect?,
         podLogSource: PodLogSource,
     ): String {
+        val dns = ServiceDns(scope.namespace)
         val (podLogReceivers, podLogPipeline) =
             when (podLogSource) {
                 PodLogSource.NodeFiles -> resource(POD_LOGS_RESOURCE).trimEnd() to POD_LOG_PIPELINE
@@ -250,14 +249,16 @@ class OtelManifestBuilder(
             .fromResource(OtelManifestBuilder::class.java, CONFIG_DATA_KEY)
             .substitute(
                 mapOf(
-                    "KIT_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildKitScrapeJobs(scrapeConfigs)),
+                    "KIT_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildKitScrapeJobs(scope, scrapeConfigs)),
                     "INFRA_SCRAPE_JOBS" to
-                        PrometheusScrapeJob.render(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(capabilities)),
+                        PrometheusScrapeJob.render(
+                            buildLocalBackendScrapeJobs(scope, telemetryRedirect) + buildInfraScrapeJobs(scope, capabilities),
+                        ),
                     "POD_LOG_RECEIVERS" to podLogReceivers,
                     "POD_LOG_PIPELINE" to podLogPipeline,
-                    "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
-                    "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
-                    "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
+                    "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: dns.mimirPush()),
+                    "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: dns.lokiOtlp()),
+                    "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: dns.tempoOtlpGrpc()),
                 ),
             )
     }
@@ -275,9 +276,12 @@ class OtelManifestBuilder(
             .joinToString("\n")
 
     /** One scrape job per running kit workload: pod discovery when it names pods, else its NodePort. */
-    fun buildKitScrapeJobs(configs: List<WorkloadScrapeConfig>): List<PrometheusScrapeJob> =
+    fun buildKitScrapeJobs(
+        scope: InstallScope,
+        configs: List<WorkloadScrapeConfig>,
+    ): List<PrometheusScrapeJob> =
         configs.map { config ->
-            if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
+            if (config.podSelector.isNotBlank()) buildPodScrapeJob(scope, config) else buildStaticScrapeJob(config)
         }
 
     /**
@@ -287,8 +291,10 @@ class OtelManifestBuilder(
      * jobs scrape host-network endpoints and are the host add-on's
      * ([OtelHostCollectorManifestBuilder.buildCniScrapeJobs]).
      */
-    fun buildInfraScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
-        listOf(buildKubeStateMetricsScrapeJob()) + buildCloudWatchScrapeJobs(capabilities)
+    fun buildInfraScrapeJobs(
+        scope: InstallScope,
+        capabilities: NodeCapabilities,
+    ): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob(scope)) + buildCloudWatchScrapeJobs(scope, capabilities)
 
     /**
      * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
@@ -299,7 +305,10 @@ class OtelManifestBuilder(
      * `app.kubernetes.io/name`, its metrics port), so only the collector on the pod's node scrapes
      * it; `instance` is the pod name. A redirect cluster deploys neither, so it renders none of them.
      */
-    fun buildLocalBackendScrapeJobs(telemetryRedirect: TelemetryRedirect?): List<PrometheusScrapeJob> =
+    fun buildLocalBackendScrapeJobs(
+        scope: InstallScope,
+        telemetryRedirect: TelemetryRedirect?,
+    ): List<PrometheusScrapeJob> =
         when (telemetryRedirect) {
             null ->
                 listOf(
@@ -307,7 +316,7 @@ class OtelManifestBuilder(
                     Constants.K8s.LOKI_APP_LABEL to Constants.K8s.LOKI_HTTP_PORT,
                     Constants.K8s.TEMPO_APP_LABEL to Constants.K8s.TEMPO_PORT,
                     Constants.K8s.PYROSCOPE_APP_LABEL to Constants.K8s.PYROSCOPE_PORT,
-                ).map { (name, port) -> NodeScrapeJobs.nodeLocalPodJob(name, NAMESPACE, NAME_LABEL, name, port) }
+                ).map { (name, port) -> NodeScrapeJobs.nodeLocalPodJob(name, scope.namespace.value, NAME_LABEL, name, port) }
             else -> emptyList()
         }
 
@@ -317,10 +326,10 @@ class OtelManifestBuilder(
      * scrape the same series under its own `instance`. Pod discovery filtered to the collector's
      * own node means exactly one collector scrapes it; `instance` is the pod name.
      */
-    private fun buildKubeStateMetricsScrapeJob() =
+    private fun buildKubeStateMetricsScrapeJob(scope: InstallScope) =
         NodeScrapeJobs.nodeLocalPodJob(
             jobName = Constants.KubeStateMetrics.NAME,
-            namespace = NAMESPACE,
+            namespace = scope.namespace.value,
             podLabel = NAME_LABEL,
             podLabelValue = Constants.KubeStateMetrics.NAME,
             port = Constants.KubeStateMetrics.METRICS_PORT,
@@ -332,12 +341,15 @@ class OtelManifestBuilder(
      * found by node-local pod discovery: only the collector on its node scrapes it, and no other
      * node reports `up{job="yace"} = 0`. `instance` keeps its old value, `<host>:<port>`.
      */
-    private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
+    private fun buildCloudWatchScrapeJobs(
+        scope: InstallScope,
+        capabilities: NodeCapabilities,
+    ): List<PrometheusScrapeJob> =
         if (NodeCapability.CLOUDWATCH in capabilities) {
             listOf(
                 NodeScrapeJobs.nodeLocalPodJob(
                     jobName = "yace",
-                    namespace = NAMESPACE,
+                    namespace = scope.namespace.value,
                     podLabel = NAME_LABEL,
                     podLabelValue = Constants.Yace.DEPLOYMENT_NAME,
                     port = Constants.Yace.PORT,
@@ -383,7 +395,10 @@ class OtelManifestBuilder(
      * without it, every collector in the DaemonSet would scrape every pod, producing duplicate
      * series for the same `instance`.
      */
-    private fun buildPodScrapeJob(config: WorkloadScrapeConfig): PrometheusScrapeJob {
+    private fun buildPodScrapeJob(
+        scope: InstallScope,
+        config: WorkloadScrapeConfig,
+    ): PrometheusScrapeJob {
         val selectorRelabels =
             config.podSelector
                 .split(",")
@@ -396,7 +411,7 @@ class OtelManifestBuilder(
         return PrometheusScrapeJob(
             jobName = "${config.kitName}-${config.jobName}",
             scrapeInterval = NodeScrapeJobs.SCRAPE_INTERVAL,
-            kubernetesSdConfigs = listOf(NodeScrapeJobs.podDiscovery(NAMESPACE)),
+            kubernetesSdConfigs = listOf(NodeScrapeJobs.podDiscovery(scope.namespace.value)),
             metricsPath = config.path,
             relabelConfigs =
                 selectorRelabels +
@@ -426,32 +441,34 @@ class OtelManifestBuilder(
      * [PodLogSource.NodeFiles] it mounts `/var/log/pods` read-only and runs as root to read the
      * kubelet's files; with [PodLogSource.None] it mounts no hostPath and runs restricted.
      */
-    fun buildDaemonSet(podLogSource: PodLogSource = PodLogSource.NodeFiles) =
-        DaemonSetBuilder()
-            .withNewMetadata()
-            .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
-            .addToLabels(NAME_LABEL, APP_LABEL)
-            .endMetadata()
-            .withNewSpec()
-            .withNewSelector()
-            .addToMatchLabels(NAME_LABEL, APP_LABEL)
-            .endSelector()
-            .withNewUpdateStrategy()
-            .withType("RollingUpdate")
-            .withNewRollingUpdate()
-            .withMaxSurge(IntOrString(1))
-            .withMaxUnavailable(IntOrString(0))
-            .endRollingUpdate()
-            .endUpdateStrategy()
-            .withNewTemplate()
-            .withNewMetadata()
-            .addToLabels(NAME_LABEL, APP_LABEL)
-            .endMetadata()
-            .withSpec(buildPodSpec(podLogSource))
-            .endTemplate()
-            .endSpec()
-            .build()
+    fun buildDaemonSet(
+        scope: InstallScope,
+        podLogSource: PodLogSource = PodLogSource.NodeFiles,
+    ) = DaemonSetBuilder()
+        .withNewMetadata()
+        .withName(APP_LABEL)
+        .withNamespace(scope.namespace.value)
+        .addToLabels(NAME_LABEL, APP_LABEL)
+        .endMetadata()
+        .withNewSpec()
+        .withNewSelector()
+        .addToMatchLabels(NAME_LABEL, APP_LABEL)
+        .endSelector()
+        .withNewUpdateStrategy()
+        .withType("RollingUpdate")
+        .withNewRollingUpdate()
+        .withMaxSurge(IntOrString(1))
+        .withMaxUnavailable(IntOrString(0))
+        .endRollingUpdate()
+        .endUpdateStrategy()
+        .withNewTemplate()
+        .withNewMetadata()
+        .addToLabels(NAME_LABEL, APP_LABEL)
+        .endMetadata()
+        .withSpec(buildPodSpec(podLogSource))
+        .endTemplate()
+        .endSpec()
+        .build()
 
     private fun buildPodSpec(podLogSource: PodLogSource): PodSpec =
         PodSpecBuilder()
@@ -610,11 +627,11 @@ class OtelManifestBuilder(
      * core pod. It selects `app.kubernetes.io/name=otel-collector` only, which the host add-on's pods
      * (`otel-collector-host`) do not carry.
      */
-    fun buildService() =
+    fun buildService(scope: InstallScope) =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(NAME_LABEL, APP_LABEL)
             .endMetadata()
             .withNewSpec()

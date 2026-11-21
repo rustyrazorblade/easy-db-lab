@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -357,7 +358,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             )
 
         assertThat(job.metadata.name).isEqualTo("stress-test-123")
-        assertThat(job.metadata.namespace).isEqualTo(Constants.Stress.NAMESPACE)
+        assertThat(job.metadata.namespace).isEqualTo(TestScopes.NAMESPACE)
         assertThat(job.metadata.labels[Constants.Stress.LABEL_KEY]).isEqualTo(Constants.Stress.LABEL_VALUE)
         assertThat(job.metadata.labels["job-name"]).isEqualTo("stress-test-123")
         assertThat(job.spec.backoffLimit).isEqualTo(0)

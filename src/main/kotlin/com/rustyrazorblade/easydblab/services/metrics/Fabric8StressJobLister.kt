@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services.metrics
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
 import com.rustyrazorblade.easydblab.kubernetes.KubeApiLocator
 import com.rustyrazorblade.easydblab.kubernetes.applyClusterClientTimeouts
@@ -38,11 +40,12 @@ class Fabric8StressJobLister(
         route: ObservabilityRoute,
     ): List<ListedStressJob> {
         val config = listerConfig(baseConfig(), route)
+        val namespace = InstallScope.of(state, ClusterContract.of(state)).namespace.value
         return KubernetesClientBuilder().withConfig(config).build().use { client ->
             val nodeByJob =
                 client
                     .pods()
-                    .inNamespace(Constants.Stress.NAMESPACE)
+                    .inNamespace(namespace)
                     .withLabels(STRESS_RUN_LABELS)
                     .list()
                     .items
@@ -55,7 +58,7 @@ class Fabric8StressJobLister(
                 .batch()
                 .v1()
                 .jobs()
-                .inNamespace(Constants.Stress.NAMESPACE)
+                .inNamespace(namespace)
                 .withLabels(STRESS_RUN_LABELS)
                 .list()
                 .items

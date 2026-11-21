@@ -19,6 +19,7 @@ import java.nio.file.Path
  * @property storageSize Storage capacity (e.g., "100Gi")
  * @property storageClass StorageClass name
  * @property namespace Namespace for PVC binding
+ * @property clusterId The cluster whose ownership labels the PVs carry
  * @property volumeClaimTemplateName Name of the volume claim template
  * @property nodeType The node pool (`db`, `app`) the PVs are on; each PV requires that pool as well
  *   as its ordinal, since db and app nodes both carry ordinals
@@ -29,7 +30,8 @@ data class PersistentVolumeConfig(
     val count: Int,
     val storageSize: String,
     val storageClass: String,
-    val namespace: String = "default",
+    val namespace: String,
+    val clusterId: String,
     val volumeClaimTemplateName: String = "data",
     val nodeType: String = ServerType.Cassandra.serverType,
 )
@@ -96,12 +98,6 @@ interface K8sJobOperations {
  * Operations for managing Kubernetes namespaces, pods, and resource lifecycle.
  */
 interface K8sNamespaceOperations {
-    fun getObservabilityStatus(): Result<String>
-
-    fun deleteObservability(): Result<Unit>
-
-    fun waitForPodsReady(timeoutSeconds: Int): Result<Unit>
-
     fun waitForPodsReady(
         timeoutSeconds: Int,
         namespace: String,
@@ -119,12 +115,12 @@ interface K8sNamespaceOperations {
 
     fun rolloutRestartDeployment(
         name: String,
-        namespace: String = Constants.K8s.NAMESPACE,
+        namespace: String,
     ): Result<Unit>
 
     fun rolloutRestartDaemonSet(
         name: String,
-        namespace: String = Constants.K8s.NAMESPACE,
+        namespace: String,
     ): Result<Unit>
 
     /**
@@ -254,15 +250,15 @@ interface K8sService :
  *
  * @property clientProvider Shared provider for creating Kubernetes clients
  * @property eventBus Event bus for emitting domain events
+ * @property manifests The apply path; Koin wraps it in [OwnedManifestOperations] so every applied
+ *   object carries the cluster's ownership labels
  */
 class DefaultK8sService(
     clientProvider: K8sClientProvider,
     eventBus: EventBus,
+    manifests: K8sManifestOperations = DefaultK8sManifestOperations(clientProvider, eventBus),
 ) : K8sService,
-    K8sManifestOperations by DefaultK8sManifestOperations(
-        clientProvider,
-        eventBus,
-    ),
+    K8sManifestOperations by manifests,
     K8sJobOperations by DefaultK8sJobOperations(
         clientProvider,
         eventBus,

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.TestContextFactory
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -51,7 +52,7 @@ class ServiceAccessModuleTest {
     @Test
     fun `a Service port-forward reaches the cluster on the pinned context, not the kubeconfig's current-context`() {
         withPortForwardCluster { koin ->
-            runCatching { koin.get<ServiceAccess>().open(ClusterServices.LOKI) }
+            runCatching { koin.get<ServiceAccess>().open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
         }
 
         assertThat(requested).containsExactly(KubeApi(kubeconfig.toPath(), "pinned-context"))

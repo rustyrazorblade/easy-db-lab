@@ -4,10 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
-import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import io.fabric8.kubernetes.api.model.Container
@@ -22,7 +25,7 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 
 /**
  * The cluster facts a stress Job's environment and agents are built from: which cluster and tenant
- * it is, where profiles go, and which nodes the app role runs on. The agents reach the collector
+ * it is, where profiles go, which nodes the app role runs on, and the cluster namespace its Jobs run in. The agents reach the collector
  * and Pyroscope by their Services, never by a node address. Read once from the cluster state by
  * [from], so [StressJobManifestBuilder] never touches the state itself.
  */
@@ -31,7 +34,11 @@ data class StressCluster(
     val tenant: String,
     val telemetryRedirect: TelemetryRedirect?,
     val appSelector: NodeSelector,
+    val namespace: K8sNamespace,
 ) {
+    /** The Service addresses in the cluster namespace the stress agents dial. */
+    val serviceDns: ServiceDns get() = ServiceDns(namespace)
+
     companion object {
         /** Reads the facts from [state]. */
         fun from(state: ClusterState): StressCluster =
@@ -40,6 +47,7 @@ data class StressCluster(
                 tenant = state.tenant(),
                 telemetryRedirect = state.initConfig?.telemetryRedirect,
                 appSelector = RoleSelectors.from(state).app,
+                namespace = InstallScope.of(state, ClusterContract.of(state)).namespace,
             )
     }
 }
@@ -76,7 +84,7 @@ object StressJobManifestBuilder {
         val otelSidecar = buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, cluster.clusterName)
 
         val podSpec = buildRunPodSpec(stressContainer, otelSidecar, cluster.appSelector)
-        return wrapInJob(config.jobName, labels, TTL_STRESS_JOB_SECONDS, podSpec)
+        return wrapInJob(cluster.namespace, config.jobName, labels, TTL_STRESS_JOB_SECONDS, podSpec)
     }
 
     /**
@@ -97,7 +105,7 @@ object StressJobManifestBuilder {
         config: StressJobConfig,
         cluster: StressCluster,
     ): String {
-        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(cluster.telemetryRedirect)
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(cluster.telemetryRedirect, cluster.serviceDns)
         val pyroscopeLabels = "cluster=${cluster.clusterName},job_name=${config.jobName}"
 
         // Client spans come from here or from nowhere. Cassandra has no OTel server-side
@@ -145,7 +153,7 @@ object StressJobManifestBuilder {
                 JavaAgentDelivery.flag(JavaAgent.OTEL),
                 "-Dotel.service.name=cassandra-easy-stress",
                 "-Dotel.resource.attributes=$otelResourceAttributes",
-                "-Dotel.exporter.otlp.endpoint=${OtelEndpoints.otlpHttpEndpoint()}",
+                "-Dotel.exporter.otlp.endpoint=${cluster.serviceDns.otlpHttpEndpoint()}",
                 "-Dotel.metric.export.interval=5s",
                 "-Dotel.logs.exporter=none",
                 "-Dotel.traces.sampler=parentbased_traceidratio",
@@ -264,8 +272,9 @@ object StressJobManifestBuilder {
         return JavaAgentDelivery.applyTo(spec, STRESS_CONTAINER, STRESS_AGENTS)
     }
 
-    /** A Job named [jobName] in the stress namespace that runs [podSpec] once and is removed [ttlSeconds] after it finishes. */
+    /** A Job named [jobName] in [namespace] that runs [podSpec] once and is removed [ttlSeconds] after it finishes. */
     private fun wrapInJob(
+        namespace: K8sNamespace,
         jobName: String,
         labels: Map<String, String>,
         ttlSeconds: Int,
@@ -274,7 +283,7 @@ object StressJobManifestBuilder {
         JobBuilder()
             .withNewMetadata()
             .withName(jobName)
-            .withNamespace(Constants.Stress.NAMESPACE)
+            .withNamespace(namespace.value)
             .withLabels<String, String>(labels)
             .endMetadata()
             .withNewSpec()
@@ -291,13 +300,14 @@ object StressJobManifestBuilder {
 
     /**
      * Builds a simple Kubernetes Job for short-lived commands, on the pod network, on nodes
-     * matching [appSelector].
+     * matching [appSelector], in [namespace].
      */
     fun buildCommandJob(
         jobName: String,
         image: String,
         args: List<String>,
         appSelector: NodeSelector,
+        namespace: K8sNamespace,
     ): Job {
         val labels =
             mapOf(
@@ -319,6 +329,6 @@ object StressJobManifestBuilder {
                 .withNodeSelector<String, String>(appSelector.labels)
                 .withContainers(stressContainer)
                 .build()
-        return wrapInJob(jobName, labels, TTL_COMMAND_JOB_SECONDS, podSpec)
+        return wrapInJob(namespace, jobName, labels, TTL_COMMAND_JOB_SECONDS, podSpec)
     }
 }

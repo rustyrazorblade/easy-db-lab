@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -150,7 +151,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     }
 
     private fun startLoki() {
-        val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
+        val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE)
         val loki =
             ObservabilityBackends.startLoki(
                 ObservabilityBackends.lokiConfig(rendered),
@@ -164,7 +165,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     }
 
     private fun startMimir() {
-        val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+        val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
         val mimir =
             ObservabilityBackends.startMimir(
                 ObservabilityBackends.mimirConfig(rendered),
@@ -177,7 +178,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     }
 
     private fun startTempo() {
-        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("tempo.yaml")
+        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
         val tempo =
             ObservabilityBackends.startTempo(
                 ObservabilityBackends.tempoConfig(rendered),
@@ -344,7 +345,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     private fun traceIdsInS3(traceIds: List<String>): Set<String> {
         val volume = "flush-tempo-reader-${UUID.randomUUID().toString().take(8)}".also { docker.createVolumeCmd().withName(it).exec() }
         volumes.add(volume)
-        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("tempo.yaml")
+        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
         val reader =
             ObservabilityBackends
                 .startTempo(ObservabilityBackends.tempoConfig(rendered), volume, bucket, TRACES_PREFIX, "reader")

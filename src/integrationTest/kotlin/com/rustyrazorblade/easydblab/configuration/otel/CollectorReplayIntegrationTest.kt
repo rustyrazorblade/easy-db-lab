@@ -5,14 +5,15 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -79,9 +80,9 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         val AFTER_REJECT: Duration = Duration.ofSeconds(30)
         const val STALE_VALUE = -1
         const val TOO_OLD_ERROR = "err-mimir-sample-"
-        val MIMIR_HOST = BackendEndpoints.mimirHost()
-        val LOKI_HOST = BackendEndpoints.host(Constants.K8s.LOKI_APP_LABEL)
-        val TEMPO_HOST = BackendEndpoints.host(Constants.K8s.TEMPO_APP_LABEL)
+        val MIMIR_HOST = ServiceDns(TestScopes.EC2.namespace).mimirHost()
+        val LOKI_HOST = ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.LOKI_APP_LABEL)
+        val TEMPO_HOST = ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.TEMPO_APP_LABEL)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -126,7 +127,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         ObservabilityBackends
             .startMimir(
                 ObservabilityBackends.mimirConfig(
-                    MimirManifestBuilder(templates()).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE),
+                    MimirManifestBuilder(templates()).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE),
                 ),
                 volume,
                 bucket,
@@ -137,7 +138,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         ObservabilityBackends
             .startLoki(
                 ObservabilityBackends.lokiConfig(
-                    LokiManifestBuilder(templates()).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE),
+                    LokiManifestBuilder(templates()).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE),
                 ),
                 volume,
                 bucket,
@@ -149,7 +150,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         ObservabilityBackends
             .startTempo(
                 ObservabilityBackends.tempoConfig(
-                    TempoManifestBuilder(templates()).buildConfigMap().data.getValue(TempoManifestBuilder.CONFIG_FILE),
+                    TempoManifestBuilder(templates()).buildConfigMap(TestScopes.EC2).data.getValue(TempoManifestBuilder.CONFIG_FILE),
                 ),
                 volume,
                 bucket,
@@ -169,7 +170,7 @@ class CollectorReplayIntegrationTest : BaseKoinTest() {
         val config =
             OtelManifestBuilder(
                 templates(),
-            ).buildConfigMap(NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
+            ).buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
         return ClusterCollector
             .container(config, CONTROL_HOST, CLUSTER, TENANT)
             .withNetwork(network)

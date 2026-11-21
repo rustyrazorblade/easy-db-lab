@@ -51,6 +51,14 @@ class ClusterConfigDataTest {
     }
 
     @Test
+    fun `publishes the namespace the cluster installs into, the recorded one when init named one`() {
+        val named = state.copy(initConfig = InitConfig(tenant = "acme", region = "us-east-1", namespace = "lab-a"))
+
+        assertThat(ClusterConfigData.of(named, "us-west-2")).containsEntry("namespace", "lab-a")
+        assertThat(ClusterConfigData.of(state, "us-west-2")).containsEntry("namespace", "default")
+    }
+
+    @Test
     fun `on AWS the contents name the store, cluster, tenant and capabilities, and no node IP`() {
         val data = ClusterConfigData.of(state, "us-west-2")
 
@@ -65,6 +73,7 @@ class ClusterConfigDataTest {
                 "logs_store_prefix" to "loki",
                 "cluster_name" to "lab-abc123",
                 "tenant" to "acme",
+                "namespace" to "default",
                 "capabilities" to nodeCapabilityNames,
             ),
         )

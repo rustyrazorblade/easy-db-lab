@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -73,7 +74,6 @@ class GrafanaFront(
         const val HEALTH_PATH = "/api/health"
 
         private const val CONFIG_KEY = "nginx.conf"
-        private const val NAMESPACE = "default"
         private const val READINESS_PERIOD = 10
     }
 
@@ -92,12 +92,15 @@ class GrafanaFront(
                 ),
             )
 
-    /** The ConfigMap with the front's configuration. */
-    fun configMap(documents: DocumentsBucket): ConfigMap =
+    /** The ConfigMap with the front's configuration, in [scope]'s namespace. */
+    fun configMap(
+        scope: InstallScope,
+        documents: DocumentsBucket,
+    ): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", "grafana")
             .endMetadata()
             .addToData(CONFIG_KEY, config(documents))

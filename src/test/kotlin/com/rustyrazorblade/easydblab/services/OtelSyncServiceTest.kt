@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -328,7 +329,13 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private fun collectorHash(clusterConfig: Map<String, String>): String =
         ConfigHashAnnotator
             .annotate(
-                otelManifestBuilder.buildAllResources(capabilities, emptyList(), null, CollectorResources.podLogSource(capabilities)),
+                otelManifestBuilder.buildAllResources(
+                    TestScopes.EC2,
+                    capabilities,
+                    emptyList(),
+                    null,
+                    CollectorResources.podLogSource(capabilities),
+                ),
                 mapOf(ClusterConfigData.NAME to clusterConfig),
             ).let(::appliedConfigHash)
 }

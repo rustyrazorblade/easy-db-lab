@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -41,6 +43,7 @@ class DefaultSidecarService(
     private val k8sService: K8sService,
     private val manifestBuilder: SidecarManifestBuilder,
     private val clusterStateManager: ClusterStateManager,
+    private val scopeSource: InstallScopeSource,
 ) : SidecarService {
     private val log = KotlinLogging.logger {}
 
@@ -57,6 +60,7 @@ class DefaultSidecarService(
             log.info { "Deploying sidecar DaemonSet image=$image to K3s" }
             val resources =
                 manifestBuilder.buildAllResources(
+                    scope = InstallScope.of(state, ClusterContract.of(state)),
                     image = image,
                     clusterName = clusterName,
                     tenant = state.tenant(),
@@ -73,7 +77,7 @@ class DefaultSidecarService(
             log.info { "Removing sidecar DaemonSet from K3s" }
             k8sService
                 .deleteResourcesByLabel(
-                    Constants.K8s.NAMESPACE,
+                    scopeSource.current().namespace.value,
                     APP_LABEL_KEY,
                     listOf(SidecarManifestBuilder.APP_LABEL),
                 ).getOrThrow()
@@ -84,7 +88,7 @@ class DefaultSidecarService(
         runCatching {
             log.info { "Rolling restart of sidecar DaemonSet" }
             k8sService
-                .rolloutRestartDaemonSet(SidecarManifestBuilder.APP_LABEL, Constants.K8s.NAMESPACE)
+                .rolloutRestartDaemonSet(SidecarManifestBuilder.APP_LABEL, scopeSource.current().namespace.value)
                 .getOrThrow()
             log.info { "Sidecar DaemonSet rolling restart triggered" }
         }

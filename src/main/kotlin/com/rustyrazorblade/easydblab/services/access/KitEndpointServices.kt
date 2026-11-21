@@ -21,7 +21,7 @@ import java.io.File
  */
 fun KitEndpoint.serviceTarget(service: KitService?): ServiceTarget =
     ServiceTarget(
-        service?.namespace ?: Constants.K8s.NAMESPACE,
+        service?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
         service?.name.orEmpty(),
         service?.port ?: port,
         ServerType.from(nodeType),
@@ -51,7 +51,7 @@ class KitEndpointServices(
 ) {
     /** The Service [endpoint] is published on, or null when nothing declares one. */
     fun of(endpoint: KitEndpoint): KitService? {
-        val namespace = runtime?.namespace ?: DEFAULT_NAMESPACE
+        val namespace = runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE
         return when {
             endpoint.service.isNotBlank() -> KitService(namespace, endpoint.service, endpoint.servicePort)
             else ->
@@ -65,7 +65,6 @@ class KitEndpointServices(
     companion object {
         private val log = KotlinLogging.logger {}
         private val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
-        private const val DEFAULT_NAMESPACE = "default"
         private val MANIFEST_EXTENSIONS = setOf("yaml", "yml")
 
         /** The Services of the installed kit in [kitDir], whose descriptor is [config]. */
@@ -80,7 +79,7 @@ class KitEndpointServices(
                 .filter { it.isFile && it.extension in MANIFEST_EXTENSIONS && it.name != Constants.Kit.CONFIG_FILE }
                 .flatMap { file -> services(file) }
                 .flatMap { service ->
-                    val namespace = service.metadata.namespace ?: DEFAULT_NAMESPACE
+                    val namespace = service.metadata.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE
                     service.spec
                         ?.ports
                         .orEmpty()

@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.api.model.Quantity
@@ -62,7 +64,7 @@ class CapabilityProbeIntegrationTest {
     fun `a namespace enforcing baseline admits none of the three, and no Pod is left behind`() {
         createNamespace("probe-baseline", mapOf(ENFORCE_LABEL to "baseline"))
 
-        val result = probe.probe(api, "probe-baseline")
+        val result = probe.probe(api, InstallScope(K8sNamespace("probe-baseline"), "probe-cluster"))
 
         val admission = listOf(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
         assertThat(admission).noneMatch { it in result.capabilities }
@@ -81,7 +83,7 @@ class CapabilityProbeIntegrationTest {
     fun `an unlabelled namespace admits the three, and node SSH is never probed present`() {
         createNamespace("probe-open")
 
-        val result = probe.probe(api, "probe-open")
+        val result = probe.probe(api, InstallScope(K8sNamespace("probe-open"), "probe-cluster"))
 
         assertThat(result.capabilities.present())
             .containsExactly(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
@@ -91,7 +93,7 @@ class CapabilityProbeIntegrationTest {
 
     @Test
     fun `a missing namespace is created and probed`() {
-        val result = probe.probe(api, "probe-created")
+        val result = probe.probe(api, InstallScope(K8sNamespace("probe-created"), "probe-cluster"))
 
         assertThat(client.namespaces().withName("probe-created").get()).isNotNull()
         assertThat(result.capabilities.present()).contains(NodeCapability.PRIVILEGED)
@@ -113,7 +115,7 @@ class CapabilityProbeIntegrationTest {
                     .build(),
             ).create()
 
-        assertThatThrownBy { probe.probe(api, "probe-closed") }
+        assertThatThrownBy { probe.probe(api, InstallScope(K8sNamespace("probe-closed"), "probe-cluster")) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("probe-closed")
             .hasMessageContaining("baseline")

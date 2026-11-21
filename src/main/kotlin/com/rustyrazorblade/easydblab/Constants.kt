@@ -741,9 +741,6 @@ object Constants {
         /** How often `up` checks whether the policy is in effect. */
         const val POD_SYSCTL_POLICY_POLL_SECONDS = 2L
 
-        /** The namespace of the dry-run pod `up` checks the policy with; it is never created, so any namespace that exists does. */
-        const val POD_SYSCTL_PROBE_NAMESPACE = "default"
-
         /** The dry-run pod's generateName prefix; a generated name never collides with a pod that exists. */
         const val POD_SYSCTL_PROBE_NAME_PREFIX = "easydblab-pod-sysctl-probe-"
 
@@ -1000,8 +997,6 @@ object Constants {
 
     // K8s observability configuration
     object K8s {
-        const val NAMESPACE = "default"
-
         /** The longest label name, and the longest label value, Kubernetes accepts. */
         const val LABEL_NAME_MAX_LENGTH = 63
 
@@ -1310,6 +1305,7 @@ object Constants {
     }
 
     // The fixed per-environment values ClusterContract.of resolves, until #1094/#1097 add their flags
+
     /** Where easy-db-lab's objects live in a Kubernetes cluster and how they are marked as its own. */
     object Tenancy {
         /** Kubernetes' own namespaces, which `init --namespace` refuses. */
@@ -1766,7 +1762,6 @@ object Constants {
 
     // Cassandra stress testing configuration
     object Stress {
-        const val NAMESPACE = "default"
         const val IMAGE = "ghcr.io/apache/cassandra-easy-stress:latest"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-easy-stress"

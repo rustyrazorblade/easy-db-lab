@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 
@@ -59,10 +60,8 @@ class CoreCollectorManifests(
         val scrapeConfigs = k8sClientProvider.createClient().use { otelManifestBuilder.listWorkloadScrapeConfigs(it) }
         return CollectorResources.build(
             otelManifestBuilder,
-            reading.state,
-            reading.region,
+            CollectorInputs(reading.state, reading.region, reading.contract.nodeCapabilities, reading.scope),
             scrapeConfigs,
-            reading.contract.nodeCapabilities,
         )
     }
 }
@@ -86,19 +85,20 @@ class ObservabilityStageManifests(
         stage: ObservabilityStage,
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
+        scope: InstallScope,
     ): List<HasMetadata> {
         val cni = clusterState.initConfig?.cni ?: CniMode.Flannel
         return when (stage) {
-            ObservabilityStage.OTEL_HOST_COLLECTOR -> collectors.otelHostCollector.buildAllResources(cni)
-            ObservabilityStage.KUBE_STATE_METRICS -> collectors.kubeStateMetrics.buildAllResources(hosting.placement)
-            ObservabilityStage.FLUENT_BIT_JOURNALD -> collectors.journaldOtel.buildAllResources()
-            ObservabilityStage.EBPF_EXPORTER -> collectors.ebpfExporter.buildAllResources()
-            ObservabilityStage.BEYLA -> collectors.beyla.buildAllResources()
-            ObservabilityStage.YACE -> collectors.yace.buildAllResources()
-            ObservabilityStage.ACCOUNT_COMPACTOR -> compactor.prepare(compactorNode(clusterState), clusterState)
+            ObservabilityStage.OTEL_HOST_COLLECTOR -> collectors.otelHostCollector.buildAllResources(scope, cni)
+            ObservabilityStage.KUBE_STATE_METRICS -> collectors.kubeStateMetrics.buildAllResources(scope, hosting.placement)
+            ObservabilityStage.FLUENT_BIT_JOURNALD -> collectors.journaldOtel.buildAllResources(scope)
+            ObservabilityStage.EBPF_EXPORTER -> collectors.ebpfExporter.buildAllResources(scope)
+            ObservabilityStage.BEYLA -> collectors.beyla.buildAllResources(scope)
+            ObservabilityStage.YACE -> collectors.yace.buildAllResources(scope)
+            ObservabilityStage.ACCOUNT_COMPACTOR -> compactor.prepare(compactorNode(clusterState), clusterState, scope)
             // The core collector already left its pod-log receiver out (CollectorResources).
             ObservabilityStage.POD_LOGS -> emptyList()
-            else -> backendResourcesOf(stage, clusterState, hosting)
+            else -> backendResourcesOf(stage, clusterState, hosting, scope)
         }
     }
 
@@ -107,17 +107,18 @@ class ObservabilityStageManifests(
         stage: ObservabilityStage,
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
+        scope: InstallScope,
     ): List<HasMetadata> =
         when (stage) {
-            ObservabilityStage.REGISTRY -> backends.registry.buildAllResources()
-            ObservabilityStage.S3_MANAGER -> backends.s3Manager.buildAllResources()
-            ObservabilityStage.MIMIR -> backends.mimir.buildAllResources(hosting)
-            ObservabilityStage.LOKI -> backends.loki.buildAllResources(hosting)
-            ObservabilityStage.TEMPO -> backends.tempo.buildAllResources(hosting)
-            ObservabilityStage.PYROSCOPE -> backends.pyroscope.buildServerResources(hosting)
+            ObservabilityStage.REGISTRY -> backends.registry.buildAllResources(scope)
+            ObservabilityStage.S3_MANAGER -> backends.s3Manager.buildAllResources(scope)
+            ObservabilityStage.MIMIR -> backends.mimir.buildAllResources(scope, hosting)
+            ObservabilityStage.LOKI -> backends.loki.buildAllResources(scope, hosting)
+            ObservabilityStage.TEMPO -> backends.tempo.buildAllResources(scope, hosting)
+            ObservabilityStage.PYROSCOPE -> backends.pyroscope.buildServerResources(scope, hosting)
             // Every node, in both modes; under a redirect it points at the external Pyroscope.
             ObservabilityStage.PYROSCOPE_AGENT ->
-                backends.pyroscope.buildAgentResources(clusterState.initConfig?.telemetryRedirect)
+                backends.pyroscope.buildAgentResources(scope, clusterState.initConfig?.telemetryRedirect)
             else -> error("$stage is not a backend stage")
         }
 

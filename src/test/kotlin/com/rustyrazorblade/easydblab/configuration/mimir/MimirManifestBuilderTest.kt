@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardFiles
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -50,11 +51,11 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         builder = MimirManifestBuilder(getKoin().get())
     }
 
-    private fun config(): String = builder.buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+    private fun config(): String = builder.buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
 
     private fun pod() =
         builder
-            .buildDeployment()
+            .buildDeployment(TestScopes.EC2)
             .spec.template.spec
 
     @Test

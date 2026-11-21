@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -22,7 +23,6 @@ class S3ManagerManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "s3manager"
         private const val IMAGE = "cloudlena/s3manager:v0.5.0"
 
@@ -37,9 +37,9 @@ class S3ManagerManifestBuilder(
      *
      * @return List of: Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildDeployment(),
+            buildDeployment(scope),
         )
 
     /**
@@ -48,10 +48,10 @@ class S3ManagerManifestBuilder(
      * Runs on control plane with hostNetwork. Uses IAM role for AWS credentials.
      */
     @Suppress("LongMethod")
-    fun buildDeployment(): Deployment {
+    fun buildDeployment(scope: InstallScope): Deployment {
         val region = templateService.buildContextVariables()["AWS_REGION"] ?: "us-east-1"
 
-        return controlPlaneDeployment(APP_LABEL, NAMESPACE) {
+        return controlPlaneDeployment(APP_LABEL, scope.namespace.value) {
             hostNetworked()
                 .addNewContainer()
                 .withName(APP_LABEL)

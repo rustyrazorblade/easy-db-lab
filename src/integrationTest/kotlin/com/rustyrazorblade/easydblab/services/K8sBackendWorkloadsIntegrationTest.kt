@@ -47,7 +47,7 @@ class K8sBackendWorkloadsIntegrationTest {
         client = SharedK3s.client()
         val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
         // Each action closes the client it is handed, so every call gets a fresh one.
-        workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = Duration.ofMillis(250))
+        workloads = K8sBackendWorkloads(clientProvider, { NAMESPACE }, pollInterval = Duration.ofMillis(250))
     }
 
     @AfterEach

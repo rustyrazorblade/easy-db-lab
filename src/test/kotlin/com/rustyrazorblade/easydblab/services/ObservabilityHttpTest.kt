@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
@@ -72,7 +74,9 @@ class ObservabilityHttpTest {
             }
         }
 
-    private val http = DefaultObservabilityHttp(access, { "acme" }, factory)
+    private var namespace = TestScopes.EC2.namespace
+
+    private val http = DefaultObservabilityHttp(access, { "acme" }, { namespace }, factory)
 
     @Test
     fun `a GET reaches the Service at the endpoint the seam opened, with the cluster's tenant`() {
@@ -82,7 +86,7 @@ class ObservabilityHttpTest {
         val request = requests.single()
         assertThat(request.url.toString()).isEqualTo("http://10.0.1.5:31100/loki/api/v1/labels")
         assertThat(request.header("X-Scope-OrgID")).isEqualTo("acme")
-        assertThat(opened).containsExactly(ClusterServices.LOKI)
+        assertThat(opened).containsExactly(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
     }
 
     @Test
@@ -102,7 +106,17 @@ class ObservabilityHttpTest {
         http.get(ClusterServices.LOKI, "/ready")
         http.get(ClusterServices.LOKI, "/ready")
 
-        assertThat(opened).containsExactly(ClusterServices.LOKI, ClusterServices.LOKI)
+        assertThat(opened.map { it.service }).containsExactly(ClusterServices.LOKI.service, ClusterServices.LOKI.service)
+    }
+
+    @Test
+    fun `each request opens its Service in the namespace the cluster resolves to then`() {
+        http.get(ClusterServices.LOKI, "/ready")
+        namespace = K8sNamespace("lab-a")
+        http.get(ClusterServices.LOKI, "/ready")
+
+        assertThat(opened.map { it.namespace }).containsExactly("default", "lab-a")
+        assertThat(opened.map { it.service }).containsOnly(ClusterServices.LOKI.service)
     }
 
     @Test
@@ -121,7 +135,7 @@ class ObservabilityHttpTest {
 
                 override fun close() = Unit
             }
-        return DefaultObservabilityHttp(access, { "acme" }, answeringFactory)
+        return DefaultObservabilityHttp(access, { "acme" }, { namespace }, answeringFactory)
     }
 
     @Test
@@ -199,6 +213,7 @@ class ObservabilityHttpTest {
             DefaultObservabilityHttp(
                 { error("No control node in cluster state runs default/loki") },
                 { "acme" },
+                { namespace },
                 factory,
             )
 

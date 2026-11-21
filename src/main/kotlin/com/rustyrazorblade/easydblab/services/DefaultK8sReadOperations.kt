@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesNode
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -133,7 +134,7 @@ private fun Job.toKubernetesJob(): KubernetesJob {
         }
 
     return KubernetesJob(
-        namespace = metadata?.namespace ?: "default",
+        namespace = metadata?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
         name = metadata?.name ?: "unknown",
         status = jobStatus,
         completions = completionsStr,
@@ -158,7 +159,7 @@ private fun Pod.toKubernetesPod(): KubernetesPod {
     val totalRestarts = containerStatuses.sumOf { it.restartCount ?: 0 }
 
     return KubernetesPod(
-        namespace = metadata?.namespace ?: "default",
+        namespace = metadata?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
         name = metadata?.name ?: "unknown",
         status = status?.phase ?: "Unknown",
         ready = readyStr,

@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
+import com.rustyrazorblade.easydblab.services.access.ClusterService
 import java.time.Duration
 
 /**
@@ -24,13 +24,13 @@ class RecordingObservabilityHttp(
     val calls = mutableListOf<Call>()
 
     override fun get(
-        target: ServiceTarget,
+        target: ClusterService,
         pathAndQuery: String,
         timeout: Duration,
     ): ObservabilityResponse = answer(Call("GET", target.servicePort, pathAndQuery, "", timeout))
 
     override fun post(
-        target: ServiceTarget,
+        target: ClusterService,
         path: String,
         body: String,
         contentType: String,

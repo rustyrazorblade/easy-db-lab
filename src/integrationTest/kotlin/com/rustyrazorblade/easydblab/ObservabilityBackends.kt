@@ -13,7 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
+import com.rustyrazorblade.easydblab.services.access.ClusterService
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
@@ -514,13 +514,13 @@ class ContainerObservabilityHttp(
     private val http: HttpClient = HttpClient.newHttpClient()
 
     override fun get(
-        target: ServiceTarget,
+        target: ClusterService,
         pathAndQuery: String,
         timeout: Duration,
     ): ObservabilityResponse = send(target.servicePort, pathAndQuery, timeout) { it.GET() }
 
     override fun post(
-        target: ServiceTarget,
+        target: ClusterService,
         path: String,
         body: String,
         contentType: String,

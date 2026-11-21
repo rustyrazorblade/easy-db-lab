@@ -86,6 +86,23 @@ class KitEndpointAddressesTest {
     }
 
     @Test
+    fun `endpoints that share a pod selector are looked up once and shown at the same node`() {
+        val queries = mutableListOf<Pair<String, String>>()
+        val answers = ArrayDeque(listOf(listOf(servingPod("10.0.2.2")), listOf(servingPod("10.0.2.1"))))
+        val endpointHost =
+            KitEndpointHost { selector, namespace ->
+                queries += selector to namespace
+                Result.success(answers.removeFirst())
+            }
+        val kit = config(selected, selected.copy(name = "ui", port = 30474))
+
+        val resolved = KitEndpointAddresses.resolve(kit, "graph", hosts, endpointHost)
+
+        assertThat(queries).hasSize(1)
+        assertThat(resolved.map { it.address }).containsExactly("10.0.2.2:30687", "10.0.2.2:30474")
+    }
+
+    @Test
     fun `an installed kit resolves its pod-selector endpoint by its directory name`() {
         val kitDir = File(workspace, "graph2").also { it.mkdirs() }
         File(kitDir, "kit.yaml").writeText(

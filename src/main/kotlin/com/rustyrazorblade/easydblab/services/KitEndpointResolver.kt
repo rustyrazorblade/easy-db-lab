@@ -58,8 +58,9 @@ class DefaultKitEndpointResolver(
         val result = mutableMapOf<String, String>()
 
         val namespace = KitEndpointAddresses.namespaceOf(kitConfig)
+        val lookup = endpointHost.once()
         for (endpoint in kitConfig.endpoints) {
-            endpointHost
+            lookup
                 .resolve(endpoint, targetKitDir.name, namespace, clusterState.hosts)
                 .onSuccess { ip -> result.putAll(endpoint.toTargetVars(ip, sqlCap)) }
                 .onFailure { e -> logSkipped(targetKitDir.name, endpoint, e) }

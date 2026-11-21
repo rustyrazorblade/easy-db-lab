@@ -321,6 +321,44 @@ class KitEndpointResolverTest {
     }
 
     @Test
+    fun `endpoints that share a pod selector are looked up once and target the same node`() {
+        val kitDir =
+            writeKitYaml(
+                "presto",
+                """
+                name: presto
+                endpoints:
+                  - name: UI
+                    node-type: app
+                    port: 8080
+                    type: http
+                    pod-selector: "app=${'$'}{KIT_NAME}"
+                  - name: JDBC
+                    node-type: app
+                    port: 8080
+                    type: jdbc
+                    scheme: presto
+                    pod-selector: "app=${'$'}{KIT_NAME}"
+                """.trimIndent(),
+            )
+        val answers = ArrayDeque(listOf(listOf(coordinator("10.0.2.6")), listOf(coordinator("10.0.2.5"))))
+        var queries = 0
+        val podResolver =
+            DefaultKitEndpointResolver(
+                KitEndpointHost { _, _ ->
+                    queries++
+                    Result.success(answers.removeFirst())
+                },
+            )
+
+        val vars = podResolver.resolveTargetVars(kitDir, appHosts)
+
+        assertThat(queries).isEqualTo(1)
+        assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://10.0.2.6:8080")
+        assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:presto://10.0.2.6:8080")
+    }
+
+    @Test
     fun `a pod-selector endpoint with no serving pod gets no TARGET vars instead of the first node`() {
         val podResolver =
             DefaultKitEndpointResolver(KitEndpointHost { _, _ -> Result.success(listOf(coordinator("10.0.2.6", ready = "0/1"))) })

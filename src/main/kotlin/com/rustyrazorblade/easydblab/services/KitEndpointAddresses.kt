@@ -48,19 +48,22 @@ object KitEndpointAddresses {
     /**
      * Resolves every endpoint [config] declares for the kit instance [kitName] to the addresses
      * that serve it, through [endpointHost]. A `pod-selector` endpoint whose pod cannot be found
-     * is left out, so no address of a node that does not serve it is shown.
+     * is left out, so no address of a node that does not serve it is shown. Endpoints sharing a
+     * selector are looked up once, so they show the same node.
      */
     fun resolve(
         config: KitConfig,
         kitName: String,
         hosts: Map<ServerType, List<ClusterHost>>,
         endpointHost: KitEndpointHost,
-    ): List<Resolved> =
-        config.endpoints.flatMap { endpoint ->
-            endpointHost
+    ): List<Resolved> {
+        val lookup = endpointHost.once()
+        return config.endpoints.flatMap { endpoint ->
+            lookup
                 .displayAddresses(endpoint, kitName, namespaceOf(config), hosts)
                 .map { ip -> Resolved(endpoint, endpoint.formatUrl(ip)) }
         }
+    }
 
     /** Why a running kit shows no endpoints when its descriptor cannot be read. */
     const val UNREADABLE_DESCRIPTOR = "cannot read ${Constants.Kit.CONFIG_FILE}"

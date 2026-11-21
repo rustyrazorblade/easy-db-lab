@@ -64,9 +64,21 @@ class KitEndpointHost(
         hosts: Map<ServerType, List<ClusterHost>>,
     ): List<String> =
         addresses(endpoint, kitName, namespace, hosts).getOrElse { e ->
-            log.warn(e) { "Kit $kitName: endpoint ${endpoint.name} is not shown: ${e.reason()}" }
+            log.warn { "Kit $kitName: endpoint ${endpoint.name} is not shown: ${e.reason()}" }
             emptyList()
         }
+
+    /**
+     * A [KitEndpointHost] that lists the pods of each (selector, namespace) once and answers later
+     * lookups from that list, so endpoints sharing a selector resolve to the same node and the
+     * cluster is asked once. Make one per report; it never refreshes.
+     */
+    fun once(): KitEndpointHost {
+        val seen = mutableMapOf<Pair<String, String>, Result<List<KubernetesPod>>>()
+        return KitEndpointHost { selector, namespace ->
+            seen.getOrPut(selector to namespace) { listPods(selector, namespace) }
+        }
+    }
 
     private fun servingHost(
         endpoint: KitEndpoint,

@@ -925,6 +925,8 @@ Start interactive REPL.
 easy-db-lab repl
 ```
 
+Type any command without the `easy-db-lab` prefix. TAB completes commands, subcommands and options; Alt+S toggles the command description under the input line. `help` lists the commands, `cls` (or `clear`) clears the screen, and `exit`, `quit` or Ctrl-D leaves the REPL. History is kept in the profile directory.
+
 ### server
 
 Start the REST status server: cluster status at `/status` and `/stress/status`, API docs at `/swagger`.

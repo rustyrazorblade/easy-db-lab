@@ -9,7 +9,12 @@ import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.Types
 import java.util.Properties
 
 /**
@@ -92,7 +97,7 @@ class KitJdbcSqlService(
                     val columns = (1..columnCount).map { meta.getColumnName(it) }
                     val rows = mutableListOf<List<String>>()
                     while (rs.next()) {
-                        rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
+                        rows.add((1..columnCount).map { cellText(rs, meta.getColumnType(it), it) })
                     }
                     log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
                     SqlQueryResult(columns = columns, rows = rows)
@@ -103,4 +108,36 @@ class KitJdbcSqlService(
                 SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
             }
         }
+
+    /**
+     * The text of one cell. A binary column is read as bytes: some drivers (Presto, for a
+     * ClickHouse `String` seen through its connector) return the array's `toString()` from
+     * `getString`. Bytes that are valid UTF-8 print as text, any others as `0x` hex.
+     */
+    private fun cellText(
+        rs: ResultSet,
+        columnType: Int,
+        column: Int,
+    ): String {
+        if (columnType !in BINARY_TYPES) return rs.getString(column) ?: NULL_TEXT
+        val bytes = rs.getBytes(column) ?: return NULL_TEXT
+        return decodeUtf8(bytes) ?: bytes.joinToString("", prefix = "0x") { "%02x".format(it) }
+    }
+
+    private fun decodeUtf8(bytes: ByteArray): String? =
+        try {
+            Charsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: CharacterCodingException) {
+            null
+        }
+
+    private companion object {
+        const val NULL_TEXT = "NULL"
+        val BINARY_TYPES = setOf(Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB)
+    }
 }

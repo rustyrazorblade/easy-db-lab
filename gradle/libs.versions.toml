@@ -3,8 +3,8 @@
 kotlin = "2.4.10"
 
 # Logging
-logback = "1.5.32"
-kotlin-logging = "8.0.01"
+logback = "1.6.5"
+kotlin-logging = "8.0.4"
 
 # Jackson
 jackson-dataformat = "2.22.1"
@@ -27,7 +27,7 @@ testcontainers = "2.0.5"
 
 # CLI and UI
 picocli = "4.7.7"
-jline = "3.30.6"
+jline = "4.4.8"
 mordant = "1.2.1"
 
 # Ktor
@@ -37,7 +37,7 @@ ktor = "3.5.1"
 koin = "4.2.2"
 
 # AWS SDK
-awssdk = "2.48.3"
+awssdk = "2.57.7"
 awssdk-kotlin = "1.8.9"
 
 # Docker
@@ -47,7 +47,7 @@ docker-java = "3.7.1"
 okhttp = "5.4.0"
 
 # Apache
-sshd = "2.18.0"
+sshd = "2.19.0"
 commons-io = "2.22.0"
 commons-text = "1.15.0"
 
@@ -60,11 +60,11 @@ jedis = "7.5.3"
 # Other
 classgraph = "4.8.184"
 commonmark = "0.24.0"
-presto-jdbc = "0.289"
+presto-jdbc = "0.299"
 trino-jdbc = "474"
-clickhouse-jdbc = "0.7.2"
+clickhouse-jdbc = "0.10.0"
 mysql-connector-j = "9.7.0"
-postgresql-jdbc = "42.7.4"
+postgresql-jdbc = "42.7.13"
 ignite3 = "3.1.0"
 resilience4j = "2.4.0"
 fabric8-kubernetes = "7.8.0"
@@ -82,7 +82,7 @@ versions = "0.54.0"
 ktlint = "14.2.0"
 detekt = "1.23.8"
 kover = "0.9.8"
-jib = "3.5.2"
+jib = "3.5.4"
 
 [libraries]
 pyroscope-agent = { module = "io.pyroscope:agent", version.ref = "pyroscope-agent" }
@@ -116,7 +116,6 @@ testcontainers-localstack = { module = "org.testcontainers:testcontainers-locals
 
 # CLI and UI
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
-picocli-shell-jline3 = { module = "info.picocli:picocli-shell-jline3", version.ref = "picocli" }
 jline = { module = "org.jline:jline", version.ref = "jline" }
 mordant = { module = "com.github.ajalt:mordant", version.ref = "mordant" }
 

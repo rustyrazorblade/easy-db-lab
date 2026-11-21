@@ -21,6 +21,7 @@ import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Statement
+import java.sql.Types
 
 /**
  * Tests for [KitJdbcSqlService]. Verifies node resolution from cluster state and
@@ -200,6 +201,60 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
         val result = buildService(connection = conn).execute("SELECT null").getOrThrow()
 
         assertThat(result.rows[0][0]).isEqualTo("NULL")
+    }
+
+    /** A one-row result whose single column is VARBINARY holding [bytes]. */
+    private fun binaryConnection(bytes: ByteArray?): Connection {
+        val meta = mock<ResultSetMetaData>()
+        whenever(meta.columnCount).thenReturn(1)
+        whenever(meta.getColumnName(1)).thenReturn("name")
+        whenever(meta.getColumnType(1)).thenReturn(Types.VARBINARY)
+        val rs = mock<ResultSet>()
+        whenever(rs.metaData).thenReturn(meta)
+        var called = false
+        whenever(rs.next()).thenAnswer { (!called).also { called = true } }
+        // What Presto's driver returns from getString for a varbinary: the array's toString.
+        whenever(rs.getString(1)).thenReturn(bytes?.toString())
+        whenever(rs.getBytes(1)).thenReturn(bytes)
+        val stmt = mock<Statement>()
+        whenever(stmt.execute(org.mockito.kotlin.any())).thenReturn(true)
+        whenever(stmt.resultSet).thenReturn(rs)
+        val conn = mock<Connection>()
+        whenever(conn.createStatement()).thenReturn(stmt)
+        return conn
+    }
+
+    @Test
+    fun `a binary column holding UTF-8 prints as its text, not the array's toString`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val result =
+            buildService(connection = binaryConnection("hello".toByteArray()))
+                .execute("SELECT name FROM clickhouse.db.t")
+                .getOrThrow()
+
+        assertThat(result.rows.single()).containsExactly("hello")
+    }
+
+    @Test
+    fun `a binary column that is not UTF-8 prints as hex`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val result =
+            buildService(connection = binaryConnection(byteArrayOf(0x00, 0xff.toByte(), 0x10)))
+                .execute("SELECT b")
+                .getOrThrow()
+
+        assertThat(result.rows.single()).containsExactly("0x00ff10")
+    }
+
+    @Test
+    fun `a null binary column prints as NULL`() {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+
+        val result = buildService(connection = binaryConnection(null)).execute("SELECT b").getOrThrow()
+
+        assertThat(result.rows.single()).containsExactly("NULL")
     }
 
     @Test

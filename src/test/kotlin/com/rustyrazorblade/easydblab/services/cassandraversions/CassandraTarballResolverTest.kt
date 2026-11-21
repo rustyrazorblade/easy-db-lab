@@ -28,15 +28,16 @@ class CassandraTarballResolverTest {
         val nightly: List<CassandraBuild> = emptyList(),
         val catalog: Map<String, CatalogBuild> = emptyMap(),
         val manifests: Map<String, CassandraBuildsManifest> = emptyMap(),
+        val profiles: Map<String, ProfileBuild> = emptyMap(),
     ) : VersionSources {
         val calls = mutableListOf<String>()
         val presigned = mutableListOf<Pair<String, Duration>>()
 
         override val profileBuildDir = File("/profile/cassandra_versions")
 
-        override fun profileBuild(name: String): ProfileBuild? = null
+        override fun profileBuild(name: String): ProfileBuild? = profiles[name]
 
-        override fun profileBuilds(): List<ProfileBuild> = emptyList()
+        override fun profileBuilds(): List<ProfileBuild> = profiles.values.toList()
 
         override fun asfReleases(refresh: Boolean): Cached<AsfReleases> {
             calls += "asf"
@@ -78,8 +79,12 @@ class CassandraTarballResolverTest {
 
     private val state = ClusterState(name = "c")
 
-    private fun resolver(sources: Sources) =
-        CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(Http()), Duration.ofHours(3))
+    private fun resolver(
+        sources: Sources,
+        releaseLines: ReleaseLines = ReleaseLines.load(),
+    ) = CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(Http()), Duration.ofHours(3), releaseLines)
+
+    private fun nightly(ref: String) = CassandraBuild(ref, "https://gh/$ref.tgz", digest = "sha256:$nightlySha")
 
     @Test
     fun `--version of an ASF line runs its newest release's CDN tarball, checked against the published sha256`() {
@@ -179,6 +184,60 @@ class CassandraTarballResolverTest {
             .hasMessageContaining("cassandra-builds")
             .hasMessageContaining("5.0")
         assertThat(sources.calls).doesNotContain("asf", "catalog")
+    }
+
+    @Test
+    fun `--build with no --java runs the highest JDK the build's manifest lists`() {
+        val sources =
+            Sources(
+                nightly = listOf(nightly("feature-x")),
+                manifests = mapOf("feature-x" to CassandraBuildsManifest(listOf("11", "17"), "11")),
+            )
+
+        assertThat(resolver(sources).resolveBuild("feature-x", java = null).java).isEqualTo("17")
+    }
+
+    @Test
+    fun `--build with no manifest takes its JDKs from the release-line table`() {
+        val lines = ReleaseLines(listOf(ReleaseLine("5.0", listOf("11", "17"))))
+
+        assertThat(resolver(Sources(nightly = listOf(nightly("5.0-HEAD"))), lines).resolveBuild("5.0-HEAD", java = null).java)
+            .isEqualTo("17")
+    }
+
+    @Test
+    fun `--build with a --java the build does not run on is refused, naming the JDK and the supported list`() {
+        val sources =
+            Sources(
+                nightly = listOf(nightly("feature-x")),
+                manifests = mapOf("feature-x" to CassandraBuildsManifest(listOf("11", "17"), "11")),
+            )
+
+        assertThatThrownBy { resolver(sources).resolveBuild("feature-x", java = "8") }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("JDK 8")
+            .hasMessageContaining("11, 17")
+    }
+
+    @Test
+    fun `--build with no source of JDKs and no --java fails, asking for --java`() {
+        val sources = Sources(nightly = listOf(nightly("feature-x")))
+
+        assertThatThrownBy { resolver(sources, ReleaseLines(emptyList())).resolveBuild("feature-x", java = null) }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("feature-x")
+            .hasMessageContaining("Pass --java")
+    }
+
+    @Test
+    fun `--version naming a profile build is refused, naming the source and its URL`() {
+        val profile = ProfileBuild(version = "mybuild", url = "https://example.test/mybuild.tgz", javaSupported = listOf("17"), java = "17")
+
+        assertThatThrownBy { resolver(Sources(profiles = mapOf("mybuild" to profile))).resolveVersion("mybuild", java = null, state) }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("PROFILE")
+            .hasMessageContaining("https://example.test/mybuild.tgz")
+            .hasMessageContaining("--image")
     }
 
     @Test

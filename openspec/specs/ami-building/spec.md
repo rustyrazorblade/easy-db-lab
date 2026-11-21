@@ -122,7 +122,9 @@ terminated there. When the build region is not the profile's region, the build S
 profile's public key into the build region as a key pair of its own (named
 `easy-db-lab-build-<build id>`, carrying the marker tags and the build id), so a builder kept by
 `--keep-on-error` accepts the profile's private key, whose path the build prints; that key pair
-SHALL be deleted when the build ends.
+SHALL be deleted when the build ends. An import that a retry finds already done (a key pair of that
+name carrying the build id) SHALL count as done. Under the `ssm` SSH transport, diagnostics SHALL be
+read from the builders over a Session Manager route for the build region.
 
 One `packer build` SHALL be bounded at 60 minutes. A Packer container still running at that point
 SHALL be stopped and removed, and the attempt SHALL fail without a retry.
@@ -164,7 +166,7 @@ SHALL be stopped and removed, and the attempt SHALL fail without a retry.
 - **GIVEN** an AMI build whose `--region` is not the profile's region
 - **WHEN** the build starts
 - **THEN** the packer VPC, subnet and security group are ensured in the build region, and the profile's public key is imported there as the build's own key pair
-- **AND** a failed attempt's builders are found and terminated in the build region
+- **AND** a failed attempt's builders are found and terminated in the build region, and under `ssm` their diagnostics are read over a session in the build region
 - **AND** the build's key pair is deleted when the build ends, whether it succeeded or failed
 
 #### Scenario: A builder that may still run stops the retry

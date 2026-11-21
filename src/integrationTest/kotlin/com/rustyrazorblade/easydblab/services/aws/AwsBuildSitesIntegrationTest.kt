@@ -4,8 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.Ec2BuilderInstances
+import com.rustyrazorblade.easydblab.providers.ssh.OpenSshPublicKey
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -13,13 +15,16 @@ import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.SdkBytes
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Filter
+import software.amazon.awssdk.services.ec2.model.ImportKeyPairRequest
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
 import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
@@ -209,6 +214,60 @@ class AwsBuildSitesIntegrationTest {
         assertThat(keyPairNames(BUILD_REGION))
             .`as`("the build's key pair is deleted when it ends")
             .doesNotContain(Constants.Packer.BUILD_KEY_PAIR_PREFIX + mine)
+    }
+
+    /** Imports the profile key into [region] as [name], tagged [tags], the way a landed first import call would. */
+    private fun importKey(
+        region: String,
+        name: String,
+        tags: Map<String, String>,
+    ) {
+        val keyTags =
+            tags.map { (k, v) ->
+                Tag
+                    .builder()
+                    .key(k)
+                    .value(v)
+                    .build()
+            }
+        val spec =
+            TagSpecification
+                .builder()
+                .resourceType(ResourceType.KEY_PAIR)
+                .tags(keyTags)
+                .build()
+        val request =
+            ImportKeyPairRequest
+                .builder()
+                .keyName(name)
+                .publicKeyMaterial(SdkBytes.fromUtf8String(OpenSshPublicKey.of(keyFile)))
+                .tagSpecifications(spec)
+                .build()
+        ec2(region).importKeyPair(request)
+    }
+
+    @Test
+    fun `a duplicate key pair carrying this build id is the build key, and is deleted when the build ends`() {
+        val buildId = "eeee00000005"
+        val name = Constants.Packer.BUILD_KEY_PAIR_PREFIX + buildId
+        importKey(BUILD_REGION, name, buildTags(buildId))
+
+        sites(profileRegion = UNTOUCHED_PROFILE_REGION).open(BUILD_REGION, buildId).use { site ->
+            assertThat(site.keyPairName).isEqualTo(name)
+        }
+
+        assertThat(keyPairNames(BUILD_REGION)).doesNotContain(name)
+    }
+
+    @Test
+    fun `a duplicate key pair without this build id fails the build and is left alone`() {
+        val buildId = "ffff00000006"
+        val name = Constants.Packer.BUILD_KEY_PAIR_PREFIX + buildId
+        importKey(BUILD_REGION, name, buildTags("999900000007"))
+
+        assertThatThrownBy { sites(profileRegion = UNTOUCHED_PROFILE_REGION).open(BUILD_REGION, buildId).close() }
+            .isInstanceOf(Ec2Exception::class.java)
+        assertThat(keyPairNames(BUILD_REGION)).contains(name)
     }
 
     @Test

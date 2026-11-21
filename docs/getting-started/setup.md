@@ -318,7 +318,7 @@ instance kept with `--keep-on-error` therefore still accepts your profile's `sec
 prints its path.
 
 If your profile's SSH transport is `ssm`, AMI builds reach the build instance over SSM Session
-Manager too. The first such build also builds a local Packer image with the Session Manager plugin
+Manager too, in the build region. The first such build also builds a local Packer image with the Session Manager plugin
 added. A build that loses its session runs again on a new build instance, up to 3 attempts (see
 [AMI builds](../user-guide/network-connectivity.md#ami-builds)).
 

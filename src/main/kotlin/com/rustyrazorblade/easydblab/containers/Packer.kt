@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
+import com.rustyrazorblade.easydblab.providers.ssh.RegionalRemoteOperations
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -47,8 +48,8 @@ class Packer(
     private val user: User by inject()
     private val buildSites: BuildSites by inject()
 
-    // Used on the last failed attempt to capture diagnostics from its builders.
-    private val remoteOps: RemoteOperationsService by inject()
+    // Used on the last failed attempt to capture diagnostics from its builders, in the build region.
+    private val regionalRemote: RegionalRemoteOperations by inject()
 
     private val awsCredentialsManager: AWSCredentialsManager by inject()
     private val secretKeyFile by lazy { File(context.profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE) }
@@ -162,9 +163,11 @@ class Packer(
         val releaseVersion = if (isRelease) context.version.toString() else null
         val outcome =
             buildSites.open(region, build.buildId).use { site ->
-                // A release build uses the release version as the image version and makes the AMI public.
-                val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
-                runAttempts(build, site) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
+                regionalRemote.forRegion(region).use { remote ->
+                    // A release build uses the release version as the image version and makes the AMI public.
+                    val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
+                    runAttempts(build, site, remote.operations) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
+                }
             }
         when (outcome) {
             is PackerBuildOutcome.Succeeded -> logger.info { "Packer build succeeded" }
@@ -172,10 +175,14 @@ class Packer(
         }
     }
 
-    /** Runs the attempts of [build] on [site], each through [attemptRun] with its own log file. */
+    /**
+     * Runs the attempts of [build] on [site], each through [attemptRun] with its own log file, and
+     * reaches a failed attempt's builders through [remote], which reaches the build region.
+     */
     private fun runAttempts(
         build: PackerBuild,
         site: BuildSite,
+        remote: RemoteOperationsService,
         attemptRun: (attempt: Int, logFile: File) -> PackerBuildOutcome,
     ): PackerBuildOutcome {
         println("AMI build ${build.template}: build id ${build.buildId}, region ${build.region}.")
@@ -185,7 +192,7 @@ class Packer(
             cleanUp = { attempt, failed, plan ->
                 // The header comes first, so the cleanup's own lines read as part of this attempt.
                 println(attemptHeader(build, attempt, failed, plan))
-                cleanUp(site, plan)
+                cleanUp(site, remote, plan)
             },
             report = { attempt, failed, willRetry, cleanup ->
                 eventBus.emit(PackerAttempt.failedEvent(build, attempt, failed, willRetry, cleanup))
@@ -242,6 +249,7 @@ class Packer(
      */
     private fun cleanUp(
         site: BuildSite,
+        remote: RemoteOperationsService,
         plan: CleanupPlan,
     ): BuilderCleanup {
         var found: List<BuilderInstance> = emptyList()
@@ -251,7 +259,7 @@ class Packer(
                 inspect = { builders ->
                     found = builders
                     builders.forEach { builder ->
-                        builder.publicIp?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, builder.id) }
+                        builder.publicIp?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(remote, it, builder.id) }
                     }
                 },
                 inspectFailed = { reason -> println("Could not capture diagnostics from the build instance: $reason") },
@@ -272,6 +280,7 @@ class Packer(
      * Best-effort: if the instance is unreachable, prints manual SSH instructions instead.
      */
     private fun captureAndPrintDiagnostics(
+        remote: RemoteOperationsService,
         ip: String,
         instanceId: String,
     ) {
@@ -282,7 +291,7 @@ class Packer(
                 "echo '--- dmesg (tail) ---'; sudo dmesg 2>/dev/null | tail -40"
         runCatchingInterruptibly {
             val host = Host(public = ip, private = "", alias = "packer-build", availabilityZone = "", instanceId = instanceId)
-            val response = remoteOps.executeRemotely(host, cmd, output = false)
+            val response = remote.executeRemotely(host, cmd, output = false)
             println(
                 """
                 |==== build instance diagnostics ($ip) ====

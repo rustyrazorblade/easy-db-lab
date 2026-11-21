@@ -21,6 +21,7 @@ class PackerBuildCommandTest {
     private companion object {
         const val MIN_KEEPALIVES_PER_TIMEOUT = 6L
         const val BUILD_ID = "0123456789ab"
+        val TEMPLATES = listOf("packer/base/base.pkr.hcl", "packer/cassandra/cassandra.pkr.hcl")
     }
 
     private fun user(transport: SshTransport) =
@@ -128,5 +129,35 @@ class PackerBuildCommandTest {
                 .toSet()
 
         assertThat(linted).containsAll(varNames(command(SshTransport.Ssm, releaseVersion = "17")))
+    }
+
+    /**
+     * `packer validate` fails on a variable a template does not declare, but not on one it declares
+     * and never uses, so these two check the uses the build depends on: the cleanup finds a
+     * builder only by the build id in `marker_tags`, and a silent stream fails only through the
+     * keepalive and the read-write timeout.
+     */
+    @Test
+    fun `both templates put the marker tags on the builder, its volumes, the AMI and its snapshots`() {
+        TEMPLATES.forEach { path ->
+            val template = File(path).readText()
+
+            listOf("run_tags", "run_volume_tags", "tags", "snapshot_tags").forEach { attribute ->
+                assertThat(template).`as`("$path $attribute").containsPattern("""(?m)^\s*$attribute\s*=\s*var\.marker_tags\s*$""")
+            }
+        }
+    }
+
+    @Test
+    fun `both templates pass the keepalive and read-write timeout through to the builder`() {
+        TEMPLATES.forEach { path ->
+            val template = File(path).readText()
+
+            listOf("ssh_keep_alive_interval", "ssh_read_write_timeout").forEach { attribute ->
+                assertThat(template)
+                    .`as`("$path source $attribute")
+                    .containsPattern("""(?m)^\s*$attribute\s*=\s*var\.$attribute\s*$""")
+            }
+        }
     }
 }

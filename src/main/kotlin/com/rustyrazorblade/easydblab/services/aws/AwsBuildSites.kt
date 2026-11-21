@@ -16,6 +16,8 @@ import com.rustyrazorblade.easydblab.services.ExternalIpService
 import software.amazon.awssdk.core.SdkBytes
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DeleteKeyPairRequest
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.ImportKeyPairRequest
 import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.Tag
@@ -70,20 +72,24 @@ class AwsBuildSites(
     ): String {
         val name = Constants.Packer.BUILD_KEY_PAIR_PREFIX + buildId
         val tags = (Constants.Vpc.MARKER_TAGS + (Constants.Packer.BUILD_ID_TAG_KEY to buildId)).map { (key, value) -> tag(key, value) }
-        withAwsRetry("import-build-key-pair") {
-            ec2.importKeyPair(
-                ImportKeyPairRequest
-                    .builder()
-                    .keyName(name)
-                    .publicKeyMaterial(SdkBytes.fromUtf8String(OpenSshPublicKey.of(profileKeyFile)))
-                    .tagSpecifications(
-                        TagSpecification
-                            .builder()
-                            .resourceType(ResourceType.KEY_PAIR)
-                            .tags(tags)
-                            .build(),
-                    ).build(),
-            )
+        val request =
+            ImportKeyPairRequest
+                .builder()
+                .keyName(name)
+                .publicKeyMaterial(SdkBytes.fromUtf8String(OpenSshPublicKey.of(profileKeyFile)))
+                .tagSpecifications(
+                    TagSpecification
+                        .builder()
+                        .resourceType(ResourceType.KEY_PAIR)
+                        .tags(tags)
+                        .build(),
+                ).build()
+        // Outside the retry, so the retry still sees every failure: a retried import whose first
+        // call landed is refused as a duplicate, and the key pair it made is this build's.
+        try {
+            withAwsRetry("import-build-key-pair") { ec2.importKeyPair(request) }
+        } catch (e: Ec2Exception) {
+            if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_KEY_PAIR_DUPLICATE || !isThisBuilds(ec2, name, buildId)) throw e
         }
         println(
             "Build region $region is not the profile's ($profileRegion): imported the profile's key as key pair $name " +
@@ -91,6 +97,16 @@ class AwsBuildSites(
         )
         return name
     }
+
+    /** Whether the key pair [name] carries the build id [buildId], so this build imported it. */
+    private fun isThisBuilds(
+        ec2: Ec2Client,
+        name: String,
+        buildId: String,
+    ): Boolean =
+        withAwsRetry("describe-build-key-pair") {
+            ec2.describeKeyPairs(DescribeKeyPairsRequest.builder().keyNames(name).build())
+        }.keyPairs().any { pair -> pair.tags().any { it.key() == Constants.Packer.BUILD_ID_TAG_KEY && it.value() == buildId } }
 
     private fun tag(
         key: String,

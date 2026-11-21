@@ -50,7 +50,7 @@ providers/
 │   └── DefaultRemoteOperationsService.kt
 ```
 
-The SSM Session Manager SSH transport lives in `providers/aws/ssm/` (it is AWS, so the SDK boundary applies), and its Koin bindings are in `AwsClientsModule`: `SsmSessionCommand` (`aws ssm start-session` command lines and credentials), `SsmProxyWrapper` (installs the `edl-ssm-proxy` ProxyCommand wrapper into the profile dir), `SsmSessionTerminator` (ends a stopped forward's session with TerminateSession), `SsmForwardNotReadyException` (unchecked, retryable: a forward exited or timed out before ready) and `SsmSshRoute` (the `ssm` `SshRoute`: ProxyCommands and per-instance port forwards).
+The SSM Session Manager SSH transport lives in `providers/aws/ssm/` (it is AWS, so the SDK boundary applies), and its Koin bindings are in `AwsClientsModule`: `SsmSessionCommand` (`aws ssm start-session` command lines and credentials), `SsmProxyWrapper` (installs the `edl-ssm-proxy` ProxyCommand wrapper into the profile dir), `SsmSessionTerminator` (ends a stopped forward's session with TerminateSession), `SsmForwardNotReadyException` (unchecked, retryable: a forward exited or timed out before ready) and `SsmSshRoute` (the `ssm` `SshRoute`: ProxyCommands and per-instance port forwards). A session reaches only instances in its own region, so `AwsClientsModule` also binds `RegionalSsmRoutes`, which builds an `SsmSshRoute` for a region named at call time; `ssh/RegionalRemoteOperations` (bound in `SSHModule`) uses it to give an AMI build outside the profile region SSH connections of its own under `ssm` (direct, and the profile region, use the shared service), and closing its `RegionRemote` stops them.
 
 ## What Belongs Here vs `services/aws/`
 

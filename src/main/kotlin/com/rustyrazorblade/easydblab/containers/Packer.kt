@@ -160,7 +160,10 @@ class Packer(
         val outcome =
             PackerBuildAttempts(maxAttempts).run(
                 build = { attempt -> runAttempt(image, command, packerDir, logs.newAttempt(name, attempt)) },
-                afterFailure = { attempt, failed, willRetry ->
+                // The builder of an attempt that would run again is always torn down; only the last
+                // failed builder is kept for --keep-on-error.
+                cleanUp = { _, _, retryWanted -> handleBuildFailure(keepUp && !retryWanted) },
+                report = { attempt, failed, willRetry, cleanup ->
                     eventBus.emit(
                         Event.Ami.BuildAttemptFailed(
                             template = name,
@@ -170,16 +173,9 @@ class Packer(
                             willRetry = willRetry,
                             reason = failed.failure.reason,
                             logPath = failed.logFile.absolutePath,
+                            builderNotCleared = (cleanup as? BuilderCleanup.Unresolved)?.reason,
                         ),
                     )
-                    // The builder of an attempt that runs again is always torn down before the next
-                    // launches its own; only the last failed builder is kept for --keep-on-error.
-                    // A builder that would not terminate ends the build: a second one beside it
-                    // would make the next cleanup pick either.
-                    val cleanup = handleBuildFailure(keepUp && !willRetry)
-                    if (willRetry && cleanup is BuilderCleanup.TerminateFailed) {
-                        error("Not retrying the AMI build: its build instance ${cleanup.instanceId} could not be terminated.")
-                    }
                 },
             )
         when (outcome) {
@@ -223,51 +219,59 @@ class Packer(
         System.getenv(Constants.Environment.BUILD_KEEP_ON_FAILURE)?.lowercase() in setOf("1", "true", "yes", "on")
 
     /**
-     * On build failure, capture diagnostics from the kept instance (packer ran with
-     * -on-error=abort) and surface them, then tear the instance down — unless [keepUp] is set
-     * (--keep-on-error / env), in which case it is left running for manual debugging.
+     * After a failed attempt, captures diagnostics from its builder (packer ran with
+     * -on-error=abort), then terminates every instance in the packer VPC, unless [keepUp] is set
+     * (--keep-on-error / env), in which case they are left running for manual debugging.
      *
-     * Best-effort: any failure resolving/SSHing/terminating the instance degrades gracefully to
-     * printing manual SSH instructions, so a build failure is never made worse.
+     * A failed diagnostics capture only prints manual SSH instructions. A failed lookup or
+     * terminate is returned as [BuilderCleanup.Unresolved], because a builder may still be running
+     * and no new attempt may launch beside it.
      */
     private fun handleBuildFailure(keepUp: Boolean): BuilderCleanup {
-        val instanceId =
-            runCatching {
-                val vpcId = vpcService.findVpcByName(Constants.Vpc.PACKER_VPC_NAME) ?: return@runCatching null
-                // The packer VPC only ever holds the in-flight build instance.
-                vpcService.findInstancesInVpc(vpcId).firstOrNull()
-            }.getOrNull()
+        val instanceIds =
+            runCatchingException {
+                vpcService
+                    .findVpcByName(Constants.Vpc.PACKER_VPC_NAME)
+                    ?.let { vpcService.findInstancesInVpc(it) }
+                    .orEmpty()
+            }.getOrElse { error ->
+                println("WARNING: could not look up the build instance: ${error.messageOrString()}")
+                return BuilderCleanup.LookupFailed(error.messageOrString())
+            }
 
-        if (instanceId == null) {
-            println("Build failed. Could not locate the build instance to capture/clean up.")
+        if (instanceIds.isEmpty()) {
+            println("Build failed. The packer VPC holds no build instance to capture or clean up.")
             return BuilderCleanup.NotFound
         }
 
-        val ip = runCatching { ec2InstanceService.describeInstances(listOf(instanceId)).firstOrNull()?.publicIp }.getOrNull()
-        if (!ip.isNullOrBlank()) {
-            captureAndPrintDiagnostics(ip, instanceId)
+        val ips =
+            runCatching { ec2InstanceService.describeInstances(instanceIds).associate { it.instanceId to it.publicIp } }
+                .getOrDefault(emptyMap())
+        instanceIds.forEach { id ->
+            ips[id]?.takeIf { it.isNotBlank() }?.let { captureAndPrintDiagnostics(it, id) }
         }
 
+        val ids = instanceIds.joinToString(" ")
         return if (keepUp) {
+            val sshLines =
+                instanceIds.joinToString("\n") { id ->
+                    "SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ips[id] ?: "<instance-ip>"}"
+                }
             println(
-                """
-
-                Build instance $instanceId left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).
-                SSH in:  ssh -i ${secretKeyFile.absolutePath} ubuntu@${ip ?: "<instance-ip>"}
-                Terminate when done: aws ec2 terminate-instances --instance-ids $instanceId
-                """.trimIndent(),
+                "\nBuild instance $ids left running (--keep-on-error / EASY_DB_LAB_BUILD_KEEP_ON_FAILURE).\n" +
+                    "$sshLines\nTerminate when done: aws ec2 terminate-instances --instance-ids $ids",
             )
             BuilderCleanup.Kept
         } else {
-            runCatchingException { vpcService.terminateInstances(listOf(instanceId)) }
+            runCatchingException { vpcService.terminateInstances(instanceIds) }
                 .fold(
                     onSuccess = {
-                        println("Build instance $instanceId terminated (set --keep-on-error to keep it for debugging).")
+                        println("Build instance $ids terminated (set --keep-on-error to keep it for debugging).")
                         BuilderCleanup.Terminated
                     },
                     onFailure = {
-                        println("WARNING: failed to terminate build instance $instanceId: ${it.message}")
-                        BuilderCleanup.TerminateFailed(instanceId)
+                        println("WARNING: failed to terminate build instance $ids: ${it.messageOrString()}")
+                        BuilderCleanup.TerminateFailed(instanceIds, it.messageOrString())
                     },
                 )
         }

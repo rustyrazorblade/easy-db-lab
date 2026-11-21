@@ -98,9 +98,10 @@ that waits more than 2 minutes. The keepalive replies keep a live but quiet stre
 bound.
 
 A build whose SSH session to the builder was lost (the session ended, or the read/write timeout
-fired) SHALL be run again on a new builder instance, up to 3 attempts in total. The lost attempt's
-builder SHALL be terminated before the next attempt starts, even under `--keep-on-error`; when it
-cannot be terminated, the build SHALL fail instead of starting a second builder beside it. A build
+fired) SHALL be run again on a new builder instance, up to 3 attempts in total. Every instance in
+the packer VPC SHALL be terminated before the next attempt starts, even under `--keep-on-error`;
+when those instances cannot be listed or terminated, the build SHALL fail instead of starting a
+second builder beside one that may still run, and the failed attempt's report SHALL say why. A build
 that failed for any other reason, including an AWS API call that lost its own connection, SHALL NOT
 be retried. Each failed attempt SHALL be reported with
 its reason, whether it lost its session, whether another attempt follows, and the path of its
@@ -128,6 +129,13 @@ SHALL be stopped and removed, and the attempt SHALL fail without a retry.
 - **WHEN** the attempt fails
 - **THEN** its builder is terminated and the build runs again on a new builder instance
 - **AND** the build fails after the third attempt that loses its session
+
+#### Scenario: A builder that may still run stops the retry
+
+- **GIVEN** an AMI build whose SSH session to the builder was lost
+- **WHEN** the packer VPC's instances cannot be listed, or one of them cannot be terminated
+- **THEN** the build fails without another attempt
+- **AND** the failed attempt is reported with why its builder may still be running
 
 #### Scenario: Other failures are not retried
 

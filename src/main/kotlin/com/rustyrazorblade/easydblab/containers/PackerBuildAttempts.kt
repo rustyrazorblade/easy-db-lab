@@ -18,20 +18,40 @@ sealed interface PackerBuildOutcome {
     ) : PackerBuildOutcome
 }
 
-/** What became of a failed attempt's build instance. */
+/**
+ * What became of a failed attempt's build instances. The next attempt may launch its own builder only
+ * when no earlier one can still be running: after [NotFound] or [Terminated].
+ */
 sealed interface BuilderCleanup {
-    /** No build instance was found to clean up. */
+    /** The builder may still be running, so a new attempt must not launch beside it. */
+    sealed interface Unresolved : BuilderCleanup {
+        /** Why the builder may still be running, for the failure message. */
+        val reason: String
+    }
+
+    /** The packer VPC held no build instance. */
     data object NotFound : BuilderCleanup
+
+    /** Every build instance in the packer VPC was terminated. */
+    data object Terminated : BuilderCleanup
 
     /** Left running for --keep-on-error. */
     data object Kept : BuilderCleanup
 
-    data object Terminated : BuilderCleanup
+    /** The build instances could not be listed. */
+    data class LookupFailed(
+        val error: String,
+    ) : Unresolved {
+        override val reason: String get() = "its build instance could not be looked up ($error)"
+    }
 
-    /** The terminate call failed, so [instanceId] may still be running. */
+    /** The terminate call failed, so [instanceIds] may still be running. */
     data class TerminateFailed(
-        val instanceId: String,
-    ) : BuilderCleanup
+        val instanceIds: List<String>,
+        val error: String,
+    ) : Unresolved {
+        override val reason: String get() = "build instance ${instanceIds.joinToString()} could not be terminated ($error)"
+    }
 }
 
 /**
@@ -56,36 +76,56 @@ class PackerBuildAttempts(
      * Runs [build] until it succeeds, fails for a reason other than a dropped session, or uses up
      * the attempts, and returns the last outcome.
      *
+     * After each failed attempt, [cleanUp] deals with its builder first; then [report] is told
+     * whether another attempt follows. One follows only for a dropped session within the limit whose
+     * builder is gone, so a second builder never runs beside one that may still be up.
+     *
      * @param build runs one attempt, given its 1-based number
-     * @param afterFailure called after each failed attempt with its number, its outcome and whether
-     *   another attempt follows; it cleans up the failed attempt's builder and reports the failure
+     * @param cleanUp tears down (or keeps) the failed attempt's builder; `retryWanted` says whether
+     *   the build would run again, in which case the builder must not be kept
+     * @param report reports the failed attempt with whether another attempt follows and what
+     *   became of its builder
      */
     fun run(
         build: (attempt: Int) -> PackerBuildOutcome,
-        afterFailure: (attempt: Int, failed: PackerBuildOutcome.Failed, willRetry: Boolean) -> Unit,
+        cleanUp: (attempt: Int, failed: PackerBuildOutcome.Failed, retryWanted: Boolean) -> BuilderCleanup,
+        report: (attempt: Int, failed: PackerBuildOutcome.Failed, willRetry: Boolean, cleanup: BuilderCleanup) -> Unit,
     ): PackerBuildOutcome {
+        var attempt = 0
+        var retryNext = false
         val config =
             RetryConfig
                 .custom<PackerBuildOutcome>()
                 .maxAttempts(maxAttempts)
                 .intervalFunction { _ -> delay.toMillis() }
-                .retryOnResult(::isSessionDrop)
+                .retryOnResult { retryNext }
                 // Only a dropped session runs again: a throw from an attempt or its cleanup is final.
                 .retryOnException { false }
                 .build()
-        var attempt = 0
         return Retry
             .of("packer-build", config)
             .executeSupplier {
                 attempt++
                 build(attempt).also { outcome ->
-                    if (outcome is PackerBuildOutcome.Failed) {
-                        afterFailure(attempt, outcome, isSessionDrop(outcome) && attempt < maxAttempts)
-                    }
+                    retryNext =
+                        when (outcome) {
+                            is PackerBuildOutcome.Succeeded -> false
+                            is PackerBuildOutcome.Failed -> afterFailure(attempt, outcome, cleanUp, report)
+                        }
                 }
             }
     }
 
-    private fun isSessionDrop(outcome: PackerBuildOutcome): Boolean =
-        outcome is PackerBuildOutcome.Failed && outcome.failure is PackerFailure.SessionDropped
+    private fun afterFailure(
+        attempt: Int,
+        failed: PackerBuildOutcome.Failed,
+        cleanUp: (Int, PackerBuildOutcome.Failed, Boolean) -> BuilderCleanup,
+        report: (Int, PackerBuildOutcome.Failed, Boolean, BuilderCleanup) -> Unit,
+    ): Boolean {
+        val retryWanted = failed.failure is PackerFailure.SessionDropped && attempt < maxAttempts
+        val cleanup = cleanUp(attempt, failed, retryWanted)
+        val willRetry = retryWanted && cleanup !is BuilderCleanup.Unresolved
+        report(attempt, failed, willRetry, cleanup)
+        return willRetry
+    }
 }

@@ -481,7 +481,8 @@ stops carrying data while AWS still shows it as Connected. Every build therefore
 keepalive every 10 seconds and fails any SSH read or write that waits more than 2 minutes, so a
 dead session fails within that time instead of hanging the build. When a build loses its session,
 its build instance is terminated and the build runs again on a new instance, up to 3 attempts in
-total. Any other failure, such as a script that exited non-zero, fails the build at once. Each
+total. If the build instance cannot be found or terminated, the build stops rather than start a
+second one beside it, and says why. Any other failure, such as a script that exited non-zero, fails the build at once. Each
 attempt keeps its full Packer log under `<profile>/packer-logs/`, readable by you only, because the
 log holds the session's token. Each failed attempt prints that log's path.
 

@@ -5086,6 +5086,8 @@ sealed interface Event {
          * to the builder (an `ssm` session that ended, or a stream silent past the read/write
          * timeout); only such an attempt is run again, from a new builder, while [willRetry].
          * [reason] is Packer's own error and [logPath] the attempt's full Packer debug log.
+         * [builderNotCleared] is set when the failed builder may still be running (it could not be
+         * looked up or terminated), which stops a retry; it says why.
          */
         @Serializable
         @SerialName("Ami.BuildAttemptFailed")
@@ -5097,12 +5099,14 @@ sealed interface Event {
             val willRetry: Boolean,
             val reason: String,
             val logPath: String,
+            val builderNotCleared: String? = null,
         ) : Ami {
             override fun toDisplayString(): String {
                 val cause = if (sessionDropped) "lost its SSH session to the build instance" else "failed"
                 val next =
                     when {
                         willRetry -> "Running it again on a new build instance."
+                        builderNotCleared != null -> "Not retried: $builderNotCleared."
                         sessionDropped -> "No attempts left."
                         else -> "Not retried: only a lost session is."
                     }

@@ -162,7 +162,8 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
-            if (!awaitDefaultServiceAccount(client, name)) {
+            val lastReadFailure = awaitDefaultServiceAccount(client, name).exceptionOrNull()
+            if (lastReadFailure != null) {
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
                     "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT_SECONDS}s\n" +
@@ -177,6 +178,7 @@ object SharedK3s {
                         }.getOrElse {
                             "cluster diagnostics unavailable: ${it.messageOrString()}"
                         }}\nK3s log tail, without orphaned pod cgroup lines:\n${controlPlaneLogTail()}",
+                    lastReadFailure,
                 )
             }
         }
@@ -187,22 +189,32 @@ object SharedK3s {
      * [NAMESPACE_READY_TIMEOUT_SECONDS]. Each read is a plain GET, not a watch: in CI an informer's
      * watch on this account sometimes never delivered the ADDED event, and the wait timed out with
      * the account in place since the second the wait began.
+     *
+     * A read that fails (an API server error, a dropped connection) is tried again within the same
+     * budget. The result is a success once the account exists, or else a failure carrying the last
+     * read's error, or a [NoSuchElementException] when every read answered that it is absent.
      */
     private fun awaitDefaultServiceAccount(
         client: KubernetesClient,
         namespace: String,
-    ): Boolean {
+    ): Result<Unit> {
         val account =
             client
                 .serviceAccounts()
                 .inNamespace(namespace)
                 .withName("default")
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(NAMESPACE_READY_TIMEOUT_SECONDS)
-        while (System.nanoTime() < deadline) {
-            if (account.get() != null) return true
-            Thread.sleep(SERVICE_ACCOUNT_POLL_MILLIS)
+        val read = {
+            runCatching {
+                if (account.get() == null) throw NoSuchElementException("no default ServiceAccount in $namespace yet")
+            }
         }
-        return account.get() != null
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(NAMESPACE_READY_TIMEOUT_SECONDS)
+        var result = read()
+        while (result.isFailure && System.nanoTime() < deadline) {
+            Thread.sleep(SERVICE_ACCOUNT_POLL_MILLIS)
+            result = read()
+        }
+        return result
     }
 
     /**

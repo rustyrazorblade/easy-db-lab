@@ -23,11 +23,7 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.MountableFile
 import java.io.File
-import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.UUID
 
@@ -85,7 +81,6 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
 
     private val s3 = SharedLocalStack.s3Client()
     private val docker = DockerClientFactory.instance().client()
-    private val http: HttpClient = HttpClient.newHttpClient()
     private val bucket = "pyroscope-agent-replay-${UUID.randomUUID().toString().take(8)}"
     private val volume = "pyroscope-replay-${UUID.randomUUID().toString().take(8)}"
     private val network: Network = Network.newNetwork()
@@ -264,27 +259,18 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
      * or its first snapshot is refused and counted as a loss the outage did not cause.
      */
     private fun awaitAcceptsPushes(pyroscope: GenericContainer<*>) {
-        val name = URLEncoder.encode("$READINESS_SERVICE{}", Charsets.UTF_8)
-        val url = "${ObservabilityBackends.baseUrl(pyroscope, PyroscopeManifestBuilder.SERVER_PORT)}/ingest?name=$name&format=folded"
         val push = {
             runCatching {
-                http
-                    .send(
-                        HttpRequest
-                            .newBuilder(URI(url))
-                            .header(Constants.Observability.TENANT_HEADER, TENANT)
-                            .timeout(POLL)
-                            .POST(HttpRequest.BodyPublishers.ofString("main;ready 1\n"))
-                            .build(),
-                        HttpResponse.BodyHandlers.ofString(),
-                    ).statusCode() == HTTP_OK
+                ObservabilityBackends.pushFolded(pyroscope, TENANT, "$READINESS_SERVICE{}", "main;ready 1\n", POLL).statusCode() == HTTP_OK
             }.getOrDefault(false)
         }
         val deadline = System.nanoTime() + WAIT.toNanos()
-        while (!push() && System.nanoTime() < deadline) {
+        var stored = push()
+        while (!stored && System.nanoTime() < deadline) {
             Thread.sleep(PUSH_POLL.toMillis())
+            stored = push()
         }
-        assertThat(push()).describedAs("the first Pyroscope server stored a push").isTrue()
+        assertThat(stored).describedAs("the first Pyroscope server stored a push").isTrue()
     }
 
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND

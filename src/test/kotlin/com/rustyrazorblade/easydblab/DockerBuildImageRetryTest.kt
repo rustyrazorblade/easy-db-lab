@@ -32,6 +32,7 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     /** Fails the first builds with the scripted errors, then succeeds; counts every attempt. */
     private class ScriptedBuildClient(
         failures: List<Exception>,
+        private val output: String = "",
     ) : DockerClientInterface {
         private val pending = ArrayDeque(failures)
         var builds = 0
@@ -43,6 +44,7 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
         ): String {
             builds++
             onOutput("attempt $builds")
+            output.lines().filter { it.isNotEmpty() }.forEach(onOutput)
             pending.removeFirstOrNull()?.let { throw it }
             return "sha256:built"
         }
@@ -87,9 +89,10 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     fun `a build failure is retried only when the daemon lost the build's content lease`(
         description: String,
         failure: Exception,
+        output: String,
         expectedAttempts: Int,
     ) {
-        val client = ScriptedBuildClient(List(Constants.Retry.MAX_DOCKER_RETRIES) { failure })
+        val client = ScriptedBuildClient(List(Constants.Retry.MAX_DOCKER_RETRIES) { failure }, output)
 
         assertThatThrownBy { build(client) }
             .`as`(description)
@@ -130,22 +133,35 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
         @JvmStatic
         fun buildFailures(): Stream<Arguments> =
             Stream.of(
-                Arguments.of("the content lease was pruned", leaseLost(), Constants.Retry.MAX_DOCKER_RETRIES),
+                Arguments.of("the content lease was pruned", leaseLost(), "", Constants.Retry.MAX_DOCKER_RETRIES),
                 Arguments.of(
                     "a RUN step exited non-zero",
                     DockerClientException(
                         "Could not build image: The command '/bin/sh -c apk add nope' returned a non-zero code: 1",
                     ),
+                    "",
                     1,
                 ),
                 Arguments.of(
                     "the base image does not exist",
                     DockerClientException("Could not build image: pull access denied for nope, repository does not exist"),
+                    "",
                     1,
                 ),
                 Arguments.of(
                     "an unrelated missing object",
                     DockerClientException("Could not build image: NotFound: content digest sha256:abc: not found"),
+                    "",
+                    1,
+                ),
+                // The failure report carries the build's output; a step that prints the phrase and
+                // then fails is the step's failure, not a lost lease.
+                Arguments.of(
+                    "a RUN step printed a lease error and exited non-zero",
+                    DockerClientException(
+                        "Could not build image: The command '/bin/sh -c ./elect' returned a non-zero code: 1",
+                    ),
+                    "election failed: lease does not exist\n",
                     1,
                 ),
             )

@@ -24,6 +24,7 @@ import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -474,6 +475,28 @@ object ObservabilityBackends {
                 HttpRequest.newBuilder(request) { _, _ -> true }.timeout(REQUEST_TIMEOUT).build()
             }
         return http.send(bounded, HttpResponse.BodyHandlers.ofString())
+    }
+
+    /**
+     * Pushes [folded] stacks to [pyroscope]'s `/ingest` as the series [name] (a Pyroscope series
+     * name, labels included) for [tenant], and returns the server's answer.
+     */
+    fun pushFolded(
+        pyroscope: GenericContainer<*>,
+        tenant: String,
+        name: String,
+        folded: String,
+        timeout: Duration = REQUEST_TIMEOUT,
+    ): HttpResponse<String> {
+        val encoded = URLEncoder.encode(name, Charsets.UTF_8)
+        return send(
+            HttpRequest
+                .newBuilder(URI("${baseUrl(pyroscope, PyroscopeManifestBuilder.SERVER_PORT)}/ingest?name=$encoded&format=folded"))
+                .header(Constants.Observability.TENANT_HEADER, tenant)
+                .timeout(timeout)
+                .POST(HttpRequest.BodyPublishers.ofString(folded))
+                .build(),
+        )
     }
 
     /** A GET of [url] carrying [tenant] in `X-Scope-OrgID`. */

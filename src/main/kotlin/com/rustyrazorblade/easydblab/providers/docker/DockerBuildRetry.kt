@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.docker
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.DockerException
 import com.rustyrazorblade.easydblab.kernel.causeChain
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
@@ -34,7 +35,15 @@ object DockerBuildRetry {
                 }
             }.build()
 
-    /** Whether containerd's lease-lost message appears anywhere in [throwable]'s cause chain. */
-    fun isLeaseLost(throwable: Throwable): Boolean =
-        throwable.causeChain().any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }
+    /**
+     * Whether the daemon's error, below the project [DockerException] that `Docker.buildImage`
+     * wraps it in, carries containerd's lease-lost message. The wrapper is skipped because its
+     * message holds the build's output, and a step that prints the phrase and then fails is the
+     * step's own failure.
+     */
+    private fun isLeaseLost(throwable: Throwable): Boolean =
+        throwable
+            .causeChain()
+            .dropWhile { it is DockerException }
+            .any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }
 }

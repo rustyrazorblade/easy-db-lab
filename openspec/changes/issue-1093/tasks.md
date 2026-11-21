@@ -27,7 +27,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
   - `NodePorts` gives the private IP and NodePort;
   - `NodePorts` with no control node fails, naming the need;
   - `ClusterIp` gives the Service DNS URL.
-- [ ] 3.2 Change `GrafanaDeployService`:
+- [x] 3.2 Change `GrafanaDeployService`:
   - `deploy(context, bucket, hosting, pyroscopeUrl)` and `createDatasourcesConfigMap(tenants)` take no `ClusterHost`;
   - drop `withDashboardTree`'s storage branch;
   - render, mount, apply, then prune after the apply loop;
@@ -35,21 +35,21 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
   - update the KDoc.
 
   Update `GrafanaStage` in `ObservabilityDeployInputs.kt` to resolve the URL and change its failure text. Update every caller.
-- [ ] 3.3 Rewrite `GrafanaDeployServiceTest`:
+- [x] 3.3 Rewrite `GrafanaDeployServiceTest`:
   - drop the uploader;
   - check that the same dashboard ConfigMaps are applied under `HostPath` and under `RetainedClaim`;
   - check that the prune runs after the Deployment apply;
   - check that the Pyroscope URL reaches the rendered profiling dashboard.
-- [ ] 3.4 Replace `Grafana.DashboardTreeUploading` and `DashboardTreeUploaded` with `Grafana.DashboardsRendered(count)` in `events/Event.kt`, with console text. Update `EventSerializationTest` and the events CLAUDE.md list if it names them.
+- [x] 3.4 Replace `Grafana.DashboardTreeUploading` and `DashboardTreeUploaded` with `Grafana.DashboardsRendered(count)` in `events/Event.kt`, with console text. Update `EventSerializationTest` and the events CLAUDE.md list if it names them.
 
 ## 4. Remove the SSH path
 
-- [ ] 4.1 Delete:
+- [x] 4.1 Delete:
   - `services/GrafanaDashboardTreeUploader.kt`, its Koin binding in `ServicesModule.kt` and `GrafanaDashboardTreeUploaderTest`;
   - `GrafanaDashboardTreeWriter.writeTo`; move `GrafanaDashboardTreeWriterTest` to `render` and fix the writer KDoc;
   - `GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH` and the KDoc that says dashboards are not K8s objects.
-- [ ] 4.2 Delete `RemoteOperationsService.replaceDirectory`, its implementation, its tests, and the fakes in `TestModules.kt`, `UpTestFixture.kt`, `FakeNodes.kt` and `InstallFileTest.kt`.
-- [ ] 4.3 Confirm `ManifestGoldenTest` is unchanged, or update its golden output if the Grafana Deployment's volumes appear in it.
+- [x] 4.2 Delete `RemoteOperationsService.replaceDirectory`, its implementation, its tests, and the fakes in `TestModules.kt`, `UpTestFixture.kt`, `FakeNodes.kt` and `InstallFileTest.kt`.
+- [x] 4.3 Confirm `ManifestGoldenTest` is unchanged, or update its golden output if the Grafana Deployment's volumes appear in it.
 
 ## 5. Integration
 

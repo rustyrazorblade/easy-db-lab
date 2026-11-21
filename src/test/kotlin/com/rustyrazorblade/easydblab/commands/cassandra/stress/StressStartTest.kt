@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.services.StartedStressJob
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -228,6 +229,7 @@ class StressStartTest : BaseKoinTest() {
 
     @Test
     fun `execute should fail when startJob fails`() {
+        val denied = KubernetesClientException("Job creation failed", 403, null)
         // Given - cluster state with nodes
         val stateWithNodes =
             ClusterState(
@@ -243,7 +245,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any()))
-            .thenReturn(Result.failure(RuntimeException("Job creation failed")))
+            .thenReturn(Result.failure(denied))
 
         val command = StressStart()
         command.stressArgs = listOf("KeyValue")
@@ -252,6 +254,7 @@ class StressStartTest : BaseKoinTest() {
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Job creation failed")
+            .hasRootCause(denied)
     }
 
     @Test

@@ -56,7 +56,7 @@ easy-db-lab presto stop
 ```bash
 helm upgrade --install presto prestodb/presto --version 0.4.0 -f values.yaml
 # update-catalogs.sh runs automatically after helm install
-kubectl wait --for=condition=Ready pods -l app=presto,component=coordinator --timeout=180s
+kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator --timeout=180s
 ```
 
 No `platform create-pvs` step — Presto is stateless.
@@ -95,17 +95,28 @@ You do not need to restart Presto or manually update any config when adding or r
 
 ## Node Placement
 
-Presto workers are scheduled on `type=app` nodes using `nodeSelector: type: app`. The coordinator runs on the control plane or app nodes depending on cluster size.
+Presto workers are scheduled on `type=app` nodes using `nodeSelector: type: app`. The coordinator also runs on an app node (`nodeSelector: type: app`), which the scheduler picks.
 
 ## Connecting
 
-After `easy-db-lab presto start` completes, the Presto coordinator is accessible within the cluster. Use `kubectl port-forward` or the SOCKS5 proxy to connect from your workstation:
+The Presto coordinator serves its UI and JDBC on port 8080 of the app node that runs the
+coordinator pod, which is not always the first app node. `easy-db-lab presto status` prints that
+node's address:
 
 ```bash
-kubectl port-forward svc/presto 8080:8080
+easy-db-lab presto status
 ```
 
-Then connect with any Presto-compatible client at `localhost:8080`.
+Connect through the SOCKS5 proxy (`source env.sh`) with any Presto-compatible client at
+`jdbc:presto://<node>:8080`, using the address `presto status` printed. When the coordinator is not running and ready,
+`presto status` prints `not served` and the reason instead of an address.
+
+The built-in SQL command connects to the coordinator's node, and when no coordinator serves it
+runs no statement, says why, and exits non-zero:
+
+```bash
+easy-db-lab presto sql "SELECT count(*) FROM cassandra.mykeyspace.mytable"
+```
 
 ## Adding Presto Catalogs for Custom Kits
 

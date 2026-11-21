@@ -37,6 +37,8 @@ import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.TailnetCleanup
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownPlanner
@@ -116,6 +118,10 @@ object TestModules {
 
             // Provide Context instance
             single<Context> { contextFactory.getDefault() }
+
+            // The production binding: it asks for K8sReadOperations only to resolve an endpoint
+            // served by one pod, so a test of a NodePort-only kit needs no cluster binding.
+            single { KitEndpointHost.of { get<K8sReadOperations>() } }
 
             // Provide UserConfigProvider
             single {

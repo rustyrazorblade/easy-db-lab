@@ -6,8 +6,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesNode
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.K8sReadOperations
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import org.assertj.core.api.Assertions.assertThat
@@ -23,6 +27,8 @@ import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Statement
+import java.time.Duration
+import java.util.Properties
 
 /**
  * Tests for [KitSqlCommand]. Verifies SQL routing, file handling, semicolon stripping,
@@ -50,10 +56,35 @@ class KitSqlCommandTest : BaseKoinTest() {
             path = "/cassandra",
         )
 
+    /** Records each label query and answers with [served]; nothing else is asked of the cluster. */
+    private class RecordingPods : K8sReadOperations {
+        val queries = mutableListOf<Pair<String, String>>()
+        var served: List<KubernetesPod> = emptyList()
+
+        override fun listPodsByLabel(
+            labelSelector: String,
+            namespace: String,
+        ): Result<List<KubernetesPod>> {
+            queries += labelSelector to namespace
+            return Result.success(served)
+        }
+
+        override fun listJobs(namespace: String?): Result<List<KubernetesJob>> = error("unexpected listJobs")
+
+        override fun listPods(namespace: String?): Result<List<KubernetesPod>> = error("unexpected listPods")
+
+        override fun getNodes(): Result<List<KubernetesNode>> = error("unexpected getNodes")
+
+        override fun isReachable(): Result<Boolean> = error("unexpected isReachable")
+    }
+
+    private val pods = RecordingPods()
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single<K8sReadOperations> { pods }
             },
         )
 
@@ -64,7 +95,7 @@ class KitSqlCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test",
-                hosts = mapOf(ServerType.Stress to listOf(appHost)),
+                hosts = mapOf(ServerType.Stress to listOf(appHost, appHost.copy(privateIp = "10.0.1.11", alias = "app1"))),
             ),
         )
     }
@@ -120,6 +151,77 @@ class KitSqlCommandTest : BaseKoinTest() {
         command.execute()
 
         assertThat(outputHandler.messages.joinToString("\n")).contains("42")
+    }
+
+    @Test
+    fun `a pod-selector endpoint connects to the node that runs its pod, found in the kit's namespace`() {
+        pods.served =
+            listOf(
+                KubernetesPod(
+                    namespace = "analytics",
+                    name = "presto2-coordinator-0",
+                    status = "Running",
+                    ready = "1/1",
+                    restarts = 0,
+                    age = Duration.ofMinutes(1),
+                    hostIp = "10.0.1.11",
+                ),
+            )
+        val urls = mutableListOf<String>()
+        val connect = mockSuccessConnection(listOf("count"), listOf(listOf("42")))
+        val command =
+            KitSqlCommand(
+                kitName = "presto2",
+                endpoint =
+                    jdbcEndpoint.copy(
+                        servingPodSelector = "app.kubernetes.io/name=\${KIT_NAME},app.kubernetes.io/component=coordinator",
+                    ),
+                user = "easy-db-lab",
+                namespace = "analytics",
+                connectionFactory = { url, properties: Properties ->
+                    urls += url
+                    connect.connect(url, properties)
+                },
+            )
+        command.statement = "SELECT count(*) FROM t"
+
+        command.execute()
+
+        assertThat(pods.queries)
+            .containsExactly("app.kubernetes.io/name=presto2,app.kubernetes.io/component=coordinator" to "analytics")
+        assertThat(urls).containsExactly("jdbc:presto://10.0.1.11:8080/cassandra")
+    }
+
+    @Test
+    fun `an endpoint no pod serves fails before any connection, naming the kit and endpoint, not as a failed statement`() {
+        var connectionAttempted = false
+        val command =
+            KitSqlCommand(
+                kitName = "presto2",
+                endpoint = jdbcEndpoint.copy(servingPodSelector = "app=\${KIT_NAME}"),
+                user = "easy-db-lab",
+                connectionFactory = { _, _ ->
+                    connectionAttempted = true
+                    mock()
+                },
+            )
+        command.statement = "SELECT 1"
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageNotContaining("SQL statement failed")
+            .hasMessageContaining("presto2", "JDBC")
+
+        assertThat(connectionAttempted).isFalse()
+        assertThat(outputHandler.errors.joinToString("\n") { it.first })
+            .contains(
+                "No statement ran",
+                "presto2",
+                "'JDBC'",
+                "no running, ready pod matches app=presto2",
+                "'presto2 start'",
+                "'presto2 status'",
+            )
     }
 
     @Test

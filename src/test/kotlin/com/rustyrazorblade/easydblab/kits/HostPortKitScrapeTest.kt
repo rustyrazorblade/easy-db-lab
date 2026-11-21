@@ -39,6 +39,20 @@ class HostPortKitScrapeTest : BaseKoinTest() {
     }
 
     /**
+     * The coordinator also serves the UI and JDBC port as a hostPort, so every consumer must reach
+     * the node it runs on (#1224): each endpoint names the same coordinator pod the scrape does.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["presto", "trino"])
+    fun `the helm kits' endpoints select the coordinator pod that serves their hostPort`(kit: String) {
+        val fixture = fixture(kit)
+
+        assertThat(fixture.config.endpoints)
+            .isNotEmpty
+            .allSatisfy { assertThat(it.servingPodSelector).isEqualTo(fixture.scrapeMetrics.single().podSelector) }
+    }
+
+    /**
      * The JobManager and the TaskManager both served metrics on hostPort 9249, so on a cluster with
      * one app node the TaskManager never scheduled ("didn't have free ports"). Pod discovery scrapes
      * the pod IP, so no host port is needed.

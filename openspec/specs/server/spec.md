@@ -85,7 +85,7 @@ The server command SHALL accept an `--auto-shutdown` flag that enables infrastru
 
 ### Requirement: Status lists the endpoints of each running kit
 
-The `status` command and the server's status (REST `GET /status` and the MCP status) SHALL list, for each installed kit recorded as running, the endpoints that the kit's `kit.yaml` declares.  Each endpoint SHALL be its NodePort on each host of the endpoint's node type, at the host's private IP.  A stopped kit SHALL show no endpoints, even when other pods of the kit still run.  No kit SHALL have a fixed section of its own.  In the server's status, `accessInfo.kits` SHALL hold these endpoints, one entry per running kit, and SHALL replace the fixed `clickhouse` entry.  If a running kit's `kit.yaml` cannot be read, `status` SHALL print `(endpoints unavailable: cannot read kit.yaml)` under the kit and SHALL render the later sections, and the kit's `accessInfo.kits` entry SHALL carry the same reason in `endpointsUnavailable` with an empty endpoint list.
+The `status` command and the server's status (REST `GET /status` and the MCP status) SHALL list, for each installed kit recorded as running, the endpoints that the kit's `kit.yaml` declares.  Each endpoint SHALL be its NodePort on each host of the endpoint's node type, at the host's private IP; an endpoint with a `pod-selector` SHALL be listed only at the node that runs its serving pod (spec `kit-capabilities`, "Kit endpoints resolve to the nodes that serve them").  When no pod serves it, `status` SHALL print `(endpoints unavailable: <endpoint>: <reason>; run '<kit> status')` under the kit, endpoints with the same reason sharing one entry, and the kit's `accessInfo.kits` entry SHALL carry the same text in `endpointsUnavailable` beside the endpoints that are served.  When the SOCKS proxy cannot be established, `status` SHALL make no pod query, and the reason SHALL be the proxy failure.  `status` SHALL resolve each kit's endpoints once per run.  A stopped kit SHALL show no endpoints, even when other pods of the kit still run.  No kit SHALL have a fixed section of its own.  In the server's status, `accessInfo.kits` SHALL hold these endpoints, one entry per running kit, and SHALL replace the fixed `clickhouse` entry.  If a running kit's `kit.yaml` cannot be read, `status` SHALL print `(endpoints unavailable: cannot read kit.yaml)` under the kit and SHALL render the later sections, and the kit's `accessInfo.kits` entry SHALL carry the same reason in `endpointsUnavailable` with an empty endpoint list.
 
 #### Scenario: A running kit shows its NodePort endpoints
 
@@ -111,4 +111,10 @@ The `status` command and the server's status (REST `GET /status` and the MCP sta
 - **THEN** `status` prints `(endpoints unavailable: cannot read kit.yaml)` under the kit
 - **AND** `status` renders the sections after the kits
 - **AND** the kit's `accessInfo.kits` entry has an empty endpoint list and `endpointsUnavailable` set to `cannot read kit.yaml`
+
+#### Scenario: No pod serves a running kit's endpoint
+
+- **WHEN** a running kit's `pod-selector` endpoint `ui` has no serving pod
+- **THEN** `status` prints `(endpoints unavailable: ui: <reason>; run '<kit> status')` under the kit
+- **AND** the kit's `accessInfo.kits` entry carries the same text in `endpointsUnavailable`
 

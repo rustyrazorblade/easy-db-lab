@@ -3,11 +3,17 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
+import java.time.Duration
 
 /**
  * Tests for DefaultKitEndpointResolver — resolves target kit endpoints into TARGET_* env vars.
@@ -35,7 +41,7 @@ class KitEndpointResolverTest {
 
     @BeforeEach
     fun setup() {
-        resolver = DefaultKitEndpointResolver()
+        resolver = DefaultKitEndpointResolver(KitEndpointHost { selector, _ -> error("unexpected pod query for $selector") })
     }
 
     private fun writeKitYaml(
@@ -252,5 +258,171 @@ class KitEndpointResolverTest {
 
         assertThat(vars["TARGET_JDBC_USER"]).isEmpty()
         assertThat(vars["TARGET_JDBC_DRIVER"]).isEmpty()
+    }
+
+    // #1224: a hostPort endpoint is served only on the node that runs its pod.
+
+    private val appHosts =
+        ClusterState(
+            name = "test-cluster",
+            hosts =
+                mutableMapOf(
+                    ServerType.Stress to
+                        listOf(
+                            dbHost.copy(alias = "app0", privateIp = "10.0.2.5", instanceId = "i-app0"),
+                            dbHost.copy(alias = "app1", privateIp = "10.0.2.6", instanceId = "i-app1"),
+                        ),
+                ),
+        )
+
+    private fun prestoKit(): File =
+        writeKitYaml(
+            "presto",
+            """
+            name: presto
+            runtime:
+              type: helm
+              namespace: analytics
+            endpoints:
+              - name: JDBC
+                node-type: app
+                port: 8080
+                type: jdbc
+                scheme: presto
+                pod-selector: "app.kubernetes.io/name=${'$'}{KIT_NAME},app.kubernetes.io/component=coordinator"
+            """.trimIndent(),
+        )
+
+    private fun coordinator(
+        hostIp: String,
+        ready: String = "1/1",
+    ) = KubernetesPod(
+        namespace = "analytics",
+        name = "presto-coordinator-0",
+        status = "Running",
+        ready = ready,
+        restarts = 0,
+        age = Duration.ofMinutes(1),
+        hostIp = hostIp,
+    )
+
+    @Test
+    fun `a pod-selector endpoint targets the node that runs its pod, not the first node`() {
+        val queries = mutableListOf<Pair<String, String>>()
+        val podResolver =
+            DefaultKitEndpointResolver(
+                KitEndpointHost { selector, namespace ->
+                    queries += selector to namespace
+                    Result.success(listOf(coordinator("10.0.2.6")))
+                },
+            )
+
+        val vars = podResolver.resolveTargetVars(prestoKit(), appHosts)
+
+        assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:presto://10.0.2.6:8080")
+        assertThat(queries)
+            .containsExactly("app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator" to "analytics")
+    }
+
+    @Test
+    fun `endpoints that share a pod selector are looked up once and target the same node`() {
+        val kitDir =
+            writeKitYaml(
+                "presto",
+                """
+                name: presto
+                endpoints:
+                  - name: UI
+                    node-type: app
+                    port: 8080
+                    type: http
+                    pod-selector: "app=${'$'}{KIT_NAME}"
+                  - name: JDBC
+                    node-type: app
+                    port: 8080
+                    type: jdbc
+                    scheme: presto
+                    pod-selector: "app=${'$'}{KIT_NAME}"
+                """.trimIndent(),
+            )
+        val answers = ArrayDeque(listOf(listOf(coordinator("10.0.2.6")), listOf(coordinator("10.0.2.5"))))
+        var queries = 0
+        val podResolver =
+            DefaultKitEndpointResolver(
+                KitEndpointHost { _, _ ->
+                    queries++
+                    Result.success(answers.removeFirst())
+                },
+            )
+
+        val vars = podResolver.resolveTargetVars(kitDir, appHosts)
+
+        assertThat(queries).isEqualTo(1)
+        assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://10.0.2.6:8080")
+        assertThat(vars["TARGET_JDBC_URL"]).isEqualTo("jdbc:presto://10.0.2.6:8080")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("unservedCases")
+    fun `a pod-selector endpoint no pod serves fails, naming the target, the endpoint, the selector and the reason`(
+        case: String,
+        pods: Result<List<KubernetesPod>>,
+        state: ClusterState?,
+        reason: String,
+    ) {
+        val podResolver = DefaultKitEndpointResolver(KitEndpointHost { _, _ -> pods })
+
+        assertThatThrownBy { podResolver.resolveTargetVars(prestoKit(), state ?: appHosts) }
+            .`as`(case)
+            .isInstanceOfSatisfying(TargetEndpointNotServedException::class.java) { e ->
+                assertThat(e.targetKit).isEqualTo("presto")
+                assertThat(e.endpointName).isEqualTo("JDBC")
+                assertThat(e.reason).isEqualTo(reason)
+                assertThat(e.message).contains("'presto start'", "'presto status'")
+            }
+    }
+
+    companion object {
+        private const val SELECTOR = "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
+
+        private fun pod(
+            hostIp: String,
+            ready: String = "1/1",
+        ) = KubernetesPod("analytics", "presto-coordinator-0", "Running", ready, 0, Duration.ofMinutes(1), hostIp = hostIp)
+
+        @JvmStatic
+        fun unservedCases(): List<Arguments> =
+            listOf(
+                Arguments.of(
+                    "the pod is not ready",
+                    Result.success(listOf(pod("10.0.2.6", ready = "0/1"))),
+                    null,
+                    "no running, ready pod matches $SELECTOR in namespace analytics",
+                ),
+                Arguments.of(
+                    "no pod",
+                    Result.success(emptyList<KubernetesPod>()),
+                    null,
+                    "no running, ready pod matches $SELECTOR in namespace analytics",
+                ),
+                Arguments.of(
+                    "the pod query fails",
+                    Result.failure<List<KubernetesPod>>(IllegalStateException("connection refused")),
+                    null,
+                    "cannot list the pods matching $SELECTOR in namespace analytics: connection refused",
+                ),
+                Arguments.of(
+                    "the pod runs on a node of another type",
+                    Result.success(listOf(pod("10.0.9.9"))),
+                    null,
+                    "the pods matching $SELECTOR in namespace analytics run on 10.0.9.9, which is not a node of type app",
+                ),
+                Arguments.of(
+                    "the cluster has no node of the type",
+                    Result.success(listOf(pod("10.0.2.6"))),
+                    ClusterState(name = "test-cluster", hosts = mutableMapOf()),
+                    "No app nodes found in cluster state. Is the cluster running?",
+                ),
+            )
     }
 }

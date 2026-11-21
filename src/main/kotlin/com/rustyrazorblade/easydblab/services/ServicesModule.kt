@@ -162,7 +162,8 @@ val servicesModule =
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
-        singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
+        single { KitEndpointHost.of { get<K8sReadOperations>() } }
+        single<KitEndpointResolver> { DefaultKitEndpointResolver(get()) }
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
         factory { TenantDirectory(get()) }

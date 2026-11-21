@@ -18,7 +18,7 @@ import picocli.CommandLine.Parameters
  * configurable args, exposed endpoints, available lifecycle commands, and hooks.
  *
  * Analogous to `brew info` or `apt show` — lets users inspect a kit before installing.
- * Run inside a cluster workspace, each endpoint is resolved to its node's private IP.
+ * Run inside a cluster workspace, each NodePort endpoint is resolved to its nodes' private IPs.
  * Uses println() directly because this is a read-only display command with no
  * associated domain events.
  */
@@ -44,7 +44,7 @@ class KitInfo : BaseInstallCommand() {
         val templateFiles = resolver.listTemplateFiles(source).map { it.name }
         val annotatedCommands = scanner.forKit(kitName).map { it.name to it.description }
         val hosts = if (clusterStateManager.exists()) clusterState.hosts else emptyMap()
-        println(buildInfoText(config, templateFiles, annotatedCommands, hosts))
+        println(buildInfoText(config, templateFiles, annotatedCommands, hosts, instanceName = kitName))
     }
 
     companion object {
@@ -105,13 +105,16 @@ class KitInfo : BaseInstallCommand() {
         }
 
         /**
-         * Builds the human-readable info text for a kit. Extracted for testability.
+         * Builds the human-readable info text for a kit. Extracted for testability. The commands
+         * and the `status` pointer use [instanceName], the name the user typed, which a kit
+         * instance may hold instead of [KitConfig.name].
          */
         fun buildInfoText(
             config: KitConfig,
             templateFiles: List<String>,
             annotatedCommands: List<Pair<String, String>> = emptyList(),
             hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
+            instanceName: String = config.name,
         ): String {
             val scriptCommandNames =
                 templateFiles
@@ -144,12 +147,12 @@ class KitInfo : BaseInstallCommand() {
                 if (config.endpoints.isNotEmpty()) {
                     appendLine()
                     appendLine("Endpoints:")
-                    appendEndpoints(config.endpoints, hosts)
+                    appendEndpoints(instanceName, config.endpoints, hosts)
                 }
                 if (commands.isNotEmpty()) {
                     appendLine()
                     appendLine("Commands:")
-                    appendCommands(config.name, commands)
+                    appendCommands(instanceName, commands)
                 }
                 val startHook = config.hooks?.postWorkloadStart?.script
                 val stopHook = config.hooks?.postWorkloadStop?.script
@@ -194,26 +197,36 @@ class KitInfo : BaseInstallCommand() {
         }
 
         /**
-         * Lists each endpoint once per host of its node type, at the host's private IP.
+         * Lists each NodePort endpoint once per host of its node type, at the host's private IP.
          * With no such host in [hosts] (no cluster yet, or none of that node type) the
-         * endpoint is listed by its bare NodePort.
+         * endpoint is listed by its bare port. An endpoint with a `pod-selector` answers only on
+         * the node that runs its pod. `kit info` reads no cluster API and the kit may not run
+         * yet, so that endpoint is listed by its bare port with a pointer to `<kit> status`,
+         * never at a node that may not serve it.
          */
         private fun StringBuilder.appendEndpoints(
+            kitName: String,
             endpoints: List<KitEndpoint>,
             hosts: Map<ServerType, List<ClusterHost>>,
         ) {
             val nameWidth = endpoints.maxOf { it.name.length }
             val nodeTypeWidth = endpoints.maxOf { it.nodeType.length }
             for (ep in endpoints) {
+                val type = ep.type.name.lowercase()
+                if (ep.servedByOnePod) {
+                    appendLine(
+                        "  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  :${ep.port}  $type" +
+                            "  (on the node that runs its pod; see '$kitName status')",
+                    )
+                    continue
+                }
                 val addresses =
                     KitEndpointAddresses
                         .privateIps(ep.nodeType, hosts)
                         .map { ep.formatUrl(it) }
                         .ifEmpty { listOf(":${ep.port}") }
                 for (address in addresses) {
-                    appendLine(
-                        "  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  $address  ${ep.type.name.lowercase()}",
-                    )
+                    appendLine("  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  $address  $type")
                 }
             }
         }

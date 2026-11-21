@@ -24,6 +24,7 @@ import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TargetEndpointNotServedException
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.UnservedEndpoints
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
@@ -180,10 +181,20 @@ class KitRunnerCommand(
             config
                 ?.kitRefArg
                 ?.let { resolvedArgs[it.variable]?.takeIf { v -> v.isNotBlank() } }
-                ?.let { kitEndpointResolver.resolveTargetVars(File(workspace, it), clusterState) }
+                ?.let { kitEndpointResolver.resolveTargetVars(File(workspace, it), clusterState, unservedEndpoints()) }
                 .orEmpty()
         return env + ("BACKUP_NAME" to name) + targetVars
     }
+
+    /**
+     * A teardown phase removes what this kit made, and its target is usually stopped first, so it
+     * runs without the vars of a target endpoint no pod serves; every other phase fails.
+     */
+    private fun unservedEndpoints(): UnservedEndpoints =
+        when (phaseName) {
+            Constants.Kit.PHASE_STOP, Constants.Kit.PHASE_UNINSTALL -> UnservedEndpoints.OMIT
+            else -> UnservedEndpoints.FAIL
+        }
 
     /**
      * Reads the resolved kit arg values persisted by [BaseInstallCommand.renderAndWrite] at

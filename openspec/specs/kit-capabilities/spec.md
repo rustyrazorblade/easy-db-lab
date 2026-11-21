@@ -141,7 +141,7 @@ SHALL declare the coordinator pod as their `pod-selector`.
 - **THEN** `TARGET_JDBC_URL` names the coordinator's node
 
 #### Scenario: A bench kit's target serves no endpoint
-- **WHEN** a bench kit runs a phase with `--target trino`
+- **WHEN** a bench kit runs a phase other than `stop` or `uninstall` with `--target trino`
 - **AND** no pod serves a trino `pod-selector` endpoint
 - **THEN** the phase fails before its script runs, with `Kit.TargetNotServed` naming the target kit, the endpoint and the reason (the selector and the namespace)
 

@@ -1091,13 +1091,15 @@ on nodes of another type.
   reason, does not try a connection, and exits non-zero.
 - A bench kit that targets this kit gets `TARGET_*` variables that name that node. When no pod
   serves the endpoint, the bench kit's phase fails before its script runs, naming the target kit,
-  the endpoint and the reason.
+  the endpoint and the reason. `stop` and `uninstall` are the exception: they run without that
+  endpoint's variables, so a bench kit can still be torn down after its target is stopped.
 - `<kit> status` lists the endpoint at that node, or prints `<endpoint>  not served: <reason>`.
 - `<kit> start` reports the endpoints it serves and, for each one no pod serves yet, the reason.
 - `status` lists the endpoint at that node, or prints
   `(endpoints unavailable: <endpoint>: <reason>; run '<kit> status')` under the kit; the server's
   `accessInfo.kits` entry carries the same text in `endpointsUnavailable`. When the SOCKS proxy
-  is down, `status` asks the cluster for no pods and gives the proxy failure as the reason; the
+  is down, `status` asks the cluster for no pods and gives the first line of the proxy failure
+  as the reason; the
   NodePort endpoints still show.
 - `kit info` reads no cluster API, so it lists the endpoint by its port and points at
   `<kit> status`.

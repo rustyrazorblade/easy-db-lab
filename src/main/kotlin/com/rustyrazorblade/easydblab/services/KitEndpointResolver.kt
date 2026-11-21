@@ -18,14 +18,29 @@ interface KitEndpointResolver {
      * Reads [targetKitDir]'s kit.yaml and returns TARGET_* env vars for each declared
      * endpoint, resolving host IPs from [clusterState]. Returns an empty map if the
      * directory or kit.yaml is missing or unparseable. A NodePort endpoint whose node type has
-     * no node is left out. An endpoint served by one pod that no pod serves throws
-     * [TargetEndpointNotServedException]: the target kit is not running, and the bench kit
-     * must not start against a node that does not serve it.
+     * no node is left out. An endpoint served by one pod that no pod serves is handled by
+     * [unserved]: [UnservedEndpoints.FAIL] throws [TargetEndpointNotServedException], because the
+     * target kit is not running and the bench kit must not start against a node that does not
+     * serve it; [UnservedEndpoints.OMIT] leaves its vars out.
      */
     fun resolveTargetVars(
         targetKitDir: File,
         clusterState: ClusterState,
+        unserved: UnservedEndpoints = UnservedEndpoints.FAIL,
     ): Map<String, String>
+}
+
+/**
+ * What [KitEndpointResolver.resolveTargetVars] does with a target endpoint, served by one pod,
+ * that no pod serves. A phase that works against the target fails; a teardown phase (`stop`,
+ * `uninstall`) removes what the bench kit made, and runs after its target is stopped.
+ */
+enum class UnservedEndpoints {
+    /** Fail the phase before its steps run. */
+    FAIL,
+
+    /** Leave the endpoint's vars out and run the phase. */
+    OMIT,
 }
 
 /**
@@ -41,6 +56,7 @@ class DefaultKitEndpointResolver(
     override fun resolveTargetVars(
         targetKitDir: File,
         clusterState: ClusterState,
+        unserved: UnservedEndpoints,
     ): Map<String, String> {
         val configFile = File(targetKitDir, Constants.Kit.CONFIG_FILE)
         if (!configFile.isFile) {
@@ -62,11 +78,15 @@ class DefaultKitEndpointResolver(
             .flatMap { endpoint ->
                 when (val found = lookup.lookup(endpoint, targetKitDir.name, kitConfig.namespace, clusterState.hosts)) {
                     is KitEndpointHost.Lookup.Served -> varsAt(found.addresses.firstOrNull(), endpoint, sqlCap, targetKitDir.name)
-                    is KitEndpointHost.Lookup.Unserved -> throw TargetEndpointNotServedException(
-                        targetKitDir.name,
-                        endpoint.name,
-                        found.reason,
-                    )
+                    is KitEndpointHost.Lookup.Unserved ->
+                        when (unserved) {
+                            UnservedEndpoints.FAIL ->
+                                throw TargetEndpointNotServedException(targetKitDir.name, endpoint.name, found.reason)
+                            UnservedEndpoints.OMIT -> {
+                                log.debug { "No TARGET_* vars for '${targetKitDir.name}' endpoint '${endpoint.name}': ${found.reason}" }
+                                emptyList()
+                            }
+                        }
                 }
             }.toMap()
     }

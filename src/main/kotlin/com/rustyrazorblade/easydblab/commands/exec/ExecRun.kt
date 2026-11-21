@@ -151,6 +151,10 @@ class ExecRun : PicoBaseCommand() {
      * Runs the unit and waits for it, then prints its output from the journal. `systemd-run --wait`
      * exits non-zero when the unit fails, so the journal is printed on failure too: the unit's own
      * output is the reason it failed. The run's failure is rethrown, not the journal's.
+     *
+     * An interrupted run (Ctrl-C) stops the unit before the interrupt goes on. The SSH layer signals
+     * only the session's processes, `systemd-run` among them, and the unit runs under systemd, outside
+     * them, so without the stop the command would keep running on the node.
      */
     private fun runInForeground(
         host: Host,
@@ -158,8 +162,35 @@ class ExecRun : PicoBaseCommand() {
         systemdRunCmd: String,
     ) {
         val run = runCatching { remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false) }
+        val failure = run.exceptionOrNull()
+        if (failure is InterruptedException) {
+            stopUnit(host, systemdUnit)
+            throw failure
+        }
         if (run.isFailure) runCatching { printUnitOutput(host, systemdUnit) } else printUnitOutput(host, systemdUnit)
         run.getOrThrow()
+    }
+
+    /**
+     * Stops [systemdUnit] on [host] after an interrupt. The interrupt flag is cleared for the stop's own
+     * SSH call, which an interrupted thread could not make, and restored after it. A unit that already
+     * ended is left alone. A stop that fails is reported for the host; the interrupt still goes on.
+     */
+    private fun stopUnit(
+        host: Host,
+        systemdUnit: String,
+    ) {
+        val interrupted = Thread.interrupted()
+        try {
+            val stop = "! systemctl is-active --quiet $systemdUnit || sudo systemctl stop $systemdUnit"
+            remoteOps.executeRemotely(host, stop, output = false, secret = false)
+        } catch (e: IOException) {
+            eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(e)}"))
+        } catch (e: EasyDBLabException) {
+            eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: ${reason(e)}"))
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
 
     /**

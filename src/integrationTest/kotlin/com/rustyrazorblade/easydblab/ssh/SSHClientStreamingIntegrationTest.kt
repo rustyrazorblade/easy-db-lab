@@ -132,7 +132,8 @@ internal class SSHClientStreamingIntegrationTest {
         val outcome = CompletableFuture<Throwable?>()
         val caller =
             Thread.ofVirtual().start {
-                val failure = runCatching { client().executeRemoteCommand("echo long-start; sleep 60", sink, secret = false) }
+                val failure =
+                    runCatching { client().executeRemoteCommand("echo long-start; sleep $INTERRUPTED_SLEEP_SECONDS", sink, secret = false) }
                 outcome.complete(failure.exceptionOrNull())
             }
         await("long-start") { lines(NodeStream.Stdout).contains("long-start") }
@@ -143,7 +144,10 @@ internal class SSHClientStreamingIntegrationTest {
 
         assertThat(failure).isInstanceOf(InterruptedException::class.java)
         assertThat(Duration.ofNanos(System.nanoTime() - interruptedAt)).isLessThan(Duration.ofSeconds(INTERRUPT_STOP_SECONDS))
-        assertThat(client().executeRemoteCommand("echo after", null, secret = false).text.trim()).isEqualTo("after")
+        // The session runs the next command, and the interrupted command's process is gone. The
+        // pattern brackets one digit so it does not match the shell that runs pgrep.
+        val left = client().executeRemoteCommand(LEFT_SLEEP_QUERY, null, secret = false).text.trim()
+        assertThat(left).describedAs("remote processes left after the interrupt").isEqualTo(NONE_LEFT)
     }
 
     private fun await(
@@ -191,20 +195,37 @@ internal class SSHClientStreamingIntegrationTest {
         private const val SLOW_SINK_MS = 200L
         private const val SATURATION_DEADLINE_SECONDS = 60L
         private const val INTERRUPT_STOP_SECONDS = 10L
+
+        /** A sleep length nothing else in the container uses, so pgrep finds only the interrupted command. */
+        private const val INTERRUPTED_SLEEP_SECONDS = 6123
+        private const val NONE_LEFT = "none-left"
+        private const val LEFT_SLEEP_QUERY = "pgrep -f 'sleep [6]123' || echo $NONE_LEFT"
         private const val POLL_MS = 50L
 
         /** `0600`: sshd refuses an `authorized_keys` others can write. */
         private const val AUTHORIZED_KEYS_MODE = 384
 
-        /** An Alpine `sshd` that takes the test's key for root, pinned to the alpine:3.20 image index; `openssh-client` brings the `scp` the SCP test runs remotely. */
+        /** The login user, not root, as on a node: OpenSSH refuses a `signal` request on a root session. */
+        private const val LOGIN_USER = "ubuntu"
+
+        /**
+         * An Alpine `sshd` that takes the test's key for [LOGIN_USER], pinned to the alpine:3.20 image
+         * index; `openssh-client` brings the `scp` the SCP test runs remotely. The user's password is
+         * `*`, not Alpine's locked `!`, which sshd would refuse even for a key. The key is copied
+         * in as root after the image is built, so the container gives it to the user before sshd starts.
+         */
         private val SSHD_DOCKERFILE =
             """
             FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
             RUN apk add --no-cache openssh-server openssh-client \
              && ssh-keygen -A \
-             && mkdir -p /root/.ssh \
-             && chmod 700 /root/.ssh
-            CMD ["/usr/sbin/sshd", "-D", "-e", "-o", "PermitRootLogin=prohibit-password", "-o", "PasswordAuthentication=no"]
+             && adduser -D -s /bin/sh $LOGIN_USER \
+             && sed -i 's/^$LOGIN_USER:!:/$LOGIN_USER:*:/' /etc/shadow \
+             && mkdir -p /home/$LOGIN_USER/.ssh \
+             && chown $LOGIN_USER:$LOGIN_USER /home/$LOGIN_USER/.ssh \
+             && chmod 700 /home/$LOGIN_USER/.ssh
+            CMD chown $LOGIN_USER:$LOGIN_USER /home/$LOGIN_USER/.ssh/authorized_keys \
+             && exec /usr/sbin/sshd -D -e -o PasswordAuthentication=no
             """.trimIndent()
 
         @TempDir
@@ -221,11 +242,11 @@ internal class SSHClientStreamingIntegrationTest {
             val keygen = ProcessBuilder("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privateKey.absolutePath).inheritIO().start()
             check(keygen.waitFor() == 0) { "ssh-keygen failed" }
             sshd =
-                GenericContainer(ImageFromDockerfile("edl-test-sshd-scp", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
+                GenericContainer(ImageFromDockerfile("edl-test-sshd-user", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
                     .withExposedPorts(SSHD_PORT)
                     .withCopyToContainer(
                         Transferable.of(File(keyDirectory, "id_ed25519.pub").readText(), AUTHORIZED_KEYS_MODE),
-                        "/root/.ssh/authorized_keys",
+                        "/home/$LOGIN_USER/.ssh/authorized_keys",
                     ).waitingFor(Wait.forListeningPort())
             sshd.start()
 
@@ -238,7 +259,7 @@ internal class SSHClientStreamingIntegrationTest {
         /** A new authenticated session to the container's sshd. */
         private fun connectSession(): ClientSession =
             mina
-                .connect("root", sshd.host, sshd.getMappedPort(SSHD_PORT))
+                .connect(LOGIN_USER, sshd.host, sshd.getMappedPort(SSHD_PORT))
                 .verify(Duration.ofSeconds(CONNECT_SECONDS))
                 .session
                 .also { it.auth().verify(Duration.ofSeconds(CONNECT_SECONDS)) }

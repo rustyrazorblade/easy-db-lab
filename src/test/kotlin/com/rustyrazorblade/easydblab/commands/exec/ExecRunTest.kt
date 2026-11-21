@@ -201,4 +201,67 @@ class ExecRunTest : BaseKoinTest() {
         val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
         assertThat(events).contains("db0: command failed: Remote command failed (3)")
     }
+
+    /**
+     * Ctrl-C signals only the SSH session's processes; the unit runs under systemd, so it keeps
+     * running unless the interrupted run stops it. The stop's own SSH call must run with the
+     * interrupt flag clear, and the interrupt must still end the command.
+     */
+    @Test
+    fun `an interrupted foreground run stops its unit, then passes the interrupt on`() {
+        // As the SSH layer leaves it: the thread still interrupted when the exception arrives.
+        doAnswer {
+            Thread.currentThread().interrupt()
+            throw InterruptedException("Ctrl-C")
+        }.whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any())
+        val stopRanInterrupted = mutableListOf<Boolean>()
+        doAnswer {
+            stopRanInterrupted += Thread.currentThread().isInterrupted
+            Response("")
+        }.whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemctl stop") }, any(), any())
+
+        val thrown =
+            runCatching {
+                ExecRun()
+                    .apply {
+                        command = listOf("sleep 120")
+                        unitNameOverride = "qa-sleep"
+                        hosts.hostList = "db0"
+                    }.execute()
+            }.exceptionOrNull()
+        val flagAfter = Thread.interrupted()
+
+        assertThat(thrown).isInstanceOf(InterruptedException::class.java)
+        assertThat(stopRanInterrupted).containsExactly(false)
+        assertThat(flagAfter).describedAs("interrupt flag restored after the stop").isTrue()
+        val sent = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
+        assertThat(sent.allValues)
+            .contains("! systemctl is-active --quiet edl-exec-qa-sleep || sudo systemctl stop edl-exec-qa-sleep")
+            .noneMatch { it.contains("journalctl") }
+    }
+
+    @Test
+    fun `an interrupted run whose unit cannot be stopped reports it and still passes the interrupt on`() {
+        doAnswer { throw InterruptedException("Ctrl-C") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any())
+        doAnswer { throw IOException("connection reset") }
+            .whenever(mockRemoteOps)
+            .executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemctl stop") }, any(), any())
+
+        assertThatThrownBy {
+            ExecRun()
+                .apply {
+                    command = listOf("sleep 120")
+                    unitNameOverride = "qa-sleep"
+                    hosts.hostList = "db0"
+                }.execute()
+        }.isInstanceOf(InterruptedException::class.java)
+
+        val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
+        assertThat(events).contains("db0: command failed: could not stop edl-exec-qa-sleep: connection reset")
+    }
 }

@@ -38,8 +38,15 @@ rules:
     - Tests extend BaseKoinTest for Koin DI
     - No mock-echo tests — every test must verify real logic
     - Never mock TemplateService
+    - Mark each task mechanical or judgement
   proposal:
     - Iterate with the user — ask questions, don't assume
     - Do not add features not explicitly requested
     - Include testing and documentation updates in scope
     - Never disable functionality as a solution
+  design:
+    - Follow "Planning new work" in WORKFLOW.md
+    - Hold the architecture plan, the alternatives, and how provider types stay behind provider-neutral ports
+    - Hold a test plan - each requirement's tests by name and tier, each with a control that is seen to fail, and what runs in CI and what runs on a real cluster
+    - A change that targets a measured limit names its real-cluster validation plan - the limit and baseline, the workload, the expected effect, the pass criterion
+    - Keep each plan file under 300 lines; split the change if it grows past that

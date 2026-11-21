@@ -31,7 +31,9 @@ directly, with no `cd` prefix.
 
 ## Writing a new plan
 
-Use `/easy-db-lab:plan` with a description of what you want to test. The skill will ask questions and write the plan here. Name it `<scenario>.md`.
+First check the plans here.  Use one only if it runs the code that changed.  If one almost fits, extend it instead of writing a near-copy.
+
+Otherwise, use `/easy-db-lab:plan` with a description of what you want to test. The skill will ask questions and write the plan here. Name it `<scenario>.md`.
 
 Every plan must:
 1. Begin with provisioning (`$EDB init ... --up`) — **not** with workspace or wrapper creation

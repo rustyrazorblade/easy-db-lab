@@ -745,7 +745,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "Push Stall Time (live store back pressure)",
-      "description": "Seconds per second that Tempo's live store held pushes. The all-reasons line is the tempo_live_store_back_pressure_duration_seconds histogram, which Tempo always exposes, so it reads 0 when nothing stalls. The per-reason lines come from tempo_live_store_back_pressure_seconds_total, which Tempo creates only at the first stall. Past live_store.max_live_traces_bytes (waiting_for_live_traces), or while the WAL is behind (waiting_for_wal), Tempo stalls each push a second at a time. If the sender's deadline passes during a stall, Tempo stores nothing from that push and the collector retries it from its queue, so a stall alone loses no spans. Only spans the collector refuses at a full sending queue are counted, in the collector panel beside this one.",
+      "description": "Seconds per second that Tempo's live store held pushes. The all-reasons line is the tempo_live_store_back_pressure_duration_seconds histogram, which Tempo always exposes, so it reads 0 when nothing stalls. The per-reason lines come from tempo_live_store_back_pressure_seconds_total, which Tempo creates only at the first stall. Past live_store.max_live_traces_bytes (waiting_for_live_traces), or while the WAL is behind (waiting_for_wal), Tempo stalls each push. If the sender's deadline passes during a stall, Tempo stores nothing from that push and the collector retries it from its queue, so a stall alone loses no spans. Only spans the collector refuses at a full sending queue are counted, in the collector panel beside this one.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -803,7 +803,7 @@
       "id": 15,
       "type": "timeseries",
       "title": "Live Trace Bytes",
-      "description": "Bytes of live traces in Tempo's live store, summed over tenants. When this passes live_store.max_live_traces_bytes, Tempo stalls pushes until it cuts traces to the WAL. A push stalled past the sender's deadline stores nothing and the collector retries it, so a stall alone loses no spans; spans the collector refuses at a full sending queue are counted in the collector panel.",
+      "description": "Bytes of live traces in Tempo's live store, summed over tenants. When this passes live_store.max_live_traces_bytes (the red line, 500 MB), Tempo stalls pushes until it cuts traces to the WAL. A push stalled past the sender's deadline stores nothing and the collector retries it, so a stall alone loses no spans; spans the collector refuses at a full sending queue are counted in the collector panel.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -818,9 +818,25 @@
         "defaults": {
           "unit": "bytes",
           "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 500000000
+              }
+            ]
+          },
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 5
+            "fillOpacity": 5,
+            "thresholdsStyle": {
+              "mode": "line"
+            }
           }
         }
       },
@@ -852,7 +868,7 @@
       "id": 16,
       "type": "timeseries",
       "title": "Spans Lost Sending to Tempo (collector)",
-      "description": "Spans each node's OTel collector could not deliver to Tempo (a failure it does not retry), plus spans it refused because its 256 MiB sending queue for Tempo was full (exporter otlp_grpc/tempo). The collector retries a failed push without limit (max_elapsed_time 0), so a Tempo stall loses spans only once the queue behind it fills. This is the only count of that loss; Tempo itself counts nothing.",
+      "description": "Spans each node's OTel collector could not deliver to Tempo (a failure it does not retry), plus spans it refused because its bounded sending queue for Tempo was full (exporter otlp_grpc/tempo). The collector retries a failed push without limit, so a Tempo stall loses spans only once the queue behind it fills. This is the only count of that loss; Tempo itself counts nothing.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -885,7 +901,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace((sum by (cluster, host_name) (rate(otelcol_exporter_send_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))) + (sum by (cluster, host_name) (rate(otelcol_exporter_enqueue_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate({__name__=~\"otelcol_exporter_(send|enqueue)_failed_spans_total\", cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} send/enqueue failed"
         }
       ],

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesErrorHandler
@@ -200,6 +201,36 @@ class CapabilityProbeFailureIntegrationTest {
         val forbidden = thrown.cause as KubernetesClientException
         assertThat(forbidden.code).isEqualTo(Constants.HttpStatus.FORBIDDEN)
         assertThat(KubernetesErrorHandler().describe(forbidden)?.remedy).contains("cluster-admin")
+    }
+
+    @Test
+    fun `a Pod Security rejection of the baseline fails the probe, and is described as rejected with its level and violations`() {
+        createNamespace()
+        val baseline = "${Constants.Capabilities.PROBE_POD_PREFIX}-baseline"
+        answerPods(
+            baseline,
+            status(
+                Constants.HttpStatus.FORBIDDEN,
+                "Forbidden",
+                "pods \"$baseline\" is forbidden: violates PodSecurity \"restricted:latest\": allowPrivilegeEscalation != false " +
+                    "(container \"probe\" must set securityContext.allowPrivilegeEscalation=false), runAsNonRoot != true " +
+                    "(pod or container \"probe\" must set securityContext.runAsNonRoot=true)",
+            ),
+        )
+
+        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+
+        assertThat(thrown)
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'$NAMESPACE'")
+            .hasMessageContaining("baseline")
+        val description = KubernetesErrorHandler().describe(thrown.cause as KubernetesClientException)
+        assertThat(description?.kind).isEqualTo(ProviderErrorKind.REJECTED)
+        assertThat(description?.policy?.name).isEqualTo("PodSecurity")
+        assertThat(description?.policy?.level).isEqualTo("restricted:latest")
+        assertThat(description?.policy?.violations).hasSize(2)
+        assertThat(description?.policy?.violations?.get(1)).contains("securityContext.runAsNonRoot")
+        assertThat(description?.remedy).contains("pod-security.kubernetes.io/enforce").contains(NAMESPACE)
     }
 
     @Test

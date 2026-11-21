@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
@@ -13,23 +14,25 @@ import picocli.CommandLine.Parameters
 import java.io.File
 import java.io.FileFilter
 import java.nio.file.Files
-import java.nio.file.Paths
-import kotlin.io.path.exists
 import kotlin.system.exitProcess
 
 /**
- * Upload authorized (public) keys from the ./authorized_keys directory.
+ * Uploads the authorized (public) keys in a local directory to every node, so other operators can
+ * SSH in. With no directory given it reads the workspace's `authorized_keys` directory.
  */
 @RequireProfileSetup
 @Command(
     name = "upload-keys",
-    description = ["Upload authorized (public) keys from the ./authorized_keys directory"],
+    description = ["Upload authorized (public) keys from the workspace's authorized_keys directory"],
 )
 class UploadAuthorizedKeys : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
 
-    @Parameters(description = ["Local directory of authorized keys"], defaultValue = "authorized_keys")
-    var localDir = "authorized_keys"
+    @Parameters(
+        arity = "0..1",
+        description = ["Local directory of authorized keys (default: the workspace's ${Constants.Ssh.AUTHORIZED_KEYS_DIR})"],
+    )
+    var localDir: String? = null
 
     @Mixin
     var hosts = HostsMixin()
@@ -37,17 +40,18 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
     val authorizedKeysExtra = "~/.ssh/authorized_keys_extra"
 
     override fun execute() {
-        val path = Paths.get(localDir)
-        if (!path.exists()) {
-            eventBus.emit(Event.Command.UploadKeysNotFound(localDir))
+        // A typed directory resolves where the user typed it; the default is the workspace's.
+        val keysDir = localDir?.let(::File) ?: context.workspaceFile(Constants.Ssh.AUTHORIZED_KEYS_DIR)
+        if (!keysDir.exists()) {
+            eventBus.emit(Event.Command.UploadKeysNotFound(keysDir.path))
             exitProcess(1)
         }
 
         val files =
-            File(localDir)
+            keysDir
                 .listFiles(FileFilter { it.name.endsWith(".pub") })
                 ?.sortedBy { it.name } // listFiles order is filesystem-dependent
-                ?: error("Failed to list files in $localDir")
+                ?: error("Failed to list files in $keysDir")
         println("Files: ${files.map { it.name }}")
 
         // collect all the keys into a single file then upload

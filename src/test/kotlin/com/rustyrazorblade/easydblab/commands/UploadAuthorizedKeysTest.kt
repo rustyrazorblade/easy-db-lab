@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -18,14 +19,14 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * `upload-keys` uploads the joined keys from a scratch file that it removes afterwards. The keys
- * directory is a typed path, so a relative one resolves against the process's current directory.
+ * `upload-keys` uploads the joined keys from a scratch file that it removes afterwards. A keys
+ * directory the user types resolves against the process's current directory; with none, the
+ * workspace's `authorized_keys` directory is read.
  */
 class UploadAuthorizedKeysTest : BaseKoinTest() {
     @TempDir
@@ -39,7 +40,7 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     private val remote: RemoteOperationsService =
         mock {
             on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
-            on { upload(any(), any(), any()) } doAnswer {
+            on { upload(any(), any(), any(), any()) } doAnswer {
                 uploadedSources.add(it.getArgument<Path>(1))
                 if (failUpload) throw IllegalStateException("upload failed")
                 uploadedContents += Files.readString(it.getArgument<Path>(1))
@@ -50,14 +51,14 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "test",
-            versions = mutableMapOf(),
             hosts = mapOf(ServerType.Cassandra to listOf(ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", "i-1"))),
         )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single<ClusterStateManager> { mock<ClusterStateManager>().also { whenever(it.load()).thenReturn(state) } }
+                // Never a mock: the real manager over the test workspace.
+                single { ClusterStateManager(File(tempDir, CLUSTER_STATE)).also { it.replace(state) } }
                 single { HostOperationsService(get()) }
                 single<RemoteOperationsService> { remote }
             },
@@ -99,6 +100,17 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
 
         assertThat(uploadedSources).isNotEmpty
         assertThat(uploadedSources.first()).doesNotExist()
+    }
+
+    @Test
+    fun `with no keys directory given, the workspace's authorized_keys directory is read`() {
+        val keys = File(context.workingDirectory, "authorized_keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 WWW workspace\n")
+        assertThat(File("authorized_keys").absoluteFile).isNotEqualTo(keys.absoluteFile)
+
+        UploadAuthorizedKeys().execute()
+
+        assertThat(uploadedContents.first()).isEqualTo("ssh-ed25519 WWW workspace\n")
     }
 
     @Test

@@ -2023,6 +2023,9 @@ object Constants {
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
         const val INSTALL_STAGING_PREFIX = "edl-staged-"
 
+        /** The workspace directory `upload-keys` reads `.pub` files from when none is given. */
+        const val AUTHORIZED_KEYS_DIR = "authorized_keys"
+
         /** The file modes `installFile` accepts: octal digits as `chmod` takes them (`0644`, `755`). */
         const val FILE_MODE_PATTERN = "[0-7]{3,4}"
 

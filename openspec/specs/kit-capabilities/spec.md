@@ -132,7 +132,7 @@ SHALL declare the coordinator pod as their `pod-selector`.
 #### Scenario: Status with the proxy down
 - **WHEN** the SOCKS proxy cannot be established and the user runs `status`
 - **THEN** no pod is listed for a running kit's `pod-selector` endpoints
-- **AND** those endpoints are shown unavailable with the proxy failure as the reason
+- **AND** those endpoints are shown unavailable with the first line of the proxy failure as the reason, which names the tunnel log; the ssh transcript is not repeated per kit
 - **AND** the kit's NodePort endpoints are still listed
 
 #### Scenario: A bench kit targets the coordinator's node

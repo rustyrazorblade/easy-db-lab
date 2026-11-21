@@ -96,7 +96,9 @@ class Status :
             collector.collect(
                 clusterState,
                 includePods = false,
-                kubernetesUnreachable = proxyAvailability.failure()?.let { proxyFailureText(it) },
+                // One line per kit: the first line names the tunnel log; the ssh transcript
+                // after it stays in that log and in the stress-jobs section reason.
+                kubernetesUnreachable = proxyAvailability.failure()?.let { proxyFailureText(it).lineSequence().first() },
             )
         val status = report.response
 

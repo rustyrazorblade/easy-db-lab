@@ -446,16 +446,21 @@ class StatusTest : BaseKoinTest() {
     fun `with the proxy down a one-pod endpoint is unavailable with the proxy failure and no pod is asked for`() {
         setupBasicClusterState(runningKits = setOf("web"))
         File(createWorkspaceDir("web"), Constants.Kit.CONFIG_FILE).writeText(ONE_POD_KIT)
-        proxyAvailability.recordFailure(RuntimeException("port never began accepting connections"))
+        proxyAvailability.recordFailure(
+            RuntimeException("port never began accepting connections. See socks5-proxy.log.\nssh reported:\nConnection refused"),
+        )
 
         assertThatThrownBy { Status().execute() }.isInstanceOf(StatusDegradedException::class.java)
 
+        // The kit line carries only the failure's first line, which names the log; the ssh
+        // transcript is in the log, not repeated once per kit.
         val kits = capturedOutput().substringAfter("=== KITS ===").substringBefore("=== CASSANDRA VERSION ===")
         assertThat(kits)
             .contains(
-                "(endpoints unavailable: ui: SOCKS proxy could not be established: port never began accepting connections; run 'web status')",
+                "(endpoints unavailable: ui: SOCKS proxy could not be established: " +
+                    "port never began accepting connections. See socks5-proxy.log.; run 'web status')",
                 "10.0.1.100:30080",
-            ).doesNotContain(":8080")
+            ).doesNotContain(":8080", "ssh reported", "Connection refused")
         assertThat(podQueries).isEmpty()
     }
 

@@ -74,6 +74,9 @@ jobs:
       # each running K3s, the runner's default ran out and a starting kubelet failed with
       # "inotify_init: too many open files", so K3s never logged node sync. These are the values
       # the cluster nodes get (commands/node-tuning/60-easydblab.conf).
+      # The runner's default is also lower than the image means it to be: ubuntu-26.04 writes its
+      # inotify limits to /etc/sysctl.conf, which systemd 259 no longer reads, so the kernel keeps
+      # max_user_instances=128 (actions/runner-images#15108; image 20261116.202.1 still logs 128).
       - name: Raise inotify limits for K3s containers
         run: |
           echo "before: max_user_instances=$(cat /proc/sys/fs/inotify/max_user_instances) max_user_watches=$(cat /proc/sys/fs/inotify/max_user_watches)"

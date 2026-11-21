@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.socks
 
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -16,9 +15,9 @@ import picocli.CommandLine.Command
  * Every other command that needs the tunnel starts it on its own; this one exists for what runs
  * outside the CLI. The tool wrappers in `<workspace>/bin/` read the port from the proxy env file and
  * fail until one is recorded, for example after `socks stop`, and a browser needs the port to reach
- * the cluster's web UIs. It writes the wrappers and records the cluster's network mode first; in
- * `tailscale` or `direct` mode there is no tunnel to start. A workspace whose environment is in the
- * direct network mode (K3s in Docker, a kubeconfig cluster) needs none even before its cluster runs.
+ * the cluster's web UIs. It writes the wrappers and records the cluster's network mode first. A
+ * mode that needs no tunnel (`tailscale`, or `direct` for K3s in Docker and a kubeconfig cluster)
+ * is reported by its own name and starts nothing, whether or not the cluster has running hosts.
  */
 @Command(
     name = "start",
@@ -30,9 +29,10 @@ class SocksStart : PicoBaseCommand() {
 
     override fun execute() {
         val state = clusterStateManager.takeIf { it.exists() }?.load()
-        if (state != null && state.effectiveNetworkMode() == NetworkMode.Direct) {
+        val mode = state?.effectiveNetworkMode()
+        if (state != null && mode != null && !mode.needsTunnel) {
             workspaceShellTools.prepare(context.workingDirectory, state)
-            eventBus.emit(Event.Proxy.TunnelNotNeeded(NetworkMode.Direct.id))
+            eventBus.emit(Event.Proxy.TunnelNotNeeded(mode.id))
             return
         }
         val controlHost = state?.takeIf { it.isInfrastructureUp() }?.getControlHost()
@@ -41,11 +41,6 @@ class SocksStart : PicoBaseCommand() {
             throw CommandFailedException("no running cluster in ${context.workingDirectory.absolutePath}")
         }
         workspaceShellTools.prepare(context.workingDirectory, state)
-        val mode = state.effectiveNetworkMode()
-        if (!mode.needsTunnel) {
-            eventBus.emit(Event.Proxy.TunnelNotNeeded(mode.id))
-            return
-        }
         val proxy = socksProxyService.ensureRunning(controlHost)
         eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = proxy.reused))
     }

@@ -138,6 +138,24 @@ class SocksStartTest : BaseKoinTest() {
         assertThat(events.single().toDisplayString()).contains("directly").doesNotContain("Tailscale")
     }
 
+    /** Every mode that needs no tunnel is reported by its own id, also when no host of it is running. */
+    @Test
+    fun `a mode that needs no tunnel is reported by its own name even with no running hosts`() {
+        val noTunnelModes = NetworkMode.entries.filterNot { it.needsTunnel }
+        assertThat(noTunnelModes).contains(NetworkMode.Tailscale, NetworkMode.Direct)
+
+        noTunnelModes.forEach { mode ->
+            events.clear()
+            save(clusterState(mode).apply { markInfrastructureDown() })
+
+            SocksStart().call()
+
+            assertThat(launched).describedAs(mode.id).isEmpty()
+            assertThat(events).describedAs(mode.id).containsExactly(Event.Proxy.TunnelNotNeeded(mode.id))
+            assertThat(ProxyEnvFile(context.workingDirectory).read().networkMode).describedAs(mode.id).isEqualTo(mode)
+        }
+    }
+
     @Test
     fun `it installs the packaged wrappers before it records the mode`() {
         save(clusterState(NetworkMode.Tailscale))

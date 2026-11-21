@@ -25,7 +25,10 @@ import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /**
@@ -119,6 +122,61 @@ internal class ProxyPreflightTest {
 
         assertThat(envFile.file.lastModified()).isEqualTo(written - 10_000)
         verifyNoInteractions(socksProxyService)
+    }
+
+    /**
+     * One command's preflight rewrites a stale mode while another records the tunnel it started. The
+     * env file's merge-update lock keeps both: the writers overlap for at least [RACE_ROUNDS] writes each,
+     * and before each write the tunnel writer finds its previous port still recorded, so a mode
+     * rewrite that read the file before a tunnel write never puts the older tunnel back.
+     */
+    @Test
+    fun `a preflight rewriting the mode while another records its tunnel keeps both`() {
+        val modes = listOf(NetworkMode.Socks, NetworkMode.Tailscale)
+        // The first preflight installs the wrappers and env.sh; done here, the race times only mode rewrites.
+        stateManager.replace(clusterState(modes[1]))
+        preflight.recordReachability()
+        val start = CountDownLatch(1)
+        val lost = AtomicInteger()
+        val tunnelDone = AtomicBoolean(false)
+        val modeWrites = AtomicInteger()
+        val lastPort = AtomicInteger()
+        val modeWriter =
+            thread {
+                start.await()
+                while (!tunnelDone.get()) {
+                    // Each round the state disagrees with the file, so the preflight always rewrites it.
+                    stateManager.replace(clusterState(modes[modeWrites.get() % 2]))
+                    preflight.recordReachability()
+                    modeWrites.incrementAndGet()
+                }
+            }
+        val tunnelWriter =
+            thread {
+                start.await()
+                val writer = ProxyEnvFile(workspace)
+                try {
+                    var port = 0
+                    while (port < RACE_ROUNDS || modeWrites.get() < RACE_ROUNDS) {
+                        if ((writer.read().tunnel?.port ?: 0) < port) lost.incrementAndGet()
+                        writer.recordTunnel(++port, RACE_PID)
+                    }
+                    lastPort.set(port)
+                } finally {
+                    tunnelDone.set(true)
+                }
+            }
+        start.countDown()
+        listOf(modeWriter, tunnelWriter).forEach { it.join(TimeUnit.SECONDS.toMillis(SHELL_LIMIT_SECONDS)) }
+
+        assertThat(listOf(modeWriter, tunnelWriter)).noneMatch { it.isAlive }
+        assertThat(
+            modeWrites.get(),
+        ).withFailMessage("the mode writer did not overlap the tunnel writer").isGreaterThanOrEqualTo(RACE_ROUNDS)
+        assertThat(lost.get()).withFailMessage("a tunnel record was overwritten by a mode rewrite").isZero()
+        assertThat(envFile.read()).isEqualTo(
+            ProxyEnv(networkMode = modes[(modeWrites.get() - 1) % 2], tunnel = RecordedTunnel(lastPort.get(), RACE_PID)),
+        )
     }
 
     @Test
@@ -329,5 +387,8 @@ internal class ProxyPreflightTest {
         const val OLD_ENV_FIXTURE = "env-before-network-mode.sh"
 
         const val SHELL_LIMIT_SECONDS = 30L
+
+        const val RACE_ROUNDS = 200
+        const val RACE_PID = 4242L
     }
 }

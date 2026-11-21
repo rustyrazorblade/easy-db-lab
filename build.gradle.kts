@@ -411,13 +411,20 @@ tasks.withType<Test>().configureEach {
 // to a scanned file (a test plan, a doc page, a comment) would be masked by an up-to-date or
 // cached test result. When a test starts reading another path off disk, add it here.
 // When a tree or file is removed from the repo, remove its entry too: a missing input fails the task.
+// Each entry names the unit tests that read it; NoVictoriaReferencesTest scans all of them.
 val sourceTreesReadByTests =
     mapOf(
+        // NodeTuningReservedPortsTest, StorageSchemeBoundaryTest, StoreKeyNamesTest, DashboardFiles (the kit dashboard tests)
         "mainSourceTree" to "src/main",
+        // DashboardFiles and the core dashboard tests (GrafanaDashboardCatalogTest, ComparisonDashboardsTest, ...)
         "dashboardsTree" to "dashboards",
+        // NodeTenantRuleTest, CassandraJmxRulesTest, EbpfExporterManifestBuilderTest, PackerBuildCommandTest
         "packerTree" to "packer",
+        // DevLauncherTelemetryTest
         "binTree" to "bin",
+        // KitFlagsDocumentedTest, StoreKeyNamesTest
         "docsTree" to "docs",
+        // NoVictoriaReferencesTest only, for the five entries from here on
         "testPlansTree" to "test-plans",
         "claudeAgentsTree" to ".claude/agents",
         "claudeCommandsTree" to ".claude/commands",
@@ -425,6 +432,7 @@ val sourceTreesReadByTests =
     )
 val sourceFilesReadByTests =
     mapOf(
+        // NoVictoriaReferencesTest
         "rootClaudeMd" to "CLAUDE.md",
         "rootBuildScript" to "build.gradle.kts",
     )

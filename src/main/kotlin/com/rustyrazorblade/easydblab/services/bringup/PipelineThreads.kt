@@ -8,10 +8,12 @@ import java.util.concurrent.ThreadFactory
  * The virtual threads the bring-up runs its pipelines on, each one remembered, so [close] can
  * wait for every one of them to end.
  *
- * The executor's own `close` is not enough. A pipeline cancelled while it runs counts as done to
- * the executor at once, and its thread may still be finishing a step, a state save among them.
- * `up` would then go on, or a test would delete its directory, while that thread still writes.
- * [close] joins every thread, so nothing a pipeline does outlives the bring-up.
+ * The executor's own `close` must not be used. On JDK 21 a pipeline cancelled while it runs counts
+ * as done to the executor at once, and its thread may still be finishing a step, a state save
+ * among them: `up` would then go on, or a test would delete its directory, while that thread still
+ * writes. Since JDK 25 the executor's `close` waits for that thread instead, with no bound, so a
+ * pipeline that ignores its interrupt hangs `up`. The executor is only shut down, and [close]
+ * joins every thread, so nothing a pipeline does outlives the bring-up and the wait stays bounded.
  *
  * A cancelled pipeline is interrupted, and each step stops its attempt within its own grace, but
  * work outside a step (a replacement's fleet call, an old Node's removal) has no such bound. So

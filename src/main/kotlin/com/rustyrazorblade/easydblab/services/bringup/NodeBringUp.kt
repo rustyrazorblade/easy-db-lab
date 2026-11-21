@@ -61,8 +61,14 @@ class NodeBringUp(
             PipelineThreads(run.timing.pipelineStopGrace) { running ->
                 run.eventBus.emit(Event.Provision.PipelinesAbandoned(running, run.timing.pipelineStopGrace.toMillis()))
             }.use { threads ->
-                Executors.newThreadPerTaskExecutor(threads).use { executor ->
+                // Shut down, never closed: since JDK 25 the executor's close waits, with no bound,
+                // for a cancelled pipeline's thread to end, so a pipeline that ignores its
+                // interrupt would hang `up`. The threads' own close is the bounded wait.
+                val executor = Executors.newThreadPerTaskExecutor(threads)
+                try {
                     Coordinator(run, executor).bringUp(launch)
+                } finally {
+                    executor.shutdown()
                 }
             }
         }

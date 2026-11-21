@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -83,7 +84,11 @@ class ControlNodeFailureBringUpTest {
         }
 
         try {
-            assertThatThrownBy { h.run() }
+            // Waits a bounded time, so a run that never returns fails here instead of hanging the suite.
+            assertThat(h.runInBackground())
+                .failsWithin(BringUpHarness.WAIT)
+                .withThrowableOfType(ExecutionException::class.java)
+                .havingCause()
                 .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
                     assertThat(it.reason).contains("k3s.service failed")
                 }

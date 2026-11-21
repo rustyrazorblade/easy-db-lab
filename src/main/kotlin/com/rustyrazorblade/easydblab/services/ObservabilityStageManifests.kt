@@ -57,7 +57,7 @@ class CoreCollectorManifests(
 ) {
     /** The collector's hashed resources for [reading]. */
     fun resources(reading: ObservabilityDeployInputs.Reading): List<HasMetadata> {
-        val scrapeConfigs = k8sClientProvider.createClient().use { otelManifestBuilder.listWorkloadScrapeConfigs(it) }
+        val scrapeConfigs = k8sClientProvider.createClient().use { otelManifestBuilder.listWorkloadScrapeConfigs(it, reading.scope) }
         return CollectorResources.build(
             otelManifestBuilder,
             CollectorInputs(reading.state, reading.region, reading.contract.nodeCapabilities, reading.scope),

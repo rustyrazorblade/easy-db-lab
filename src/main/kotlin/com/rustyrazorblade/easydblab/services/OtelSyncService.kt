@@ -52,7 +52,7 @@ class DefaultOtelSyncService(
             val scope = InstallScope.of(clusterState, contract)
             val scrapeConfigs =
                 k8sClientProvider.createClient().use { client ->
-                    otelManifestBuilder.listWorkloadScrapeConfigs(client)
+                    otelManifestBuilder.listWorkloadScrapeConfigs(client, scope)
                 }
             // The cluster's export destinations, CNI and region come from its recorded init config,
             // so a regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium

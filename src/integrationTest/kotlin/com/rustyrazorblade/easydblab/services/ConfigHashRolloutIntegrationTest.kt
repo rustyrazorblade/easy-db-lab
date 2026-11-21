@@ -328,7 +328,7 @@ class ConfigHashRolloutIntegrationTest {
      * and hashed by [CollectorResources], reported, then applied. Returns what the report emitted.
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
-        val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
+        val scrapeConfigs = otel.listWorkloadScrapeConfigs(client, TestScopes.EC2)
         val state = stateManager.load()
         val resources =
             CollectorResources.build(
@@ -365,7 +365,8 @@ class ConfigHashRolloutIntegrationTest {
             ConfigMapBuilder()
                 .withNewMetadata()
                 .withName("easydblab-metrics-hash-rollout-kit")
-                .withNamespace(NAMESPACE)
+                // The registry is read in the cluster's namespace only, where the collector runs.
+                .withNamespace(TestScopes.NAMESPACE)
                 .addToLabels("easydblab.com/workload-metrics", "true")
                 .endMetadata()
                 .addToData(

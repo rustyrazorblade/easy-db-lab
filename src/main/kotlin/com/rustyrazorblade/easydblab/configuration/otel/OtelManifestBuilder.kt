@@ -96,14 +96,19 @@ class OtelManifestBuilder(
     }
 
     /**
-     * Reads the metrics registry — all ConfigMaps labeled `easydblab.com/workload-metrics=true` —
-     * and returns one [WorkloadScrapeConfig] per running workload.
+     * Reads the metrics registry — the ConfigMaps labeled `easydblab.com/workload-metrics=true` in
+     * the [scope]'s namespace, where `MetricsRegistryService` writes them — and returns one
+     * [WorkloadScrapeConfig] per running workload. No other namespace is read, so a labelled
+     * ConfigMap another cluster or an earlier install left elsewhere never becomes a scrape job.
      */
-    fun listWorkloadScrapeConfigs(client: KubernetesClient): List<WorkloadScrapeConfig> {
+    fun listWorkloadScrapeConfigs(
+        client: KubernetesClient,
+        scope: InstallScope,
+    ): List<WorkloadScrapeConfig> {
         val configMaps =
             client
                 .configMaps()
-                .inAnyNamespace()
+                .inNamespace(scope.namespace.value)
                 .withLabel(WORKLOAD_METRICS_LABEL, "true")
                 .list()
                 .items

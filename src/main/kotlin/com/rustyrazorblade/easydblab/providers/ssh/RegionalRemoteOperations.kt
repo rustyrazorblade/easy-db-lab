@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.providers.ssh
 
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
+import com.rustyrazorblade.easydblab.ssh.ISSHClient
 
 /**
  * Remote operations that reach hosts in a region named at call time.
@@ -63,22 +65,42 @@ sealed interface RegionRemote : AutoCloseable {
     }
 
     /**
-     * Connections of this region's own over [route], opened on first use. Closing stops them, which
-     * closes the route; a route no connection was opened over is closed directly.
+     * Connections of this region's own over [route], opened on the first connection [operations]
+     * asks for, so a build that never reaches its builder opens no SSH client. Closing stops them,
+     * which closes the route; a route no connection was opened over is closed directly.
      */
     class Own(
         private val route: SshRoute,
         connectionsOver: (SshRoute) -> SSHConnectionProvider,
     ) : RegionRemote {
-        private val connections = lazy { connectionsOver(route) }
+        private val connections = OnFirstConnection { connectionsOver(route) }
 
-        override val operations: RemoteOperationsService by lazy { DefaultRemoteOperationsService(connections.value) }
+        override val operations: RemoteOperationsService = DefaultRemoteOperationsService(connections)
 
         override fun close() {
             when {
-                connections.isInitialized() -> connections.value.stop()
+                connections.opened -> connections.stop()
                 else -> route.close()
             }
+        }
+    }
+
+    /** Creates the real connections through [open] when the first connection is asked for. */
+    private class OnFirstConnection(
+        open: () -> SSHConnectionProvider,
+    ) : SSHConnectionProvider {
+        private val real = lazy(open)
+
+        val opened: Boolean get() = real.isInitialized()
+
+        override fun getConnection(host: Host): ISSHClient = real.value.getConnection(host)
+
+        override fun discard(host: Host) {
+            if (opened) real.value.discard(host)
+        }
+
+        override fun stop() {
+            if (opened) real.value.stop()
         }
     }
 }

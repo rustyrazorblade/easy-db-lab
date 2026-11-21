@@ -15,6 +15,7 @@ import org.testcontainers.DockerClientFactory
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /**
@@ -67,11 +68,18 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         val marker = "edl-${UUID.randomUUID().toString().take(8)}"
         val docker = docker()
         val seenRunning = AtomicBoolean(false)
+        val watcherFailure = AtomicReference<Throwable>()
         val watcher =
             thread(isDaemon = true) {
-                while (!seenRunning.get() && !Thread.currentThread().isInterrupted) {
-                    if (containersRunning(marker).any { it.state == "running" }) seenRunning.set(true)
-                    runCatching { Thread.sleep(POLL_MILLIS) }.onFailure { return@thread }
+                try {
+                    while (!seenRunning.get()) {
+                        if (containersRunning(marker).any { it.state == "running" }) seenRunning.set(true)
+                        Thread.sleep(POLL_MILLIS)
+                    }
+                } catch (_: InterruptedException) {
+                    // The wait ended; the test stops watching.
+                } catch (e: Exception) {
+                    watcherFailure.set(e)
                 }
             }
 
@@ -82,6 +90,7 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         watcher.interrupt()
         watcher.join()
 
+        assertThat(watcherFailure.get()).`as`("the watcher could not list containers").isNull()
         assertThat(seenRunning).`as`("the container was running when its wait ended").isTrue()
         assertThat(containersRunning(marker)).isEmpty()
     }

@@ -22,6 +22,7 @@ internal class RegionalRemoteOperationsTest {
     private val routesBuilt = AtomicInteger()
     private val route = CountingRoute()
     private val connections = CountingConnections()
+    private val connectionsOpened = AtomicInteger()
 
     private fun operations(transport: SshTransport): RegionalRemoteOperations =
         RegionalRemoteOperations.forProfile(
@@ -32,7 +33,10 @@ internal class RegionalRemoteOperationsTest {
                 routesBuilt.incrementAndGet()
                 route
             },
-            connectionsOver = { connections },
+            connectionsOver = {
+                connectionsOpened.incrementAndGet()
+                connections
+            },
         )
 
     @ParameterizedTest(name = "{0} in {1} uses its own route: {2}")
@@ -53,9 +57,13 @@ internal class RegionalRemoteOperationsTest {
     }
 
     @Test
-    fun `closing a region route that no connection used closes the route`() {
-        operations(SshTransport.Ssm).forRegion(OTHER_REGION).close()
+    fun `holding a region's operations without running anything opens no connections and closes the route`() {
+        operations(SshTransport.Ssm).forRegion(OTHER_REGION).use { remote ->
+            assertThat(remote.operations).isNotNull()
+            assertThat(connectionsOpened).hasValue(0)
+        }
 
+        assertThat(connectionsOpened).hasValue(0)
         assertThat(route.closed).hasValue(1)
         assertThat(connections.stopped).hasValue(0)
     }
@@ -66,6 +74,7 @@ internal class RegionalRemoteOperationsTest {
             remote.operations.download(HOST, "/etc/hostname", Path.of("unused"))
         }
 
+        assertThat(connectionsOpened).hasValue(1)
         assertThat(connections.stopped).hasValue(1)
         assertThat(connections.connectionsAsked).hasValue(1)
     }

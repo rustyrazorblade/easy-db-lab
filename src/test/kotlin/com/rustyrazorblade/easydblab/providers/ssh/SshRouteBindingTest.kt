@@ -7,12 +7,14 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.mock
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
@@ -68,6 +70,26 @@ internal class SshRouteBindingTest : BaseKoinTest() {
         assertThat(route.authTimeout).isNull()
         route.invalidate(host)
         assertThat(route.endpoint(host)).isEqualTo(SshEndpoint("54.1.2.3", 22))
+    }
+
+    @Test
+    fun `a regional ssm route starts its sessions in the region it is asked for, not the profile region`() {
+        useTransport(SshTransport.Ssm)
+
+        getKoin().get<RegionalSsmRoutes>().forRegion("eu-west-3", Constants.Network.SSH_PORT).use { route ->
+            assertThat(route.proxyCommand(host)).contains("--target i-0abc", "--region eu-west-3").doesNotContain("us-west-2")
+        }
+    }
+
+    @Test
+    fun `under ssm only another region gets remote operations of its own`() {
+        useTransport(SshTransport.Ssm)
+        // The shared connections need the profile key; this test only asks which route a region gets.
+        getKoin().loadModules(listOf(module { single<SSHConnectionProvider> { mock() } }), allowOverride = true)
+        val regional = getKoin().get<RegionalRemoteOperations>()
+
+        regional.forRegion("us-west-2").use { assertThat(it).isInstanceOf(RegionRemote.Shared::class.java) }
+        regional.forRegion("eu-west-3").use { assertThat(it).isInstanceOf(RegionRemote.Own::class.java) }
     }
 
     @Test

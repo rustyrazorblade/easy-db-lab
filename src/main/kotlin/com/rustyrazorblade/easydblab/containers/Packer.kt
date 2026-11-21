@@ -100,6 +100,20 @@ class Packer(
                 add(build.template)
             }
 
+        /**
+         * Runs [block] on [build]'s site in its region, with remote operations that reach that
+         * region's hosts, and closes both when it returns.
+         */
+        internal fun <T> inBuildRegion(
+            build: PackerBuild,
+            sites: BuildSites,
+            remotes: RegionalRemoteOperations,
+            block: (BuildSite, RemoteOperationsService) -> T,
+        ): T =
+            sites.open(build.region, build.buildId).use { site ->
+                remotes.forRegion(site.region).use { remote -> block(site, remote.operations) }
+            }
+
         /** A new build id: enough random hex that concurrent builds never share one. */
         internal fun newBuildId(): String =
             UUID
@@ -162,12 +176,10 @@ class Packer(
         val image = packerImage.ensure(user.sshTransport)
         val releaseVersion = if (isRelease) context.version.toString() else null
         val outcome =
-            buildSites.open(region, build.buildId).use { site ->
-                regionalRemote.forRegion(region).use { remote ->
-                    // A release build uses the release version as the image version and makes the AMI public.
-                    val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
-                    runAttempts(build, site, remote.operations) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
-                }
+            inBuildRegion(build, buildSites, regionalRemote) { site, remote ->
+                // A release build uses the release version as the image version and makes the AMI public.
+                val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
+                runAttempts(build, site, remote) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
             }
         when (outcome) {
             is PackerBuildOutcome.Succeeded -> logger.info { "Packer build succeeded" }

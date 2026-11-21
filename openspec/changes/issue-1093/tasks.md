@@ -53,7 +53,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 5. Integration
 
-- [ ] 5.1 Extend `PortableObservabilityPlacementIntegrationTest` (K3s with Grafana), or add a sibling test. It should deploy twice with two trees and assert:
+- [x] 5.1 Extend `PortableObservabilityPlacementIntegrationTest` (K3s with Grafana), or add a sibling test. It should deploy twice with two trees and assert:
   - every dashboard is in its folder under its UID, with the pickers set (`/api/search`, `/api/dashboards/uid`);
   - after an edited JSON, Grafana serves the new version when `deploy` returns;
   - after a removed file, its ConfigMap and its dashboard are gone, and every other map keeps its name;
@@ -62,7 +62,7 @@ The owner approved design decisions D1-D6 in `design.md` on 2026-11-20.
 
 ## 6. Docs
 
-- [ ] 6.1 Update:
+- [x] 6.1 Update:
   - `dashboards/CLAUDE.md`, the delivery steps;
   - `src/main/kotlin/.../configuration/CLAUDE.md`, the line about copying the dashboard tree onto a host path;
   - root `CLAUDE.md`, "Grafana services";

@@ -172,6 +172,17 @@ interface ObjectStore {
     fun uriOf(path: ClusterStoragePath): String
 
     /**
+     * An `https` URL anyone can GET [path] from for [ttl], with no credentials: what a pod off AWS,
+     * which has no instance profile, downloads a catalog build's tarball from.
+     *
+     * @throws IllegalArgumentException when [ttl] is longer than the store allows
+     */
+    fun presignedGetUrl(
+        path: ClusterStoragePath,
+        ttl: java.time.Duration,
+    ): String
+
+    /**
      * Represents a file in cloud storage with metadata.
      *
      * @property path The cloud storage path to this file

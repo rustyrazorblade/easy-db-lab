@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -14,10 +16,12 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.time.Duration
 import java.util.UUID
 import com.rustyrazorblade.easydblab.events.Event as DomainEvent
 
@@ -34,10 +38,12 @@ import com.rustyrazorblade.easydblab.events.Event as DomainEvent
  * conflicts when multiple clusters share the same S3 bucket.
  *
  * @property s3Client AWS SDK S3 client for S3 operations
+ * @property presigners signs [presignedGetUrl] for the bucket's own region; null in a store that is never asked to
  */
 class S3ObjectStore(
     private val s3Client: S3Client,
     private val eventBus: EventBus,
+    private val presigners: RegionalS3Presigners? = null,
 ) : ObjectStore {
     private val log = KotlinLogging.logger {}
 
@@ -368,6 +374,26 @@ class S3ObjectStore(
     }
 
     override fun uriOf(path: ClusterStoragePath): String = S3Uri.uri(path)
+
+    override fun presignedGetUrl(
+        path: ClusterStoragePath,
+        ttl: Duration,
+    ): String {
+        require(ttl <= Constants.S3.MAX_PRESIGN_TTL) { "A presigned S3 URL lasts at most 7 days; $ttl was asked for." }
+        val signers = checkNotNull(presigners) { "This S3 object store was built without a presigner." }
+        val request =
+            GetObjectPresignRequest
+                .builder()
+                .signatureDuration(ttl)
+                .getObjectRequest(
+                    GetObjectRequest
+                        .builder()
+                        .bucket(path.bucket)
+                        .key(path.getKey())
+                        .build(),
+                ).build()
+        return signers.forRegion(BucketRegion(s3Client).of(path.bucket)).use { it.presignGetObject(request).url().toString() }
+    }
 
     /**
      * Creates a HeadObjectRequest for the given S3 path.

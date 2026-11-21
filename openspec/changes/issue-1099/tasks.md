@@ -12,10 +12,10 @@
 
 ## 3. Tarball artifact resolution
 
-- [ ] 3.1 `Sha256` value class and `TarballArtifact`. Constants for the presign TTL, the cache root `.edl/artifacts` and the runtime image
-- [ ] 3.2 `TarballDigests`: ASF `.sha256`, else `.sha512` (check one download, compute the sha256); the GitHub asset `digest` (`CassandraBuildsRelease.parse` gains the field); the catalog `tarballSha256`. Tests cover both checksum file forms, a missing or malformed digest, and `Sha256` rejecting bad input
-- [ ] 3.3 `ObjectStore.presignedGetUrl(path, ttl)` for catalog builds
-- [ ] 3.4 `CassandraVersionResolver` returns a `TarballArtifact` for `--version`, and a cassandra-builds-only path for `--build`
+- [x] 3.1 `Sha256` value class and `TarballArtifact`. Constants for the presign TTL, the cache root `.edl/artifacts` and the runtime image
+- [x] 3.2 `TarballDigests`: ASF `.sha256`, else `.sha512` (check one download, compute the sha256); the GitHub asset `digest` (`CassandraBuildsRelease.parse` gains the field); the catalog `tarballSha256`. Tests cover both checksum file forms, a missing or malformed digest, and `Sha256` rejecting bad input
+- [x] 3.3 `ObjectStore.presignedGetUrl(path, ttl)` for catalog builds
+- [x] 3.4 `CassandraVersionResolver` returns a `TarballArtifact` for `--version`, and a cassandra-builds-only path for `--build`
 
 ## 4. Kit variable contributors
 

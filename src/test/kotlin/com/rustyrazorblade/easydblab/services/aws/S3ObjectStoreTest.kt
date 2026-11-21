@@ -2,8 +2,10 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -13,13 +15,19 @@ import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
+import java.net.URI
 import java.nio.file.Path
+import java.time.Duration
 
 /**
  * Unit tests for S3ObjectStore error handling behavior that can't be tested with LocalStack.
@@ -38,7 +46,13 @@ class S3ObjectStoreTest : BaseKoinTest() {
                         mockS3Client = it
                     }
                 }
-                single<ObjectStore> { S3ObjectStore(get(), get()) }
+                single<ObjectStore> {
+                    S3ObjectStore(
+                        get(),
+                        get(),
+                        RegionalS3Presigners(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIDEXAMPLE", "secret"))),
+                    )
+                }
             },
         )
 
@@ -150,5 +164,30 @@ class S3ObjectStoreTest : BaseKoinTest() {
         assertThatThrownBy {
             objectStore.downloadFile(s3Path, localPath)
         }.isInstanceOf(S3Exception::class.java)
+    }
+
+    @Test
+    fun `presignedGetUrl signs a GET for the object in the bucket's own region, valid for the TTL`() {
+        objectStore = get()
+        whenever(mockS3Client.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(GetBucketLocationResponse.builder().locationConstraint("eu-west-1").build())
+        val path = ClusterStoragePath.cassandraBuildsRoot("acct-bucket").resolve("my-build").resolve("apache-cassandra-my-build-bin.tar.gz")
+
+        val url = URI(objectStore.presignedGetUrl(path, Duration.ofHours(2)))
+
+        assertThat(url.scheme).isEqualTo("https")
+        assertThat(url.host).contains("acct-bucket").contains("eu-west-1")
+        assertThat(url.path).endsWith("/${path.getKey()}")
+        assertThat(url.query).contains("X-Amz-Expires=7200").contains("X-Amz-Signature=").contains("/eu-west-1/s3/")
+    }
+
+    @Test
+    fun `presignedGetUrl refuses a TTL longer than S3 allows`() {
+        objectStore = get()
+        val path = ClusterStoragePath.root("acct-bucket").resolve("x.tgz")
+
+        assertThatThrownBy { objectStore.presignedGetUrl(path, Duration.ofDays(8)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("7 days")
     }
 }

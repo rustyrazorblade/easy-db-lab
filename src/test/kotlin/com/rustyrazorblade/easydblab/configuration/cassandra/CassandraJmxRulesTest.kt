@@ -596,8 +596,11 @@ class CassandraJmxRulesTest {
         assertThat(cassandraInShCode).contains("cassandra_build=")
         assertThat(cassandraInShCode).contains("-Dotel.resource.attributes=")
 
-        val resourceAttributes = cassandraInShCode.substringAfter("-Dotel.resource.attributes=").substringBefore("\"")
-        assertThat(resourceAttributes).contains("cassandra_build=")
+        // The option carries EDL_OTEL_RESOURCE_ATTRIBUTES, which the file builds with the label first
+        // and only then appends the pod's extra attributes (edl-cassandra-agents.test.sh sources it).
+        assertThat(cassandraInShCode).contains("\"-Dotel.resource.attributes=\${EDL_OTEL_RESOURCE_ATTRIBUTES}\"")
+        val resourceAttributes = cassandraInShCode.substringAfter("EDL_OTEL_RESOURCE_ATTRIBUTES=\"").substringBefore("\"")
+        assertThat(resourceAttributes).contains("cassandra_build=\${EDL_CASSANDRA_BUILD}")
 
         // Read from the symlink `cassandra use` moves, so a version switch on a subset of hosts
         // needs no re-push from the CLI: each node reports its own build on its next restart.
@@ -683,7 +686,8 @@ class CassandraJmxRulesTest {
         // The agent's default protocol is http/protobuf. Sent at 4317, the collector's gRPC port,
         // every export fails with "HttpExporter - Failed to export" and no metric ever lands - a
         // failure visible only at runtime, on a provisioned cluster.
-        assertThat(cassandraInShCode).contains("-Dotel.exporter.otlp.endpoint=http://localhost:4318")
+        // EDL_OTLP_ENDPOINT is the pod's override; a VM, which never sets it, gets the HTTP port.
+        assertThat(cassandraInShCode).contains("-Dotel.exporter.otlp.endpoint=\${EDL_OTLP_ENDPOINT:-http://localhost:4318}")
         assertThat(cassandraInShCode).doesNotContain("4317")
     }
 

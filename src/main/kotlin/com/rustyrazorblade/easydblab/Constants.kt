@@ -582,6 +582,12 @@ object Constants {
         /** Prefix for all easy-db-lab S3 buckets */
         const val BUCKET_PREFIX = "easy-db-lab-"
 
+        /** The longest a SigV4 presigned URL may last, in days. */
+        const val MAX_PRESIGN_TTL_DAYS = 7L
+
+        /** The longest a SigV4 presigned URL may last. */
+        val MAX_PRESIGN_TTL: java.time.Duration = java.time.Duration.ofDays(MAX_PRESIGN_TTL_DAYS)
+
         /** Prefix for per-cluster data buckets */
         const val DATA_BUCKET_PREFIX = "easy-db-lab-data-"
 
@@ -1296,6 +1302,21 @@ object Constants {
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */
             const val CQL_NODE_PORT = 30942
+
+            /**
+             * How long a catalog build's presigned tarball URL stays valid. A pod with a cold cache
+             * started after this fails its fetch, naming the expiry; `upgrade` or `start` signs a new one.
+             */
+            val PRESIGN_TTL: java.time.Duration = java.time.Duration.ofDays(S3.MAX_PRESIGN_TTL_DAYS)
+
+            /** Where on its claim a pod caches extracted tarballs, one `sha256-<hex>/` directory each. */
+            const val ARTIFACT_CACHE_ROOT = ".edl/artifacts"
+
+            /** The multi-arch JRE image from `docker/cassandra-runtime/`, tagged `<rev>-jre<N>`. */
+            const val RUNTIME_IMAGE_REPOSITORY = "ghcr.io/rustyrazorblade/cassandra-runtime"
+
+            /** The `cassandra-runtime` revision the kit runs; bump with the Dockerfile. */
+            const val RUNTIME_IMAGE_REVISION = "1"
         }
 
         object Presto {
@@ -1749,6 +1770,9 @@ object Constants {
 
         /** Profile subdirectory that caches the ASF and cassandra-builds lists. */
         const val SOURCE_CACHE_DIR = "cassandra-sources"
+
+        /** Read buffer for hashing a tarball download (`TarballDigests`). */
+        const val DIGEST_BUFFER_BYTES = 64 * 1024
 
         /** Node-side directory easy-db-lab writes its own configuration into. */
         const val NODE_CONFIG_DIR = "/etc/easy-db-lab"

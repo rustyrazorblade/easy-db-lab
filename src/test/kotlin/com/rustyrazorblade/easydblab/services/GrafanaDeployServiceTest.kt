@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.StoreCredentials
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaFront
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -156,6 +157,29 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
+    }
+
+    /**
+     * An undeliverable dashboard is found before the cluster is touched: not even the datasources
+     * ConfigMap may be written when the deploy is going to fail.
+     */
+    @Test
+    fun `a catalog with two paths for one ConfigMap name fails the deploy before anything is written`() {
+        val clashing =
+            DefaultGrafanaDeployService(
+                mockK8sService,
+                manifestBuilder,
+                GrafanaDashboardTreeWriter(GrafanaDashboardCatalog.discover(CLASHING_CATALOG)),
+                eventBus,
+                ConfigChangeReport(mockK8sService, eventBus),
+                BucketRegion(bucketInRegion("eu-west-1")),
+            )
+
+        val result = clashing.deploy(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL)
+
+        assertThat(result.exceptionOrNull()).hasMessageContaining("a-b/c.json").hasMessageContaining("a/b-c.json")
+        verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
+        verify(mockK8sService, never()).applyResource(any())
     }
 
     @Test
@@ -332,5 +356,8 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     private companion object {
         const val PYROSCOPE_URL = "http://pyroscope.default.svc:4040"
+
+        /** A catalog whose `a-b/c.json` and `a/b-c.json` both map to `grafana-dashboard-a-b-c`. */
+        const val CLASHING_CATALOG = "grafana-catalog-fixtures/clashing-names"
     }
 }

@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import io.fabric8.kubernetes.api.model.HasMetadata
 
 /**
  * Gets Grafana, its datasources and the core dashboards onto the cluster, through the K8s API only.
@@ -22,6 +23,9 @@ import com.rustyrazorblade.easydblab.services.aws.BucketRegion
  * provisioning ConfigMap and the Deployment are Fabric8 objects applied over the K8s API; no
  * dashboard travels over SSH, on any environment. Talking to the running Grafana afterwards is
  * [GrafanaClient]'s job.
+ *
+ * A deploy has two steps so a caller can refuse an undeliverable dashboard before it touches the
+ * cluster: [prepare] renders and checks everything and writes nothing, [apply] writes it.
  */
 interface GrafanaDeployService {
     /**
@@ -32,22 +36,49 @@ interface GrafanaDeployService {
     fun createDatasourcesConfigMap(tenants: TenantSet): Result<Unit>
 
     /**
-     * Creates the datasources, renders the dashboards with the install-time pass of [context],
-     * applies them with the Grafana K8s resources, then prunes the dashboard ConfigMaps no longer
-     * rendered.
+     * Renders the dashboards with the install-time pass of [context] and builds every Grafana
+     * resource, hashed. Writes nothing to the cluster, so an oversized dashboard, a ConfigMap name
+     * clash or an invalid folder fails here, naming the files, before anything is applied.
      *
      * @param context The cluster the dashboards are installed on; its tenants make the datasources
      * @param bucket The account bucket, which the documents front and its signing proxy read from in its own region
      * @param hosting Where Grafana is placed and where its database lives, resolved from the environment
      * @param pyroscopeUrl The address a browser opens from the dashboards' "Pyroscope UI" link
      */
+    fun prepare(
+        context: DashboardInstallContext,
+        bucket: String,
+        hosting: ObservabilityHosting,
+        pyroscopeUrl: String,
+    ): Result<GrafanaRelease>
+
+    /**
+     * Creates the datasources, applies [release]'s dashboard maps and Grafana resources, then prunes
+     * the dashboard ConfigMaps it does not render.
+     */
+    fun apply(release: GrafanaRelease): Result<Unit>
+
+    /** [prepare], then [apply]. */
     fun deploy(
         context: DashboardInstallContext,
         bucket: String,
         hosting: ObservabilityHosting,
         pyroscopeUrl: String,
-    ): Result<Unit>
+    ): Result<Unit> = prepare(context, bucket, hosting, pyroscopeUrl).mapCatching { apply(it).getOrThrow() }
 }
+
+/**
+ * Everything one Grafana deploy writes, built and checked by [GrafanaDeployService.prepare].
+ *
+ * @property tenants The tenants the datasources are made for
+ * @property resources The dashboard ConfigMaps and Grafana resources, hashed, in apply order
+ * @property dashboardMaps The dashboard ConfigMap names rendered, the set the prune keeps
+ */
+data class GrafanaRelease(
+    val tenants: TenantSet,
+    val resources: List<HasMetadata>,
+    val dashboardMaps: Set<String>,
+)
 
 /**
  * Default [GrafanaDeployService]: [K8sService] applies the resources [GrafanaManifestBuilder]
@@ -91,35 +122,40 @@ class DefaultGrafanaDeployService(
     private fun datasourcesData(tenants: TenantSet): Map<String, String> =
         mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).toYaml())
 
-    override fun deploy(
+    override fun prepare(
         context: DashboardInstallContext,
         bucket: String,
         hosting: ObservabilityHosting,
         pyroscopeUrl: String,
-    ): Result<Unit> {
-        eventBus.emit(Event.Grafana.DatasourcesCreating)
-        createDatasourcesConfigMap(context.tenants).getOrElse { exception ->
-            return Result.failure(
-                IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
-            )
-        }
-
-        val grafana = manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting)
+    ): Result<GrafanaRelease> {
         val (withDashboards, rendered) =
             runCatching {
                 val tree = treeWriter.render(pyroscopeUrl, context)
                 eventBus.emit(Event.Grafana.DashboardsRendered(tree.size))
+                val grafana = manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket)), hosting)
                 GrafanaDashboardConfigMaps.mountInto(grafana, tree) to GrafanaDashboardConfigMaps.namesOf(tree)
             }.getOrElse { exception ->
                 return Result.failure(
                     IllegalStateException("Failed to render Grafana dashboards: ${exception.message}", exception),
                 )
             }
+        // Grafana reads grafana-datasources, created by apply rather than applied with the rest, so
+        // hash it in: a datasource change then rolls Grafana.
+        return runCatching {
+            val datasources = mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants))
+            GrafanaRelease(context.tenants, ConfigHashAnnotator.annotate(withDashboards, datasources), rendered)
+        }
+    }
 
-        // Grafana reads grafana-datasources, created above rather than applied with the rest, so hash
-        // it in: a datasource change then rolls Grafana.
-        val resources =
-            ConfigHashAnnotator.annotate(withDashboards, mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)))
+    override fun apply(release: GrafanaRelease): Result<Unit> {
+        eventBus.emit(Event.Grafana.DatasourcesCreating)
+        createDatasourcesConfigMap(release.tenants).getOrElse { exception ->
+            return Result.failure(
+                IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
+            )
+        }
+
+        val resources = release.resources
         runCatching { configChangeReport.report(resources, DEFAULT_NAMESPACE) }
             .getOrElse { exception -> return Result.failure(exception) }
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
@@ -134,7 +170,7 @@ class DefaultGrafanaDeployService(
             }
         }
 
-        k8sService.pruneConfigMaps(DEFAULT_NAMESPACE, DASHBOARD_LABELS, rendered).getOrElse { exception ->
+        k8sService.pruneConfigMaps(DEFAULT_NAMESPACE, DASHBOARD_LABELS, release.dashboardMaps).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to prune stale Grafana dashboard ConfigMaps: ${exception.message}", exception),
             )

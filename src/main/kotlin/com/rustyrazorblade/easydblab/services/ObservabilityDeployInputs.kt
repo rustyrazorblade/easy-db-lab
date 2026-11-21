@@ -39,18 +39,22 @@ class ObservabilityDeployInputs(
 /**
  * Grafana's part of a deploy: its datasources for every tenant in the shared store, the dashboards
  * with this cluster's install-time pass, and its K8s resources ([GrafanaDeployService]).
+ *
+ * Split in two so the stack deploy can [prepare] before it writes anything, and a dashboard that
+ * cannot be delivered fails the deploy with the cluster untouched; [apply] runs in Grafana's place
+ * in the stack order.
  */
 class GrafanaStage(
     private val grafanaDeployService: GrafanaDeployService,
     private val installContextFactory: DashboardInstallContextFactory,
 ) {
-    /** Deploys Grafana for [clusterState] placed by [hosting]; fails the deploy if it cannot. */
-    fun deploy(
+    /** Renders and checks Grafana for [clusterState] placed by [hosting]; writes nothing, fails the deploy if it cannot. */
+    fun prepare(
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
-    ) {
+    ): GrafanaRelease =
         grafanaDeployService
-            .deploy(
+            .prepare(
                 installContextFactory.forCluster(clusterState),
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
@@ -59,5 +63,11 @@ class GrafanaStage(
             ).getOrElse { exception ->
                 error("Failed to deploy Grafana: ${exception.message}")
             }
+
+    /** Applies [release]; fails the deploy if it cannot. */
+    fun apply(release: GrafanaRelease) {
+        grafanaDeployService.apply(release).getOrElse { exception ->
+            error("Failed to deploy Grafana: ${exception.message}")
+        }
     }
 }

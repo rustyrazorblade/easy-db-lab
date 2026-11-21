@@ -259,7 +259,7 @@ Commands should delegate to these services:
 | `AwsS3BucketService` | S3 bucket admin: creation, request metrics, policies (`services.aws`); never sets lifecycle rules |
 | `OpenSearchService` | OpenSearch domain management (`services.aws`) |
 | `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
-| `GrafanaDeployService` | Grafana deployment: datasources, the core dashboard ConfigMaps (applied, then pruned), the Grafana K8s resources |
+| `GrafanaDeployService` | Grafana deployment: `prepare` renders and checks the core dashboard ConfigMaps and Grafana K8s resources without writing (the stack deploy calls it before applying anything), `apply` creates the datasources, applies them, then prunes stale dashboard maps |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
 | `DocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
 | `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki; its endpoint comes from the service-access seam (`services/access/ServiceAccess`: SOCKS, direct or port-forward, by the recorded `exposure`) |

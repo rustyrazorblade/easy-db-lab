@@ -312,7 +312,8 @@ Building an AMI takes approximately 10-15 minutes. Docker must be installed and 
 
 If your profile's SSH transport is `ssm`, AMI builds reach the build instance over SSM Session
 Manager too. The first such build also builds a local Packer image with the Session Manager plugin
-added (see [AMI builds](../user-guide/network-connectivity.md#ami-builds)).
+added. A build that loses its session runs again on a new build instance, up to 3 attempts (see
+[AMI builds](../user-guide/network-connectivity.md#ami-builds)).
 
 ## Environment Variables
 

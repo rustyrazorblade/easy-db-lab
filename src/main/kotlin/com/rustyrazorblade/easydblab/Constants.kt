@@ -392,6 +392,35 @@ object Constants {
 
         // Hex characters of the Dockerfile's SHA-256 used as the SSM image tag
         const val SSM_IMAGE_TAG_LENGTH = 12
+
+        // How often Packer sends an SSH keepalive request to the builder (`ssh_keep_alive_interval`).
+        const val SSH_KEEP_ALIVE_INTERVAL = "10s"
+
+        // How long one SSH read or write may wait before Packer drops the connection
+        // (`ssh_read_write_timeout`). Keepalive replies arrive every SSH_KEEP_ALIVE_INTERVAL on a live
+        // stream, so a quiet script never reaches it; a dead stream (an SSM session that still shows
+        // Connected but carries no data) fails within this bound instead of hanging the build.
+        const val SSH_READ_WRITE_TIMEOUT = "2m"
+
+        // Packer runs with its debug log written here inside the container, so a failed build can be
+        // classified from the log (the session-drop check reads it), and the log is kept on the host.
+        // On the host, each attempt's log lives under <profile>/packer-logs/<attempt dir>, readable by
+        // the owner only: it holds the Session Manager session token of an `ssm` build.
+        const val CONTAINER_LOG_DIR = "/packer-log"
+        const val LOG_PATH_ENV = "PACKER_LOG_PATH"
+        const val HOST_LOGS_DIR = "packer-logs"
+        const val HOST_LOG_DIR_PERMISSIONS = "rwx------"
+
+        // Attempts per AMI build: a build whose SSH session to the builder dropped runs again, from a
+        // new builder instance, up to this many times in total. Any other failure is not retried.
+        const val MAX_BUILD_ATTEMPTS = 3
+
+        // Pause between a dropped attempt's builder being torn down and the next attempt.
+        const val BUILD_RETRY_DELAY_SECONDS = 15L
+
+        // The bound on one `packer build`: a container still running after this is stopped and the
+        // build fails. Builds take 10-30 minutes; the read/write timeout ends a dead stream long before.
+        const val BUILD_TIMEOUT_MINUTES = 60L
     }
 
     // Event Bus configuration

@@ -5081,6 +5081,37 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * One `packer build` attempt failed. [sessionDropped] says whether it lost its SSH session
+         * to the builder (an `ssm` session that ended, or a stream silent past the read/write
+         * timeout); only such an attempt is run again, from a new builder, while [willRetry].
+         * [reason] is Packer's own error and [logPath] the attempt's full Packer debug log.
+         */
+        @Serializable
+        @SerialName("Ami.BuildAttemptFailed")
+        data class BuildAttemptFailed(
+            val template: String,
+            val attempt: Int,
+            val maxAttempts: Int,
+            val sessionDropped: Boolean,
+            val willRetry: Boolean,
+            val reason: String,
+            val logPath: String,
+        ) : Ami {
+            override fun toDisplayString(): String {
+                val cause = if (sessionDropped) "lost its SSH session to the build instance" else "failed"
+                val next =
+                    when {
+                        willRetry -> "Running it again on a new build instance."
+                        sessionDropped -> "No attempts left."
+                        else -> "Not retried: only a lost session is."
+                    }
+                return "AMI build $template attempt $attempt of $maxAttempts $cause: $reason\n$next Packer log: $logPath"
+            }
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Ami.PruningStarting")
         data class PruningStarting(

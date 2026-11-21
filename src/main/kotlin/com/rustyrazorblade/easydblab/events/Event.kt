@@ -6856,6 +6856,24 @@ sealed interface Event {
         }
 
         /**
+         * The kit variable contributor [contributor] that [kit] names failed before [phase] ran, so no
+         * step of it ran and nothing was created. [reason] is the contributor's own message, such as
+         * a Cassandra version that cannot be resolved.
+         */
+        @Serializable
+        @SerialName("Kit.ContributorFailed")
+        data class ContributorFailed(
+            val kit: String,
+            val phase: String,
+            val contributor: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "Error: [$kit] $phase did not run: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * The [endpoint] of [target] (the kit [kit]'s kit-ref arg) cannot be reached from this
          * machine, for [reason]. When [continued] is false, no step of [phase] ran. A `stop` or
          * `uninstall` releases the kit whatever state its target is in, so it [continued] without

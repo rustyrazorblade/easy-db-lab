@@ -19,10 +19,10 @@
 
 ## 4. Kit variable contributors
 
-- [ ] 4.1 `KitVariableContributor` and `KitContribution`; `contributors:` parsed from `kit.yaml`, with an unknown name failing at parse time
-- [ ] 4.2 The kit runner calls the contributors before `start` and before declared `commands:` (not `stop`/`uninstall`), merges their variables under cluster state, and writes their files before the first step. A contributor failure fails the command before any step runs
-- [ ] 4.3 Engine operation to rewrite one recorded install arg in `resolved-args.env`
-- [ ] 4.4 Tests for 4.1 to 4.3: a contributed variable and a contributed file reach the steps, failure stops the run, cluster state is not shadowed, and a rewrite keeps the other args
+- [x] 4.1 `KitVariableContributor` and `KitContribution`; `contributors:` parsed from `kit.yaml`, with an unknown name failing at parse time
+- [x] 4.2 The kit runner calls the contributors before `start` and before declared `commands:` (not `stop`/`uninstall`), merges their variables under cluster state, and writes their files before the first step. A contributor failure fails the command before any step runs
+- [x] 4.3 Engine operation to rewrite one recorded install arg in `resolved-args.env`
+- [x] 4.4 Tests for 4.1 to 4.3: a contributed variable and a contributed file reach the steps, failure stops the run, cluster state is not shadowed, and a rewrite keeps the other args
 
 ## 5. Placement variables
 

@@ -10,9 +10,12 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesFailureReason
+import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallStep
+import com.rustyrazorblade.easydblab.services.KitCommandSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitDashboardInstance
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
@@ -20,8 +23,10 @@ import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
+import com.rustyrazorblade.easydblab.services.KitVariableContributor
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.ResolvedArgsFile
 import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TargetEndpointUnreachableException
@@ -89,8 +94,8 @@ class KitRunnerCommand(
             return
         }
 
-        val augmentedEnv = buildAugmentedEnv(config)
         val kitConfig = config ?: KitConfig(name = kitName)
+        val augmentedEnv = buildAugmentedEnv(config, contribute(kitConfig))
 
         if (stopsBeforeUninstall(kitConfig)) {
             processExitCode = runPhase(Constants.Kit.PHASE_STOP, kitConfig, augmentedEnv)
@@ -100,7 +105,10 @@ class KitRunnerCommand(
         when {
             hasPhase(kitConfig, phaseName) -> {
                 processExitCode = runPhase(phaseName, kitConfig, augmentedEnv)
-                if (processExitCode == 0) completePhase(kitConfig)
+                if (processExitCode == 0) {
+                    recordCommandArgs(kitConfig)
+                    completePhase(kitConfig)
+                }
             }
             // Without an uninstall phase, a running kit is still released (see handlePostPhase).
             phaseName == Constants.Kit.PHASE_UNINSTALL -> {
@@ -165,7 +173,41 @@ class KitRunnerCommand(
         }
     }
 
-    private fun buildAugmentedEnv(config: KitConfig?): Map<String, String> {
+    /**
+     * Calls the kit's contributors, in list order, before `start` and every declared command, and
+     * writes their files into the kit directory; returns their variables, later contributors
+     * winning. Nothing runs for `stop`, `uninstall` or the other lifecycle phases. A contributor
+     * that throws fails the command, before any step, with its message.
+     */
+    private fun contribute(config: KitConfig): Map<String, String> {
+        if (config.contributors.isEmpty() || !runsContributors(config)) return emptyMap()
+        val registered = getKoin().getAll<KitVariableContributor>().associateBy { it.name }
+        val args = config.args.associate { it.variable to it.default } + readResolvedArgs() + runtimeArgValues
+        return config.contributors.fold(emptyMap()) { variables, name ->
+            val contributor = checkNotNull(registered[name]) { "No kit variable contributor named '$name' is registered" }
+            val contribution =
+                runCatchingException { contributor.contribute(args, clusterState, kitDir) }.getOrElse { e ->
+                    eventBus.emit(Event.Kit.ContributorFailed(kit = kitName, phase = phaseName, contributor = name, reason = e.reason()))
+                    throw CommandFailedException(e.reason(), e)
+                }
+            contribution.files.forEach { (path, content) -> File(kitDir, path).apply { parentFile.mkdirs() }.writeText(content) }
+            variables + contribution.variables
+        }
+    }
+
+    private fun runsContributors(config: KitConfig): Boolean = phaseName == Constants.Kit.PHASE_START || phaseName in config.commands
+
+    /** After a declared command succeeded, rewrites each install arg it [KitCommandSpec.records] and was given a value for. */
+    private fun recordCommandArgs(config: KitConfig) {
+        val recorded = config.commands[phaseName]?.records.orEmpty()
+        val given = runtimeArgValues.filterKeys { it in recorded }.filterValues { it.isNotEmpty() }
+        if (given.isNotEmpty()) ResolvedArgsFile(kitDir).rewrite(given)
+    }
+
+    private fun buildAugmentedEnv(
+        config: KitConfig?,
+        contributed: Map<String, String>,
+    ): Map<String, String> {
         val argDefaults = config?.args?.associate { it.variable to it.default }.orEmpty()
         // Read installed arg values written by kit install, overriding the kit defaults.
         // This ensures phases like kit-storage use the actual installed STORAGE_SIZE
@@ -186,10 +228,11 @@ class KitRunnerCommand(
         // these variables too, so they carry the absolute workspace kubeconfig; KitProcessEnvironment
         // sets the same path again for every process it launches.
         val absoluteKubeconfig = workspaceKubeconfig.absolutePath
-        // Apply in order: argDefaults → resolvedArgs → cluster state (base) → KUBECONFIG → BACKUP_NAME.
-        // argDefaults first so cluster-state values in base take precedence over kit defaults;
-        // resolvedArgs overlays defaults with user-specified install-time values.
-        val env = argDefaults + resolvedArgs + runtimeArgValues + base + ("KUBECONFIG" to absoluteKubeconfig)
+        // Apply in order: argDefaults → resolvedArgs → runtime args → contributed → cluster state
+        // (base) → KUBECONFIG → BACKUP_NAME. argDefaults first so cluster-state values in base take
+        // precedence over kit defaults; resolvedArgs overlays defaults with user-specified
+        // install-time values; a contributor never shadows a cluster value.
+        val env = argDefaults + resolvedArgs + runtimeArgValues + contributed + base + ("KUBECONFIG" to absoluteKubeconfig)
         val targetVars =
             config
                 ?.kitRefArg
@@ -223,17 +266,7 @@ class KitRunnerCommand(
      * install time. Returns an empty map if the file does not exist (e.g., for kits installed
      * before this feature was added).
      */
-    private fun readResolvedArgs(): Map<String, String> {
-        val file = File(kitDir, Constants.Kit.RESOLVED_ARGS_FILE)
-        if (!file.isFile) return emptyMap()
-        return file
-            .readLines()
-            .filter { it.isNotBlank() && !it.startsWith("#") }
-            .associate { line ->
-                val idx = line.indexOf('=')
-                if (idx < 0) line to "" else line.substring(0, idx) to line.substring(idx + 1)
-            }
-    }
+    private fun readResolvedArgs(): Map<String, String> = ResolvedArgsFile(kitDir).read()
 
     override fun call(): Int {
         super.call()

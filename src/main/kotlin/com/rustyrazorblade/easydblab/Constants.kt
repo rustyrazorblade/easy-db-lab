@@ -1298,6 +1298,18 @@ object Constants {
                 "docker.io/pingwinator/sysbench@sha256:2e228d83c09be6c95b629015cb375ce0e78a95b4f3d9e6dd6ee304ffb95ced5f"
         }
 
+        /**
+         * The kit variable contributors a `kit.yaml` may name under `contributors:`. A name outside
+         * [ALL] fails when the kit is parsed; `KitVariableContributorBindingTest` keeps [ALL] equal to
+         * the contributors registered in Koin.
+         */
+        object Contributors {
+            /** Resolves the cassandra-pods kit's tarball, config patches and resource defaults. */
+            const val CASSANDRA_ARTIFACT = "cassandra-artifact"
+
+            val ALL: Set<String> = setOf(CASSANDRA_ARTIFACT)
+        }
+
         /** The `cassandra-pods` kit's CQL NodePort. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */

@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.containers
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 import java.time.Duration
 import java.util.stream.Stream
@@ -78,5 +80,23 @@ class PackerBuildAttemptsTest {
         assertThat(remaining).`as`("builds left unrun").isEmpty()
         assertThat(failures.map { it.third }).`as`("willRetry per failure").isEqualTo(expectedWillRetry)
         assertThat(failures.map { it.first }).`as`("attempt numbers").isEqualTo((1..failures.size).toList())
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = ["the attempt", "its cleanup"])
+    fun `a throw ends the build without another attempt`(thrower: String) {
+        var attempts = 0
+        val attemptsRunner = PackerBuildAttempts(3, Duration.ZERO)
+
+        assertThatThrownBy {
+            attemptsRunner.run(
+                build = {
+                    attempts++
+                    if (thrower == "the attempt") error("boom") else dropped
+                },
+                afterFailure = { _, _, _ -> error("boom") },
+            )
+        }.hasMessage("boom")
+        assertThat(attempts).`as`(thrower).isEqualTo(1)
     }
 }

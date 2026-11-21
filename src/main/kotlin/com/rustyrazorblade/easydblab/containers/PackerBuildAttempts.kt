@@ -18,6 +18,22 @@ sealed interface PackerBuildOutcome {
     ) : PackerBuildOutcome
 }
 
+/** What became of a failed attempt's build instance. */
+sealed interface BuilderCleanup {
+    /** No build instance was found to clean up. */
+    data object NotFound : BuilderCleanup
+
+    /** Left running for --keep-on-error. */
+    data object Kept : BuilderCleanup
+
+    data object Terminated : BuilderCleanup
+
+    /** The terminate call failed, so [instanceId] may still be running. */
+    data class TerminateFailed(
+        val instanceId: String,
+    ) : BuilderCleanup
+}
+
 /**
  * Runs an AMI build again when its SSH session to the builder dropped.
  *
@@ -54,6 +70,8 @@ class PackerBuildAttempts(
                 .maxAttempts(maxAttempts)
                 .intervalFunction { _ -> delay.toMillis() }
                 .retryOnResult(::isSessionDrop)
+                // Only a dropped session runs again: a throw from an attempt or its cleanup is final.
+                .retryOnException { false }
                 .build()
         var attempt = 0
         return Retry

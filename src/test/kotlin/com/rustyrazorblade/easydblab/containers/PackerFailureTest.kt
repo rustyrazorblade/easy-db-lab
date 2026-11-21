@@ -54,6 +54,24 @@ class PackerFailureTest {
                     false,
                 ),
                 Arguments.of("a missing source file", errored("Bad source 'install/missing.sh': stat: no such file or directory"), false),
+                Arguments.of(
+                    "an AWS call cut by a network timeout",
+                    errored(
+                        "Error launching source instance: RequestError: send request failed caused by: " +
+                            "Post \"https://ec2.us-west-2.amazonaws.com/\": dial tcp 10.0.0.1:443: i/o timeout",
+                    ),
+                    false,
+                ),
+                Arguments.of(
+                    "an AWS call whose connection was reset",
+                    errored("error creating AMI: RequestError: send request failed caused by: read: connection reset by peer"),
+                    false,
+                ),
+                Arguments.of(
+                    "an AWS SDK v2 call whose stream ended",
+                    errored("Error waiting for AMI: operation error EC2: DescribeImages, https response error: unexpected EOF"),
+                    false,
+                ),
             )
     }
 

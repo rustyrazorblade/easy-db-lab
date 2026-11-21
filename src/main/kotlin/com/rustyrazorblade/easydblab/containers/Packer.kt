@@ -174,7 +174,12 @@ class Packer(
                     )
                     // The builder of an attempt that runs again is always torn down before the next
                     // launches its own; only the last failed builder is kept for --keep-on-error.
-                    handleBuildFailure(keepUp && !willRetry)
+                    // A builder that would not terminate ends the build: a second one beside it
+                    // would make the next cleanup pick either.
+                    val cleanup = handleBuildFailure(keepUp && !willRetry)
+                    if (willRetry && cleanup is BuilderCleanup.TerminateFailed) {
+                        error("Not retrying the AMI build: its build instance ${cleanup.instanceId} could not be terminated.")
+                    }
                 },
             )
         when (outcome) {
@@ -225,7 +230,7 @@ class Packer(
      * Best-effort: any failure resolving/SSHing/terminating the instance degrades gracefully to
      * printing manual SSH instructions, so a build failure is never made worse.
      */
-    private fun handleBuildFailure(keepUp: Boolean) {
+    private fun handleBuildFailure(keepUp: Boolean): BuilderCleanup {
         val instanceId =
             runCatching {
                 val vpcId = vpcService.findVpcByName(Constants.Vpc.PACKER_VPC_NAME) ?: return@runCatching null
@@ -235,7 +240,7 @@ class Packer(
 
         if (instanceId == null) {
             println("Build failed. Could not locate the build instance to capture/clean up.")
-            return
+            return BuilderCleanup.NotFound
         }
 
         val ip = runCatching { ec2InstanceService.describeInstances(listOf(instanceId)).firstOrNull()?.publicIp }.getOrNull()
@@ -243,7 +248,7 @@ class Packer(
             captureAndPrintDiagnostics(ip, instanceId)
         }
 
-        if (keepUp) {
+        return if (keepUp) {
             println(
                 """
 
@@ -252,10 +257,19 @@ class Packer(
                 Terminate when done: aws ec2 terminate-instances --instance-ids $instanceId
                 """.trimIndent(),
             )
+            BuilderCleanup.Kept
         } else {
-            runCatching { vpcService.terminateInstances(listOf(instanceId)) }
-                .onSuccess { println("Build instance $instanceId terminated (set --keep-on-error to keep it for debugging).") }
-                .onFailure { println("WARNING: failed to terminate build instance $instanceId: ${it.message}") }
+            runCatchingException { vpcService.terminateInstances(listOf(instanceId)) }
+                .fold(
+                    onSuccess = {
+                        println("Build instance $instanceId terminated (set --keep-on-error to keep it for debugging).")
+                        BuilderCleanup.Terminated
+                    },
+                    onFailure = {
+                        println("WARNING: failed to terminate build instance $instanceId: ${it.message}")
+                        BuilderCleanup.TerminateFailed(instanceId)
+                    },
+                )
         }
     }
 

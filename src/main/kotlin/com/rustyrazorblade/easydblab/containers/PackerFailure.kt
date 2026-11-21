@@ -61,9 +61,19 @@ sealed interface PackerFailure {
             }
         }
 
+        /**
+         * Marks of an AWS API call that failed: the SDK v1 `RequestError` and the SDK v2
+         * `operation error`. Their transport words (`i/o timeout`, `connection reset`) come from the
+         * API connection, not the SSH session, so such a failure is a build error.
+         */
+        private val awsApiCall = listOf("requesterror", "operation error")
+
         private fun isSessionLost(reason: String): Boolean {
             val lower = reason.lowercase()
-            return lower == "eof" || sessionLost.any { it in lower }
+            return when {
+                awsApiCall.any { it in lower } -> false
+                else -> lower == "eof" || sessionLost.any { it in lower }
+            }
         }
     }
 }

@@ -99,8 +99,10 @@ bound.
 
 A build whose SSH session to the builder was lost (the session ended, or the read/write timeout
 fired) SHALL be run again on a new builder instance, up to 3 attempts in total. The lost attempt's
-builder SHALL be terminated before the next attempt starts, even under `--keep-on-error`. A build
-that failed for any other reason SHALL NOT be retried. Each failed attempt SHALL be reported with
+builder SHALL be terminated before the next attempt starts, even under `--keep-on-error`; when it
+cannot be terminated, the build SHALL fail instead of starting a second builder beside it. A build
+that failed for any other reason, including an AWS API call that lost its own connection, SHALL NOT
+be retried. Each failed attempt SHALL be reported with
 its reason, whether it lost its session, whether another attempt follows, and the path of its
 Packer log. Each attempt's Packer log SHALL be kept in the profile directory, readable by its owner
 only.

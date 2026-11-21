@@ -105,13 +105,9 @@ class KitInstallCommand(
             return
         }
 
-        if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
-            val outputDir = context.workspaceFile(instanceName)
-            if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
-                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
-                exitCode = Constants.ExitCodes.ERROR
-                return
-            }
+        if (outputDirectoryCollides(instanceName)) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
         }
 
         val extensionVars = buildExtensionVars()
@@ -173,6 +169,18 @@ class KitInstallCommand(
         for ((variable, default) in resolvedDefaults) {
             if (variable !in passed) argValues[variable] = default
         }
+    }
+
+    /**
+     * Whether the kit guards install against overwriting and [instanceName]'s output directory
+     * already holds files, with no `--force`: reports [Event.Install.CollisionDetected] and returns true.
+     */
+    private fun outputDirectoryCollides(instanceName: String): Boolean {
+        if (!config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) || force) return false
+        val outputDir = context.workspaceFile(instanceName)
+        if (!outputDir.isDirectory || outputDir.listFiles().orEmpty().isEmpty()) return false
+        eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
+        return true
     }
 
     /**

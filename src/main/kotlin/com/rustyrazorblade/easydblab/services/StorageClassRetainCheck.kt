@@ -64,14 +64,9 @@ class StorageClassRetainCheck(
             k8sService.storageClassReclaimPolicy(storageClass).getOrElse { exception ->
                 throw IllegalStateException("Could not read StorageClass $storageClass: ${exception.message}", exception)
             }
-        when (policy) {
-            RETAIN -> Unit
-            null -> throw StorageClassRefusedException(storageClass, null, holds.refusal(storageClass, "does not exist"))
-            else -> {
-                val problem = "reclaims with $policy, which would delete ${holds.loss}"
-                throw StorageClassRefusedException(storageClass, policy, holds.refusal(storageClass, problem))
-            }
-        }
+        if (policy == RETAIN) return
+        val problem = if (policy == null) "does not exist" else "reclaims with $policy, which would delete ${holds.loss}"
+        throw StorageClassRefusedException(storageClass, policy, holds.refusal(storageClass, problem))
     }
 
     private companion object {

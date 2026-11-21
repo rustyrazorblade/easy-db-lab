@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.kubernetes.isPermanentKubernetesFailure
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import java.time.Duration
 
@@ -54,7 +55,8 @@ class KitWorkloadProbe(
      * Looks up to `maxPolls` times, `pollInterval` apart, and returns [WorkloadPresence.Absent] once
      * nothing is left, or what was still there at the last look. A failed cluster query — a dropped
      * API call or SOCKS hiccup during a wait that lasts minutes — is retried like a present
-     * workload; it fails the result only on the last look.
+     * workload; it fails the result only on the last look. A failure no retry fixes (a missing exec
+     * auth plugin, a 401 or 403) fails it at once.
      */
     fun awaitGone(
         kitName: String,
@@ -65,6 +67,7 @@ class KitWorkloadProbe(
                 operationName = "kit-stop-$kitName",
                 maxAttempts = maxPolls,
                 interval = pollInterval,
+                isTransient = { !it.isPermanentKubernetesFailure() },
                 done = { it == WorkloadPresence.Absent },
             ) { lookUpPods(kitName, runtime) }
         }

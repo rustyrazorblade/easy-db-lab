@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.kubernetes.isKubernetesAuthRejection
+import com.rustyrazorblade.easydblab.kubernetes.isPermanentKubernetesFailure
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
@@ -193,7 +193,7 @@ class DefaultK8sNamespaceOperations(
                         maxAttempts = Int.MAX_VALUE,
                         interval = podPollInterval,
                         deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
-                        isTransient = { !it.isKubernetesAuthRejection() },
+                        isTransient = { !it.isPermanentKubernetesFailure() },
                         done = RolloutsLook::isFinal,
                     ) {
                         looker.look(workloads).also { look ->
@@ -317,7 +317,7 @@ class DefaultK8sNamespaceOperations(
                 maxAttempts = Int.MAX_VALUE,
                 interval = podPollInterval,
                 deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
-                isTransient = { !it.isKubernetesAuthRejection() },
+                isTransient = { !it.isPermanentKubernetesFailure() },
                 done = { it is PodsPoll.Failed || (it is PodsPoll.Pending && it.states.isEmpty()) },
             ) {
                 val pods =

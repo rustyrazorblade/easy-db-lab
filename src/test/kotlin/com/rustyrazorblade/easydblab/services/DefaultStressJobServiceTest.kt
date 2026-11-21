@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.causeChain
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
@@ -771,6 +772,17 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         val result = service().startJob(config)
 
         assertThat(result.exceptionOrNull()?.causeChain()).contains(denied)
+        verify(k8sService, times(1)).getPodsForJob(any(), any())
+    }
+
+    @Test
+    fun `a missing exec auth plugin fails the wait after one look, keeping the plugin failure`() {
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", null)
+        whenever(k8sService.getPodsForJob(any(), any())).thenReturn(Result.failure(missing))
+
+        val result = service().startJob(config)
+
+        assertThat(result.exceptionOrNull()?.causeChain()).contains(missing)
         verify(k8sService, times(1)).getPodsForJob(any(), any())
     }
 

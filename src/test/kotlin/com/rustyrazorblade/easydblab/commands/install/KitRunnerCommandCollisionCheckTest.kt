@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -179,6 +180,19 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(IllegalStateException("api down")))
 
         assertStopUnverified()
+    }
+
+    @Test
+    fun `an unverified stop names a missing exec auth plugin and how to install it`() {
+        writeCollisionCheckedKit()
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", "Install the AWS CLI v2")
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(missing))
+
+        val events = captureEvents { command("mydb", "stop").call() }
+
+        verify(mockKubeService, times(1)).listPodsByLabel(any(), any())
+        val unverified = events.filterIsInstance<Event.Kit.StopUnverified>().single()
+        assertThat(unverified.reason).contains("exec auth plugin 'aws'", "Install the AWS CLI v2")
     }
 
     private fun assertStopUnverified() {

@@ -3620,6 +3620,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stress job $jobName on $host ${outcome.wireName} after ${durationSeconds}s"
         }
 
+        /**
+         * `metrics stream` cannot list the stress jobs for a reason no retry fixes (a missing exec
+         * auth plugin, a 401 or 403), so no [JobCompleted] can come until it is fixed. Emitted once
+         * per run of such failures; [reason] names the cause and the remedy.
+         */
+        @Serializable
+        @SerialName("Stress.JobListFailing")
+        data class JobListFailing(
+            val reason: String,
+        ) : Stress {
+            override fun toDisplayString(): String = "Cannot list the stress jobs, so no completions are reported: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.NoJobsFound")
         data object NoJobsFound : Stress {

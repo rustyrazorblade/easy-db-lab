@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.kubernetes.isKubernetesAuthRejection
+import com.rustyrazorblade.easydblab.kubernetes.isPermanentKubernetesFailure
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -103,7 +103,7 @@ class K8sTelemetrySenders(
                 pollInterval,
                 gone,
                 budget.deadline,
-                isTransient = { !it.isKubernetesAuthRejection() },
+                isTransient = { !it.isPermanentKubernetesFailure() },
             )
         val pods = Retry.decorateSupplier(Retry.of("await-$name-gone", config)) { pods(client, name) }.get()
         check(gone(pods)) {

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.kubernetes.ExecPluginNotFoundException
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.services.K8sService
 import org.assertj.core.api.Assertions.assertThat
@@ -176,6 +177,18 @@ class KitWorkloadProbeTest {
 
         assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
         verify(kubeService, times(2)).listPodsByLabel(any(), any())
+    }
+
+    @Test
+    fun `a missing exec auth plugin ends the stop wait after one look, keeping the plugin failure`() {
+        val missing = ExecPluginNotFoundException("aws", "eks-user", "lab", "/usr/bin", "Install the AWS CLI v2")
+        whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.failure(missing))
+        val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 5)
+
+        val result = waiting.awaitGone("sysbench-tidb", runPods)
+
+        assertThat(result.exceptionOrNull()).isSameAs(missing)
+        verify(kubeService, times(1)).listPodsByLabel(any(), any())
     }
 
     @Test

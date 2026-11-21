@@ -2,10 +2,15 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
+import com.rustyrazorblade.easydblab.kubernetes.KubernetesErrorHandler
 import com.rustyrazorblade.easydblab.runCatchingException
 import io.fabric8.kubernetes.api.model.PodListBuilder
 import io.fabric8.kubernetes.api.model.Status
@@ -172,5 +177,41 @@ class KubernetesAuthRejectionPollIntegrationTest {
         val result = operations.waitForPodsReady(TIMEOUT.seconds.toInt(), NAMESPACE)
 
         assertFailedOnFirst403(result.exceptionOrNull())
+    }
+
+    /**
+     * Stopping the retry is half the fix: the failure the poll returns must still reach the user as
+     * the denial, naming the request and principal, not as a generic error.
+     */
+    @Test
+    fun `a 403 during a poll is reported to the user as permission-denied, naming the request and principal`() {
+        deny("/apis/apps/v1/namespaces/$NAMESPACE/deployments/grafana", "deployments")
+        val operations = DefaultK8sNamespaceOperations(clientProvider, EventBus(), POLL_INTERVAL)
+        val failure =
+            operations
+                .waitForRollouts(listOf(WorkloadRef(WorkloadKind.Deployment, "grafana")), NAMESPACE, TIMEOUT.seconds.toInt())
+                .exceptionOrNull()
+        val emitted = mutableListOf<Event>()
+        val bus =
+            EventBus().also {
+                it.addListener(
+                    object : EventListener {
+                        override fun onEvent(envelope: EventEnvelope) {
+                            emitted += envelope.event
+                        }
+
+                        override fun close() = Unit
+                    },
+                )
+            }
+
+        CommandFailureReporter(bus, listOf(KubernetesErrorHandler())).report(checkNotNull(failure))
+
+        val reported = emitted.single() as Event.Command.ProviderError
+        assertThat(reported.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
+        assertThat(reported.request?.verb).isEqualTo("list")
+        assertThat(reported.request?.resource).isEqualTo("deployments")
+        assertThat(reported.request?.namespace).isEqualTo(NAMESPACE)
+        assertThat(reported.request?.principal).isEqualTo("alice")
     }
 }

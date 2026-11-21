@@ -280,7 +280,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute fails when uploadDashboards fails`() {
+    fun `execute fails when applying the Grafana release fails`() {
         val stateWithControl =
             ClusterState(
                 name = "test-cluster",
@@ -294,7 +294,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockDashboardService.prepare(any(), any(), any(), any())).thenReturn(Result.success(EMPTY_GRAFANA_RELEASE))
-        whenever(mockDashboardService.apply(any())).thenReturn(Result.failure(RuntimeException("Upload failed")))
+        whenever(mockDashboardService.apply(any())).thenReturn(Result.failure(RuntimeException("server side apply failed")))
 
         val command = GrafanaUpdateConfig()
 

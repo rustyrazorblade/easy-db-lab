@@ -15,6 +15,8 @@ import io.fabric8.kubernetes.client.dsl.internal.OperationSupport
 import io.fabric8.kubernetes.client.http.StandardHttpRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import java.net.ConnectException
 import java.net.URI
 import java.util.concurrent.CompletionException
@@ -199,6 +201,31 @@ class KubernetesErrorHandlerTest {
         assertThat(description?.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
         assertThat(description?.request).isEqualTo(ProviderRequest(verb = "GET", resource = "pods", namespace = "lab"))
         assertThat(description?.detail).doesNotContain("s3cr3t")
+    }
+
+    @ParameterizedTest(name = "{0} with status message [{1}]")
+    @CsvSource(
+        value = ["401,NULL", "401,''", "401,'  '", "403,NULL", "403,''", "422,NULL", "422,''"],
+        nullValues = ["NULL"],
+    )
+    fun `a failure with no status message never puts the request URI's query in the detail`(
+        code: Int,
+        statusMessage: String?,
+    ) {
+        val request =
+            StandardHttpRequest(emptyMap(), URI("https://10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true&token=s3cr3t"), "GET", null)
+        val status =
+            StatusBuilder()
+                .withStatus("Failure")
+                .withCode(code)
+                .withMessage(statusMessage)
+                .build()
+        val error = OperationSupport.requestFailure(request, status)
+
+        val detail = handler.describe(error)?.detail.orEmpty()
+
+        assertThat(error.message).contains("s3cr3t")
+        assertThat(detail).doesNotContain("s3cr3t").doesNotContain("?watch").doesNotContain("token=")
     }
 
     @Test

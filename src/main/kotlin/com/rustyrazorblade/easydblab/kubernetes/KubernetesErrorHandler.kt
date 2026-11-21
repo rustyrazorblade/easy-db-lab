@@ -44,7 +44,7 @@ class KubernetesErrorHandler : ProviderErrorHandler {
         }
 
     private fun describeApiFailure(error: KubernetesClientException): ErrorDescription? {
-        val message = error.status?.message?.takeIf { it.isNotBlank() } ?: error.message.orEmpty()
+        val message = error.status?.message?.takeIf { it.isNotBlank() } ?: error.messageWithoutQuery()
         return when (error.code) {
             HTTP_UNAUTHORIZED -> credentials(message, error.fallbackRequest())
             HTTP_FORBIDDEN -> forbidden(error, message)
@@ -110,6 +110,19 @@ class KubernetesErrorHandler : ProviderErrorHandler {
         }
     }
 
+    /**
+     * The exception's own message, for an answer whose status carries no message. Fabric8's
+     * `Failure executing: <METHOD> at: <URI>` form becomes the method, the URI's path and the HTTP
+     * code; any other message keeps its text with every URI's query cut off. Either way the detail
+     * never holds a query, which could carry a token.
+     */
+    private fun KubernetesClientException.messageWithoutQuery(): String {
+        val text = message.orEmpty()
+        val match = FAILURE_EXECUTING.find(text) ?: return URI_QUERY.replace(text, "$1")
+        val path = rawPathOf(match.groupValues[2]) ?: URI_QUERY.replace(match.groupValues[2], "$1")
+        return "The API server answered HTTP $code with no message to ${match.groupValues[1]} $path"
+    }
+
     private fun rawPathOf(uri: String): String? =
         try {
             URI(uri).rawPath
@@ -153,6 +166,7 @@ class KubernetesErrorHandler : ProviderErrorHandler {
         const val HTTP_UNPROCESSABLE = 422
         const val SERVICE_ACCOUNT_PREFIX = "system:serviceaccount:"
         val FAILURE_EXECUTING = Regex("""^Failure executing: (\S+) at: (\S+?)\.(?: |$)""")
+        val URI_QUERY = Regex("""(\w+://[^\s?#]+)[?#]\S*""")
         const val CREDENTIALS_REMEDY =
             "Re-authenticate the kubeconfig user (log in again, or refresh its token or certificate). " +
                 "If the user runs an exec auth plugin, it may have returned no credential: run it by hand to see why."

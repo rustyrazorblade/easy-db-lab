@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.runCatchingException
+import io.fabric8.kubernetes.api.model.PodListBuilder
 import io.fabric8.kubernetes.api.model.Status
 import io.fabric8.kubernetes.api.model.StatusBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
@@ -144,5 +145,32 @@ class KubernetesAuthRejectionPollIntegrationTest {
         val failure = runCatchingException { senders.stop(TIMEOUT, {}, {}, {}) }.exceptionOrNull()
 
         assertFailedOnFirst403(failure)
+    }
+
+    @Test
+    fun `the pods-ready wait fails on the first 403`() {
+        val waiting =
+            PodListBuilder()
+                .addNewItem()
+                .withNewMetadata()
+                .withName("grafana-0")
+                .endMetadata()
+                .withNewStatus()
+                .withPhase("Pending")
+                .endStatus()
+                .endItem()
+                .build()
+        server
+            .expect()
+            .get()
+            .withPath("/api/v1/namespaces/$NAMESPACE/pods")
+            .andReturn(Constants.HttpStatus.OK, waiting)
+            .once()
+        deny("/api/v1/namespaces/$NAMESPACE/pods", "pods")
+        val operations = DefaultK8sNamespaceOperations(clientProvider, EventBus(), POLL_INTERVAL)
+
+        val result = operations.waitForPodsReady(TIMEOUT.seconds.toInt(), NAMESPACE)
+
+        assertFailedOnFirst403(result.exceptionOrNull())
     }
 }

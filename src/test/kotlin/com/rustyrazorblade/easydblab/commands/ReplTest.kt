@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.jline.reader.Candidate
 import org.jline.reader.Parser
 import org.jline.reader.impl.DefaultParser
@@ -127,9 +128,10 @@ class ReplTest : BaseKoinTest() {
                 .streams(ByteArrayInputStream(ByteArray(0)), output)
                 .build()
         terminals.add(shellTerminal)
-        return ReplLines
-            .literal(Shell.builder())
+        return Shell
+            .builder()
             .terminal(shellTerminal)
+            .dispatcher(LiteralLineDispatcher(shellTerminal))
             .groups(ReplCommandGroup(root, shellTerminal))
             .helpCommands(true)
             .build()
@@ -211,6 +213,19 @@ class ReplTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a NAME=value word is passed to the command, not stored as a shell variable`() {
+        val recorded = Recorded()
+        val dispatcher = replShell(recorded.root, ByteArrayOutputStream()).dispatcher() as LiteralLineDispatcher
+
+        dispatcher.execute("run FOO=bar")
+
+        assertThat((recorded.ran.single() as Run).words).containsExactly("FOO=bar")
+        assertThat(dispatcher.session().get("FOO")).isNull()
+        assertThatThrownBy { dispatcher.execute("FOO=bar") }.hasMessageContaining("FOO=bar")
+        assertThat(dispatcher.session().get("FOO")).isNull()
+    }
+
+    @Test
     fun `completion offers the subcommands of the command typed so far`() {
         val group = ReplCommandGroup(Recorded().root, terminal)
 
@@ -248,6 +263,9 @@ class ReplTest : BaseKoinTest() {
 
         assertThat(completions(group, "db start --hosts db0 --")).contains("--force", "--mode=")
         assertThat(completions(group, "db start --mode ")).containsExactlyInAnyOrder("fast", "safe")
+        // An option-like word after a value-taking option is an option, as picocli reads it.
+        assertThat(completions(group, "db start --hosts --f")).contains("--force")
+        assertThat(completions(group, "db start --hosts --mode ")).containsExactlyInAnyOrder("fast", "safe")
         assertThat(group.describe(listOf("db", "start", "--hosts", "db0"))!!.mainDescription().map { it.toString() })
             .containsExactly("Start the database")
     }

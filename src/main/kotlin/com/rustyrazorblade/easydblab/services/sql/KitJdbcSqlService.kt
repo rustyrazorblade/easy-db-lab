@@ -91,24 +91,27 @@ class KitJdbcSqlService(
     ): SqlQueryResult =
         conn.createStatement().use { stmt ->
             if (stmt.execute(sql)) {
-                stmt.resultSet.use { rs ->
-                    val meta = rs.metaData
-                    val columnCount = meta.columnCount
-                    val columns = (1..columnCount).map { meta.getColumnName(it) }
-                    val types = (1..columnCount).map { meta.getColumnType(it) }
-                    val rows = mutableListOf<List<String>>()
-                    while (rs.next()) {
-                        rows.add((1..columnCount).map { cellText(rs, types[it - 1], it) })
-                    }
-                    log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
-                    SqlQueryResult(columns = columns, rows = rows)
-                }
+                stmt.resultSet.use { readRows(it) }
             } else {
                 val count = stmt.updateCount
                 log.debug { "Statement complete: $count rows affected" }
                 SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
             }
         }
+
+    /** Every row of [rs] as text, with the column types read once. */
+    private fun readRows(rs: ResultSet): SqlQueryResult {
+        val meta = rs.metaData
+        val columnCount = meta.columnCount
+        val columns = (1..columnCount).map { meta.getColumnName(it) }
+        val types = (1..columnCount).map { meta.getColumnType(it) }
+        val rows = mutableListOf<List<String>>()
+        while (rs.next()) {
+            rows.add((1..columnCount).map { cellText(rs, types[it - 1], it) })
+        }
+        log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
+        return SqlQueryResult(columns = columns, rows = rows)
+    }
 
     /**
      * The text of one cell. A binary column is read as bytes: some drivers (Presto, for a

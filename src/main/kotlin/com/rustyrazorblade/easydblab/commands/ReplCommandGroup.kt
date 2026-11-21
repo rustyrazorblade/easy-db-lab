@@ -59,8 +59,8 @@ class ReplCommandGroup(
         val word = line.word()
         val pending = position.pendingOption
         when {
-            pending != null -> pending.completionCandidates()?.forEach { candidates.add(candidate(it, it, true)) }
             word.startsWith("-") -> optionCandidates(position.command, word.substring(0, line.wordCursor()), candidates)
+            pending != null -> pending.completionCandidates()?.forEach { candidates.add(candidate(it, it, true)) }
             else -> wordCandidates(position, candidates)
         }
     }
@@ -140,7 +140,7 @@ class ReplCommandGroup(
             pending = null
             val sub = current.subcommands[word]
             when {
-                valueOf != null -> Unit
+                valueOf != null && !word.startsWith("-") -> Unit
                 word.startsWith("-") -> pending = current.commandSpec.findOption(word)?.takeIf { it.arity().min() > 0 }
                 positionalSeen || sub == null -> positionalSeen = true
                 else -> current = sub

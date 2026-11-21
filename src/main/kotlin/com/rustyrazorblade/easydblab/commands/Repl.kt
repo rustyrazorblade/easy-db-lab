@@ -111,9 +111,10 @@ class Repl : PicoBaseCommand() {
         val terminal = TerminalBuilder.builder().name("easy-db-lab").build()
         val group = ReplCommandGroup(createCommandLine(), terminal)
         val shell =
-            ReplLines
-                .literal(Shell.builder())
+            Shell
+                .builder()
                 .terminal(terminal)
+                .dispatcher(LiteralLineDispatcher(terminal))
                 .prompt(PROMPT)
                 .groups(group)
                 .helpCommands(true)

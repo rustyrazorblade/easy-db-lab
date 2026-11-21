@@ -17,7 +17,7 @@ Fluent Bit reads the systemd journal on every node and forwards it to the collec
 
 Cassandra's application logs (`system.log`, `debug.log`) reach Loki only over OTLP, from the OpenTelemetry Java agent in the Cassandra JVM. They carry `service_name="cassandra"` and no `source` label, and are stored once. The collector tails only the JVM GC log from disk, because the JVM writes it directly and the agent never sees it.
 
-The collector sends everything to Loki's OTLP endpoint, `http://loki.default.svc.cluster.local:3100/otlp`, with the cluster's tenant in the `X-Scope-OrgID` header.
+The collector sends everything to Loki's OTLP endpoint, `http://loki.<namespace>.svc:3100/otlp` (`<namespace>` is the cluster's install namespace, `default` unless `init --namespace` named another), with the cluster's tenant in the `X-Scope-OrgID` header.
 
 ### When Loki restarts or is down
 

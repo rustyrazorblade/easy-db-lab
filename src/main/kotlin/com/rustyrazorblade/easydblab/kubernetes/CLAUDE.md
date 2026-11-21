@@ -40,7 +40,7 @@ operation opens a client through `K8sClientProvider.createClient()`, which reads
 `WorkspaceKubeconfig` resolves against `Context.workingDirectory`. Nothing else builds the kubeconfig
 path; call `WorkspaceKubeconfig.file`, `exists` or `require`. The read queries (`listJobs`, `listPods`,
 `listPodsByLabel`, `getNodes`, `isReachable`) are `K8sReadOperations`, part of `K8sService`; they return
-`Result<T>`, and a `null` namespace means all namespaces.
+`Result<T>`, and a `null` namespace means all namespaces. No `K8sService` method has a default namespace: callers pass the cluster's, from `InstallScopeSource` (see `configuration/CLAUDE.md`, "Install Scope and Ownership"). `K8sManifestOperations.applyResource` goes through `OwnedManifestOperations`, which adds the ownership labels.
 
 ## Loading the client: `KubeApi`, by path with an explicit context
 
@@ -71,7 +71,7 @@ config.requestTimeout = 60000
 Every CLI client that reads a cluster Service (Mimir, Loki, Tempo, Pyroscope, Grafana, a kit's JDBC
 endpoint) asks `ServiceAccess.open(ServiceTarget)` for the endpoint it dials. No client builds a node
 address or reads a proxy port from a JVM property. `ServiceTarget` names the namespace, Service,
-Service port, node role and NodePort; `ClusterServices` holds the observability targets.
+Service port, node role and NodePort; `ClusterServices` holds the observability Services without a namespace (`ClusterService`), and `ClusterService.inNamespace(namespace)` makes the target at the cluster's namespace (`DefaultObservabilityHttp` and `GrafanaClient` read it per call).
 `ExposureServiceAccess` (Koin `serviceAccessModule`, registered with `ResourceManager`) picks the
 implementation from `ClusterState.exposure`, read again on every `open`: it keeps the implementation
 while the exposure is unchanged, and closes it and builds the new one when a later `init` (in a REPL

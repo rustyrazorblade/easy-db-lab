@@ -15,11 +15,11 @@ Start only after #1231 (round-4 main merge) and #1227 (#1102 error handler) merg
 - [x] 1.11 Label kit PVs in `DefaultK8sStorageOperations`; `KitLocalStorageClass` uses `OwnershipLabels`
 - [x] 1.12 `services/tenancy/NamespaceEnsurer`: create with labels when absent, adopt and label when present (`default` included); `up` calls it before the stack applies; `CapabilityProbeService` uses it in place of its inline `NamespaceBuilder`. K3s integration test: absent namespace created labelled; existing unlabelled namespace adopted, other labels kept
 - [x] 1.13 `cluster-config` holds `NAMESPACE` next to `TENANT`
-- [ ] 1.14 Builder render test (unit tier, real builders and real `TemplateService`): at `InstallScope("edl-ns", id)` every namespaced object is in `edl-ns`, every binding subject names `edl-ns`, every cluster-scoped name ends in `-<id>`, no ConfigMap data contains `.default.svc`; at the EC2 scope with `default`, namespaces match today and the only differences are the labels and suffixes
+- [x] 1.14 Builder render test (unit tier, real builders and real `TemplateService`): at `InstallScope("edl-ns", id)` every namespaced object is in `edl-ns`, every binding subject names `edl-ns`, every cluster-scoped name ends in `-<id>`, no ConfigMap data contains `.default.svc`; at the EC2 scope with `default`, namespaces match today and the only differences are the labels and suffixes
 - [x] 1.15 `architecture/NoDefaultNamespaceLiteralTest` over `src/main/kotlin`: the namespace-shaped patterns in design "Test strategy", one allowlisted hit (`ContractDefaults.OWNED_NAMESPACE`); planted fixtures under `architecture/fixtures` show it fails on `-n default` and stays quiet on the `default` ServiceAccount and a kit arg's `default:`
-- [ ] 1.16 Update the ~109 test files that named `"default"` or `K8s.NAMESPACE`
-- [ ] 1.17 Docs: `docs/reference/commands.md` (`init --namespace`), `configuration/CLAUDE.md` (`<backend>.<namespace>.svc`, `namespaces/<namespace>`, labels, `ServiceDns`, the decorator), `kubernetes/CLAUDE.md`, root `CLAUDE.md` where it names `default`
-- [ ] 1.18 `./gradlew check` on JDK 21 (in a subagent), detekt with no new suppressions
+- [x] 1.16 Update the ~109 test files that named `"default"` or `K8s.NAMESPACE`
+- [x] 1.17 Docs: `docs/reference/commands.md` (`init --namespace`), `configuration/CLAUDE.md` (`<backend>.<namespace>.svc`, `namespaces/<namespace>`, labels, `ServiceDns`, the decorator), `kubernetes/CLAUDE.md`, root `CLAUDE.md` where it names `default`
+- [x] 1.18 `./gradlew check` on JDK 21 (in a subagent), detekt with no new suppressions
 
 ## 2. PR 2: kits, shell and the D10 flip
 

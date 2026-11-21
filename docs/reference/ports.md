@@ -19,7 +19,7 @@ be added to the reserved list. See [Node OS Tuning](../user-guide/node-tuning.md
 
 Mimir, Loki, Tempo, the Pyroscope server and Grafana run in the Kubernetes pod network behind Services. No backend port is opened on a node as a host port. Callers reach them three ways:
 
-- **In-cluster producers** (the OTel collector, Alloy, the sidecar, stress pods, kit agents, Grafana) dial the Service DNS name and Service port, for example `mimir.default.svc:9009` or `pyroscope.default.svc:4040`. Pods on the host network resolve it through `ClusterFirstWithHostNet`.
+- **In-cluster producers** (the OTel collector, Alloy, the sidecar, stress pods, kit agents, Grafana) dial the Service DNS name and Service port, for example `mimir.<namespace>.svc:9009` or `pyroscope.<namespace>.svc:4040`, where `<namespace>` is the cluster's install namespace (`default` unless `init --namespace` named another). Pods on the host network resolve it through `ClusterFirstWithHostNet`.
 - **Host processes on a node** (the db-node profiling reconciler) post profiles to the Alloy relay on `127.0.0.1:4041`, which forwards them to the Pyroscope Service.
 - **Callers outside the cluster** (EMR, a browser, a redirected cluster, operator scripts such as `bin/export-workload-metrics`) use a node's private IP and the fixed NodePorts below. These NodePorts are published only on clusters easy-db-lab provisions; elsewhere the Services are ClusterIP and `status` prints the port-forward commands.
 
@@ -138,7 +138,7 @@ local port from 20000-29999, and closes it when the command ends. Grafana has a 
 (`grafana`, port 3000) for this. A kit's NodePort is forwarded to the Service port behind it.
 
 `status` prints each Service by its DNS name (for example
-`http://grafana.default.svc.cluster.local:3000`), followed by the command that forwards it to your
+`http://grafana.default.svc.cluster.local:3000` in the `default` namespace), followed by the command that forwards it to your
 machine:
 
 ```bash

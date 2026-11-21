@@ -1310,6 +1310,12 @@ object Constants {
     }
 
     // The fixed per-environment values ClusterContract.of resolves, until #1094/#1097 add their flags
+    /** Where easy-db-lab's objects live in a Kubernetes cluster and how they are marked as its own. */
+    object Tenancy {
+        /** Kubernetes' own namespaces, which `init --namespace` refuses. */
+        val RESERVED_NAMESPACES = setOf("kube-system", "kube-public", "kube-node-lease")
+    }
+
     object ContractDefaults {
         /** The namespace a cluster easy-db-lab built runs its workloads in. */
         const val OWNED_NAMESPACE = "default"

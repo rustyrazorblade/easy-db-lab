@@ -52,7 +52,7 @@ class KubernetesModuleTest : BaseKoinTest() {
     fun `the read operations target the recorded context, not the kubeconfig's current-context`() {
         val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
         kubeconfig.writeText(TWO_CONTEXT_KUBECONFIG)
-        get<ClusterStateManager>().save(
+        get<ClusterStateManager>().replace(
             ClusterState(name = "test").apply { kubeContext = "pinned-context" },
         )
 

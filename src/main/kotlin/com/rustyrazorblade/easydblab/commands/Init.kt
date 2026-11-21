@@ -584,20 +584,12 @@ class Init :
         val contract = ClusterContract.of(clusterState)
         val networkMode = contract.networkMode
         if (networkMode == NetworkMode.Direct) ProxyEnvFile(context.workingDirectory).recordNetworkMode(networkMode)
-        clusterStateManager.save(clusterState)
+        clusterStateManager.replace(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)
         clients.report(clusterState, eventBus)
 
-        // Only set VPC ID if user explicitly provided one via --vpc
-        // Otherwise, VPC will be created during 'up'
-        val vpc = existingVpcId
-        if (vpc != null) {
-            eventBus.emit(Event.Setup.ExistingVpc(vpc))
-            clusterState.vpcId = vpc
-            clusterState.vpcSupplied = true
-            clusterStateManager.save(clusterState)
-        }
+        existingVpcId?.let { eventBus.emit(Event.Setup.ExistingVpc(it)) }
 
         extractResourceFiles()
 
@@ -789,7 +781,13 @@ class Init :
             networkMode = if (tailscaleActive) NetworkMode.Tailscale else NetworkMode.Socks,
             capabilities = capabilities.present().toSet(),
             exposure = Exposure.atInit(tailscaleActive = tailscaleActive),
-        )
+        ).apply {
+            // Only a VPC the user gave with --vpc is recorded here; otherwise up creates one.
+            existingVpcId?.let { vpc ->
+                vpcId = vpc
+                vpcSupplied = true
+            }
+        }
     }
 
     /**

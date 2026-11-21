@@ -66,13 +66,13 @@ class UpVpcCidrTest : UpTestFixture() {
                 .map { seed ->
                     resetMocksForRun()
                     val state = happyState(cidr = null)
-                    whenever(mockClusterStateManager.load()).thenReturn(state)
+                    clusterStateManager.replace(state)
 
                     newUp(seed).execute()
 
                     val cidr = attemptedCidrs(1).single()
                     assertThat(emitted.filterIsInstance<Event.Setup.AutoSelectedCidr>().map { it.cidr }).containsExactly(cidr)
-                    assertThat(state.initConfig?.cidr).isEqualTo(cidr)
+                    assertThat(clusterStateManager.load().initConfig?.cidr).isEqualTo(cidr)
                     val networking = argumentCaptor<VpcNetworkingConfig>()
                     verify(mockAwsInfrastructureService).setupVpcNetworking(networking.capture(), any())
                     assertThat(networking.firstValue.vpcCidr).isEqualTo(cidr)
@@ -92,7 +92,7 @@ class UpVpcCidrTest : UpTestFixture() {
     @Test
     fun `a failed VPC creation retries with a different random unused block`() {
         val state = happyState(cidr = null)
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
         whenever(mockVpcService.createVpc(any(), any(), any()))
             .thenThrow(vpcCreateFailure())
             .thenReturn("vpc-123")
@@ -102,13 +102,13 @@ class UpVpcCidrTest : UpTestFixture() {
         val (failed, succeeded) = attemptedCidrs(2)
         assertThat(succeeded).isNotEqualTo(failed)
         assertThat(listOf(failed, succeeded)).doesNotContainAnyElementsOf(usedCidrs)
-        assertThat(state.initConfig?.cidr).isEqualTo(succeeded)
-        assertThat(state.vpcId).isEqualTo("vpc-123")
+        assertThat(clusterStateManager.load().initConfig?.cidr).isEqualTo(succeeded)
+        assertThat(clusterStateManager.load().vpcId).isEqualTo("vpc-123")
     }
 
     @Test
     fun `up fails after the fixed number of attempts, each on a different block`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cidr = null))
+        clusterStateManager.replace(happyState(cidr = null))
         whenever(mockVpcService.createVpc(any(), any(), any())).thenThrow(vpcCreateFailure())
 
         assertThatThrownBy { newUp(seed = 7).execute() }.hasMessageContaining("VPC create failed")
@@ -120,13 +120,13 @@ class UpVpcCidrTest : UpTestFixture() {
     @Test
     fun `resuming with a recorded VPC but no recorded CIDR adopts the VPC's actual CIDR`() {
         val state = happyState(cidr = null).apply { vpcId = "vpc-existing" }
-        whenever(mockClusterStateManager.load()).thenReturn(state)
+        clusterStateManager.replace(state)
         whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("test-cluster")
         whenever(mockVpcService.getVpcCidr("vpc-existing")).thenReturn("10.42.0.0/16")
 
         newUp(seed = 7).execute()
 
-        assertThat(state.initConfig?.cidr).isEqualTo("10.42.0.0/16")
+        assertThat(clusterStateManager.load().initConfig?.cidr).isEqualTo("10.42.0.0/16")
         val networking = argumentCaptor<VpcNetworkingConfig>()
         verify(mockAwsInfrastructureService).setupVpcNetworking(networking.capture(), any())
         assertThat(networking.firstValue.vpcId).isEqualTo("vpc-existing")
@@ -137,23 +137,25 @@ class UpVpcCidrTest : UpTestFixture() {
 
     @Test
     fun `a VPC supplied with --vpc keeps its tags, while the cluster's own VPC gets the bucket tag backfilled`() {
-        val bucket = "acct-bucket"
+        // `up` records and tags the bucket `ensureAccountBucket` returns, whatever the state held before.
+        val accountBucket = "easy-db-lab-test-bucket"
         listOf(true to false, false to true).forEach { (supplied, expectBackfill) ->
             resetMocksForRun()
             val state =
                 happyState(cidr = "10.42.0.0/16").apply {
                     vpcId = "vpc-existing"
                     vpcSupplied = supplied
-                    s3Bucket = bucket
+                    s3Bucket = "a-stale-bucket"
                 }
-            whenever(mockClusterStateManager.load()).thenReturn(state)
+            clusterStateManager.replace(state)
             whenever(mockVpcService.getVpcName("vpc-existing")).thenReturn("a-vpc")
             whenever(mockVpcService.getVpcTags("vpc-existing")).thenReturn(emptyMap())
 
             newUp(seed = 7).execute()
 
+            assertThat(clusterStateManager.load().s3Bucket).isEqualTo(accountBucket)
             if (expectBackfill) {
-                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to state.s3Bucket.orEmpty()))
+                verify(mockVpcService).addTags(listOf("vpc-existing"), mapOf(Constants.Vpc.BUCKET_TAG_KEY to accountBucket))
             } else {
                 verify(mockVpcService, never()).addTags(any(), any())
             }
@@ -162,7 +164,7 @@ class UpVpcCidrTest : UpTestFixture() {
 
     @Test
     fun `an explicit CIDR is used as-is and a failed creation is not retried`() {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState(cidr = "172.16.0.0/16"))
+        clusterStateManager.replace(happyState(cidr = "172.16.0.0/16"))
         whenever(mockVpcService.createVpc(any(), any(), any())).thenThrow(vpcCreateFailure())
 
         assertThatThrownBy { newUp(seed = 7).execute() }.hasMessageContaining("VPC create failed")

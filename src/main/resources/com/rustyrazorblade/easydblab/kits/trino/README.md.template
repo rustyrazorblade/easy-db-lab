@@ -23,6 +23,12 @@ Catalogs for co-located databases are added automatically when their services ar
 | `clickhouse` | ClickHouse   | When `clickhouse` is in RUNNING_KITS |
 | `opensearch` | OpenSearch   | When cluster has an OpenSearch domain |
 | `tidb`       | MySQL        | When `tidb` is in RUNNING_KITS        |
+```admonish note title="Not shipped yet (pmcfadin/cqlite#2869)"
+A `cqlite` catalog, reading SSTables offline through
+[cqlite-flight](../cqlite-flight/README.md), is planned. Its third-party `cqlite_flight`
+connector plugin is not in the `trinodb/trino` image, so this kit ships no `cqlite`
+catalog until the plugin is published, tracked in `pmcfadin/cqlite#2869`.
+```
 
 ## Custom catalogs
 

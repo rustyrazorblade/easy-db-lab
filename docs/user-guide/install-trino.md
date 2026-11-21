@@ -73,6 +73,16 @@ easy-db-lab kit install clickhouse
 easy-db-lab clickhouse start
 ```
 
+## The `cqlite` catalog (offline SSTable reads)
+
+```admonish note title="Not shipped yet (pmcfadin/cqlite#2869)"
+The trino kit does not ship a `cqlite` catalog today. Its `cqlite_flight` connector plugin is
+not in the `trinodb/trino` image, and registering the catalog without it stops the
+coordinator from starting. The catalog will be added when the plugin is published, tracked
+in `pmcfadin/cqlite#2869`. It will read SSTables offline through
+[cqlite-flight](cqlite-flight.md), alongside the `cassandra` catalog.
+```
+
 ## Node Placement
 
 The coordinator and workers run on the app role's nodes: `type=app` on the nodes easy-db-lab builds, or the nodes `init --role-nodes app=...` maps (any node with `app=`). See [Role node selectors](../reference/commands.md#role-node-selectors).

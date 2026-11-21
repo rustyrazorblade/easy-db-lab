@@ -107,6 +107,12 @@ easy-db-lab build-image [options]
 
 ## Cluster Lifecycle Commands
 
+You can run several commands in one workspace at once, for example `spark init` in one terminal
+while `opensearch start` runs in another. Each command saves only its own changes to `state.json`,
+so none of them loses what another one saved. While a command saves, it holds the lock file
+`state.json.lock` for a moment. A command that waits more than 30 seconds for that lock fails and
+changes nothing; run it again once the other command is done.
+
 ### init
 
 Initialize a directory for easy-db-lab.
@@ -335,8 +341,9 @@ Clean up generated files from the current directory.
 easy-db-lab clean
 ```
 
-In `bin/` it deletes only the tool wrappers and their marker, and removes `bin/` only when nothing
-else is left in it. It never lists or removes a local workspace's data directory (`init --data-dir`).
+It deletes `state.json` and its lock file `state.json.lock`. In `bin/` it deletes only the tool
+wrappers and their marker, and removes `bin/` only when nothing else is left in it. It never lists
+or removes a local workspace's data directory (`init --data-dir`).
 
 ### socks start
 

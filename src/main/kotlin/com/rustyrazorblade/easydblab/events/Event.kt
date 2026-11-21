@@ -6788,6 +6788,25 @@ sealed interface Event {
         }
 
         /**
+         * [kit] cannot run [phase] because its `kit.yaml` `requires` the [missing] node capabilities
+         * and the cluster's recorded capabilities lack them. Nothing of the phase ran.
+         */
+        @Serializable
+        @SerialName("Kit.CapabilityMissing")
+        data class CapabilityMissing(
+            val kit: String,
+            val phase: String,
+            val missing: List<NodeCapability>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "Error: cannot $phase '$kit': it requires ${missing.joinToString { it.serialName }}, and " +
+                    "${missing.joinToString("; ") { it.absentReason }}. " +
+                    "'easy-db-lab status' lists the recorded capabilities."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * A collision-checked kit refused [phase] because its workload is already in the cluster:
          * [resources] (`kind/name`) in [namespace], found through the kit's runtime declaration.
          * No step of the phase ran.

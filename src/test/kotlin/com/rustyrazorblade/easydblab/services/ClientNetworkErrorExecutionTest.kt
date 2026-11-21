@@ -103,7 +103,7 @@ class ClientNetworkErrorExecutionTest : BaseKoinTest() {
 
     @Test
     fun `a hand-edited client network in state json is one error naming the value, the file and the option`() {
-        ClusterStateManager(stateFile).save(
+        ClusterStateManager(stateFile).replace(
             ClusterState(name = "test", clientNetworks = listOf("10.0.0.5/8")),
         )
 

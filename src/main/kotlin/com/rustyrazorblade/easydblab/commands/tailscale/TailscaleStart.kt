@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
@@ -151,8 +152,7 @@ class TailscaleStart : PicoBaseCommand() {
                     credentials.tag,
                 )
 
-            clusterState.updateTailscaleAuthKeyId(authKeyResult.id)
-            clusterStateManager.save(clusterState)
+            clusterStateManager.update(clusterState) { it.updateTailscaleAuthKeyId(authKeyResult.id) }
 
             tailscaleService.startTailscale(host, authKeyResult.key, controlHost.alias, cidr).getOrThrow()
 
@@ -160,8 +160,7 @@ class TailscaleStart : PicoBaseCommand() {
             // the tailnet; the hostname alone is shared by every cluster's control node.
             val deviceId = tailscaleService.getDeviceId(host).getOrThrow()
             removeReplacedDevice(credentials, deviceId)
-            clusterState.tailscaleDeviceId = deviceId
-            clusterStateManager.save(clusterState)
+            clusterStateManager.update(clusterState) { it.tailscaleDeviceId = deviceId }
 
             showSuccessMessage(controlHost.alias, cidr)
             showCurrentStatus(host)

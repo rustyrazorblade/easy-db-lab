@@ -538,6 +538,12 @@ tasks.register("testScripts") {
         "testSetupInstanceDataDisk",
         "testSetupInstanceTuning",
         "testEdlNodeTuning",
+        "testTrinoLoadtestDriver",
+        "testTrinoLoadtestStartScript",
+        "testTrinoLoadtestStopScript",
+        "testCqliteFlightDetectMultidisk",
+        "testCqliteFlightStartScript",
+        "testCqliteFlightStopScript",
     )
 }
 
@@ -709,6 +715,53 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's start script: its driver pod runs on an app node and its
+// interval figures go to the collector as OTLP JSON gauges. kubectl and curl are stubbed.
+tasks.register<Exec>("testTrinoLoadtestStartScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-start.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's stop script: it deletes only this instance's pods and
+// ConfigMaps, by label. kubectl is stubbed.
+tasks.register<Exec>("testTrinoLoadtestStopScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-stop.test.sh")
+}
+
+// Unit-test the cqlite-flight kit's detect-multidisk init-container script against fake data roots:
+// the verified single disk, the multi-disk warning and the cannot-verify warning, with doubled
+// slashes and symlinked disks, and the --data-gid access check that fails the pod. Runs under dash
+// when installed, as the image's /bin/sh is POSIX sh.
+tasks.register<Exec>("testCqliteFlightDetectMultidisk") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight detect-multidisk script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/cqlite-flight-detect-multidisk.test.sh")
+}
+
+// Unit-test the cqlite-flight kit start script: a failed rollout fails with the host-path hint and the
+// multi-disk note, a healthy one prints neither. kubectl is stubbed; no cluster. Runs under bash 5 and /bin/bash 3.2.
+tasks.register<Exec>("testCqliteFlightStartScript") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-start.test.sh")
+}
+
+// Unit-test the cqlite-flight kit stop script: it deletes by the kit and role labels. kubectl is
+// stubbed; no cluster. Runs under bash 5 and /bin/bash 3.2.
+tasks.register<Exec>("testCqliteFlightStopScript") {
+    group = "Verification"
+    description = "Unit-test the cqlite-flight kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cqlite-flight-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
@@ -934,6 +987,41 @@ tasks.register<Exec>("testProfilingReconcile") {
     description = "Unit-test the edl-profiling-reconcile node script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/cassandra/bin/edl-profiling-reconcile.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's driver.py pure logic (argument-error
+// contract, percentile math, cumulative-stats separation, interval-line
+// format). The driver imports `trino` lazily, so the stdlib `unittest` runner
+// exercises every function under test with no third-party package and no
+// cluster. The tests live OUTSIDE the shipped kit resource dir (the kit ships
+// driver.py only), so this task points the runner at src/test/python.
+tasks.register<Exec>("testTrinoLoadtestDriver") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit driver.py pure logic"
+    workingDir = file(".")
+    // Fails, not skips, without python3: check is the gate, and a skipped driver test passes it.
+    // Bound at configuration time, so the action reaches no script object (configuration cache).
+    val searchPath = System.getenv("PATH").orEmpty()
+    doFirst {
+        val found =
+            searchPath
+                .split(File.pathSeparator)
+                .any { File(it, "python3").canExecute() }
+        if (!found) {
+            throw GradleException("testTrinoLoadtestDriver needs python3 on PATH; install Python 3 and run it again")
+        }
+    }
+    commandLine =
+        listOf(
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "src/test/python/trino-loadtest",
+            "-p",
+            "test_*.py",
+        )
 }
 
 tasks.register<Exec>("testPackerScript") {

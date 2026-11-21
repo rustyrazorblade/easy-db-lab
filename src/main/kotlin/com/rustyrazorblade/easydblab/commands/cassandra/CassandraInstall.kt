@@ -8,7 +8,9 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.CommandExecutionException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -108,13 +110,19 @@ class CassandraInstall : PicoBaseCommand() {
         val plan = installer.plan(request, targets, state, mode) { node -> resolver.forNode(spec, request, node) }
         val report = installer.execute(plan, reportPresent = true)
 
-        report.recordInto(state)
-        val reactivated = if (reinstall) reactivate(spec, report.ready) else null
-        clusterStateManager.save(state)
+        val reactivated = if (reinstall) reactivate(spec, report.ready) else emptyList()
+        // Only this install's records go to the state on disk, so a change another command saved
+        // while the nodes installed is kept.
+        clusterStateManager.update(state) { saved ->
+            report.recordInto(saved)
+            reactivated.filterIsInstance<HostOutcome.Ready>().forEach { outcome ->
+                saved.nodes.getOrPut(outcome.host.alias) { NodeState() }.javaVersion = outcome.spec.java
+            }
+        }
 
         val reapplied = if (reinstall) reapplyConfig(spec, report.ready.map { it.host.alias }) else null
         report.failureMessage()?.let { throw CommandExecutionException(it) }
-        reactivated?.let { throw CommandExecutionException(it) }
+        reactivationFailure(reactivated)?.let { throw CommandExecutionException(it) }
         reapplied?.let { throw CommandExecutionException(it) }
     }
 
@@ -122,24 +130,24 @@ class CassandraInstall : PicoBaseCommand() {
      * A reinstall replaced the bits of the version that some nodes run, built or chosen for the
      * JDK the reinstall resolved, so each such node is activated again with its spec's JDK and
      * Python, and the state records that JDK; otherwise `cassandra start` would run the new bits on
-     * the old JDK. A node whose activation fails keeps its recorded JDK. Returns the error when a
-     * node failed, else null.
+     * the old JDK. A node whose activation fails keeps its recorded JDK. Returns each node's
+     * activation outcome; empty when no reinstalled node runs the version.
      */
     private fun reactivate(
         spec: InstallSpec,
         reinstalled: List<HostOutcome.Ready>,
-    ): String? {
+    ): List<HostOutcome> {
         val active = reinstalled.filter { clusterState.nodes[it.host.alias]?.version == spec.name }
-        if (active.isEmpty()) return null
-        val outcomes = installer.activate(active)
-        outcomes.filterIsInstance<HostOutcome.Ready>().forEach { outcome ->
-            clusterState.nodes.getValue(outcome.host.alias).javaVersion = outcome.spec.java
-        }
-        val failed = outcomes.filterIsInstance<HostOutcome.Failed>().map { it.host.alias }
-        return failed.takeIf { it.isNotEmpty() }?.let {
-            "cassandra install --reinstall: $version was not activated again on ${it.joinToString(", ")}"
-        }
+        return if (active.isEmpty()) emptyList() else installer.activate(active)
     }
+
+    /** The error when a node was not activated again, else null. */
+    private fun reactivationFailure(outcomes: List<HostOutcome>): String? =
+        outcomes
+            .filterIsInstance<HostOutcome.Failed>()
+            .map { it.host.alias }
+            .takeIf { it.isNotEmpty() }
+            ?.let { "cassandra install --reinstall: $version was not activated again on ${it.joinToString(", ")}" }
 
     private fun request() =
         VersionRequest(

@@ -48,7 +48,7 @@ class ClusterToolingBindingTest {
     fun `a K3s in Docker workspace resolves the local form with no override`() {
         val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies) }
         try {
-            app.koin.get<ClusterStateManager>().save(stateIn(Environment.K3sDocker("/data")))
+            app.koin.get<ClusterStateManager>().replace(stateIn(Environment.K3sDocker("/data")))
 
             assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
         } finally {
@@ -62,11 +62,11 @@ class ClusterToolingBindingTest {
         val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies) }
         try {
             val states = app.koin.get<ClusterStateManager>()
-            states.save(stateIn(Environment.Ec2K3s))
+            states.replace(stateIn(Environment.Ec2K3s))
             assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(SshClusterTooling::class.java)
             assertThat(app.koin.get<HelmService>()).isNotNull()
 
-            states.save(stateIn(Environment.K3sDocker("/data")))
+            states.replace(stateIn(Environment.K3sDocker("/data")))
 
             assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
         } finally {
@@ -80,10 +80,10 @@ class ClusterToolingBindingTest {
         val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies) }
         try {
             val states = app.koin.get<ClusterStateManager>()
-            states.save(stateIn(Environment.K3sDocker("/data")))
+            states.replace(stateIn(Environment.K3sDocker("/data")))
             assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)
 
-            states.save(stateIn(Environment.DEFAULT))
+            states.replace(stateIn(Environment.DEFAULT))
 
             assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(SshClusterTooling::class.java)
         } finally {

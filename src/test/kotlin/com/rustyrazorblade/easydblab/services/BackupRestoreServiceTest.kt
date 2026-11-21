@@ -185,7 +185,7 @@ internal class BackupRestoreServiceTest {
             assertThat(result.isFailure).isTrue()
             assertThat(result.exceptionOrNull()?.message).contains("state.json already exists")
             verify(mockVpcService, never()).getVpcTags(any())
-            verify(mockClusterStateManager, never()).save(any())
+            verify(mockClusterStateManager, never()).replace(any())
         }
 
         @Test
@@ -250,7 +250,7 @@ internal class BackupRestoreServiceTest {
             assertThat(vpcRestoreResult.clusterState.clusterId).isEqualTo("test-cluster-id")
 
             // Bootstrap state saved as fallback
-            verify(mockClusterStateManager).save(any())
+            verify(mockClusterStateManager).replace(any())
         }
 
         @Test

@@ -367,8 +367,7 @@ class DefaultCommandExecutor(
             .onSuccess { result ->
                 if (result.filesUploaded > 0) {
                     // Update state with new hashes
-                    state.backupHashes = state.backupHashes + result.updatedHashes
-                    clusterStateManager.save(state)
+                    clusterStateManager.update { it.backupHashes = it.backupHashes + result.updatedHashes }
                     eventBus.emit(Event.Backup.IncrementalBackupComplete(result.filesUploaded))
                 }
             }.onFailure { e ->

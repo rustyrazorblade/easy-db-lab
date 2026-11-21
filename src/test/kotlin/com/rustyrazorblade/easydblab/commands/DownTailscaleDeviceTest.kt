@@ -64,7 +64,7 @@ class DownTailscaleDeviceTest : BaseKoinTest() {
     }
 
     private fun saveState(deviceId: String?) =
-        stateManager.save(
+        stateManager.replace(
             ClusterState(name = "test-cluster", vpcId = "vpc-123")
                 .apply { tailscaleDeviceId = deviceId },
         )

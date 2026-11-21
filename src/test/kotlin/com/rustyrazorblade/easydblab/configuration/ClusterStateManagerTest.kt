@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -28,7 +29,7 @@ class ClusterStateManagerTest {
             ClusterState(
                 name = "test-cluster",
             )
-        manager.save(state)
+        manager.replace(state)
 
         // First increment should return 1
         val first = manager.incrementStressJobCounter()
@@ -50,7 +51,7 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster"))
+        manager.replace(ClusterState(name = "test-cluster"))
 
         manager.addRunningWorkload("clickhouse")
         manager.addRunningWorkload("presto")
@@ -66,7 +67,7 @@ class ClusterStateManagerTest {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
         val state = ClusterState(name = "test-cluster", runningKits = mutableSetOf("clickhouse", "presto"))
-        manager.save(state)
+        manager.replace(state)
 
         manager.removeRunningWorkload("clickhouse")
 
@@ -80,7 +81,7 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster"))
+        manager.replace(ClusterState(name = "test-cluster"))
 
         val reloaded = ClusterStateManager(stateFile).load()
         assertThat(reloaded.runningKits).isEmpty()
@@ -97,7 +98,7 @@ class ClusterStateManagerTest {
             ClusterState(
                 name = "test-cluster",
             )
-        manager.save(state)
+        manager.replace(state)
 
         val beforeIncrement = manager.load().lastAccessedAt
         Thread.sleep(10)
@@ -114,7 +115,7 @@ class ClusterStateManagerTest {
         @TempDir tempDir: File,
     ) {
         val stateFile = File(tempDir, "state.json")
-        ClusterStateManager(stateFile).save(ClusterState(name = "My/Cluster"))
+        ClusterStateManager(stateFile).replace(ClusterState(name = "My/Cluster"))
 
         assertThatThrownBy { ClusterStateManager(stateFile).load() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -145,7 +146,7 @@ class ClusterStateManagerTest {
         val manager = ClusterStateManager(stateFile)
         // A large state makes a non-atomic write take long enough for a reader to catch it midway.
         val big = ClusterState(name = "test-cluster", nodes = (1..2000).associate { "k$it" to NodeState("v".repeat(40)) }.toMutableMap())
-        manager.save(big)
+        manager.replace(big)
 
         val saving = AtomicBoolean(true)
         val failures = AtomicInteger()
@@ -156,13 +157,15 @@ class ClusterStateManagerTest {
                 }
             }.apply { start() }
 
-        repeat(300) { i -> manager.save(big.copy(stressJobCounter = i)) }
+        repeat(300) { i -> manager.replace(big.copy(stressJobCounter = i)) }
         saving.set(false)
         reader.join()
 
         assertThat(failures.get()).describedAs("loads that read a partial state.json").isZero()
         assertThat(manager.load().stressJobCounter).isEqualTo(299)
-        assertThat(tempDir.list().orEmpty().toList()).describedAs("no temp file left behind").containsExactly("state.json")
+        assertThat(tempDir.list().orEmpty().toList())
+            .describedAs("no temp file left behind")
+            .containsExactlyInAnyOrder("state.json", Constants.ClusterStateFile.LOCK_FILE)
     }
 
     @Test
@@ -171,11 +174,11 @@ class ClusterStateManagerTest {
     ) {
         val stateFile = File(tempDir, "state.json")
         val manager = ClusterStateManager(stateFile)
-        manager.save(ClusterState(name = "test-cluster"))
+        manager.replace(ClusterState(name = "test-cluster"))
         val chosen = PosixFilePermissions.fromString("rw-r-----")
         Files.setPosixFilePermissions(stateFile.toPath(), chosen)
 
-        manager.save(ClusterState(name = "test-cluster", stressJobCounter = 1))
+        manager.replace(ClusterState(name = "test-cluster", stressJobCounter = 1))
 
         assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(chosen)
     }
@@ -187,7 +190,7 @@ class ClusterStateManagerTest {
         val stateFile = File(tempDir, "state.json")
         val plain = Files.createFile(File(tempDir, "plain").toPath())
 
-        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster"))
+        ClusterStateManager(stateFile).replace(ClusterState(name = "test-cluster"))
 
         assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(Files.getPosixFilePermissions(plain))
     }
@@ -252,7 +255,7 @@ class ClusterStateManagerTest {
 
         val state = manager.load()
         assertThat(stateFile.readText()).isEqualTo(before)
-        manager.save(state)
+        manager.replace(state)
 
         val saved = ObjectMapper().readTree(stateFile) as ObjectNode
         assertThat(saved.get("networkMode").asText()).isEqualTo("tailscale")
@@ -264,7 +267,7 @@ class ClusterStateManagerTest {
         stateFile: File,
         change: (ObjectNode) -> Unit,
     ) {
-        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster"))
+        ClusterStateManager(stateFile).replace(ClusterState(name = "test-cluster"))
         val mapper = ObjectMapper()
         val tree = mapper.readTree(stateFile) as ObjectNode
         tree.remove("networkMode")

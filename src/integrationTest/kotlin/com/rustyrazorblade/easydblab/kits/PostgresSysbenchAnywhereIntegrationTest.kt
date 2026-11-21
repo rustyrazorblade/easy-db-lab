@@ -111,7 +111,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
 
         val api = KubeApi(kubeconfig.toPath(), checkNotNull(currentContextOf(kubeconfig.toPath())))
         stateManager = ClusterStateManager(File(workspace, CLUSTER_STATE))
-        stateManager.save(
+        stateManager.replace(
             ClusterState(
                 name = CLUSTER_NAME,
                 initConfig = InitConfig(name = CLUSTER_NAME, kitStorageClass = RETAINED_CLASS),

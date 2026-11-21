@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.NodeSelector
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -106,9 +107,10 @@ class KitRequirementTest : BaseKoinTest() {
         kitType: KitType?,
         state: ClusterState = state(),
         args: List<KitArgSpec> = emptyList(),
+        requires: List<NodeCapability> = emptyList(),
     ): KitInstallCommand {
         whenever(mockClusterStateManager.load()).thenReturn(state)
-        val config = KitConfig(name = "mykit", type = kitType, args = args)
+        val config = KitConfig(name = "mykit", type = kitType, args = args, requires = requires)
         val source = InstallTemplateResolver.TemplateSource.Directory(templateDir)
         return KitInstallCommand(config, source).also { it.execute() }
     }
@@ -196,5 +198,31 @@ class KitRequirementTest : BaseKoinTest() {
         runInstall(KitType.DB)
 
         assertThat(File(workingDir, "mykit")).doesNotExist()
+    }
+
+    @Test
+    fun `install fails with CapabilityMissing when the kit requires host-path and the cluster lacks it`() {
+        nodesFor(mapOf("type" to "db"), "n1")
+        val noHostPath = state().apply { capabilities = setOf(NodeCapability.PRIVILEGED) }
+
+        runInstall(KitType.DB, noHostPath, requires = listOf(NodeCapability.HOST_PATH))
+
+        val failure = capturedEvents.filterIsInstance<Event.Kit.CapabilityMissing>().single()
+        assertThat(
+            failure,
+        ).isEqualTo(Event.Kit.CapabilityMissing(kit = "mykit", phase = "install", missing = listOf(NodeCapability.HOST_PATH)))
+        assertThat(failure.toDisplayString()).startsWith("Error:").contains("host-path", NodeCapability.HOST_PATH.absentReason)
+        assertThat(File(workingDir, "mykit")).doesNotExist()
+    }
+
+    @Test
+    fun `install proceeds when the cluster records the capability the kit requires`() {
+        nodesFor(mapOf("type" to "db"), "n1")
+        val withHostPath = state().apply { capabilities = setOf(NodeCapability.HOST_PATH) }
+
+        runInstall(KitType.DB, withHostPath, requires = listOf(NodeCapability.HOST_PATH))
+
+        assertThat(capturedEvents.filterIsInstance<Event.Kit.CapabilityMissing>()).isEmpty()
+        assertThat(capturedEvents.filterIsInstance<Event.Kit.RequirementNotMet>()).isEmpty()
     }
 }

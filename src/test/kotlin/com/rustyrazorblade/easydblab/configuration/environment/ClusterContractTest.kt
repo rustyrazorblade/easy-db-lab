@@ -215,10 +215,10 @@ class ClusterContractTest {
     ) {
         val manager = ClusterStateManager(File(tempDir, "state.json"))
         val source = StateClusterContractSource(manager)
-        manager.save(stateFor(Environment.Ec2K3s))
+        manager.replace(stateFor(Environment.Ec2K3s))
         assertThat(source.current().networkMode).isEqualTo(NetworkMode.Socks)
 
-        manager.save(stateFor(Environment.K3sDocker("/d")))
+        manager.replace(stateFor(Environment.K3sDocker("/d")))
 
         assertThat(source.current().networkMode).isEqualTo(NetworkMode.Direct)
     }

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
@@ -78,6 +79,10 @@ class KitRunnerCommand(
     override fun execute() {
         val config = loadInstallConfig()
 
+        if (phaseName == Constants.Kit.PHASE_START && config != null && requiredCapabilityIsMissing(config)) {
+            return
+        }
+
         val startIsGuarded = config?.collisionCheck?.guards(Constants.Kit.PHASE_START) == true
         if (phaseName == Constants.Kit.PHASE_START && startIsGuarded && isAlreadyRunning(requireNotNull(config))) {
             return
@@ -121,6 +126,18 @@ class KitRunnerCommand(
         config: KitConfig,
         phase: String,
     ): Boolean = config.stepsForPhase(phase).isNotEmpty() || findScriptFile(phase) != null
+
+    /**
+     * Fails `start` when the cluster's recorded capabilities lack one the kit `requires`: reports
+     * [Event.Kit.CapabilityMissing], sets the error exit code and returns true, before any step runs.
+     */
+    private fun requiredCapabilityIsMissing(config: KitConfig): Boolean {
+        val missing = config.missingCapabilities(NodeCapabilities.from(clusterState))
+        if (missing.isEmpty()) return false
+        eventBus.emit(Event.Kit.CapabilityMissing(kit = kitName, phase = phaseName, missing = missing))
+        processExitCode = Constants.ExitCodes.ERROR
+        return true
+    }
 
     /**
      * Collision check for `start` (typed-install-steps: `collision-check: true`, or a phase map with

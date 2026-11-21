@@ -36,7 +36,7 @@ class SparkDownTest : BaseKoinTest() {
     }
 
     private fun saveState(state: ClusterState) {
-        testClusterStateManager.save(state)
+        testClusterStateManager.replace(state)
     }
 
     @Test

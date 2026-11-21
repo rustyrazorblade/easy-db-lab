@@ -55,7 +55,7 @@ class WorkspaceKubeApiLocatorTest {
 
     private fun locator(recorded: String?): WorkspaceKubeApiLocator {
         val manager = ClusterStateManager(File(workspace, "state.json"))
-        manager.save(ClusterState(name = "test").apply { kubeContext = recorded })
+        manager.replace(ClusterState(name = "test").apply { kubeContext = recorded })
         return WorkspaceKubeApiLocator(manager, workspace)
     }
 

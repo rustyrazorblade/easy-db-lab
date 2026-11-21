@@ -14,6 +14,9 @@
 #                       <phase>|<waiting reason>|<waiting message>|<exit code>, NOTFOUND or ERROR
 #   log.<n>           what the n-th `kubectl logs -f` prints; logs-exit.<n> its exit status
 #   full-log          what `kubectl logs <pod>` (no -f) prints
+#   curl-out.<n>      what the n-th curl call prints, in place of curl-out
+#   curl-out          what every other curl call prints; curl-exit their exit status (default 0)
+#   curl-exit.<n>     the exit status of the n-th curl call, in place of curl-exit
 #   run-exit          the exit status of `kubectl run` (default 0)
 #   proxy-fail        present: `kubectl proxy` prints an error to stderr and exits 1 without serving
 #   proxy-hold        present: `kubectl proxy` keeps running after its banner, as the real one
@@ -29,6 +32,7 @@
 #                     and with none it records the call in api-hung, holds for 5 seconds and prints nothing
 #   curl-signal       a signal name (TERM, INT): curl sends it to the shell that ran it, as a kill
 #                     or a Ctrl-C arriving during a push would
+#   rollout-exit      the exit status of `kubectl rollout status` (default 0)
 #
 # and records:
 #
@@ -157,6 +161,8 @@ case "$1" in
     fi
     exit 0
     ;;
+  apply) [ "${3:-}" = - ] && cat > /dev/null; exit 0 ;;
+  rollout) exit "$(cat "${S}/rollout-exit" 2>/dev/null || echo 0)" ;;
   run)
     n=$(next run)
     for a in "$@"; do case "${a}" in --overrides=*) printf '%s\n' "${a#--overrides=}" > "${S}/overrides.${n}" ;; esac; done
@@ -193,9 +199,9 @@ S="${STUB_STATE:?}"
 n=$(( $(cat "${S}/curl.count" 2>/dev/null || echo 0) + 1 ))
 echo "${n}" > "${S}/curl.count"
 printf '%s\n' "$@" > "${S}/curl.${n}"
-[ -f "${S}/curl-out" ] && cat "${S}/curl-out"
+if [ -f "${S}/curl-out.${n}" ]; then cat "${S}/curl-out.${n}"; elif [ -f "${S}/curl-out" ]; then cat "${S}/curl-out"; fi
 [ -f "${S}/curl-signal" ] && kill -s "$(cat "${S}/curl-signal")" "${PPID}"
-exit "$(cat "${S}/curl-exit" 2>/dev/null || echo 0)"
+exit "$(cat "${S}/curl-exit.${n}" 2>/dev/null || cat "${S}/curl-exit" 2>/dev/null || echo 0)"
 EOF
   cat > "${dir}/date" <<'EOF'
 #!/usr/bin/env bash

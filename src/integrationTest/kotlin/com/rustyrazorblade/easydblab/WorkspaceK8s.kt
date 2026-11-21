@@ -40,7 +40,7 @@ object WorkspaceK8s {
         val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).toPath()
         val pinned = if (runCatching { currentContextOf(kubeconfig) }.getOrNull() == null) PLACEHOLDER_CONTEXT else null
         val stateManager =
-            ClusterStateManager(File(workspace, STATE_FILE)).apply { save(ClusterState(name = "k8s-it", kubeContext = pinned)) }
+            ClusterStateManager(File(workspace, STATE_FILE)).apply { replace(ClusterState(name = "k8s-it", kubeContext = pinned)) }
         File(workspace, STATE_FILE).deleteOnExit()
         return K8sClientProvider(WorkspaceKubeApiLocator(stateManager, workspace), factory)
     }

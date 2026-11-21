@@ -274,7 +274,7 @@ class LocalClusterToolingIntegrationTest {
             val app = koinApplication { modules(servicesModule, configurationModule, leafDependencies(remoteOps)) }
             try {
                 // The production binding picks the local form from the recorded environment.
-                app.koin.get<ClusterStateManager>().save(
+                app.koin.get<ClusterStateManager>().replace(
                     ClusterState(name = "local", environment = Environment.K3sDocker(workspace.absolutePath)),
                 )
                 assertThat(app.koin.get<ClusterTooling>()).isInstanceOf(LocalClusterTooling::class.java)

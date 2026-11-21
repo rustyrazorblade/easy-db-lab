@@ -439,27 +439,49 @@ class Docker(
         val contextDir = createTempDirectory("easy-db-lab-image-").toFile()
         try {
             File(contextDir, "Dockerfile").writeText(dockerfile)
-            val retry =
-                Retry.of("docker-build-$imageTag", buildRetryConfig).also {
-                    it.eventPublisher.onRetry { event ->
-                        log.warn {
-                            "Docker build of $imageTag lost its content lease - retrying " +
-                                "(attempt ${event.numberOfRetryAttempts + 1}): ${event.lastThrowable?.message}"
-                        }
-                    }
-                }
-            // The project DockerException is checked, so only the checked decorator retries it.
-            Retry.decorateCheckedRunnable(retry) { buildOnce(contextDir, imageTag) }.run()
+            buildWithRetry(contextDir, imageTag)
         } finally {
             contextDir.deleteRecursively()
         }
         eventBus.emit(Event.Docker.ImageBuilt(imageTag))
     }
 
-    /** One build attempt; a failure carries the tail of this attempt's output only. */
+    /**
+     * Runs [buildOnce] under [buildRetryConfig]. Each retry is printed, since a build that takes
+     * longer than usual should say why; the last failure names how many attempts were made.
+     */
+    private fun buildWithRetry(
+        contextDir: File,
+        imageTag: String,
+    ) {
+        val maxAttempts = buildRetryConfig.maxAttempts
+        var attempts = 0
+        val retry =
+            Retry.of("docker-build-$imageTag", buildRetryConfig).also {
+                it.eventPublisher.onRetry { event ->
+                    log.warn(event.lastThrowable) { "Docker build of $imageTag lost its content lease; retrying" }
+                    println(
+                        "Docker build of $imageTag lost its content lease (an image prune may have run at the same " +
+                            "time); retrying, attempt ${event.numberOfRetryAttempts + 1} of $maxAttempts",
+                    )
+                }
+            }
+        // The project DockerException is checked, so only the checked decorator retries it.
+        Retry
+            .decorateCheckedRunnable(retry) {
+                attempts++
+                buildOnce(contextDir, imageTag, "attempt $attempts of $maxAttempts")
+            }.run()
+    }
+
+    /**
+     * One build attempt; a failure names the [attempt] and carries the tail of this attempt's
+     * output only.
+     */
     private fun buildOnce(
         contextDir: File,
         imageTag: String,
+        attempt: String,
     ) {
         val output = ArrayDeque<String>()
         try {
@@ -469,16 +491,17 @@ class Docker(
                 if (output.size > BUILD_OUTPUT_TAIL_LINES) output.removeFirst()
             }
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
-            throw DockerException(buildFailure(imageTag, output), e)
+            throw DockerException(buildFailure(imageTag, attempt, output), e)
         } catch (e: DockerClientException) {
-            throw DockerException(buildFailure(imageTag, output), e)
+            throw DockerException(buildFailure(imageTag, attempt, output), e)
         }
     }
 
     private fun buildFailure(
         imageTag: String,
+        attempt: String,
         output: Collection<String>,
-    ): String = "Error building image $imageTag. Last build output:\n${output.joinToString("\n").ifEmpty { "(none)" }}"
+    ): String = "Error building image $imageTag ($attempt). Last build output:\n${output.joinToString("\n").ifEmpty { "(none)" }}"
 
     fun runContainer(
         container: Containers,

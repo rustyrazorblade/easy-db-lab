@@ -4,23 +4,32 @@ import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.command.PullImageResultCallback
 import com.github.dockerjava.api.exception.DockerClientException
+import com.github.dockerjava.api.exception.InternalServerErrorException
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.Image
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PipedInputStream
+import java.io.PrintStream
 import java.util.stream.Stream
 
 /**
- * Which image build failures [Docker.buildImage] retries.
+ * Which image build failures [Docker.buildImage] retries, and what a retried build leaves behind.
  *
  * Under Docker's containerd image store, an image prune that runs while a build pulls its base
  * deletes the build's content leases, and the build fails with containerd's "lease does not exist".
@@ -30,20 +39,24 @@ import java.util.stream.Stream
  * is the production one with a 1 ms backoff.
  */
 class DockerBuildImageRetryTest : BaseKoinTest() {
-    /** Fails the first builds with the scripted errors, then succeeds; counts every attempt. */
+    /**
+     * Fails the first builds with the scripted errors, then succeeds. It counts every attempt and
+     * records the Dockerfile each attempt found in its build context.
+     */
     private class ScriptedBuildClient(
         failures: List<Exception>,
         private val output: String = "",
     ) : DockerClientInterface {
         private val pending = ArrayDeque(failures)
-        var builds = 0
+        val dockerfiles = mutableListOf<String?>()
+        val builds get() = dockerfiles.size
 
         override fun buildImage(
             contextDir: File,
             imageTag: String,
             onOutput: (String) -> Unit,
         ): String {
-            builds++
+            dockerfiles += File(contextDir, "Dockerfile").takeIf { it.isFile }?.readText()
             onOutput("attempt $builds")
             output.lines().filter { it.isNotEmpty() }.forEach(onOutput)
             pending.removeFirstOrNull()?.let { throw it }
@@ -82,8 +95,32 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     private val fastRetry: RetryConfig =
         RetryConfig.from<Unit>(DockerBuildRetry.config<Unit>()).intervalFunction { _ -> 1L }.build()
 
-    private fun build(client: DockerClientInterface) =
-        Docker(context, client, buildRetryConfig = fastRetry).buildImage("FROM scratch\n", "edl/test:1")
+    private val events = mutableListOf<Event>()
+    private val stdout = ByteArrayOutputStream()
+    private val originalOut = System.out
+
+    @BeforeEach
+    fun capture() {
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        System.setOut(PrintStream(stdout, true))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
+    }
+
+    private fun build(client: DockerClientInterface) = Docker(context, client, buildRetryConfig = fastRetry).buildImage(DOCKERFILE, TAG)
+
+    private fun builtEvents() = events.filterIsInstance<Event.Docker.ImageBuilt>()
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("buildFailures")
@@ -98,35 +135,65 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
         assertThatThrownBy { build(client) }
             .`as`(description)
             .isInstanceOf(DockerException::class.java)
-            .hasMessageContaining("Error building image edl/test:1")
+            .hasMessageContaining("Error building image $TAG")
         assertThat(client.builds).`as`(description).isEqualTo(expectedAttempts)
     }
 
     @Test
-    fun `a build whose content lease was pruned once succeeds on the next attempt`() {
+    fun `a build whose content lease was pruned once succeeds on the next attempt, with its Dockerfile`() {
         val client = ScriptedBuildClient(listOf(leaseLost()))
 
         build(client)
 
-        assertThat(client.builds).isEqualTo(2)
+        assertThat(client.dockerfiles).containsExactly(DOCKERFILE, DOCKERFILE)
+        assertThat(builtEvents()).containsExactly(Event.Docker.ImageBuilt(TAG))
+        assertThat(stdout.toString())
+            .contains("Docker build of $TAG lost its content lease")
+            .contains("retrying, attempt 2 of ${Constants.Retry.MAX_DOCKER_RETRIES}")
     }
 
     @Test
-    fun `a build that fails on every attempt reports the last attempt's output`() {
+    fun `a build that fails on every attempt reports the last attempt and its output, and is never built`() {
         val client = ScriptedBuildClient(List(Constants.Retry.MAX_DOCKER_RETRIES) { leaseLost() })
 
         val failure = catchThrowable { build(client) }
 
         assertThat(failure)
             .isInstanceOf(DockerException::class.java)
-            .hasRootCauseMessage(leaseLost().message)
+            .hasMessageContaining(
+                "(attempt ${Constants.Retry.MAX_DOCKER_RETRIES} of ${Constants.Retry.MAX_DOCKER_RETRIES})",
+            ).hasRootCauseMessage(leaseLost().message)
         assertThat(ATTEMPT_LINE.findAll(failure.message.orEmpty()).map { it.value }.toList())
             .containsExactly("attempt ${Constants.Retry.MAX_DOCKER_RETRIES}")
+        assertThat(builtEvents()).isEmpty()
+        // One line per retry that ran; none after the last attempt, which no retry follows.
+        assertThat(stdout.toString().lines().count { "lost its content lease" in it })
+            .isEqualTo(Constants.Retry.MAX_DOCKER_RETRIES - 1)
+    }
+
+    @Test
+    fun `a lost lease then a failing RUN step stops at the RUN step and reports its output`() {
+        val client = ScriptedBuildClient(listOf(leaseLost(), runStepFailed()), output = "step output\n")
+
+        val failure = catchThrowable { build(client) }
+
+        assertThat(client.builds).isEqualTo(2)
+        assertThat(failure)
+            .isInstanceOf(DockerException::class.java)
+            .hasMessageContaining("(attempt 2 of ${Constants.Retry.MAX_DOCKER_RETRIES})")
+            .hasMessageContaining("step output")
+            .hasRootCauseMessage(runStepFailed().message)
+        assertThat(ATTEMPT_LINE.findAll(failure.message.orEmpty()).map { it.value }.toList())
+            .containsExactly("attempt 2")
+        assertThat(builtEvents()).isEmpty()
     }
 
     companion object {
-        /** The line each scripted build attempt prints first, as a whole word. */
-        private val ATTEMPT_LINE = Regex("""\battempt \d+\b""")
+        private const val TAG = "edl/test:1"
+        private const val DOCKERFILE = "FROM scratch\n"
+
+        /** The line each scripted build attempt prints first, on a line of its own in the failure's output tail. */
+        private val ATTEMPT_LINE = Regex("""(?m)^attempt \d+$""")
 
         /** What docker-java raises when containerd's lease for a build was deleted under it (Docker 29). */
         fun leaseLost() =
@@ -136,18 +203,14 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
                     "NotFound: lease does not exist: not found",
             )
 
+        fun runStepFailed() =
+            DockerClientException("Could not build image: The command '/bin/sh -c apk add nope' returned a non-zero code: 1")
+
         @JvmStatic
         fun buildFailures(): Stream<Arguments> =
             Stream.of(
                 Arguments.of("the content lease was pruned", leaseLost(), "", Constants.Retry.MAX_DOCKER_RETRIES),
-                Arguments.of(
-                    "a RUN step exited non-zero",
-                    DockerClientException(
-                        "Could not build image: The command '/bin/sh -c apk add nope' returned a non-zero code: 1",
-                    ),
-                    "",
-                    1,
-                ),
+                Arguments.of("a RUN step exited non-zero", runStepFailed(), "", 1),
                 Arguments.of(
                     "the base image does not exist",
                     DockerClientException("Could not build image: pull access denied for nope, repository does not exist"),
@@ -168,6 +231,29 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
                         "Could not build image: The command '/bin/sh -c ./elect' returned a non-zero code: 1",
                     ),
                     "election failed: lease does not exist\n",
+                    1,
+                ),
+                // docker-java's own DockerException branch (an API error status), not DockerClientException.
+                Arguments.of(
+                    "the daemon answered 500 with a lost lease",
+                    InternalServerErrorException("Status 500: failed to prepare extraction snapshot: lease does not exist: not found"),
+                    "",
+                    Constants.Retry.MAX_DOCKER_RETRIES,
+                ),
+                Arguments.of(
+                    "the daemon answered 500 for another reason",
+                    InternalServerErrorException("Status 500: failed to solve: no space left on device"),
+                    "",
+                    1,
+                ),
+                // The thread was asked to stop; the phrase in the message must not make it run again.
+                Arguments.of(
+                    "an interrupted build whose message names a lost lease",
+                    DockerClientException(
+                        "Could not build image: lease does not exist",
+                        InterruptedException("build interrupted"),
+                    ),
+                    "",
                     1,
                 ),
             )

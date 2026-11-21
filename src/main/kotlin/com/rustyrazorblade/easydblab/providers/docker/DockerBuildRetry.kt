@@ -33,11 +33,14 @@ object DockerBuildRetry {
      * Whether the daemon's error, below the project [DockerException] that `Docker.buildImage`
      * wraps it in, carries containerd's lease-lost message. The wrapper is skipped because its
      * message holds the build's output, and a step that prints the phrase and then fails is the
-     * step's own failure.
+     * step's own failure. An interrupted build is never retried, whatever its message says: the
+     * thread was asked to stop.
      */
-    private fun isLeaseLost(throwable: Throwable): Boolean =
-        throwable
-            .causeChain()
-            .dropWhile { it is DockerException }
-            .any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }
+    private fun isLeaseLost(throwable: Throwable): Boolean {
+        val chain = throwable.causeChain()
+        return chain.none { it is InterruptedException } &&
+            chain
+                .dropWhile { it is DockerException }
+                .any { Constants.Docker.LEASE_LOST_MESSAGE in it.message.orEmpty() }
+    }
 }

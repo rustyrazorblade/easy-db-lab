@@ -36,3 +36,12 @@
 
 - [x] 8.1 `events/CLAUDE.md`, `providers/CLAUDE.md`, `kubernetes/CLAUDE.md` files table; user docs section on permission and admission errors on your own cluster
 - [x] 8.2 `./gradlew ktlintFormat detekt test integrationTest` (in a subagent), all green, no detekt loosening
+
+## 9. Review fixes and owner decisions (2026-11-20)
+
+- [x] 9.1 `ExecPluginNotFoundException` in its own file; `ExecPluginCheck` takes the kubeconfig parsed once, finds only an executable file, and uses the JVM `PATH`
+- [x] 9.2 `Constants.HttpStatus.UNPROCESSABLE_ENTITY`; strip userinfo as well as the query from a URI in the detail
+- [x] 9.3 Classify the namespace-terminating, ResourceQuota and LimitRange 403s; leave any other non-RBAC 403 to `ExecutionError` (D8); K3s tests for the quota and terminating cases
+- [x] 9.4 `isPermanentKubernetesFailure()` at every Kubernetes poll and the kit stop wait; `kubernetesFailureReason()` at `status`, `Kit.StopUnverified` and `metrics stream` (`Stress.JobListFailing`) (D9)
+- [x] 9.5 Integration: a poll's 403 reported through the reporter as permission-denied; the fallback request asserted from a real Fabric8 exception
+- [x] 9.6 Design: D1 to D6 approved, D7 to D9 recorded, open questions closed (#1228)

@@ -380,9 +380,17 @@ Kubernetes rejected POST pods/x in namespace lab: PodSecurity restricted:latest.
 
 For Pod Security, easy-db-lab's workloads need the `privileged` level. Ask your cluster administrator to label the namespace `pod-security.kubernetes.io/enforce=privileged`, or use a namespace that allows it. An admission webhook (Kyverno or Gatekeeper, for example) or a ValidatingAdmissionPolicy is named the same way, with its reason.
 
-A poll that gets a 401 or 403, such as a rollout wait, fails on the first answer. It does not wait for its timeout.
+The API server also answers 403 for three refusals that no permission grant fixes, and each is reported as a rejection with its own remedy:
 
-The message quotes the API server's own reason. When the server gives none, it names the request method, the API path and the HTTP code. It never prints the request's query string, which can hold a token.
+- **The namespace is being deleted.** Nothing new can be created in it. Wait until it is gone (`kubectl get namespace <name>`), then run the command again.
+- **A ResourceQuota is full.** The message names the quota and what the request needed. Free some of the quota by deleting or shrinking workloads in that namespace, or ask your cluster administrator to raise it.
+- **A LimitRange does not allow the requests or limits.** Each limit is listed. Change the resources to fit (`kubectl describe limitrange -n <namespace>`), or ask your cluster administrator to change the LimitRange.
+
+Any other 403 is shown as a plain error with the server's message. easy-db-lab advises cluster-admin only when the server said RBAC denied the request.
+
+A poll that gets a 401 or 403, or that cannot run the exec auth plugin, such as a rollout wait or a kit `stop` waiting for its pods to leave, fails on the first answer. It does not wait for its timeout. A missing exec auth plugin is also named, with how to install it, in `status` (the stress jobs section), in a kit `stop` that could not confirm its pods left, and in `metrics stream`, which reports it once while the stress jobs cannot be listed.
+
+The message quotes the API server's own reason. When the server gives none, it names the request method, the API path and the HTTP code. It never prints the user name, password or query string of a URL, which can hold a token.
 
 **Anything else.** The message lists the exception and each cause in turn. The full details are in `logs/info.log`.
 

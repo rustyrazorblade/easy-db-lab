@@ -93,15 +93,19 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 ### Requirement: Kubernetes API failures are described with the request and the reason
 
-The Kubernetes adapter SHALL register a provider error handler that claims a Fabric8 `KubernetesClientException` by its HTTP status code and the API server's status message alone, with no collaborators, so that it works before a profile, a workspace or cluster state exists. It SHALL claim only the failures below and SHALL leave every other `KubernetesClientException` (a 404, 409 or 422, a transport failure with code 0, a dry-run-not-supported 400) to `Event.Command.ExecutionError`:
+The Kubernetes adapter SHALL register a provider error handler that claims a Fabric8 `KubernetesClientException` by its HTTP status code and the API server's status message alone, with no collaborators, so that it works before a profile, a workspace or cluster state exists. It SHALL claim only the failures below and SHALL leave every other `KubernetesClientException` (a 404, 409 or 422, a transport failure with code 0, a dry-run-not-supported 400, and a 403 that is none of the denials below) to `Event.Command.ExecutionError`:
 
 - A 403 whose message is an RBAC denial (`User "<principal>" cannot <verb> resource "<resource>" ...`) SHALL be kind `permission-denied`, with `request` holding the RBAC verb, the resource (with its subresource, for example `pods/exec`), the namespace (absent at the cluster scope), the object name when the server gave one, and the principal. The remedy SHALL say that easy-db-lab needs cluster-admin on the cluster and name the principal to grant it to.
 - A 401, or a 403 for the principal `system:anonymous`, SHALL be kind `credentials`. The remedy SHALL say to re-authenticate the kubeconfig user and that an exec auth plugin may have returned no credential.
 - A Pod Security admission rejection (`violates PodSecurity "<level>:<version>": ...`) SHALL be kind `rejected`, with `policy` holding the name `PodSecurity`, the level and version, and one entry per violation (a comma inside a violation's parentheses does not split it), and `request` holding the verb and the rejected object.
 - An admission webhook denial (`admission webhook "<name>" denied the request: ...`) or a ValidatingAdmissionPolicy denial, with status 400, 403 or 422, SHALL be kind `rejected`, with `policy` naming the webhook or policy and the server's reason as its one violation.
-- When an RBAC or admission message does not match the expected form, `request` SHALL fall back to the resource, namespace and name of the request URI and the HTTP method of the failure message.
+- A 403 because the namespace is being deleted (`unable to create new content in namespace <ns> because it is being terminated`) SHALL be kind `rejected`, with `policy` `NamespaceLifecycle`, and a remedy to wait until the namespace is gone.
+- A 403 from a full ResourceQuota (`exceeded quota: <quota>, requested: ...` or `failed quota: <quota>: ...`) SHALL be kind `rejected`, with `policy` `ResourceQuota <quota>` and the server's reason as its one violation, and a remedy to free some of the quota or have a cluster administrator raise it.
+- A 403 from a LimitRange (`maximum <resource> usage per <kind> is ...`, `minimum ...`, or `... max limit to request ratio per ...`) SHALL be kind `rejected`, with `policy` `LimitRange` and one violation per limit, and a remedy to fit the LimitRange.
+- Only an RBAC denial SHALL get the cluster-admin remedy. A 403 that is not an RBAC denial, an anonymous 403 or one of the admission rejections above (an unknown message, a gateway's HTML page, no status body) SHALL NOT be claimed: the user sees `Event.Command.ExecutionError` with the server's message and no cluster-admin advice.
+- For a 401 and for an admission rejection, `request` SHALL hold the HTTP method of the failure message and the resource, namespace and name of the request URI, with the object name from the rejection message when it gives one.
 
-The detail SHALL be the API server's status message, never the request URI's query or any credential. The console SHALL show no stack trace; the throwable goes to the log only.
+The detail SHALL be the API server's status message. When there is no status message, it SHALL be the failure text with every URI written without its userinfo, query and fragment. It SHALL never hold the request URI's userinfo or query, or any credential. The console SHALL show no stack trace; the throwable goes to the log only.
 
 #### Scenario: RBAC denial in a namespace
 
@@ -137,11 +141,39 @@ The detail SHALL be the API server's status message, never the request URI's que
 - **WHEN** the command fails
 - **THEN** the kind is `rejected` and `policy` names `validate.kyverno.svc` with the server's reason
 
-#### Scenario: Unrecognised message falls back to the request
+#### Scenario: An unexplained 403 is the generic error
 
-- **GIVEN** a 403 whose message matches neither the RBAC nor the admission form, or whose status body was not JSON
+- **GIVEN** a 403 whose message matches none of the RBAC, anonymous or admission forms, or whose status body was not JSON, or that has no status
 - **WHEN** the command fails
-- **THEN** it is still classified by its code, and `request` holds the resource, namespace and name from the request URI and the HTTP method of the failure
+- **THEN** `Event.Command.ExecutionError` is emitted with the server's message
+- **AND** the output gives no cluster-admin advice
+
+#### Scenario: Namespace being deleted
+
+- **GIVEN** a create that fails with 403 and the message `configmaps "x" is forbidden: unable to create new content in namespace lab because it is being terminated`
+- **WHEN** the command fails
+- **THEN** the kind is `rejected`, `policy` is `NamespaceLifecycle`, `request` holds the verb, resource and namespace, and the remedy says to wait until namespace `lab` is gone
+- **AND** the remedy gives no cluster-admin advice
+
+#### Scenario: Full ResourceQuota
+
+- **GIVEN** a create that fails with 403 and the message `pods "x" is forbidden: exceeded quota: compute, requested: limits.cpu=2, used: limits.cpu=8, limited: limits.cpu=8`, or `failed quota: compute: must specify limits.cpu`
+- **WHEN** the command fails
+- **THEN** the kind is `rejected`, `policy` is `ResourceQuota compute` with the server's reason, and the remedy says to free some of the quota or have it raised
+- **AND** the remedy gives no cluster-admin advice
+
+#### Scenario: LimitRange violation
+
+- **GIVEN** a create that fails with 403 and the message `pods "x" is forbidden: [maximum cpu usage per Container is 1, but limit is 2, maximum memory usage per Container is 1Gi, but limit is 2Gi]`
+- **WHEN** the command fails
+- **THEN** the kind is `rejected`, `policy` is `LimitRange` with two violations, and the remedy says to fit the LimitRange
+- **AND** the remedy gives no cluster-admin advice
+
+#### Scenario: A message without a status keeps no URI secret
+
+- **GIVEN** a 401 with a blank status message whose failure text holds `https://user:token@10.0.0.1:6443/api/v1/namespaces/lab/pods?watch=true`
+- **WHEN** the command fails
+- **THEN** the detail names `https://10.0.0.1:6443/api/v1/namespaces/lab/pods`, with no userinfo and no query
 
 #### Scenario: Other Kubernetes failures are not claimed
 
@@ -159,7 +191,8 @@ The detail SHALL be the API server's status message, never the request URI's que
 
 - **GIVEN** a K3s TestContainer, a ServiceAccount-token kubeconfig with no RBAC binding, and a namespace labelled `pod-security.kubernetes.io/enforce=restricted`
 - **WHEN** a call is made as that ServiceAccount, and a privileged Pod is created in that namespace
-- **THEN** the first is described as `permission-denied` with the verb, resource, namespace and the ServiceAccount principal, and the second as `rejected` with `PodSecurity` level `restricted` and its violating fields
+- **THEN** the first is described as `permission-denied` with the verb, resource, namespace and the ServiceAccount principal, and the second as `rejected` with `PodSecurity` level `restricted` and its violating fields, with `request` verb `POST` and resource `pods` taken from Fabric8's failure message
+- **AND** a create over a full ResourceQuota is `rejected` naming the quota, and a create in a namespace held in Terminating is `rejected` naming the namespace, both with `request` verb `POST`, resource and namespace, and neither with cluster-admin advice
 
 ### Requirement: Kubernetes failures keep their cause up to the reporter
 
@@ -179,10 +212,40 @@ A site that turns a Kubernetes failure into another exception SHALL keep the Fab
 
 ### Requirement: Kubernetes polls do not retry an authentication or authorization failure
 
-A poll or retry around a Kubernetes call SHALL treat a 401 or 403 `KubernetesClientException` as not transient and SHALL fail on the first such answer, not at its deadline. The predicate is passed at each Kubernetes poll; the shared retry defaults are unchanged.
+A poll or retry around a Kubernetes call SHALL treat a 401 or 403 `KubernetesClientException`, and an `ExecPluginNotFoundException`, anywhere in the cause chain as not transient and SHALL fail on the first such answer, not at its deadline. The predicate is passed at each Kubernetes poll (rollout status, pods ready, stress job, backend workload, collector stop, kit stop wait); the shared retry defaults are unchanged.
 
 #### Scenario: Rollout wait meets a 403
 
 - **GIVEN** a rollout-status, stress-job, backend-workload or collector-stop poll whose Kubernetes call answers 403
 - **WHEN** the poll runs
-- **THEN** it fails after the first attempt, and the failure is described as `permission-denied`
+- **THEN** it fails after the first attempt
+- **AND** the failure it returns, passed to the reporter, is `Event.Command.ProviderError` kind `permission-denied` naming the verb, resource, namespace and principal
+
+#### Scenario: A poll meets a missing exec plugin
+
+- **GIVEN** a stress-job or kit stop wait whose client cannot be built because the exec auth plugin is missing
+- **WHEN** the poll runs
+- **THEN** it fails after the first attempt, keeping the `ExecPluginNotFoundException`
+
+### Requirement: A missing exec plugin is not hidden by a site that reports a failure as a note
+
+A site that turns a Kubernetes failure into a note instead of failing the command SHALL report the handler's description of it (detail and remedy), or the plain reason when no handler claims it, so a missing exec auth plugin is named with its install advice wherever it appears.
+
+#### Scenario: status
+
+- **GIVEN** a workspace whose exec auth plugin is missing
+- **WHEN** `status` (or `/status`) is collected
+- **THEN** the pod section's `error` and the stress job error name the plugin and how to install it, instead of reporting no pods
+
+#### Scenario: Kit stop wait
+
+- **GIVEN** a kit `stop` whose wait for the pods to leave fails because the exec auth plugin is missing
+- **WHEN** the wait fails
+- **THEN** `Kit.StopUnverified` names the plugin and how to install it
+
+#### Scenario: metrics stream
+
+- **GIVEN** `metrics stream` whose stress job list fails because the exec auth plugin is missing, or with a 401 or 403
+- **WHEN** the cycles run
+- **THEN** `Stress.JobListFailing` names the cause and the remedy once for the run of failures, and again after a list succeeds and fails once more
+- **AND** a transient list failure is only logged, as before

@@ -15,11 +15,11 @@ Fabric8 7.8.0 facts, checked on the cached jars:
 
 **Goals:** AC1 to AC3 of #1102, plus 401 and admission webhook denials, as structured fields on the existing typed event; no stack trace; no retry of 401/403.
 
-**Non-goals:** Pod Security rejections of controller-created Pods (open question F); credential refresh or rotation; any change to the AWS or Docker handlers' classification.
+**Non-goals:** Pod Security rejections of controller-created Pods (split off to follow-up #1228); credential refresh or rotation; any change to the AWS or Docker handlers' classification.
 
 ## Decisions
 
-Each decision below is **proposed, pending owner approval**. The alternatives are kept so the owner can redirect.
+D1 to D6 were **approved by the owner on 2026-11-20**, as the options named in their headings (A2 for D1, B1, C1, D1 for D5, E1; D4 has no alternative). D7 and D8 record the owner's decisions of the same day on the principal and on the 403s that are not RBAC denials. The alternatives are kept for the record.
 
 ### D1. Event shape: optional structured fields on `Command.ProviderError` (option A2)
 
@@ -48,7 +48,7 @@ The Fabric8 adapter package already owns kubeconfig parsing (`KubeconfigFile.kt`
 
 ### D4. Exec-plugin check at `KubeApi.loadConfig()`
 
-`ExecPluginCheck(path: String? = System.getenv("PATH")).check(kubeconfig, context)` resolves the plugin as Fabric8 does: a bare name on `PATH`, a name with a separator against the kubeconfig's directory. It throws `ExecPluginNotFoundException(plugin, user, context, searchedPath, installHint)`, which the handler claims as `credentials`. `PATH` is a constructor parameter for tests. This is the only way to meet AC3, because Fabric8 raises nothing.
+`ExecPluginCheck(path: String? = System.getenv("PATH")).check(kubeconfig, parsed, context)` takes the kubeconfig `loadConfig` parsed once for its context check (Fabric8 still loads the file itself, keeping its location) and resolves the plugin as Fabric8 does: a bare name on `PATH`, a name with a separator against the kubeconfig's directory; either is found only when it is a file with the execute bit. It uses the JVM's own `PATH`, because Fabric8's `sh -c` inherits it. It throws `ExecPluginNotFoundException(plugin, user, context, searchedPath, installHint)`, which the handler claims as `credentials`. `PATH` is a constructor parameter for tests. This is the only way to meet AC3, because Fabric8 raises nothing.
 
 ### D5. Keep the cause at every Kubernetes wrapping site (option D1)
 
@@ -56,16 +56,37 @@ All 13 cause-dropping sites keep the Fabric8 exception as the cause (the `Grafan
 
 ### D6. Polls pass a not-transient predicate for 401/403 (option E1)
 
-`pollUntil`'s default `isTransient = { true }` and `createPollUntilRetryConfig`'s default retry every exception until the deadline, including a 403. The four Kubernetes polls (`DefaultK8sNamespaceOperations` rollout status, `StressJobService`, `BackendWorkloads`, `TelemetrySenders`) pass `isTransient = { !it.isKubernetesAuthRejection() }`. `RetryUtil` (in `providers/aws`) stays free of Kubernetes imports. Alternatives: **E2** change the shared default (Kubernetes import in `providers/aws`, changes AWS polls); **E3** spec only (leaves the slow failure).
+`pollUntil`'s default `isTransient = { true }` and `createPollUntilRetryConfig`'s default retry every exception until the deadline, including a 403. The four Kubernetes polls (`DefaultK8sNamespaceOperations` rollout status, `StressJobService`, `BackendWorkloads`, `TelemetrySenders`) pass `isTransient = { !it.isPermanentKubernetesFailure() }`: a 401, a 403, or an `ExecPluginNotFoundException` anywhere in the chain. The kit stop wait (`KitWorkloadProbe.awaitGone`) passes it too. `RetryUtil` (in `providers/aws`) stays free of Kubernetes imports. Alternatives: **E2** change the shared default (Kubernetes import in `providers/aws`, changes AWS polls); **E3** spec only (leaves the slow failure).
+
+### D7. The principal is the one the API server evaluated (owner decision, 2026-11-20)
+
+The user a denial names is the principal in the API server's message (`alice`, `system:serviceaccount:lab:runner`), never the kubeconfig `users[].name`. That principal is the one a grant has to name, and the kubeconfig entry name is only a local label for it. This closes the question of whether it meets "the user from the kubeconfig" in the issue.
+
+### D8. Only parsed denials are classified; any other 403 is the generic error (owner decision, 2026-11-20)
+
+A 403 is not always RBAC, so the handler claims a 403 only when it can say what refused it:
+
+- An RBAC denial is `permission-denied`, with the cluster-admin remedy. It is the only case that gets that remedy.
+- A 403 for `system:anonymous` and every 401 are `credentials`.
+- A namespace that is being deleted (`unable to create new content in namespace X because it is being terminated`) is `rejected`, policy `NamespaceLifecycle`. The remedy is to wait until the namespace is gone.
+- A full ResourceQuota (`exceeded quota: Q, requested: ...`, or `failed quota: Q: ...`) is `rejected`, policy `ResourceQuota Q`. The remedy is to free some of the quota or have it raised.
+- A LimitRange violation (`maximum cpu usage per Container is ...`) is `rejected`, policy `LimitRange`, with one violation per limit. The remedy is to fit the LimitRange.
+- Pod Security, webhook and ValidatingAdmissionPolicy denials are `rejected` as before.
+- Any other 403 (a gateway's page, an unknown message, no status) is not claimed. The user gets `Command.ExecutionError` with the server's message and no cluster-admin advice.
+
+The request URI fallback (the HTTP method and the URI's resource, namespace and name from Fabric8's `Failure executing:` message) now fills `request` only for a 401 and for a classified rejection, whose message gives no verb.
+
+### D9. A missing exec plugin is never retried and never swallowed
+
+`ExecPluginNotFoundException` fails on every look, so the polls treat it as permanent (D6). The sites that turn a Kubernetes failure into a note keep its description, through `Throwable.kubernetesFailureReason()` (the handler's detail and remedy, or the plain reason for an unclaimed failure): the `status` pod and stress job sections (`KubernetesInfo.error`), `Kit.StopUnverified`, and `metrics stream`, which emits `Stress.JobListFailing` once per run of permanent list failures. A transient list failure there is still only logged. `CapabilityProbeService` and `ClientNetworkProbe` already let it reach the reporter.
 
 ## Risks / Trade-offs
 
 - **Message drift across server versions and distributions** (EKS and GKE append text). Mitigated by parsing only stable prefixes, falling back to the request URI, and K3s TestContainer tests against a real API server.
 - **Over-claiming.** A webhook "does not support dry run" 400 or a code-0 transport wrapper must not be claimed; both are scenarios.
-- **Secrets.** Detail uses `status.message`, never the request URI query or a token. `PATH` is printed in full, as the issue asks.
+- **Secrets.** Detail uses `status.message`, never the request URI's userinfo or query or a token; a URI in a message without a status is written without its userinfo and query. `PATH` is printed in full, as the issue asks.
 - **Precedence.** Outermost cause first: an `IllegalStateException` that keeps the cause does not shadow the handler, because no handler claims it.
 
 ## Open Questions
 
-- **F. Controller-created Pods.** In enforce mode Pod Security rejects only Pods. A Deployment, StatefulSet or Job is accepted and its controller's Pod creation fails (`ReplicaFailure` on the ReplicaSet, `FailedCreate` on a Job); the CLI gets no exception and the rollout wait times out. This is probably the most common way AC2 appears on a user's cluster. Proposed: a follow-up issue that has `RolloutBlocker` read those conditions through the same admission parser. Alternative: include it in this change. Pending owner decision.
-- Confirm that naming the API-server principal (not the kubeconfig user name) satisfies "the user from the kubeconfig" in the issue scope.
+None. F (Pod Security rejections of controller-created Pods) was split off to follow-up #1228. The principal question is closed by D7.

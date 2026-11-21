@@ -26,9 +26,11 @@ Command → SocksProxyService.ensureRunning(controlHost)
 | `KubernetesClientFactory.kt` | Client creation with SOCKS5 proxy config |
 | `KubernetesModule.kt` | Koin DI registration (the client factory and `KubernetesErrorHandler` as a `ProviderErrorHandler`) |
 | `KubernetesErrorHandler.kt` | Describes RBAC denials, 401/anonymous credential failures, admission rejections and a missing exec plugin as `Command.ProviderError` (see `providers/CLAUDE.md`, "Provider Errors") |
-| `KubernetesDenial.kt` | Pure parsers of the API server's messages: `RbacDenial`, `AdmissionRejection` (PodSecurity, Webhook, ValidatingPolicy), and `Throwable.isKubernetesAuthRejection()` for poll predicates |
+| `KubernetesDenial.kt` | Pure parsers of the API server's messages: `RbacDenial`, `AdmissionRejection` (PodSecurity, Webhook, ValidatingPolicy, NamespaceTerminating, QuotaExceeded, LimitRangeViolation), `Throwable.isKubernetesAuthRejection()`, and `Throwable.isPermanentKubernetesFailure()` (also a missing exec plugin) for poll predicates |
+| `KubernetesFailureReason.kt` | `Throwable.kubernetesFailureReason()`: the handler's detail and remedy for a claimed failure, else the plain reason; for sites that report a failure as a note |
+| `ExecPluginNotFoundException.kt` | The exec auth plugin that `ExecPluginCheck` did not find; never transient |
 | `ApiPath.kt` | Resource, namespace, name and subresource of an API request path; the handler's fallback when a message does not match |
-| `ExecPluginCheck.kt` | Fails `loadConfig()` with `ExecPluginNotFoundException` when the context's exec auth plugin is not on `PATH` (or at its kubeconfig-relative path); Fabric8 would otherwise send no credential |
+| `ExecPluginCheck.kt` | Fails `loadConfig()` with `ExecPluginNotFoundException` when the context's exec auth plugin is not an executable file on the JVM's `PATH` (or at its kubeconfig-relative path), from the kubeconfig `loadConfig()` parsed once; Fabric8 would otherwise send no credential |
 | `KubernetesTypes.kt` | Data classes (KubernetesJob, KubernetesPod, KubernetesNode) |
 
 ## Workspace binding

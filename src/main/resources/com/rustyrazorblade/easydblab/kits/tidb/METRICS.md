@@ -9,7 +9,7 @@ TiDB exposes Prometheus metrics across four components, each with its own scrape
 | TiKV      | `tikv`      | pod SD, port 20180  | Row storage engine (RocksDB + Raft)      |
 | TiFlash   | `tiflash`   | pod SD, port 8234   | Columnar storage engine (MPP)            |
 
-All metrics also carry `cluster=<cluster-name>`. Every component is scraped by pod discovery, so
+All metrics also carry `cluster=<cluster-name>-<cluster-id>`. Every component is scraped by pod discovery, so
 each pod is scraped once, by the collector on its own node, and `instance` is the pod name.
 
 ### TiKV `instance` = store identity

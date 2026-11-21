@@ -62,7 +62,8 @@ class PodReadinessWaitIntegrationTest {
 
     @AfterAll
     fun tearDown() {
-        client.close()
+        // A setup that failed before the client was built must report its own error, not this one.
+        if (::client.isInitialized) client.close()
     }
 
     private fun job(

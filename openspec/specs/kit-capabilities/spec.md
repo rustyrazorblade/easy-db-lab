@@ -71,8 +71,9 @@ before connecting, required for drivers that do not auto-register via ServiceLoa
 
 ### Requirement: Kit endpoints resolve to the nodes that serve them
 
-Any kit endpoint MAY declare a `pod-selector`: a label selector, with `${KIT_NAME}` filled
-with the kit instance name, for the one pod that serves the endpoint's port as a `hostPort`.
+The kit schema SHALL let any kit endpoint declare a `pod-selector`: a label selector, with
+`${KIT_NAME}` filled with the kit instance name, for the one pod that serves the endpoint's port
+as a `hostPort`.
 Its serving node SHALL be the host IP of a pod that matches the selector in the kit's runtime
 namespace (`default` without a runtime), is running, has every container ready, is not being
 deleted, and runs on a node of the endpoint's node type; with several such pods, the newest (the

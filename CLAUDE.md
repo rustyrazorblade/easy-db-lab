@@ -165,7 +165,8 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 
 - The lead and issue-agent roles, state files, status reports, and the work queue.
 - Issue labels: lifecycle, priority, `agent:active`, `blocked`, `requires-aws`, `requires-ami-bake`.
-- Agent and model choice, specs before code, test tiers and local gates, real AWS tests, AMI bakes.
+- Agent and model choice, test tiers and local gates, real AWS tests, AMI bakes.
+- Planning new work: every feature gets an Opus plan (architecture plan, test plan with controls, task list), a four-reviewer plan panel with up to 3 refinement rounds, and owner approval before any code.
 - The five-lens review, CI, and the merge-on-green rule.
 
 ### Lab Test Plans

@@ -378,6 +378,11 @@ object Constants {
     // Docker configuration (for local container operations)
     object Docker {
         const val FRAME_REPORTING_INTERVAL = 100
+
+        // containerd's error when a build's content lease was deleted under it, for instance by an
+        // image prune running at the same time (Docker's containerd image store). The build itself
+        // is sound, and run again it succeeds.
+        const val LEASE_LOST_MESSAGE = "lease does not exist"
     }
 
     // Packer configuration

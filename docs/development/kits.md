@@ -109,23 +109,12 @@ All phases use the same set of typed steps.
 
 The `helm-repo`, `helm`, `helm-uninstall`, `namespace`, `manifest`, `manifest-url`, `kustomize`,
 `wait` and `delete` steps (and the kit status check that asks helm whether a release exists) run
-`helm` and `kubectl`. Where the tool runs depends on the cluster:
+`helm` and `kubectl` on the control node over SSH, with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.
+The tools are baked into the AMI; nothing is needed on your machine for these steps. A manifest or
+a values file is copied to a temporary file on the control node for the call and removed after it.
 
-- **AWS**: on the control node over SSH, with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`. The tools are
-  baked into the AMI; nothing is needed on your machine for these steps.
-- **Local cluster (no SSH host)**: as a process on your machine, in the same environment `shell`
-  steps get (the `<workspace>/bin` wrappers first on `PATH`, `KUBECONFIG` set to the workspace
-  `kubeconfig`). **`helm` and `kubectl` must be installed on the host**, as `shell` steps already
-  require. A missing tool fails the step with a message that names it. Nothing is skipped. The CLI
-  binds the AWS form by default; a test harness rebinds `ClusterTooling` to the local form, and
-  there is no user-facing switch until #1040 selects the form per environment.
-
-On a local run, helm keeps its state under `<workspace>/.helm/` (`config/`, `cache/` and `data/`),
-not in your `~/.config/helm`, so a `helm-repo` step adds the repository to the workspace only.
-`clean` does not remove `.helm/`; delete it yourself to forget the repositories and cached charts.
-Manifests and `helm` values are piped to the tool, so a local run writes no temporary file.
-
-A failed step reports the tool's exit status and the last lines of its stderr, in both forms.
+A failed step reports the command, the control node it ran on, the tool's exit status, and the last
+lines of its stderr and stdout.
 
 ### `helm-repo`
 Adds a Helm chart repository. `name` and `url` accept `${VAR}` interpolation, like the other

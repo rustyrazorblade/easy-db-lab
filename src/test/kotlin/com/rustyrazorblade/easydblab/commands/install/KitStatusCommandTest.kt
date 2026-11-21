@@ -155,7 +155,6 @@ class KitStatusCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(
                 name = "test-cluster",
-                versions = mutableMapOf(),
                 hosts =
                     mapOf(
                         ServerType.Cassandra to listOf(host("db0", "10.0.2.1")),

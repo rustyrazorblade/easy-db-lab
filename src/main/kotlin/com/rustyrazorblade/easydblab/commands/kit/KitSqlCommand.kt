@@ -1,15 +1,19 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.services.EndpointNotServedException
 import com.rustyrazorblade.easydblab.services.KitEndpoint
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
 import com.rustyrazorblade.easydblab.services.sql.defaultJdbcConnectionFactory
+import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
@@ -26,8 +30,9 @@ import java.io.File
  * This is required for JDBC drivers (e.g. the Facebook Presto driver) that do not auto-register
  * via ServiceLoader in fat-JAR environments.
  *
- * A failed statement, a missing `--file`, or a missing driver is reported as an event and then makes
- * the command exit non-zero through [CommandFailedException].
+ * A failed statement, a missing `--file`, a missing driver, or an endpoint no node serves (so no
+ * statement ran) is reported as an event and then makes the command exit non-zero through
+ * [CommandFailedException].
  *
  * The [connectionFactory] parameter is injectable for testing; production code uses the default
  * [DriverManager.getConnection][java.sql.DriverManager.getConnection]-backed factory.
@@ -44,8 +49,11 @@ class KitSqlCommand(
     private val endpoint: KitEndpoint,
     private val user: String,
     private val driverClass: String = "",
+    private val namespace: String = Constants.K8s.NAMESPACE,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
 ) : PicoBaseCommand() {
+    private val endpointHost: KitEndpointHost by inject()
+
     @Parameters(index = "0", description = ["SQL statement to execute"], arity = "0..1")
     var statement: String? = null
 
@@ -92,13 +100,22 @@ class KitSqlCommand(
             clusterStateManager = clusterStateManager,
             endpoint = endpoint,
             user = user,
+            resolveHost = { hosts -> endpointHost.resolve(endpoint, kitName, namespace, hosts) },
             connectionFactory = connectionFactory,
         ).execute(sql.trim().trimEnd(';'))
             .onSuccess { result ->
                 eventBus.emit(Event.Sql.QueryOutput(result.columns, result.rows))
             }.onFailure { e ->
-                eventBus.emit(Event.Sql.QueryError(e.message ?: "Unknown error"))
-                throw CommandFailedException("SQL statement failed")
+                when (e) {
+                    is EndpointNotServedException -> {
+                        eventBus.emit(Event.Sql.EndpointNotServed(kitName, e.endpointName, e.reason))
+                        throw CommandFailedException("$kitName endpoint ${e.endpointName} is not served; no statement ran")
+                    }
+                    else -> {
+                        eventBus.emit(Event.Sql.QueryError(e.message ?: "Unknown error"))
+                        throw CommandFailedException("SQL statement failed")
+                    }
+                }
             }
     }
 }

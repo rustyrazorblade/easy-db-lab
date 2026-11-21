@@ -60,6 +60,7 @@ endpoints:
     scheme: ""           # optional: used for JDBC URLs (jdbc type only)
     path: ""             # optional: appended to URL (http/https/jdbc only)
     database: ""         # optional: logical database name (postgresql and mysql types)
+    pod-selector: ""     # optional: label selector of the one pod serving a hostPort endpoint (see Exposing Client Ports)
 
 args:
   - flag: --workers
@@ -1061,6 +1062,50 @@ spec:
       targetPort: 1234
       nodePort: 30999   # a port no other kit uses; Hubble UI owns 31234
 ```
+
+### Endpoints served by one pod
+
+The Presto and Trino coordinators predate this rule: their helm chart patch serves 8080 as a
+`hostPort`, so only the node that runs the coordinator pod answers, and the scheduler can put it
+on any node of the type. Such an endpoint names that pod with `pod-selector` (a label selector;
+`${KIT_NAME}` is filled with the instance name):
+
+```yaml
+endpoints:
+  - name: "JDBC"
+    node-type: app
+    port: 8080
+    type: jdbc
+    scheme: presto
+    pod-selector: "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
+```
+
+Every consumer of the endpoint then lists the pods that match the selector in the kit's
+runtime namespace and uses the node of a running, ready pod that is not being deleted and runs on
+a node of the endpoint's node type. With several, the newest wins, so a client follows a rollout.
+When no pod serves the endpoint, every consumer says why: no node of the type, the pod query
+failed, no running and ready pod matches the selector in the namespace, or the matching pods run
+on nodes of another type.
+
+- `<kit> sql` connects to that node. When no pod serves, it says no statement ran, gives the
+  reason, does not try a connection, and exits non-zero.
+- A bench kit that targets this kit gets `TARGET_*` variables that name that node. When no pod
+  serves the endpoint, the bench kit's phase fails before its script runs, naming the target kit,
+  the endpoint and the reason. `stop` and `uninstall` are the exception: they run without that
+  endpoint's variables, so a bench kit can still be torn down after its target is stopped.
+- `<kit> status` lists the endpoint at that node, or prints `<endpoint>  not served: <reason>`.
+- `<kit> start` reports the endpoints it serves and, for each one no pod serves yet, the reason.
+- `status` lists the endpoint at that node, or prints
+  `(endpoints unavailable: <endpoint>: <reason>; run '<kit> status')` under the kit; the server's
+  `accessInfo.kits` entry carries the same text in `endpointsUnavailable`. When the SOCKS proxy
+  is down, `status` asks the cluster for no pods and gives the first line of the proxy failure
+  as the reason; the
+  NodePort endpoints still show.
+- `kit info` reads no cluster API, so it lists the endpoint by its port and points at
+  `<kit> status`.
+
+An endpoint with no `pod-selector` is served on every node of its node type: the displays list
+every such node, and `sql` and `TARGET_*` use the first one.
 
 ## Adding a New Kit
 

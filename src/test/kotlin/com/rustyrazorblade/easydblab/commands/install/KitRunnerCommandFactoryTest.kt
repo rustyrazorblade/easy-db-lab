@@ -2,18 +2,21 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
@@ -49,6 +52,8 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
 
     private val factory = KitRunnerCommandFactory()
 
+    private val podQueries = mutableListOf<Pair<String, String>>()
+
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -60,6 +65,12 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
                 single<HelmService> { mockHelmService }
                 single<SocksProxyService> { mockSocksProxyService }
                 single<KitHookExecutor> { mockKitHookExecutor }
+                single {
+                    KitEndpointHost { selector, namespace ->
+                        podQueries += selector to namespace
+                        Result.success(emptyList())
+                    }
+                }
             },
         )
 
@@ -306,6 +317,26 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
 
         val groupCl = factory.buildKitGroup("presto", kitDir)
         assertThat(groupCl.subcommands.keys).contains("sql")
+    }
+
+    @Test
+    fun `the sql command looks its serving pod up in the kit's runtime namespace`() {
+        val endpoint = "{name: JDBC, node-type: app, port: 8080, type: jdbc, scheme: presto, pod-selector: 'app=${'$'}{KIT_NAME}'}"
+        writeKitYaml(
+            "name: presto\nruntime: {type: helm, namespace: analytics}\nendpoints: [$endpoint]\ncapabilities: [{type: sql, user: u}]",
+        )
+        val app0 = ClusterHost("54.1.2.4", "10.0.1.1", "app0", "us-west-2a", "i-app0")
+        whenever(mockClusterStateManager.load()).thenReturn(ClusterState(name = "c", hosts = mapOf(ServerType.Stress to listOf(app0))))
+        val sql =
+            factory
+                .buildKitGroup("presto2", kitDir)
+                .subcommands
+                .getValue("sql")
+                .getCommand<KitSqlCommand>()
+        sql.statement = "SELECT 1"
+
+        assertThatThrownBy { sql.execute() }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(podQueries).containsExactly("app=presto2" to "analytics")
     }
 
     @Test

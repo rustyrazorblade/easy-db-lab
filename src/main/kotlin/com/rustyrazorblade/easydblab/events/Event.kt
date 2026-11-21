@@ -6436,6 +6436,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "[$kit] Keeping helm release $release: still used by ${usedBy.joinToString(", ")}"
         }
 
+        /**
+         * The [phase] of [kit] did not run: it targets the kit [targetKit], whose endpoint
+         * [endpoint] is served by one pod, and no pod serves it, for [reason].
+         */
+        @Serializable
+        @SerialName("Kit.TargetNotServed")
+        data class TargetNotServed(
+            val kit: String,
+            val phase: String,
+            val targetKit: String,
+            val endpoint: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "[$kit] $phase did not run: target kit '$targetKit' does not serve endpoint '$endpoint': $reason. " +
+                    "Start it with '$targetKit start' and check it with '$targetKit status'."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.StepFailed")
         data class StepFailed(
@@ -6504,17 +6524,31 @@ sealed interface Event {
             fun displayLine(): String = "  %-20s  %-8s  %s".format(name, type, address)
         }
 
+        /** One declared kit endpoint, served by one pod, that no pod serves now, for [reason]. */
+        @Serializable
+        @SerialName("Kit.UnservedEndpoint")
+        data class UnservedEndpoint(
+            val name: String,
+            val reason: String,
+        ) {
+            /** Renders this endpoint as an indented `name  not served: reason` line. */
+            fun displayLine(): String = "  %-20s  not served: %s".format(name, reason)
+        }
+
         /**
-         * A kit started and its declared endpoints are reachable at [endpoints] — one entry per
-         * endpoint per host of the endpoint's node type, at the host's private IP.
+         * A kit started; its declared endpoints are reachable at [endpoints] (one entry per
+         * endpoint per node that serves it, at the node's private IP), and the endpoints in
+         * [unserved], each served by one pod, have no pod serving them yet, with the reason.
          */
         @Serializable
         @SerialName("Kit.EndpointsAvailable")
         data class EndpointsAvailable(
             val kit: String,
             val endpoints: List<EndpointAddress>,
+            val unserved: List<UnservedEndpoint> = emptyList(),
         ) : Kit {
-            override fun toDisplayString(): String = "Endpoints:\n" + endpoints.joinToString("\n") { it.displayLine() }
+            override fun toDisplayString(): String =
+                "Endpoints:\n" + (endpoints.map { it.displayLine() } + unserved.map { it.displayLine() }).joinToString("\n")
         }
 
         @Serializable
@@ -6719,6 +6753,24 @@ sealed interface Event {
             val message: String,
         ) : Sql {
             override fun toDisplayString(): String = "Error: $message"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * No statement ran: no node serves [endpoint] of the kit instance [kit], for [reason], so
+         * `sql` had nowhere to connect.
+         */
+        @Serializable
+        @SerialName("Sql.EndpointNotServed")
+        data class EndpointNotServed(
+            val kit: String,
+            val endpoint: String,
+            val reason: String,
+        ) : Sql {
+            override fun toDisplayString(): String =
+                "No statement ran: $kit endpoint '$endpoint' is not served: $reason. " +
+                    "Start it with '$kit start' and check it with '$kit status'."
 
             override fun isError(): Boolean = true
         }

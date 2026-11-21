@@ -89,19 +89,26 @@ Trino workers are scheduled on `type=app` nodes using `nodeSelector: type: app`.
 
 ## Connecting
 
-After `easy-db-lab trino start` completes, the Trino coordinator is accessible within the cluster. Connect using the SOCKS5 proxy or a port-forward:
+The Trino coordinator serves its UI and JDBC on port 8080 of the app node that runs the
+coordinator pod, which is not always the first app node. `easy-db-lab trino status` prints that
+node's address:
 
 ```bash
-kubectl port-forward svc/trino 8080:8080
+easy-db-lab trino status
 ```
 
-Then connect with any Trino-compatible client at `jdbc:trino://localhost:8080`.
+Connect through the SOCKS5 proxy (`source env.sh`) with any Trino-compatible client at
+`jdbc:trino://<node>:8080`, using the address `trino status` printed. When the coordinator is not running and ready,
+`trino status` prints `not served` and the reason instead of an address.
 
 You can also use the built-in SQL command:
 
 ```bash
 easy-db-lab trino sql "SELECT count(*) FROM cassandra.mykeyspace.mytable"
 ```
+
+`sql` connects to the coordinator's node. When no coordinator serves, it runs no statement, says
+why, and exits non-zero.
 
 ## Adding Trino Catalogs for Custom Kits
 

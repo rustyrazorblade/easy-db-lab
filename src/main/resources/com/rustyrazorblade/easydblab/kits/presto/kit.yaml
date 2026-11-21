@@ -13,16 +13,21 @@ runtime:
   type: helm
   release: presto
   namespace: default
+# The coordinator serves 8080 as a hostPort, so only its own node answers; the scheduler can put
+# it on any app node. Both endpoints name its pod, so sql, TARGET_* and every status display use
+# the node that runs it.
 endpoints:
   - name: "Presto UI"
     node-type: app
     port: 8080
     type: http
+    pod-selector: "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
   - name: "JDBC"
     node-type: app
     port: 8080
     type: jdbc
     scheme: presto
+    pod-selector: "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
 args:
   - flag: --workers
     variable: WORKERS

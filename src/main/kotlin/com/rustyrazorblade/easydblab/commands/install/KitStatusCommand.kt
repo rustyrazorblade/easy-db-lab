@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import com.rustyrazorblade.easydblab.services.podSelector
 import com.rustyrazorblade.easydblab.services.withKitName
@@ -36,6 +37,7 @@ class KitStatusCommand(
 ) : PicoBaseCommand() {
     private val helmService: HelmService by inject()
     private val kubeService: K8sService by inject()
+    private val endpointHost: KitEndpointHost by inject()
 
     override fun execute() {
         val controlHost =
@@ -96,7 +98,7 @@ class KitStatusCommand(
     }
 
     private fun checkFallbackState(kubeService: K8sService): KitRunningState =
-        stateOfPods(kubeService, podSelector(kitName, runtime = null), "default", ::runningOrStopped)
+        stateOfPods(kubeService, podSelector(kitName, runtime = null), KitRuntime.namespaceOf(null), ::runningOrStopped)
 
     /**
      * Lists the kit's pods and derives its state from them. A failed query is
@@ -124,15 +126,13 @@ class KitStatusCommand(
             KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)
         }
 
-    private fun countReadyPods(pods: List<KubernetesPod>): Int =
-        pods.count { pod ->
-            val parts = pod.ready.split("/")
-            parts.size == 2 && parts[0] == parts[1] && parts[0] != "0" && pod.status == "Running"
-        }
+    private fun countReadyPods(pods: List<KubernetesPod>): Int = pods.count { it.isReady() }
 
+    /** Prints each endpoint where it is served, and a line with the reason for each one no pod serves. */
     private fun printEndpoints() {
-        val resolved = KitEndpointAddresses.resolve(installConfig.endpoints, clusterState.hosts)
-        if (resolved.isNotEmpty()) println(KitEndpointAddresses.formatLines(resolved))
+        val report = KitEndpointAddresses.resolve(installConfig, kitName, clusterState.hosts, endpointHost)
+        val lines = KitEndpointAddresses.formatLines(report)
+        if (lines.isNotEmpty()) println(lines)
     }
 
     companion object {

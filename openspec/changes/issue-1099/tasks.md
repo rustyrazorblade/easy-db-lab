@@ -26,8 +26,8 @@
 
 ## 5. Placement variables
 
-- [ ] 5.1 `TemplateVariables` publishes `DB_NODE_ALLOCATABLE_MIB` and `DB_NODE_ALLOCATABLE_CPU` (the smallest of the db nodes, read from the Kubernetes API) and `GUARANTEED_PODS` (owned nodes)
-- [ ] 5.2 Test with node fixtures: the minimum across db nodes, and `false` off owned nodes
+- [x] 5.1 `TemplateVariables` publishes `DB_NODE_ALLOCATABLE_MIB` and `DB_NODE_ALLOCATABLE_CPU` (the smallest of the db nodes, read from the Kubernetes API) and `GUARANTEED_PODS` (owned nodes)
+- [x] 5.2 Test with node fixtures: the minimum across db nodes, and `false` off owned nodes
 
 ## 6. CassandraArtifactContributor
 

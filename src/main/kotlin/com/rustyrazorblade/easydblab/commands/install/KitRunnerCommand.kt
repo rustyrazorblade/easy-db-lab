@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
@@ -221,7 +220,7 @@ class KitRunnerCommand(
                     state = clusterState,
                     kitName = kitName,
                     storageSize = storageSize,
-                    placement = roleNodes.placement(RoleSelectors.from(clusterState)),
+                    placement = roleNodes.placement(clusterState),
                 ).toMap()
         // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
         // to clickhouse/kubeconfig which doesn't exist. Typed steps interpolate ${KUBECONFIG} from

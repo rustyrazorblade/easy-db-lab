@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
-import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.ExtensionResolver
@@ -86,7 +85,7 @@ class KitInstallCommand(
             exitCode = Constants.ExitCodes.ERROR
             return
         }
-        val placement = roleNodes.placement(RoleSelectors.from(clusterState))
+        val placement = roleNodes.placement(clusterState)
         if (requiredNodePoolIsMissing(placement)) {
             exitCode = Constants.ExitCodes.ERROR
             return

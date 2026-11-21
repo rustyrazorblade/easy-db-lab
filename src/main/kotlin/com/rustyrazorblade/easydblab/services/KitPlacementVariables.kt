@@ -17,11 +17,17 @@ import kotlinx.serialization.json.Json
  * @property selectors where each role's pods run
  * @property dbNodeCount the nodes matching the db selector
  * @property appNodeCount the nodes matching the app selector
+ * @property dbNodeAllocatable the smallest db node's allocatable memory and CPU
+ *   (`DB_NODE_ALLOCATABLE_MIB`, `DB_NODE_ALLOCATABLE_CPU`; 0 when not read)
+ * @property guaranteedPods whether kits size their database pods as Guaranteed (`GUARANTEED_PODS`),
+ *   from the cluster contract
  */
 data class KitPlacementVariables(
     val selectors: RoleSelectors,
     val dbNodeCount: Int,
     val appNodeCount: Int,
+    val dbNodeAllocatable: NodeAllocatable = NodeAllocatable.NONE,
+    val guaranteedPods: Boolean = false,
 ) {
     fun toMap(): Map<String, String> =
         mapOf(
@@ -33,6 +39,9 @@ data class KitPlacementVariables(
             "CONTROL_NODE_LABELS" to selectors.control.toLabelSelector(),
             "DB_NODE_COUNT" to dbNodeCount.toString(),
             "APP_NODE_COUNT" to appNodeCount.toString(),
+            "DB_NODE_ALLOCATABLE_MIB" to dbNodeAllocatable.memoryMib.toString(),
+            "DB_NODE_ALLOCATABLE_CPU" to dbNodeAllocatable.cpu.toString(),
+            "GUARANTEED_PODS" to guaranteedPods.toString(),
         )
 
     companion object {

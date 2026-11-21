@@ -240,7 +240,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
                     state = state,
                     kitName = kitName,
                     storageSize = STORAGE_SIZE,
-                    placement = RoleNodes(k8sService).placement(RoleSelectors.from(state)),
+                    placement = RoleNodes(k8sService).placement(state),
                 ).toMap()
         val defaults = config.args.associate { it.variable to it.default }
         val resolved =

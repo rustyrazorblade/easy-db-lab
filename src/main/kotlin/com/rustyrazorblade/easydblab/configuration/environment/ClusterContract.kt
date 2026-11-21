@@ -43,6 +43,9 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * @property clientNetworkOrigin where the networks a passwordless database kit trusts come from: the
  *   networks easy-db-lab built (EC2), or only what `init` recorded (anywhere else, where the node
  *   network is not known before the cluster exists).
+ * @property guaranteedPods whether a kit sizes its database pods as Guaranteed (requests equal to
+ *   limits, CPU included): only on the nodes easy-db-lab builds and owns, where nothing else competes
+ *   for them. Kits read it as `GUARANTEED_PODS`.
  */
 data class ClusterContract(
     val environment: Environment,
@@ -57,6 +60,7 @@ data class ClusterContract(
     val namespace: String,
     val recordedDatacenter: String?,
     val clientNetworkOrigin: ClientNetworkOrigin,
+    val guaranteedPods: Boolean,
 ) {
     /**
      * The datacenter name: the recorded one, or for an EC2 state that records no region the AWS
@@ -86,6 +90,7 @@ data class ClusterContract(
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = state.initConfig?.region?.ifBlank { null },
                         clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
+                        guaranteedPods = true,
                     )
                 is Environment.K3sDocker ->
                     ClusterContract(
@@ -102,6 +107,7 @@ data class ClusterContract(
                         namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                         clientNetworkOrigin = ClientNetworkOrigin.Recorded,
+                        guaranteedPods = false,
                     )
                 is Environment.Kubeconfig ->
                     ClusterContract(
@@ -117,6 +123,7 @@ data class ClusterContract(
                         namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                         clientNetworkOrigin = ClientNetworkOrigin.Recorded,
+                        guaranteedPods = false,
                     )
             }
         }

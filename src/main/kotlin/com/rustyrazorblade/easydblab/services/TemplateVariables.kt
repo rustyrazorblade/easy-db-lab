@@ -21,7 +21,9 @@ import java.io.File
  *
  * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `DB_AFFINITY`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
  * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
- * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
+ * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records. The same
+ * placement carries `DB_NODE_ALLOCATABLE_MIB`, `DB_NODE_ALLOCATABLE_CPU` (the smallest db node's,
+ * 0 when not read) and `GUARANTEED_PODS` (owned nodes only).
  *
  * `CLIENT_NETWORKS_JSON` (a JSON list of CIDRs) and `CLIENT_NETWORKS_HBA_JSON` (one `pg_hba` trust
  * line per CIDR) come from [clientNetworks].
@@ -132,6 +134,9 @@ data class TemplateVariables(
                 "DB_NODE_LABELS",
                 "APP_NODE_LABELS",
                 "CONTROL_NODE_LABELS",
+                "DB_NODE_ALLOCATABLE_MIB",
+                "DB_NODE_ALLOCATABLE_CPU",
+                "GUARANTEED_PODS",
                 "CLIENT_NETWORKS_JSON",
                 "CLIENT_NETWORKS_HBA_JSON",
                 "BACKUP_NAME",

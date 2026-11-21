@@ -1,6 +1,6 @@
 # FerrosaDB Metrics
 
-All metrics have `job="ferrosa"` and `cluster=<cluster-name>`. They are scraped from the FerrosaDB
+All metrics have `job="ferrosa"` and `cluster=<cluster-name>-<cluster-id>`. They are scraped from the FerrosaDB
 console listener (`/metrics` on container port 9090) by pod discovery: each pod is scraped once, by
 the collector on its own node, and `instance` is the pod name (`ferrosa-0-0`, `ferrosa-1-0`,
 `ferrosa-2-0`). Every series also carries `service_name="ferrosa"`.

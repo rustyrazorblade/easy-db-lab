@@ -286,11 +286,12 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
                     "no answer: ${e.messageOrString()}"
                 }
             }
+        // The supplier reads the container log only when the assertion fails.
         assertThat(last)
-            .describedAs(
+            .describedAs {
                 "the first Pyroscope server's answer to the last push; server log tail:\n" +
-                    pyroscope.logs.takeLast(SERVER_LOG_TAIL_CHARS),
-            ).isEqualTo(PUSH_STORED)
+                    pyroscope.logs.takeLast(SERVER_LOG_TAIL_CHARS)
+            }.isEqualTo(PUSH_STORED)
     }
 
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND

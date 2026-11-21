@@ -52,7 +52,6 @@ object SharedK3s {
 
     private val NAMESPACE_READY_TIMEOUT: Duration = Duration.ofSeconds(60)
     private val SERVICE_ACCOUNT_POLL: Duration = Duration.ofMillis(250)
-    private const val HTTP_SERVER_ERROR = 500
     private const val LOG_TAIL_CHARS = 6000
     private const val CONTROL_PLANE_LOG_TAIL_CHARS = 20_000
     private val ORPHAN_CGROUP_NOISE = listOf("orphaned pod cgroup", "Failed to kill all the processes attached to cgroup")
@@ -169,10 +168,10 @@ object SharedK3s {
                 ).create()
             val lastRead = awaitDefaultServiceAccount(client, name)
             if (lastRead !is ServiceAccountRead.Found) {
-                val lastReadFailure = (lastRead as? ServiceAccountRead.Failed)?.cause
+                val lastReadFailure = (lastRead as? ServiceAccountRead.Unanswered)?.cause
                 // A K3s that is up but whose controllers are starved says so in its own log; keep it.
                 throw AssertionError(
-                    "no default ServiceAccount in $name after ${NAMESPACE_READY_TIMEOUT.toSeconds()}s; " +
+                    "no default ServiceAccount in $name (the wait allows ${NAMESPACE_READY_TIMEOUT.toSeconds()}s); " +
                         "last read: ${lastRead.describe()}\n" +
                         "${runCatching { serviceAccountState(client, name) }.getOrElse {
                             "service account state unavailable: ${it.messageOrString()}"
@@ -203,11 +202,23 @@ object SharedK3s {
             override fun describe() = "absent"
         }
 
+        /** A read that failed and carries why; the report names it as the failure's cause. */
+        sealed interface Unanswered : ServiceAccountRead {
+            val cause: KubernetesClientException
+        }
+
         /** The read failed in a way the next read may not: a dropped connection or a 5xx. */
         data class Failed(
-            val cause: KubernetesClientException,
-        ) : ServiceAccountRead {
+            override val cause: KubernetesClientException,
+        ) : Unanswered {
             override fun describe() = "failed: ${cause.messageOrString()}"
+        }
+
+        /** The server refused the read (a 403, a bad request); every next read would fail the same way. */
+        data class Rejected(
+            override val cause: KubernetesClientException,
+        ) : Unanswered {
+            override fun describe() = "rejected (${cause.code}): ${cause.messageOrString()}"
         }
     }
 
@@ -219,7 +230,9 @@ object SharedK3s {
      *
      * A read that the API server could not answer (no status code, so the connection failed) or
      * answered with a 5xx is tried again within the budget. Any other failure (a 403, a bad request)
-     * would fail the same way every time, so it ends the wait at once. An interrupt ends it too.
+     * would fail the same way every time, so it ends the wait at once and is returned as
+     * [ServiceAccountRead.Rejected], so the caller's report still carries the cluster's state. An
+     * interrupt ends the wait by throwing.
      */
     private fun awaitDefaultServiceAccount(
         client: KubernetesClient,
@@ -236,18 +249,24 @@ object SharedK3s {
             interval = SERVICE_ACCOUNT_POLL,
             deadline = Instant.now().plus(NAMESPACE_READY_TIMEOUT),
             isTransient = { false },
-            done = { it is ServiceAccountRead.Found },
+            done = { it is ServiceAccountRead.Found || it is ServiceAccountRead.Rejected },
         ) {
             try {
                 if (account.get() == null) ServiceAccountRead.Absent else ServiceAccountRead.Found
             } catch (e: KubernetesClientException) {
-                if (e.isTransient()) ServiceAccountRead.Failed(e) else throw e
+                // fabric8 turns an interrupted read into a KubernetesClientException and sets the
+                // interrupt flag again; that read ends the wait, as any interrupt does.
+                if (Thread.currentThread().isInterrupted) throw e
+                if (e.isTransient()) ServiceAccountRead.Failed(e) else ServiceAccountRead.Rejected(e)
             }
         }
     }
 
-    /** No status code means the request never got an answer; a 5xx is the server's own fault. */
-    private fun KubernetesClientException.isTransient(): Boolean = code == 0 || code >= HTTP_SERVER_ERROR
+    /**
+     * A code of 0 or less means the request never got an answer: fabric8 7.8 gives a laundered
+     * connection failure -1. A 5xx is the server's own fault.
+     */
+    private fun KubernetesClientException.isTransient(): Boolean = code <= 0 || code >= Constants.HttpStatus.SERVER_ERROR_MIN
 
     /**
      * Whether the ServiceAccount exists now (read directly, not through a watch) and when the

@@ -21,6 +21,7 @@ import com.rustyrazorblade.easydblab.docker.ContainerIOManager
 import com.rustyrazorblade.easydblab.docker.ContainerStateMonitor
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.causeChain
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DockerBuildRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -447,8 +448,9 @@ class Docker(
     }
 
     /**
-     * Runs [buildOnce] under [buildRetryConfig]. Each retry is printed, since a build that takes
-     * longer than usual should say why; the last failure names how many attempts were made.
+     * Runs [buildOnce] under [buildRetryConfig]. Each retry is printed with the attempt it starts
+     * and the budget, since a build that takes longer than usual should say why. The last failure
+     * names its attempt but not the budget: a failure that is not retried has no attempts left.
      */
     private fun buildWithRetry(
         contextDir: File,
@@ -470,13 +472,14 @@ class Docker(
         Retry
             .decorateCheckedRunnable(retry) {
                 attempts++
-                buildOnce(contextDir, imageTag, "attempt $attempts of $maxAttempts")
+                buildOnce(contextDir, imageTag, "attempt $attempts")
             }.run()
     }
 
     /**
      * One build attempt; a failure names the [attempt] and carries the tail of this attempt's
-     * output only.
+     * output only. docker-java reports an interrupted wait as `DockerClientException("", e)` and
+     * clears the thread's interrupt flag, so the flag is set again here before the failure leaves.
      */
     private fun buildOnce(
         contextDir: File,
@@ -493,6 +496,7 @@ class Docker(
         } catch (e: com.github.dockerjava.api.exception.DockerException) {
             throw DockerException(buildFailure(imageTag, attempt, output), e)
         } catch (e: DockerClientException) {
+            if (e.causeChain().any { it is InterruptedException }) Thread.currentThread().interrupt()
             throw DockerException(buildFailure(imageTag, attempt, output), e)
         }
     }

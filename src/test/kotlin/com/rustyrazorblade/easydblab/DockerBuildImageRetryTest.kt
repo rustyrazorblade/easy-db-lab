@@ -22,10 +22,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PipedInputStream
-import java.io.PrintStream
 import java.util.stream.Stream
 
 /**
@@ -96,11 +94,9 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
         RetryConfig.from<Unit>(DockerBuildRetry.config<Unit>()).intervalFunction { _ -> 1L }.build()
 
     private val events = mutableListOf<Event>()
-    private val stdout = ByteArrayOutputStream()
-    private val originalOut = System.out
 
     @BeforeEach
-    fun capture() {
+    fun captureEvents() {
         getKoin().get<EventBus>().addListener(
             object : EventListener {
                 override fun onEvent(envelope: EventEnvelope) {
@@ -110,12 +106,12 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
                 override fun close() = Unit
             },
         )
-        System.setOut(PrintStream(stdout, true))
     }
 
     @AfterEach
-    fun restoreStdout() {
-        System.setOut(originalOut)
+    fun clearInterrupt() {
+        // A test that interrupts the build leaves the flag set; it must not reach the next test.
+        Thread.interrupted()
     }
 
     private fun build(client: DockerClientInterface) = Docker(context, client, buildRetryConfig = fastRetry).buildImage(DOCKERFILE, TAG)
@@ -143,11 +139,11 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     fun `a build whose content lease was pruned once succeeds on the next attempt, with its Dockerfile`() {
         val client = ScriptedBuildClient(listOf(leaseLost()))
 
-        build(client)
+        val printed = captureStdout { build(client) }
 
         assertThat(client.dockerfiles).containsExactly(DOCKERFILE, DOCKERFILE)
         assertThat(builtEvents()).containsExactly(Event.Docker.ImageBuilt(TAG))
-        assertThat(stdout.toString())
+        assertThat(printed)
             .contains("Docker build of $TAG lost its content lease")
             .contains("retrying, attempt 2 of ${Constants.Retry.MAX_DOCKER_RETRIES}")
     }
@@ -156,18 +152,18 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
     fun `a build that fails on every attempt reports the last attempt and its output, and is never built`() {
         val client = ScriptedBuildClient(List(Constants.Retry.MAX_DOCKER_RETRIES) { leaseLost() })
 
-        val failure = catchThrowable { build(client) }
+        var failure: Throwable? = null
+        val printed = captureStdout { failure = catchThrowable { build(client) } }
 
         assertThat(failure)
             .isInstanceOf(DockerException::class.java)
-            .hasMessageContaining(
-                "(attempt ${Constants.Retry.MAX_DOCKER_RETRIES} of ${Constants.Retry.MAX_DOCKER_RETRIES})",
-            ).hasRootCauseMessage(leaseLost().message)
-        assertThat(ATTEMPT_LINE.findAll(failure.message.orEmpty()).map { it.value }.toList())
+            .hasMessageContaining("(attempt ${Constants.Retry.MAX_DOCKER_RETRIES})")
+            .hasRootCauseMessage(leaseLost().message)
+        assertThat(ATTEMPT_LINE.findAll(failure?.message.orEmpty()).map { it.value }.toList())
             .containsExactly("attempt ${Constants.Retry.MAX_DOCKER_RETRIES}")
         assertThat(builtEvents()).isEmpty()
         // One line per retry that ran; none after the last attempt, which no retry follows.
-        assertThat(stdout.toString().lines().count { "lost its content lease" in it })
+        assertThat(printed.lines().count { "lost its content lease" in it })
             .isEqualTo(Constants.Retry.MAX_DOCKER_RETRIES - 1)
     }
 
@@ -180,12 +176,22 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
         assertThat(client.builds).isEqualTo(2)
         assertThat(failure)
             .isInstanceOf(DockerException::class.java)
-            .hasMessageContaining("(attempt 2 of ${Constants.Retry.MAX_DOCKER_RETRIES})")
+            .hasMessageContaining("(attempt 2)")
             .hasMessageContaining("step output")
             .hasRootCauseMessage(runStepFailed().message)
         assertThat(ATTEMPT_LINE.findAll(failure.message.orEmpty()).map { it.value }.toList())
             .containsExactly("attempt 2")
         assertThat(builtEvents()).isEmpty()
+    }
+
+    @Test
+    fun `an interrupted build is not retried and leaves the thread interrupted`() {
+        // docker-java's BuildImageResultCallback.awaitImageId wraps an interrupt this way and clears the flag.
+        val client = ScriptedBuildClient(listOf(DockerClientException("", InterruptedException("build interrupted"))))
+
+        assertThatThrownBy { build(client) }.isInstanceOf(DockerException::class.java)
+        assertThat(client.builds).isEqualTo(1)
+        assertThat(Thread.currentThread().isInterrupted).isTrue()
     }
 
     companion object {
@@ -247,6 +253,8 @@ class DockerBuildImageRetryTest : BaseKoinTest() {
                     1,
                 ),
                 // The thread was asked to stop; the phrase in the message must not make it run again.
+                // docker-java's own interrupt shape has an empty message (see the interrupt test
+                // below); this row holds the predicate's exclusion for any wrapper that names the phrase.
                 Arguments.of(
                     "an interrupted build whose message names a lost lease",
                     DockerClientException(

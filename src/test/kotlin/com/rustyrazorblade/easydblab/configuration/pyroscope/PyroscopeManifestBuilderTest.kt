@@ -90,7 +90,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
             builder
                 .buildServerDeployment()
                 .spec.template.spec.containers
-                .single()
+                .single { it.image == PyroscopeManifestBuilder.SERVER_IMAGE }
         val startup = container.startupProbe
 
         assertThat(startup).isNotNull
@@ -164,6 +164,47 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "segment_writer", "lifecycler", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
+    }
+
+    @Test
+    fun `the Service sends every client to the ingest front, which forwards to the server on the pod's loopback`() {
+        val port =
+            builder
+                .buildServerService()
+                .spec.ports
+                .single()
+        val front =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec.containers
+                .single { it.image == Constants.PyroscopeServer.FRONT_IMAGE }
+        val frontConfig = builder.buildFrontConfig().lines().map { it.trim() }
+
+        assertThat(port.port).isEqualTo(PyroscopeManifestBuilder.SERVER_PORT)
+        assertThat(port.targetPort.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(front.ports.map { it.containerPort }).containsExactly(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(frontConfig).contains(
+            "bind :${Constants.PyroscopeServer.FRONT_PORT}",
+            "server pyroscope 127.0.0.1:${PyroscopeManifestBuilder.SERVER_PORT}",
+        )
+        assertThat(front.args.last()).endsWith("/${PyroscopeManifestBuilder.FRONT_CONFIG_KEY}")
+        assertThat(builder.buildServerConfigMap().data).containsKey(PyroscopeManifestBuilder.FRONT_CONFIG_KEY)
+    }
+
+    @Test
+    fun `the front rewrites only the shutdown 422, and its image is pinned by digest`() {
+        val rules =
+            builder
+                .buildFrontConfig()
+                .lines()
+                .map { it.trim() }
+                .filter { it.startsWith("http-response") }
+
+        assertThat(rules).containsExactly(
+            "http-response wait-for-body time 1s if { status 422 }",
+            "http-response set-status 503 if { status 422 } { res.body -m sub \"service is unavailable\" }",
+        )
+        assertThat(Constants.PyroscopeServer.FRONT_IMAGE).matches("haproxy:[0-9.]+-alpine@sha256:[0-9a-f]{64}")
     }
 
     @Test

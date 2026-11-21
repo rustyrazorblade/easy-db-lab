@@ -1531,6 +1531,17 @@ object Constants {
     object PyroscopeServer {
         /** The UID the grafana/pyroscope image runs as; its state directory is owned by this user. */
         const val UID = 10001L
+
+        /**
+         * The pod's ingest front (`ingest-front.cfg`), pinned by digest: HAProxy, which answers 503
+         * for the 422 "service is unavailable" Pyroscope sends from SIGTERM until it exits, so the
+         * Java agent and the JFR shipper retry those pushes instead of dropping them.
+         */
+        const val FRONT_IMAGE =
+            "haproxy:3.2.27-alpine@sha256:7816a9801a6846b912bc37e48529808e2fa87c3c47992441940f68e393ebcfeb"
+
+        /** The front's port in the pod; the Service sends its port 4040 here. */
+        const val FRONT_PORT = 4045
     }
 
     // Probe timings for the in-cluster Pyroscope 2.x server.

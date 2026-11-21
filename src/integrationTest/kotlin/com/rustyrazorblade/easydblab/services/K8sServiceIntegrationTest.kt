@@ -411,6 +411,26 @@ class K8sServiceIntegrationTest {
         }
     }
 
+    /**
+     * Both images of the Pyroscope server's pod, the server and its digest-pinned ingest front, can
+     * be pulled by K3s's containerd, as the control node pulls them.
+     */
+    @Test
+    @Order(22)
+    fun `every Pyroscope server pod image can be pulled`() {
+        val images =
+            PyroscopeManifestBuilder(templateService)
+                .buildServerDeployment()
+                .spec.template.spec.containers
+                .map { it.image }
+
+        assertThat(images).containsExactlyInAnyOrder(PyroscopeManifestBuilder.SERVER_IMAGE, Constants.PyroscopeServer.FRONT_IMAGE)
+        assertThat(images).allSatisfy { image ->
+            val result = k3s.execInContainer("crictl", "pull", image)
+            assertThat(result.exitCode).describedAs("crictl pull $image: ${result.stderr}").isZero()
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 2b: PV lifecycle — verify stale claimRef recycling works
     // -----------------------------------------------------------------------

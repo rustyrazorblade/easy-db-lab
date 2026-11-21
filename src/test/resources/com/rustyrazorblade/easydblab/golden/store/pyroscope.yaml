@@ -26,9 +26,11 @@ storage:
 # treats that answer (422) as permanent and drops the snapshot, so a restart lost about 30s of
 # profiles. Each min_ready_duration below is also a wait at shutdown: the segment writer's 30s
 # and the metastore's 15s. At 0s, and with usage reporting off (its 15s stop wait is the last one),
-# the process exits within seconds of SIGTERM and the agent gets connection refused, which it
-# retries; PyroscopeAgentReplayIntegrationTest finds no dropped upload in the agent's log across a
-# restart. /ready still passes only once every module is up.
+# the process exits within seconds of SIGTERM. Those seconds still refuse pushes (422 "service is
+# unavailable", 2.4.4 too), so the pod's ingest front (ingest-front.cfg) answers that refusal 503,
+# which the agent retries; PyroscopeAgentReplayIntegrationTest lands pushes in that gap and finds
+# no dropped upload in the agent's log across a restart. /ready still passes only once every
+# module is up.
 metastore:
   min_ready_duration: 0s
   data_dir: /data/metastore/data

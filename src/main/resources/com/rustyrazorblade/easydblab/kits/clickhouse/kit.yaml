@@ -88,10 +88,15 @@ install:
   # The operator runs in its own namespace, never kube-system, which is not ours (issue 1094).
   - type: namespace
     name: clickhouse-operator
+  # Outside kube-system the operator watches only its own namespace unless watchNamespaces names
+  # the cluster's. The chart reads watchNamespaces from 0.27.2 on, so the version is pinned.
   - type: helm
     chart: altinity/altinity-clickhouse-operator
     release: clickhouse-operator
     namespace: clickhouse-operator
+    version: 0.27.4
+    values:
+      watchNamespaces: "{${NAMESPACE}}"
 
 start:
   - type: kit-storage

@@ -76,6 +76,23 @@ class KitNamespaceTest : BaseKoinTest() {
         assertThat(interpolateStepVars(operator.values.getValue("watchNamespaces"), kafka.stepVariables)).isEqualTo("{$LAB_A}")
     }
 
+    /**
+     * Outside kube-system the Altinity operator watches only its own namespace unless told otherwise,
+     * so the installations applied in the cluster namespace would never be reconciled. The chart
+     * gained `watchNamespaces` in 0.27.2; an older version would ignore the value, so it is pinned.
+     */
+    @Test
+    fun `the ClickHouse operator watches the cluster namespace, on a chart version that reads the value`() {
+        val clickhouse = fixture("clickhouse")
+        val operator =
+            clickhouse.config.install
+                .filterIsInstance<InstallStep.Helm>()
+                .single { it.release == "clickhouse-operator" }
+
+        assertThat(interpolateStepVars(operator.values.getValue("watchNamespaces"), clickhouse.stepVariables)).isEqualTo("{$LAB_A}")
+        assertThat(operator.version).isEqualTo(CLICKHOUSE_OPERATOR_CHART)
+    }
+
     @Test
     fun `operators run in their kits' own namespaces, each created before its chart`() {
         val operators =
@@ -117,6 +134,7 @@ class KitNamespaceTest : BaseKoinTest() {
 
     private companion object {
         const val LAB_A = "lab-a"
+        const val CLICKHOUSE_OPERATOR_CHART = "0.27.4"
 
         /** Each injected catalog template, keyed by kit and file, with the property that names its database. */
         val CATALOG_URLS =

@@ -24,6 +24,8 @@ import java.io.File
  * A single instance is registered under each SQL-capable kit's subcommand group at startup —
  * no per-kit Kotlin class is required. Configuration (JDBC endpoint, user, driver class) is
  * provided at registration time from the kit's [KitConfig][com.rustyrazorblade.easydblab.services.KitConfig].
+ * [serviceIn] gives the JDBC endpoint's Service in a cluster namespace; the command asks it with
+ * the namespace the workspace records when it runs.
  *
  * If [driverClass] is non-blank, the class is force-loaded before the first connection attempt.
  * This is required for JDBC drivers (e.g. the Facebook Presto driver) that do not auto-register
@@ -44,7 +46,7 @@ import java.io.File
 )
 class KitSqlCommand(
     private val kitName: String,
-    private val service: KitService?,
+    private val serviceIn: (clusterNamespace: String) -> KitService?,
     private val endpoint: KitEndpoint,
     private val user: String,
     private val driverClass: String = "",
@@ -96,7 +98,7 @@ class KitSqlCommand(
 
         KitJdbcSqlService(
             access = serviceAccess,
-            service = service,
+            service = serviceIn(clusterState.namespace().value),
             endpoint = endpoint,
             user = user,
             connectionFactory = connectionFactory,

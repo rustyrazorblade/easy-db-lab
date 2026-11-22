@@ -137,8 +137,9 @@ val servicesModule =
         single<CqlSessionService> {
             val workspace = get<Context>().workingDirectory
             val clients = get<K8sClientProvider>()
+            val stateManager = get<ClusterStateManager>()
             DefaultCqlSessionService(get(), get(), get(), get()) {
-                val target = CassandraPodTarget.inWorkspace(workspace)
+                val target = CassandraPodTarget.inWorkspace(workspace, stateManager.load().namespace().value)
                 SingleEndpointCql(
                     forward =
                         CassandraPodForward(

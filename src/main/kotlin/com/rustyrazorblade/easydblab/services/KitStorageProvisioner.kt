@@ -12,13 +12,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 private val log = KotlinLogging.logger {}
 
 /**
- * The namespace the kits create their claims in. It is the owned default, not the cluster namespace
- * `init --namespace` records: the kits move to the cluster namespace in issue 1094 PR 2, and until
- * then a reopen filtered on the cluster namespace would find none of their Released volumes.
- */
-private const val KIT_NAMESPACE = Constants.ContractDefaults.OWNED_NAMESPACE
-
-/**
  * The volumes one `kit-storage` step reserves for a kit.
  *
  * @property kit the kit instance; its PVs are labelled with it and live under `/mnt/db1/<kit>`.
@@ -65,7 +58,7 @@ class KitStorageProvisioner(
         when (storage) {
             is KitStorage.Provisioned -> {
                 retainCheck.requireKitClass(storage.storageClass, eventBus)
-                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass)
+                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass, state)
             }
             is KitStorage.LocalVolumes -> createLocalVolumes(volumes, storage.storageClassFor(volumes.kit), state)
         }
@@ -124,7 +117,7 @@ class KitStorageProvisioner(
                     count = count,
                     storageSize = volumes.size,
                     storageClass = storageClass,
-                    namespace = KIT_NAMESPACE,
+                    namespace = state.namespace().value,
                     clusterId = state.clusterId,
                     volumeClaimTemplateName = volumes.volumeClaimTemplateName,
                     nodeType = volumes.nodeType,
@@ -135,18 +128,15 @@ class KitStorageProvisioner(
     /**
      * The operator deleted the kit's claims on `stop`, so their Retain volumes are Released with
      * the data. Reopened, each is taken again by the claim of the same name the next apply makes;
-     * otherwise the class would provision an empty volume and strand the data.
+     * otherwise the class would provision an empty volume and strand the data. The kits make
+     * their claims in the cluster namespace, so the reopen looks for them there.
      */
     private fun reopenReleased(
         kit: String,
         storageClass: String,
+        state: ClusterState,
     ) {
-        val reopened =
-            k8sService
-                .reopenReleasedVolumes(
-                    storageClass,
-                    KIT_NAMESPACE,
-                ).getOrThrow()
+        val reopened = k8sService.reopenReleasedVolumes(storageClass, state.namespace().value).getOrThrow()
         if (reopened.isNotEmpty()) log.info { "Reopened Released volumes $reopened of $storageClass for $kit" }
     }
 

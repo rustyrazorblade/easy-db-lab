@@ -165,13 +165,17 @@ data class KitEndpoint(
     }
 }
 
+/**
+ * A kit's `runtime:` block: what in the cluster shows the kit running, for `status`, the `start`
+ * collision check and the `stop` wait. A null [namespace] means the cluster namespace.
+ */
 @Serializable
 data class KitRuntime(
     val type: RuntimeType,
     val release: String = "",
     val selector: String = "",
     val name: String = "",
-    val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
+    val namespace: String? = null,
 ) {
     @Serializable
     enum class RuntimeType {

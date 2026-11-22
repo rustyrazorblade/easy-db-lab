@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
@@ -48,7 +50,10 @@ data class StepExecutionContext(
     val variables: Map<String, String>,
     val kitDir: File,
     val workspaceDir: File,
-)
+) {
+    /** The cluster namespace, where a step that names no namespace acts. */
+    val namespace: String get() = InstallScope.of(clusterState, ClusterContract.of(clusterState)).namespace.value
+}
 
 /**
  * Runs a kit's typed steps, in `install:` and in its lifecycle phases.
@@ -114,6 +119,9 @@ class WorkloadStepExecutor(
         runCatching {
             fun interp(s: String) = interpolateStepVars(s, ctx.variables)
 
+            // A step that names no namespace acts in the cluster namespace.
+            fun ns(stepNamespace: String?) = stepNamespace?.let(::interp) ?: ctx.namespace
+
             when (step) {
                 is InstallStep.HelmRepo -> {
                     helmService.repoAdd(name = interp(step.name), url = interp(step.url))
@@ -129,7 +137,7 @@ class WorkloadStepExecutor(
                     helmService.upgradeInstall(
                         release = interp(step.release),
                         chart = interp(step.chart),
-                        namespace = interp(step.namespace),
+                        namespace = ns(step.namespace),
                         version = step.version?.let { interp(it) },
                         values = step.values.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) },
                         valuesFile = valuesFile,
@@ -146,7 +154,7 @@ class WorkloadStepExecutor(
                             kubectlService.listInAllNamespaces(resource = interp(step.keepWhileAny))
                         }
                     if (usedBy.isEmpty()) {
-                        helmService.uninstall(release = release, namespace = interp(step.namespace))
+                        helmService.uninstall(release = release, namespace = ns(step.namespace))
                     } else {
                         eventBus.emit(Event.Kit.HelmReleaseKept(kit = ctx.kitName, release = release, usedBy = usedBy))
                     }
@@ -178,13 +186,13 @@ class WorkloadStepExecutor(
                         kind = interp(step.kind),
                         name = interp(step.name),
                         condition = interp(step.condition),
-                        namespace = step.namespace?.let { interp(it) } ?: Constants.ContractDefaults.OWNED_NAMESPACE,
+                        namespace = ns(step.namespace),
                         timeout = interp(step.timeout),
                     )
                 }
 
                 is InstallStep.Delete -> {
-                    val namespace = step.namespace?.let { interp(it) } ?: Constants.ContractDefaults.OWNED_NAMESPACE
+                    val namespace = ns(step.namespace)
                     if (step.bySelector) {
                         kubectlService.deleteBySelector(
                             kinds = step.kinds.map { interp(it) },
@@ -236,7 +244,7 @@ class WorkloadStepExecutor(
                 is InstallStep.ConfigMap -> {
                     k8sService
                         .createConfigMap(
-                            namespace = interp(step.namespace),
+                            namespace = ns(step.namespace),
                             name = interp(step.name),
                             data = step.data.mapValues { (_, v) -> interp(v) },
                         ).getOrThrow()
@@ -259,7 +267,7 @@ class WorkloadStepExecutor(
                 is InstallStep.Exec -> {
                     k8sService
                         .execInPod(
-                            namespace = interp(step.namespace),
+                            namespace = ns(step.namespace),
                             podName = interp(step.pod),
                             command = step.command.map { interp(it) },
                         ).getOrThrow()

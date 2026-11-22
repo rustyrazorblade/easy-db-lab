@@ -47,8 +47,8 @@ class KitEndpointServiceTest : BaseKoinTest() {
             kits.forEach { kit ->
                 val config = fixture(kit).config
                 val dir = renderedKitDir(kit)
-                val fromManifests = KitEndpointServices.read(dir, config.copy(endpoints = emptyList()))
-                val services = KitEndpointServices.read(dir, config)
+                val fromManifests = KitEndpointServices.read(dir, config.copy(endpoints = emptyList()), CLUSTER_NAMESPACE)
+                val services = KitEndpointServices.read(dir, config, CLUSTER_NAMESPACE)
                 config.endpoints.forEach { endpoint ->
                     val service = services.of(endpoint)
                     softly
@@ -70,5 +70,8 @@ class KitEndpointServiceTest : BaseKoinTest() {
     private companion object {
         /** Variables `kit install` derives rather than reads from arg defaults: the base postgres instance's NodePorts. */
         val INSTALL_VARS = mapOf("postgres" to mapOf("POSTGRES_PORT" to "30432", "METRICS_PORT" to "30987"))
+
+        /** The namespace of the fixture's cluster, for a Service a kit file does not place. */
+        const val CLUSTER_NAMESPACE = "default"
     }
 }

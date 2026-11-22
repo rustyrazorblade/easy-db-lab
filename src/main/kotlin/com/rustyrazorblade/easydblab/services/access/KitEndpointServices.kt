@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitRuntime
+import com.rustyrazorblade.easydblab.services.namespaceOf
 import com.rustyrazorblade.easydblab.services.sql.KitService
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.client.utils.Serialization
@@ -21,7 +22,7 @@ import java.io.File
  */
 fun KitEndpoint.serviceTarget(service: KitService?): ServiceTarget =
     ServiceTarget(
-        service?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
+        service?.namespace.orEmpty(),
         service?.name.orEmpty(),
         service?.port ?: port,
         ServerType.from(nodeType),
@@ -42,16 +43,20 @@ fun KitEndpoint.serviceTarget(service: KitService?): ServiceTarget =
  *
  * Anything else has no known Service.
  *
+ * A runtime or manifest that names no namespace is in the cluster namespace.
+ *
  * @param runtime the kit's runtime, for its namespace and Helm release
  * @param byNodePort the manifest Service, with its Service port, behind each NodePort
+ * @param clusterNamespace the cluster namespace
  */
 class KitEndpointServices(
     private val runtime: KitRuntime?,
     private val byNodePort: Map<Int, KitService>,
+    private val clusterNamespace: String,
 ) {
     /** The Service [endpoint] is published on, or null when nothing declares one. */
     fun of(endpoint: KitEndpoint): KitService? {
-        val namespace = runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE
+        val namespace = namespaceOf(runtime, clusterNamespace)
         return when {
             endpoint.service.isNotBlank() -> KitService(namespace, endpoint.service, endpoint.servicePort)
             else ->
@@ -67,19 +72,23 @@ class KitEndpointServices(
         private val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
         private val MANIFEST_EXTENSIONS = setOf("yaml", "yml")
 
-        /** The Services of the installed kit in [kitDir], whose descriptor is [config]. */
+        /** The Services of the installed kit in [kitDir], whose descriptor is [config], on a cluster whose namespace is [clusterNamespace]. */
         fun read(
             kitDir: File,
             config: KitConfig,
-        ): KitEndpointServices = KitEndpointServices(config.runtime, manifestServices(kitDir))
+            clusterNamespace: String,
+        ): KitEndpointServices = KitEndpointServices(config.runtime, manifestServices(kitDir, clusterNamespace), clusterNamespace)
 
-        private fun manifestServices(kitDir: File): Map<Int, KitService> =
+        private fun manifestServices(
+            kitDir: File,
+            clusterNamespace: String,
+        ): Map<Int, KitService> =
             kitDir
                 .walkTopDown()
                 .filter { it.isFile && it.extension in MANIFEST_EXTENSIONS && it.name != Constants.Kit.CONFIG_FILE }
                 .flatMap { file -> services(file) }
                 .flatMap { service ->
-                    val namespace = service.metadata.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE
+                    val namespace = service.metadata.namespace ?: clusterNamespace
                     service.spec
                         ?.ports
                         .orEmpty()

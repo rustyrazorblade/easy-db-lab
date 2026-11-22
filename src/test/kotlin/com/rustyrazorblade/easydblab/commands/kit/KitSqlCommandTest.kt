@@ -110,7 +110,7 @@ class KitSqlCommandTest : BaseKoinTest() {
         driverClass: String = "",
     ) = KitSqlCommand(
         kitName = "presto",
-        service = KitService("default", "presto"),
+        serviceIn = { namespace -> KitService(namespace, "presto") },
         endpoint = jdbcEndpoint,
         user = "easy-db-lab",
         driverClass = driverClass,

@@ -27,7 +27,7 @@ class CassandraPodTargetTest {
     fun `the first StatefulSet pod on its native port, in the datacenter the kit was installed with`() {
         installKit("CASSANDRA_VERSION=5.0\nCASSANDRA_DC=east\n")
 
-        val target = CassandraPodTarget.inWorkspace(workspace)
+        val target = CassandraPodTarget.inWorkspace(workspace, "default")
 
         assertThat(target.pod).isEqualTo(PodTarget("default", "cassandra-pods-0", Constants.Kit.CassandraPods.CQL_NODE_PORT))
         assertThat(target.datacenter).isEqualTo("east")
@@ -47,19 +47,35 @@ class CassandraPodTargetTest {
                 """.trimIndent(),
         )
 
-        assertThat(CassandraPodTarget.inWorkspace(workspace).pod.namespace).isEqualTo("databases")
+        assertThat(CassandraPodTarget.inWorkspace(workspace, "lab-a").pod.namespace).isEqualTo("databases")
+    }
+
+    @Test
+    fun `a kit whose runtime names no namespace runs its pod in the cluster namespace`() {
+        installKit(
+            "CASSANDRA_VERSION=5.0\n",
+            kitYaml =
+                """
+                name: cassandra-pods
+                runtime:
+                  type: pods
+                  selector: "easydblab/kit=cassandra-pods"
+                """.trimIndent(),
+        )
+
+        assertThat(CassandraPodTarget.inWorkspace(workspace, "lab-a").pod.namespace).isEqualTo("lab-a")
     }
 
     @Test
     fun `an install that recorded no datacenter uses the kit's default`() {
         installKit("CASSANDRA_VERSION=5.0\n")
 
-        assertThat(CassandraPodTarget.inWorkspace(workspace).datacenter).isEqualTo("dc1")
+        assertThat(CassandraPodTarget.inWorkspace(workspace, "default").datacenter).isEqualTo("dc1")
     }
 
     @Test
     fun `a workspace without the kit fails, naming it`() {
-        assertThatThrownBy { CassandraPodTarget.inWorkspace(workspace) }
+        assertThatThrownBy { CassandraPodTarget.inWorkspace(workspace, "default") }
             .hasMessageContaining("cassandra-pods")
     }
 }

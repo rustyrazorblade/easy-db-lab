@@ -25,6 +25,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -511,6 +512,93 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             verify(k8sService).storageClassReclaimPolicy("retain-x")
             verify(k8sService, never()).createLocalPersistentVolumes(any())
             verify(k8sService, never()).ensureKitLocalStorageClass(any(), any())
+        }
+    }
+
+    /** A step that names no namespace acts in the cluster namespace, which the contract resolves. */
+    @Nested
+    inner class ClusterNamespace {
+        private fun executeInLabA(step: InstallStep): Result<Unit> =
+            executor.execute(
+                steps = listOf(step),
+                phase = "start",
+                context =
+                    StepExecutionContext(
+                        kitName = "testdb",
+                        clusterState = clusterState.copy(initConfig = InitConfig(namespace = "lab-a")),
+                        variables = emptyMap(),
+                        kitDir = tempDir,
+                        workspaceDir = workspace,
+                    ),
+            )
+
+        @Test
+        fun `a helm step with no namespace installs in the cluster namespace`() {
+            executeInLabA(InstallStep.Helm(chart = "repo/chart", release = "rel"))
+
+            verify(helmService).upgradeInstall(
+                release = eq("rel"),
+                chart = eq("repo/chart"),
+                namespace = eq("lab-a"),
+                version = anyOrNull(),
+                values = any(),
+                valuesFile = anyOrNull(),
+                createNamespace = any(),
+                wait = any(),
+                timeout = any(),
+            )
+        }
+
+        @Test
+        fun `a helm-uninstall step with no namespace uninstalls from the cluster namespace`() {
+            executeInLabA(InstallStep.HelmUninstall(release = "rel"))
+
+            verify(helmService).uninstall(release = "rel", namespace = "lab-a")
+        }
+
+        @Test
+        fun `a wait step with no namespace waits in the cluster namespace`() {
+            executeInLabA(InstallStep.Wait(kind = "deployment", name = "web"))
+
+            verify(kubectlService).wait(
+                kind = "deployment",
+                name = "web",
+                condition = "Available",
+                namespace = "lab-a",
+                timeout = "300s",
+            )
+        }
+
+        @Test
+        fun `a delete step with no namespace deletes in the cluster namespace`() {
+            executeInLabA(InstallStep.Delete(kind = "Service", name = "web"))
+
+            verify(kubectlService).delete(kind = "Service", name = "web", namespace = "lab-a", ignoreNotFound = true)
+        }
+
+        @Test
+        fun `a configmap step with no namespace creates it in the cluster namespace`() {
+            whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+
+            executeInLabA(InstallStep.ConfigMap(name = "cfg", data = mapOf("k" to "v")))
+
+            verify(k8sService).createConfigMap(namespace = eq("lab-a"), name = eq("cfg"), data = eq(mapOf("k" to "v")), labels = any())
+        }
+
+        @Test
+        fun `an exec step with no namespace runs in the cluster namespace`() {
+            whenever(k8sService.execInPod(any(), any(), any())).thenReturn(Result.success(""))
+
+            executeInLabA(InstallStep.Exec(pod = "web-0", command = listOf("true")))
+
+            verify(k8sService).execInPod(namespace = "lab-a", podName = "web-0", command = listOf("true"))
+        }
+
+        @Test
+        fun `a step that names a namespace keeps it`() {
+            executeInLabA(InstallStep.HelmUninstall(release = "op", namespace = "cnpg-system"))
+
+            verify(helmService).uninstall(release = "op", namespace = "cnpg-system")
         }
     }
 

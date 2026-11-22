@@ -113,6 +113,17 @@ class KitStorageProvisionerTest {
         }
 
         @Test
+        fun `the PVs are reserved for claims in the cluster namespace`() {
+            val labA = state.copy(initConfig = (state.initConfig ?: InitConfig()).copy(namespace = "lab-a"))
+
+            provisioner.provision(volumes(claimTemplate = "tikv"), local, labA)
+
+            val config = argumentCaptor<PersistentVolumeConfig>()
+            verify(k8sService).createLocalPersistentVolumes(config.capture())
+            assertThat(config.firstValue.namespace).isEqualTo("lab-a")
+        }
+
+        @Test
         fun `two claim templates of one kit on the same nodes get distinct paths`() {
             provisioner.provision(volumes(claimTemplate = "tikv"), local, state)
             provisioner.provision(volumes(claimTemplate = "tiflash"), local, state)
@@ -231,19 +242,18 @@ class KitStorageProvisionerTest {
         }
 
         /**
-         * `init --namespace` moves the stack, but the kits still create their claims in `default`
-         * until issue 1094 PR 2 moves them; the reopen filters on the claims' namespace, so it must
-         * follow the kits, or it would find none of their volumes.
+         * The kits make their claims in the cluster namespace, and the reopen filters on the
+         * claims' namespace, so it must look there, or it would find none of their volumes.
          */
         @Test
-        fun `on a cluster recorded in another namespace, the reopen looks where the kits still make their claims`() {
+        fun `on a cluster recorded in another namespace, the reopen looks in the cluster namespace`() {
             val labA = state.copy(initConfig = InitConfig(region = "us-west-2", namespace = "lab-a"))
             whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
             whenever(k8sService.reopenReleasedVolumes(any(), any())).thenReturn(Result.success(emptyList()))
 
             provisioner.provision(volumes().copy(rebindReleased = true), provisioned, labA)
 
-            verify(k8sService).reopenReleasedVolumes("retain-x", "default")
+            verify(k8sService).reopenReleasedVolumes("retain-x", "lab-a")
         }
 
         @Test

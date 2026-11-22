@@ -43,7 +43,8 @@ class KitWorkloadProbe(
     fun find(
         kitName: String,
         runtime: KitRuntime?,
-    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime) }
+        clusterNamespace: String,
+    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime, namespaceOf(runtime, clusterNamespace)) }
 
     /**
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
@@ -61,52 +62,57 @@ class KitWorkloadProbe(
     fun awaitGone(
         kitName: String,
         runtime: KitRuntime?,
+        clusterNamespace: String,
     ): Result<WorkloadPresence> =
         runCatching {
+            val namespace = namespaceOf(runtime, clusterNamespace)
             pollUntil(
                 operationName = "kit-stop-$kitName",
                 maxAttempts = maxPolls,
                 interval = pollInterval,
                 isTransient = { !it.isPermanentKubernetesFailure() },
                 done = { it == WorkloadPresence.Absent },
-            ) { lookUpPods(kitName, runtime) }
+            ) { lookUpPods(kitName, runtime, namespace) }
         }
 
     private fun lookUp(
         kitName: String,
         runtime: KitRuntime?,
+        namespace: String,
     ): WorkloadPresence =
         when (runtime?.type) {
-            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime)
-            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE)
+            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, namespace)
+            else -> findPods(podSelector(kitName, runtime), namespace)
         }
 
     /** The pods that show [kitName]'s workload is running, whatever keeps them there. */
     private fun lookUpPods(
         kitName: String,
         runtime: KitRuntime?,
+        namespace: String,
     ): WorkloadPresence =
         when (runtime?.type) {
-            KitRuntime.RuntimeType.HELM -> findPods(helmReleasePods(kitName, runtime), runtime.namespace)
-            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE)
+            KitRuntime.RuntimeType.HELM -> findPods(helmReleasePods(kitName, runtime), namespace)
+            else -> findPods(podSelector(kitName, runtime), namespace)
         }
 
     /**
-     * A helm runtime is present while its release exists in the runtime's namespace, and, once the
-     * release is gone, while any pod labelled `app.kubernetes.io/instance=<release>` (the label helm
-     * charts put on a release's pods) is left there. `helm uninstall` removes the release record in
-     * seconds while those pods run out their termination grace period.
+     * A helm runtime is present while its release exists in [namespace], and, once the release is
+     * gone, while any pod labelled `app.kubernetes.io/instance=<release>` (the label helm charts put
+     * on a release's pods) is left there. `helm uninstall` removes the release record in seconds
+     * while those pods run out their termination grace period.
      */
     private fun findHelmRelease(
         kitName: String,
         runtime: KitRuntime,
+        namespace: String,
     ): WorkloadPresence {
         val release = runtime.release.ifBlank { kitName }
-        val exists = helmService.releaseExists(release = release, namespace = runtime.namespace)
+        val exists = helmService.releaseExists(release = release, namespace = namespace)
         return if (exists) {
-            WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release"))
+            WorkloadPresence.Present(namespace, listOf("helm-release/$release"))
         } else {
-            findPods(helmReleasePods(kitName, runtime), runtime.namespace)
+            findPods(helmReleasePods(kitName, runtime), namespace)
         }
     }
 
@@ -165,3 +171,12 @@ fun withKitName(
     selector: String,
     kitName: String,
 ): String = selector.replace("\${KIT_NAME}", kitName)
+
+/**
+ * The namespace a kit's workload runs in: the one its [runtime] names, or the [clusterNamespace]
+ * when it names none (or the kit declares no runtime).
+ */
+fun namespaceOf(
+    runtime: KitRuntime?,
+    clusterNamespace: String,
+): String = runtime?.namespace ?: clusterNamespace

@@ -1,9 +1,15 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * One typed step of a kit's `install:` or lifecycle phase, as `kit.yaml` declares it.
+ *
+ * A step's `namespace` is optional: absent means the cluster namespace (`NAMESPACE`), which
+ * [WorkloadStepExecutor] resolves from the cluster state. A kit names one only for an object that
+ * lives elsewhere, such as an operator in its own namespace.
+ */
 @Serializable
 sealed interface InstallStep {
     @Serializable
@@ -18,7 +24,7 @@ sealed interface InstallStep {
     data class Helm(
         val chart: String,
         val release: String,
-        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
+        val namespace: String? = null,
         val version: String? = null,
         val values: Map<String, String> = emptyMap(),
         @SerialName("values-file")
@@ -35,7 +41,7 @@ sealed interface InstallStep {
     @SerialName("helm-uninstall")
     data class HelmUninstall(
         val release: String,
-        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
+        val namespace: String? = null,
         @SerialName("keep-while-any")
         val keepWhileAny: String = "",
     ) : InstallStep
@@ -76,7 +82,7 @@ sealed interface InstallStep {
     ) : InstallStep
 
     /**
-     * Deletes Kubernetes objects in [namespace] (default `default`), in one of two forms.
+     * Deletes Kubernetes objects in [namespace] (default the cluster namespace), in one of two forms.
      *
      * - By name: [kind] and [name] name one object. [ignoreNotFound] decides whether a missing
      *   object fails the step.
@@ -155,7 +161,7 @@ sealed interface InstallStep {
     @SerialName("configmap")
     data class ConfigMap(
         val name: String,
-        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
+        val namespace: String? = null,
         val data: Map<String, String> = emptyMap(),
     ) : InstallStep
 
@@ -171,7 +177,7 @@ sealed interface InstallStep {
     @SerialName("exec")
     data class Exec(
         val pod: String,
-        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
+        val namespace: String? = null,
         val command: List<String>,
     ) : InstallStep
 

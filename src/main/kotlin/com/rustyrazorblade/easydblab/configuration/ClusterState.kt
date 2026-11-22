@@ -2,7 +2,10 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.Init
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.services.TailSignal
 import java.time.Instant
 import java.util.UUID
@@ -493,6 +496,12 @@ data class ClusterState(
 
     /** Returns the cluster prefix path for S3: "clusters/{name}-{clusterId}". No trailing slash. */
     fun clusterPrefix(): String = "${Constants.S3.CLUSTERS_PREFIX}/$name-$clusterId"
+
+    /**
+     * The cluster namespace: the one `init --namespace` recorded, or the environment default the
+     * [ClusterContract] resolves. Every kit object lands here unless its kit names another.
+     */
+    fun namespace(): K8sNamespace = InstallScope.of(this, ClusterContract.of(this)).namespace
 
     /**
      * The observability tenant this cluster's data belongs to. A state with no init configuration,

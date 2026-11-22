@@ -90,7 +90,7 @@ class DefaultKitEndpointResolver(
 
         val kitConfig = parse(targetKitDir.name, configFile)
         val sqlCap = kitConfig.capabilities.firstOrNull { it.type == "sql" }
-        val services = KitEndpointServices.read(targetKitDir, kitConfig)
+        val services = KitEndpointServices.read(targetKitDir, kitConfig, clusterState.namespace().value)
         val result = mutableMapOf<String, String>()
         for (endpoint in kitConfig.endpoints) {
             val (host, port) =

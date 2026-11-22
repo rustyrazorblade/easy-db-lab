@@ -148,7 +148,7 @@ class KitRunnerCommand(
      */
     private fun isAlreadyRunning(config: KitConfig): Boolean {
         checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
-        return when (val presence = workloadProbe.find(kitName, config.runtime).getOrThrow()) {
+        return when (val presence = workloadProbe.find(kitName, config.runtime, clusterState.namespace().value).getOrThrow()) {
             is WorkloadPresence.Absent -> false
             is WorkloadPresence.Present -> {
                 eventBus.emit(
@@ -352,7 +352,7 @@ class KitRunnerCommand(
     ): Boolean {
         if (phase !in PHASES_THAT_REMOVE_THE_WORKLOAD || config.runtime == null) return true
         val remaining =
-            workloadProbe.awaitGone(kitName, config.runtime).getOrElse { e ->
+            workloadProbe.awaitGone(kitName, config.runtime, clusterState.namespace().value).getOrElse { e ->
                 log.warn(e) { "Could not confirm $kitName's workload left the cluster after $phase" }
                 eventBus.emit(
                     Event.Kit.StopUnverified(kit = kitName, reason = e.kubernetesFailureReason(), phase = phase),

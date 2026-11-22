@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.install
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -9,6 +8,7 @@ import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.KitRuntime
+import com.rustyrazorblade.easydblab.services.namespaceOf
 import com.rustyrazorblade.easydblab.services.podSelector
 import com.rustyrazorblade.easydblab.services.withKitName
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -68,7 +68,7 @@ class KitStatusCommand(
         runtime: KitRuntime,
         kubeService: K8sService,
     ): KitRunningState {
-        val namespace = runtime.namespace
+        val namespace = namespaceOf(runtime, clusterState.namespace().value)
         return when (runtime.type) {
             KitRuntime.RuntimeType.HELM -> {
                 val release = runtime.release.ifBlank { kitName }
@@ -88,7 +88,7 @@ class KitStatusCommand(
     }
 
     private fun checkFallbackState(kubeService: K8sService): KitRunningState =
-        stateOfPods(kubeService, podSelector(kitName, runtime = null), Constants.ContractDefaults.OWNED_NAMESPACE, ::runningOrStopped)
+        stateOfPods(kubeService, podSelector(kitName, runtime = null), clusterState.namespace().value, ::runningOrStopped)
 
     /**
      * Lists the kit's pods and derives its state from them. A failed query is

@@ -27,7 +27,8 @@ class KitEndpointServicesTest {
         servicePort = servicePort,
     )
 
-    private fun services(runtime: KitRuntime? = null) = KitEndpointServices.read(kitDir, KitConfig(name = "web", runtime = runtime))
+    private fun services(runtime: KitRuntime? = null) =
+        KitEndpointServices.read(kitDir, KitConfig(name = "web", runtime = runtime), clusterNamespace = "lab-a")
 
     private fun manifest(
         name: String,
@@ -68,6 +69,33 @@ class KitEndpointServicesTest {
         val runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "analytics", namespace = "olap")
 
         assertThat(services(runtime).of(endpoint(8080))).isEqualTo(KitService("olap", "analytics", null))
+    }
+
+    @Test
+    fun `a declared Service of a runtime that names no namespace is in the cluster namespace`() {
+        val runtime = KitRuntime(type = KitRuntime.RuntimeType.PODS)
+
+        assertThat(services(runtime).of(endpoint(32100, service = "web-external", servicePort = 9094)))
+            .isEqualTo(KitService("lab-a", "web-external", 9094))
+    }
+
+    @Test
+    fun `a manifest Service that names no namespace is in the cluster namespace`() {
+        File(kitDir, "plain.yaml").writeText(
+            """
+            |apiVersion: v1
+            |kind: Service
+            |metadata:
+            |  name: plain
+            |spec:
+            |  type: NodePort
+            |  ports:
+            |    - port: 8080
+            |      nodePort: 30080
+            """.trimMargin() + "\n",
+        )
+
+        assertThat(services().of(endpoint(30080))).isEqualTo(KitService("lab-a", "plain", 8080))
     }
 
     @Test

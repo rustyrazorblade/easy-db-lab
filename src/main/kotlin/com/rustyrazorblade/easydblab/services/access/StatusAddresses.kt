@@ -130,7 +130,7 @@ class StatusAddresses(
         }.onFailure { e ->
             log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
         }.map { config ->
-            val services = if (forwarded) KitEndpointServices.read(kitDir, config) else null
+            val services = if (forwarded) KitEndpointServices.read(kitDir, config, namespace.value) else null
             config.endpoints.flatMap { endpoint ->
                 kitEndpoint(endpoint, services?.of(endpoint)).map { ShownEndpoint(endpoint, it) }
             }

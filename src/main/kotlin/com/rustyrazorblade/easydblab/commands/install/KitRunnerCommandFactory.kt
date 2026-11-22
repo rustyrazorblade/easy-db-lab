@@ -93,7 +93,7 @@ class KitRunnerCommandFactory {
         val command =
             KitSqlCommand(
                 kitName = kitName,
-                service = KitEndpointServices.read(kitDir, kitConfig).of(jdbcEndpoint),
+                serviceIn = { clusterNamespace -> KitEndpointServices.read(kitDir, kitConfig, clusterNamespace).of(jdbcEndpoint) },
                 endpoint = jdbcEndpoint,
                 user = cap.user,
                 driverClass = cap.driverClass,

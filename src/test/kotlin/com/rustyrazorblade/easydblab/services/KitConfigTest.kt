@@ -275,7 +275,8 @@ class KitConfigTest {
                 """.trimIndent(),
             )
         val step = config.install.single() as InstallStep.Helm
-        assertThat(step.namespace).isEqualTo("default")
+        // No namespace: the step runs in the cluster namespace, resolved when it executes.
+        assertThat(step.namespace).isNull()
         assertThat(step.version).isNull()
         assertThat(step.values).isEmpty()
         assertThat(step.valuesFile).isEmpty()
@@ -979,7 +980,7 @@ class KitConfigTest {
     }
 
     @Test
-    fun `runtime namespace defaults to default`() {
+    fun `a runtime with no namespace is left to the cluster namespace`() {
         val config =
             parse(
                 """
@@ -989,7 +990,7 @@ class KitConfigTest {
                   release: presto
                 """.trimIndent(),
             )
-        assertThat(requireNotNull(config.runtime).namespace).isEqualTo("default")
+        assertThat(requireNotNull(config.runtime).namespace).isNull()
     }
 
     // -------------------------------------------------------------------------

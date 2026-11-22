@@ -42,7 +42,7 @@ class StressTargetResolver {
         workspace: File,
     ): StressTarget =
         when {
-            CassandraPodTarget.KIT in state.runningKits -> kitTarget(workspace)
+            CassandraPodTarget.KIT in state.runningKits -> kitTarget(workspace, state)
             !state.hosts[ServerType.Cassandra].isNullOrEmpty() -> vmTarget(state)
             else ->
                 error(
@@ -51,7 +51,10 @@ class StressTargetResolver {
                 )
         }
 
-    private fun kitTarget(workspace: File): StressTarget {
+    private fun kitTarget(
+        workspace: File,
+        state: ClusterState,
+    ): StressTarget {
         val kitDir = File(workspace, CassandraPodTarget.KIT)
         val configFile = File(kitDir, Constants.Kit.CONFIG_FILE)
         check(configFile.isFile) {
@@ -62,12 +65,12 @@ class StressTargetResolver {
             config.endpoints.firstOrNull { it.type == KitEndpoint.EndpointType.NATIVE }
                 ?: error("The '${CassandraPodTarget.KIT}' kit declares no native CQL endpoint")
         val service =
-            KitEndpointServices.read(kitDir, config).of(endpoint)
+            KitEndpointServices.read(kitDir, config, state.namespace().value).of(endpoint)
                 ?: error("The '${CassandraPodTarget.KIT}' kit publishes its CQL endpoint on no Service")
         return StressTarget(
             contactPoint = "${service.name}.${service.namespace}.svc",
             port = service.port ?: endpoint.port,
-            datacenter = CassandraPodTarget.inWorkspace(workspace).datacenter,
+            datacenter = CassandraPodTarget.inWorkspace(workspace, state.namespace().value).datacenter,
         )
     }
 

@@ -39,7 +39,7 @@ class SqlEngineKitServiceTest : BaseKoinTest() {
                 .nodePort,
         ).isEqualTo(nodePort)
 
-        val services = KitEndpointServices.read(dir, fixture.config)
+        val services = KitEndpointServices.read(dir, fixture.config, "default")
         assertThat(fixture.config.endpoints).isNotEmpty.allSatisfy { endpoint ->
             assertThat(endpoint.port).isEqualTo(nodePort)
             assertThat(services.of(endpoint)).isEqualTo(KitService("default", "$kit-nodeport", HTTP_PORT))

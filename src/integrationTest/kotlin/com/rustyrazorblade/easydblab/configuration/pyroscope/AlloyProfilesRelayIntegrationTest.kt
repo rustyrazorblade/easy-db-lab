@@ -9,12 +9,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
 import com.rustyrazorblade.easydblab.services.TemplateService
-import jdk.jfr.Recording
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
@@ -34,8 +32,6 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.file.Files
-import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -64,16 +60,12 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         const val SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
         const val ALLOY_UI_PORT = 12345
         const val CURL_IMAGE = "curlimages/curl:8.11.1"
-        const val SPIN_MILLIS = 1_500L
         val ARRIVAL: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
         val SENDER_TIMEOUT: Duration = Duration.ofMinutes(1)
         const val EVIDENCE_LOG_LINES = 80
         val EVIDENCE_METRICS = Regex("segment_writer|store_metadata|dlq|metastore_index|distributor_received")
     }
-
-    @TempDir
-    lateinit var jfrDir: Path
 
     private val docker = DockerClientFactory.instance().client()
     private val s3 = SharedLocalStack.s3Client()
@@ -132,24 +124,6 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         )
     }
 
-    /** A real JFR recording of this JVM spinning, so the chunk has CPU samples to parse. */
-    private fun recordJfr(): Path {
-        val file = jfrDir.resolve("chunk.jfr")
-        Recording().use { recording ->
-            recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
-            recording.start()
-            val end = System.currentTimeMillis() + SPIN_MILLIS
-            var sink = 0.0
-            while (System.currentTimeMillis() < end) {
-                sink += Math.sqrt(sink + 1)
-            }
-            recording.stop()
-            recording.dump(file)
-            check(sink > 0)
-        }
-        return file
-    }
-
     private fun startAlloy(pyroscope: GenericContainer<*>): GenericContainer<*> {
         val config = PyroscopeManifestBuilder(getKoin().get()).buildEbpfConfigMap().data.getValue("config.alloy")
         return started(
@@ -172,7 +146,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
     /** Posts [jfr] to the relay on Alloy's loopback, as the reconciler does, and returns the HTTP status. */
     private fun postThroughRelay(
         alloy: GenericContainer<*>,
-        jfr: Path,
+        jfr: ByteArray,
     ): String {
         val name = URLEncoder.encode("$SERVICE{hostname=$HOSTNAME_LABEL,cluster=$CLUSTER_LABEL}", Charsets.UTF_8)
         val until = Instant.now().epochSecond
@@ -205,7 +179,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
                 .id
         try {
             val tar = ByteArrayOutputStream()
-            TarArchiveOutputStream(tar).use { Transferable.of(Files.readAllBytes(jfr)).transferTo(it, CHUNK.removePrefix("/")) }
+            TarArchiveOutputStream(tar).use { Transferable.of(jfr).transferTo(it, CHUNK.removePrefix("/")) }
             docker
                 .copyArchiveToContainerCmd(id)
                 .withTarInputStream(ByteArrayInputStream(tar.toByteArray()))
@@ -293,7 +267,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
             )
         val alloy = startAlloy(pyroscope)
 
-        assertThat(postThroughRelay(alloy, recordJfr())).isEqualTo("status=200")
+        assertThat(postThroughRelay(alloy, CpuSampleJfr.bytes())).isEqualTo("status=200")
 
         val deadline = System.nanoTime() + ARRIVAL.toNanos()
         var series = cpuSeries(pyroscope, TENANT)

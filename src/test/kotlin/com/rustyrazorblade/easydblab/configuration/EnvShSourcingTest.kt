@@ -158,25 +158,56 @@ internal class EnvShSourcingTest {
     @Test
     fun `clickhouse-client looks in the namespace the env file records`() {
         ProxyEnvFile(workspace).recordNamespace("lab-a")
-        val calls = File(workspace, "ssh.calls")
-        val stubs =
-            File(workspace, "stubs").apply {
-                mkdirs()
-                File(this, "ssh").apply {
-                    writeText(
-                        "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"${'$'}a\"; done >> '${calls.absolutePath}'\necho chi-pod-0\n",
-                    )
-                    setExecutable(true)
-                }
-            }
 
-        val result = bash("source ./env.sh >/dev/null; PATH='${stubs.absolutePath}':${'$'}PATH; clickhouse-client --query 'SELECT 1'")
+        val result = bash("source ./env.sh >/dev/null; PATH='${sshStub().absolutePath}':${'$'}PATH; clickhouse-client --query 'SELECT 1'")
 
         assertThat(result.exitCode).withFailMessage(result.stderr).isZero()
-        val sent = calls.readLines().filter { it.contains("kubectl") }
+        val sent = sshCalls.readLines().filter { it.contains("kubectl") }
         assertThat(sent).hasSize(2).allMatch { it.contains("-n lab-a ") }
         assertThat(sent.joinToString("\n")).doesNotContain("-n default")
     }
+
+    /** A workspace whose env file records no namespace (an older release, or before `up`) is refused before any ssh. */
+    @Test
+    fun `clickhouse-client with no namespace recorded fails, names up, and never reaches the control node`() {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
+
+        val result = bash("source ./env.sh >/dev/null; PATH='${sshStub().absolutePath}':${'$'}PATH; clickhouse-client --query 'SELECT 1'")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isEqualTo(1)
+        assertThat(result.stderr).contains("No cluster namespace recorded").contains("easy-db-lab up")
+        assertThat(sshCalls).doesNotExist()
+    }
+
+    /** Only the env file names the namespace: one exported in the shell must not stand in for a missing record. */
+    @Test
+    fun `clickhouse-client ignores an EDL_NAMESPACE exported in the shell`() {
+        ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)
+
+        val result =
+            bash(
+                "export EDL_NAMESPACE=other; source ./env.sh >/dev/null; " +
+                    "PATH='${sshStub().absolutePath}':${'$'}PATH; clickhouse-client --query 'SELECT 1'",
+            )
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isEqualTo(1)
+        assertThat(result.stderr).contains("No cluster namespace recorded")
+        assertThat(sshCalls).doesNotExist()
+    }
+
+    private val sshCalls get() = File(workspace, "ssh.calls")
+
+    /** A directory holding an `ssh` that records each argument it gets in [sshCalls] and answers with a pod name. */
+    private fun sshStub(): File =
+        File(workspace, "stubs").apply {
+            mkdirs()
+            File(this, "ssh").apply {
+                writeText(
+                    "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"${'$'}a\"; done >> '${sshCalls.absolutePath}'\necho chi-pod-0\n",
+                )
+                setExecutable(true)
+            }
+        }
 
     @Test
     fun `with-proxy with no port recorded fails and names socks start`() {

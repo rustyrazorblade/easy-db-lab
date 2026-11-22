@@ -9,7 +9,9 @@
 # Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION together (CassandraRuntimeImageTest), so a
 # published tag is never overwritten.
 ARG JAVA=17
-FROM eclipse-temurin:${JAVA}-jre
+# Pinned to Ubuntu 24.04 (noble), not the moving `-jre` tag: the newest Ubuntu's python3 can be newer
+# than any tarball's cqlsh accepts (26.04 has 3.14; 5.0's cqlsh takes 3.6-3.13).
+FROM eclipse-temurin:${JAVA}-jre-noble
 
 ARG RUNTIME_REVISION=1
 # yq at the version packer/base/install/install_yq.sh installs on the AMI, so the pods' config merge

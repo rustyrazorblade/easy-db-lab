@@ -23,6 +23,18 @@ class CassandraRuntimeImageTest {
         assertThat(arg("RUNTIME_REVISION")).isEqualTo(Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION)
     }
 
+    /**
+     * The moving `<N>-jre` tag follows the newest Ubuntu, whose python3 (3.14 on 26.04) is newer
+     * than any tarball's cqlsh accepts (3.6-3.13 for 5.0), so cqlsh in the pod stops working. The
+     * base is pinned to a named Ubuntu release, which keeps one python3 for the release's life.
+     */
+    @Test
+    fun `the base image is pinned to an Ubuntu release whose python3 cqlsh accepts`() {
+        val from = dockerfile.single { it.startsWith("FROM ") }
+
+        assertThat(from).isEqualTo("FROM eclipse-temurin:\${JAVA}-jre-noble")
+    }
+
     @Test
     fun `the image's yq is the version the AMI installs`() {
         val amiYq =

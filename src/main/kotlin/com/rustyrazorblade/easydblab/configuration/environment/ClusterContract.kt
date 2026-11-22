@@ -38,8 +38,8 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
  * @property namespace the namespace easy-db-lab installs into: the one `init --namespace` recorded, or
- *   [Constants.ContractDefaults.OWNED_NAMESPACE]. A brought cluster keeps that default until the kits
- *   take the cluster namespace, when it becomes [Constants.ContractDefaults.BROUGHT_NAMESPACE] (#1094 D10).
+ *   else [Constants.ContractDefaults.OWNED_NAMESPACE] on a cluster easy-db-lab builds and
+ *   [Constants.ContractDefaults.BROUGHT_NAMESPACE] on one the user brings (#1094 D10).
  * @property recordedDatacenter the datacenter name the database nodes are given, or null for an EC2
  *   state that records no region, whose datacenter is the AWS profile's region; read it through
  *   [datacenter], never directly.
@@ -118,8 +118,8 @@ data class ClusterContract(
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
-                        // Stays at the owned default until the kits take the cluster namespace (design D10).
-                        namespace = recordedNamespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
+                        // A brought cluster gets a namespace of its own, never its `default` (design D10).
+                        namespace = recordedNamespace ?: Constants.ContractDefaults.BROUGHT_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                         clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     )

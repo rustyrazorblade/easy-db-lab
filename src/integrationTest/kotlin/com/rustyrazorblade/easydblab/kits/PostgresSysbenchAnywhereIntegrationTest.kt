@@ -12,6 +12,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
@@ -39,6 +41,7 @@ import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.WorkspaceKubeApiLocator
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import com.rustyrazorblade.easydblab.services.tenancy.NamespaceEnsurer
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.storage.StorageClassBuilder
 import io.fabric8.kubernetes.client.Config
@@ -65,7 +68,7 @@ import java.util.concurrent.TimeUnit
  * label, as on a cluster easy-db-lab did not build. The cluster state records what `init` records
  * for such a cluster: unmapped roles ([RoleSelectors.ANYWHERE]), no `NODE_SSH`, kit claims on a
  * provisioned class that retains, and the client networks [ClientNetworkProbe] reads from the
- * node.
+ * node. It installs into `easy-db-lab`, the namespace a brought cluster gets when `init` names none.
  *
  * Both kits run as they do from the CLI. The postgres templates are rendered with the kit's
  * defaults; its `install:` steps (the CNPG chart) and `start:` steps run through
@@ -114,7 +117,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
         stateManager.replace(
             ClusterState(
                 name = CLUSTER_NAME,
-                initConfig = InitConfig(name = CLUSTER_NAME, kitStorageClass = RETAINED_CLASS),
+                initConfig = InitConfig(name = CLUSTER_NAME, kitStorageClass = RETAINED_CLASS, namespace = NAMESPACE),
                 capabilities = emptySet(),
                 roleSelectors = RoleSelectors.ANYWHERE,
                 clientNetworks =
@@ -124,6 +127,9 @@ class PostgresSysbenchAnywhereIntegrationTest {
             ),
         )
         processEnvironment = KitProcessEnvironment(ToolWrapperInstaller(), stateManager)
+        // `up` ensures the labelled install namespace before any kit runs (design D11).
+        val state = stateManager.load()
+        NamespaceEnsurer.ensure(client, InstallScope.of(state, ClusterContract.of(state)))
     }
 
     @AfterAll
@@ -145,7 +151,7 @@ class PostgresSysbenchAnywhereIntegrationTest {
         val postgresDir = installPostgres()
         val sysbenchDir = installSysbench()
         val targetVars = DefaultKitEndpointResolver(NO_HTTP_ENDPOINT).resolveTargetVars(postgresDir, stateManager.load())
-        assertThat(targetVars).containsEntry("TARGET_PG_HOST", "postgres-nodeport.default.svc")
+        assertThat(targetVars).containsEntry("TARGET_PG_HOST", "postgres-nodeport.$NAMESPACE.svc")
 
         runScript(sysbenchDir, "prepare", targetVars + PREPARE_ARGS)
         runScript(sysbenchDir, "start", targetVars + START_ARGS)
@@ -373,7 +379,9 @@ class PostgresSysbenchAnywhereIntegrationTest {
 
     private companion object {
         const val CLUSTER_NAME = "postgres-sysbench-anywhere"
-        const val NAMESPACE = "default"
+
+        /** The namespace a cluster easy-db-lab did not build installs into (design D10). */
+        const val NAMESPACE = Constants.ContractDefaults.BROUGHT_NAMESPACE
         const val CNPG_NAMESPACE = "cnpg-system"
 
         /** The Deployment the kit's `cnpg-operator` release of `cnpg/cloudnative-pg` creates. */

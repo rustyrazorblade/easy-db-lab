@@ -183,9 +183,12 @@ class KitRunnerCommand(
         val registered = getKoin().getAll<KitVariableContributor>().associateBy { it.name }
         val args = config.args.associate { it.variable to it.default } + readResolvedArgs() + runtimeArgValues
         return config.contributors.fold(emptyMap()) { variables, name ->
-            val contributor = checkNotNull(registered[name]) { "No kit variable contributor named '$name' is registered" }
+            // An unregistered name fails through the same event as a contributor that throws.
             val contribution =
-                runCatchingException { contributor.contribute(args, clusterState, kitDir) }.getOrElse { e ->
+                runCatchingException {
+                    val contributor = checkNotNull(registered[name]) { "No kit variable contributor named '$name' is registered" }
+                    contributor.contribute(args, clusterState, kitDir)
+                }.getOrElse { e ->
                     eventBus.emit(Event.Kit.ContributorFailed(kit = kitName, phase = phaseName, contributor = name, reason = e.reason()))
                     throw CommandFailedException(e.reason(), e)
                 }

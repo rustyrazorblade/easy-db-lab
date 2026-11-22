@@ -35,7 +35,10 @@ echo "$*" >> "${STUB_DIR}/kubectl.calls"
 case "$1 $2" in
   "get statefulset")
     [ -z "${STUB_GET_FAILS:-}" ] || { echo "Error from server (NotFound)" >&2; exit 1; }
-    printf '%s' "${STUB_RUNNING:-}"
+    case "$*" in
+      *readyReplicas*) printf '%s' "${STUB_UN:-3}" ;;
+      *) printf '%s' "${STUB_RUNNING:-}" ;;
+    esac
     ;;
   "apply -f") cat >> "${STUB_DIR}/applied.yaml" ;;
   "rollout status") exit "${STUB_ROLLOUT_RC:-0}" ;;

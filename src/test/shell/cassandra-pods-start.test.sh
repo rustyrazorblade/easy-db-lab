@@ -63,7 +63,12 @@ case "$1" in
       exit $?
     fi
     if [ -n "${STUB_NT_ERROR:-}" ]; then echo "${STUB_NT_ERROR}" >&2; exit 1; fi; i=0; while [ "$i" -lt "${STUB_UN:-0}" ]; do echo "UN  10.0.0.$i  1 GiB"; i=$((i + 1)); done ;;
-  get) echo "EVENT-MARKER pod cassandra-pods-1 FailedScheduling" ;;
+  get)
+    case "$*" in
+      # The StatefulSet's ready replicas: $STUB_READY, or every node when unset.
+      *"statefulset"*) printf '%s' "${STUB_READY:-99}" ;;
+      *) echo "EVENT-MARKER pod cassandra-pods-1 FailedScheduling" ;;
+    esac ;;
 esac
 STUB
 chmod +x "${WORK}/stubs/"*
@@ -509,6 +514,17 @@ begin "the UN wait timeout prints the last nodetool error"
 run_wait STUB_UN=0 STUB_NT_ERROR="Error: connection refused JMX" CASSANDRA_UN_WAIT_SECONDS=1
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"connection refused JMX"*) ;; *) fail "nodetool error dropped: ${out}" ;; esac
+
+# A restarted node is UN in gossip before its native transport listens; Ready (statusbinary) is
+# what says it serves CQL.
+begin "the UN wait keeps waiting while a pod is UN but not Ready, and names the Ready count"
+run_wait STUB_UN=3 STUB_READY=2 CASSANDRA_UN_WAIT_SECONDS=1
+[ "${rc}" -eq 1 ] || fail "exit ${rc}: ${out}"
+case "${out}" in *"2 of 3 pods are Ready"*) ;; *) fail "Ready count not named: ${out}" ;; esac
+
+begin "the UN wait succeeds once every node is UN and every pod is Ready"
+run_wait STUB_UN=3 STUB_READY=3
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 
 # A container like each path's: $1 is the EDL_CASSANDRA_HOME it sets (empty for an --image pod,
 # whose nodetool is on PATH); only that path's nodetool exists. The stub runs the exec'd command

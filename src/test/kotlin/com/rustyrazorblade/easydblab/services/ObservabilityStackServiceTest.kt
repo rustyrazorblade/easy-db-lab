@@ -41,6 +41,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -234,6 +235,33 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             },
         )
         return emitted
+    }
+
+    /**
+     * The namespace comes from the one `init --namespace` recorded, through the real contract, not
+     * from the owned default: cluster-config is created there with the ownership labels and holds
+     * its `namespace` key, and the rollout and readiness waits look there.
+     */
+    @Test
+    fun `a recorded namespace is where cluster-config is created and where the deploy waits`() {
+        val recorded =
+            mockClusterStateManager.load().copy(
+                clusterId = "lab-a-id",
+                initConfig = InitConfig(region = "us-west-2", namespace = "lab-a"),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(recorded)
+
+        serviceWith(StateClusterContractSource(mockClusterStateManager)).deploy().getOrThrow()
+
+        val data = argumentCaptor<Map<String, String>>()
+        val labels = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(eq("lab-a"), eq("cluster-config"), data.capture(), labels.capture())
+        assertThat(data.firstValue).containsEntry("namespace", "lab-a")
+        assertThat(labels.firstValue).containsAllEntriesOf(OwnershipLabels.of("lab-a-id"))
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(any(), eq("lab-a"), any())
+        verify(mockK8sService, never()).waitForRollouts(any(), eq("default"), any())
+        verify(mockK8sService).waitForPodsReady(any(), eq("lab-a"))
     }
 
     @Test

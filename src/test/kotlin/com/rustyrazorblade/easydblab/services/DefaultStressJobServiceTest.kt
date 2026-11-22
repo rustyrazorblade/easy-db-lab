@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgentDelivery
+import com.rustyrazorblade.easydblab.configuration.stress.StressSidecarConfig
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -30,6 +31,8 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -364,6 +367,50 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(job.spec.backoffLimit).isEqualTo(0)
         assertThat(job.spec.ttlSecondsAfterFinished).isEqualTo(86400)
         assertThat(job.spec.template.spec.restartPolicy).isEqualTo("Never")
+    }
+
+    /**
+     * A stress start in a cluster that recorded a namespace puts the sidecar ConfigMap and the Job
+     * there, and looks for the Job's pod there, not in the owned default.
+     */
+    @Test
+    fun `startJob creates the sidecar ConfigMap and the Job in the recorded namespace`() {
+        val stateManager: ClusterStateManager = getKoin().get()
+        val recorded = stateManager.load().copy(initConfig = InitConfig(region = "us-west-2", namespace = "lab-a"))
+        whenever(stateManager.load()).thenReturn(recorded)
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.createJob(any(), any<Job>())).thenReturn(Result.success("stress-lab-a"))
+        whenever(mockK8sService.getPodsForJob(any(), any())).thenReturn(
+            Result.success(
+                listOf(
+                    KubernetesPod(
+                        namespace = "lab-a",
+                        name = "stress-lab-a-abc",
+                        status = "Running",
+                        ready = "1/1",
+                        restarts = 0,
+                        age = Duration.ZERO,
+                        nodeName = "app0",
+                    ),
+                ),
+            ),
+        )
+
+        service
+            .startJob(
+                StressJobConfig(
+                    jobName = "stress-lab-a",
+                    image = "ghcr.io/apache/cassandra-easy-stress:latest",
+                    target = VM_TARGET,
+                    args = listOf("run", "KeyValue"),
+                ),
+            ).getOrThrow()
+
+        verify(mockK8sService).createConfigMap(eq("lab-a"), eq(StressSidecarConfig.CONFIG_MAP_NAME), any(), any())
+        val job = argumentCaptor<Job>()
+        verify(mockK8sService).createJob(eq("lab-a"), job.capture())
+        assertThat(job.firstValue.metadata.namespace).isEqualTo("lab-a")
+        verify(mockK8sService).getPodsForJob(eq("lab-a"), eq("stress-lab-a"))
     }
 
     @Test

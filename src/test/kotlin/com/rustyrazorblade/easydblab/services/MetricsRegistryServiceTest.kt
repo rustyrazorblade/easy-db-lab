@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -202,6 +205,27 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
 
         verify(mockK8sService).deleteConfigMapsByLabels(
             namespace = "default",
+            labels =
+                mapOf(
+                    Constants.K8s.WORKLOAD_METRICS_LABEL to "true",
+                    Constants.K8s.KIT_LABEL to "clickhouse",
+                ),
+        )
+    }
+
+    @Test
+    fun `register and deregister use the scope's namespace, not the default`() {
+        val inLabA =
+            DefaultMetricsRegistryService(mockK8sService, mockOtelSyncService, eventBus) {
+                InstallScope(K8sNamespace("lab-a"), "lab-a-id")
+            }
+
+        inLabA.register(kitName = "clickhouse", targets = listOf(KitMetrics.Scrape(port = 9363, path = "/metrics"))).getOrThrow()
+        inLabA.deregister(kitName = "clickhouse").getOrThrow()
+
+        verify(mockK8sService).createConfigMap(eq("lab-a"), eq("easydblab-metrics-clickhouse-clickhouse"), any(), any())
+        verify(mockK8sService).deleteConfigMapsByLabels(
+            namespace = "lab-a",
             labels =
                 mapOf(
                     Constants.K8s.WORKLOAD_METRICS_LABEL to "true",

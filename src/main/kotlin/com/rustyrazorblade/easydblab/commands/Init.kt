@@ -385,9 +385,9 @@ class Init :
     @Option(
         names = ["--namespace"],
         description = [
-            "Kubernetes namespace easy-db-lab installs into (default: default on AWS and local, " +
-                "easy-db-lab on your cluster). Must be a DNS-1123 label of at most 63 characters, not kube-system, " +
-                "kube-public or kube-node-lease.",
+            "Kubernetes namespace easy-db-lab installs the observability stack into (default: default, " +
+                "in every environment, including your own cluster). Must be a DNS-1123 label of at most 63 characters, " +
+                "not kube-system, kube-public or kube-node-lease.",
         ],
     )
     var namespace: String? = null

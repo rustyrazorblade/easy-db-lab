@@ -78,9 +78,10 @@ object NamespaceEnsurer {
     }
 
     /**
-     * Reads the namespace, then creates or labels it as [plan] decides; returns what it did. A create
-     * that loses a race with another creator (409) is planned again, once, from the namespace that
-     * won; a second conflict is thrown. The returned plan's [NamespacePlan.namespace] is used only
+     * Reads the namespace, then creates or labels it as [plan] decides; returns what it did. Any 409
+     * is planned again, once, from a fresh read: a create that loses a race with another creator, and
+     * an adopt `edit` that loses to a concurrent change or deletion of the namespace. A second
+     * conflict is thrown. The returned plan's [NamespacePlan.namespace] is used only
      * for reporting: an adopted namespace is edited from the live object, not from the plan's copy.
      */
     fun ensure(

@@ -1463,9 +1463,7 @@ class KitConfigTest {
          */
         @ParameterizedTest
         @ValueSource(strings = ["NAMESPACE", "CLUSTER_NAME", "KUBECONFIG", "TENANT"])
-        fun `a top-level install arg named like a cluster variable is rejected, naming the arg and the variable`(
-            variable: String,
-        ) {
+        fun `a top-level install arg named like a cluster variable is rejected, naming the arg and the variable`(variable: String) {
             assertThatThrownBy {
                 parse(
                     """

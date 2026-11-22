@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.cassandraversions.CassandraTarballResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -24,6 +25,7 @@ class KitVariableContributorBindingTest {
                     module {
                         single<K8sService> { mock() }
                         single<CassandraTarballResolver> { mock() }
+                        single { EventBus() }
                     },
                 )
             }

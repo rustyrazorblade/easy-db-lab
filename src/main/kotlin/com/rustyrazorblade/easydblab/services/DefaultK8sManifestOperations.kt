@@ -153,13 +153,13 @@ class DefaultK8sManifestOperations(
     ): Map<String, Result<Unit>> =
         clientProvider.createClient().use { client ->
             val outcomes = linkedMapOf<String, Result<Unit>>()
-            // The sequence is lazy, so no node after the one that ends the batch is patched.
-            val stop =
-                nodeNames.asSequence().firstNotNullOfOrNull { nodeName ->
-                    val outcome = runCatchingException { patchLabels(client, nodeName, labels) }
-                    outcomes[nodeName] = outcome
-                    outcome.exceptionOrNull()?.takeIf(::endsTheBatch)?.let { nodeName to it }
-                }
+            var stop: Pair<String, Throwable>? = null
+            for (nodeName in nodeNames) {
+                val outcome = runCatchingException { patchLabels(client, nodeName, labels) }
+                outcomes[nodeName] = outcome
+                stop = outcome.exceptionOrNull()?.takeIf(::endsTheBatch)?.let { nodeName to it }
+                if (stop != null) break
+            }
             stop?.let { (failedNode, cause) ->
                 nodeNames.filterNot(outcomes::containsKey).forEach { outcomes[it] = Result.failure(notTried(it, failedNode, cause)) }
             }

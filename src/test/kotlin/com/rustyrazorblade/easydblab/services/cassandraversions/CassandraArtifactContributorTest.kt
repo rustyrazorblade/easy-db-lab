@@ -336,6 +336,19 @@ class CassandraArtifactContributorTest {
         assertThat(listOf(before, patched, scripted, otherJdk)).doesNotHaveDuplicates()
     }
 
+    /** 0xFF and 0xFE are both invalid UTF-8 and read as text to the same U+FFFD, yet they are different files. */
+    @Test
+    fun `the config hash is over the ConfigMap files' bytes, not their text`() {
+        File(kitDir, "config").mkdirs()
+        val file = File(kitDir, "config/blob.bin")
+        file.writeBytes(byteArrayOf(0xFF.toByte()))
+        val first = contribute().variables.getValue("EDL_CONFIG_HASH")
+        file.writeBytes(byteArrayOf(0xFE.toByte()))
+        val second = contribute().variables.getValue("EDL_CONFIG_HASH")
+
+        assertThat(first).isNotEqualTo(second)
+    }
+
     @Test
     fun `on owned nodes the memory defaults to 75 percent of the smallest db node, rounded down to Mi`() {
         allocatable(NodeAllocatable(memoryMib = 30001, cpu = 8))

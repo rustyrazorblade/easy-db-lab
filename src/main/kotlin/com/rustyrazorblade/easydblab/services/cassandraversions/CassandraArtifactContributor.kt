@@ -13,7 +13,10 @@ import com.rustyrazorblade.easydblab.services.KitContribution
 import com.rustyrazorblade.easydblab.services.KitPlacementVariables
 import com.rustyrazorblade.easydblab.services.KitVariableContributor
 import com.rustyrazorblade.easydblab.services.RoleNodes
-import kotlinx.serialization.json.Json
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.ResourceRequirements
+import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
+import io.fabric8.kubernetes.client.utils.Serialization
 import java.io.File
 import java.security.MessageDigest
 
@@ -91,11 +94,14 @@ class CassandraArtifactContributor(
                 .listFiles()
                 .orEmpty()
                 .filter { it.isFile }
-                .associate { "$CONFIG_DIR/${it.name}" to it.readText() }
-        val hashed = artifact.filterKeys { it !in URL_VARIABLES } + configFiles + scripts
+                .associate { "$CONFIG_DIR/${it.name}" to it.readBytes() }
+        val text = (artifact.filterKeys { it !in URL_VARIABLES } + configFiles).mapValues { it.value.toByteArray() }
         val digest = MessageDigest.getInstance("SHA-256")
-        hashed.toSortedMap().forEach { (key, value) ->
-            digest.update("$key\u0000$value\u0000".toByteArray())
+        // The files as bytes, never decoded: two files that read as the same text still hash apart.
+        (text + scripts).toSortedMap().forEach { (key, value) ->
+            digest.update("$key\u0000".toByteArray())
+            digest.update(value)
+            digest.update(0)
         }
         return digest.digest().joinToString("") { "%02x".format(it) }.take(CONFIG_HASH_LENGTH)
     }
@@ -154,25 +160,35 @@ class CassandraArtifactContributor(
                 false -> Constants.Kit.CassandraPods.DEFAULT_MEMORY
             }
         val cpus = args.value(CPUS) ?: (allocatable.cpu - 1).coerceAtLeast(1).toString()
-        val requests = mapOf("cpu" to cpus, "memory" to memory)
+        val requests = mapOf(CPU to Quantity(cpus), MEMORY_RESOURCE to Quantity(memory))
         val cassandra =
             when (placement.guaranteedPods) {
-                true -> mapOf("requests" to requests, "limits" to requests)
-                false -> mapOf("requests" to requests, "limits" to mapOf("memory" to memory))
+                true -> resources(requests, requests)
+                false -> resources(requests, mapOf(MEMORY_RESOURCE to Quantity(memory)))
             }
         // A pod is Guaranteed only when every container, init containers included, sets equal requests and limits.
         val init =
             when (placement.guaranteedPods) {
-                true -> mapOf("requests" to INIT_RESOURCES, "limits" to INIT_RESOURCES)
-                false -> emptyMap()
+                true -> resources(INIT_RESOURCES, INIT_RESOURCES)
+                false -> ResourceRequirements()
             }
         return mapOf(
             MEMORY to memory,
             CPUS to cpus,
-            "EDL_CASSANDRA_RESOURCES" to Json.encodeToString(cassandra),
-            "EDL_INIT_RESOURCES" to Json.encodeToString(init),
+            Constants.Kit.CassandraPods.CASSANDRA_RESOURCES_VARIABLE to Serialization.asJson(cassandra),
+            Constants.Kit.CassandraPods.INIT_RESOURCES_VARIABLE to Serialization.asJson(init),
         )
     }
+
+    /** A container's resources as Fabric8 builds them; apply-statefulset.sh puts its JSON in as YAML flow. */
+    private fun resources(
+        requests: Map<String, Quantity>,
+        limits: Map<String, Quantity>,
+    ): ResourceRequirements =
+        ResourceRequirementsBuilder()
+            .withRequests<String, Quantity>(requests)
+            .withLimits<String, Quantity>(limits)
+            .build()
 
     /** `KEY='value'` lines a POSIX shell can source, whatever a presigned URL holds. */
     private fun envFile(variables: Map<String, String>): String =
@@ -187,6 +203,10 @@ class CassandraArtifactContributor(
         const val IMAGE = "CASSANDRA_IMAGE"
         const val MEMORY = "CASSANDRA_MEMORY"
         const val CPUS = "CASSANDRA_CPUS"
+
+        // The Kubernetes resource names.
+        const val CPU = "cpu"
+        const val MEMORY_RESOURCE = "memory"
         const val DC = "CASSANDRA_DC"
         const val DEFAULT_VERSION = "5.0"
         const val DEFAULT_DC = "dc1"
@@ -202,8 +222,8 @@ class CassandraArtifactContributor(
         /** Each init container's request and limit on Guaranteed nodes: they copy files and exit. */
         val INIT_RESOURCES =
             mapOf(
-                "cpu" to Constants.Kit.CassandraPods.INIT_CONTAINER_CPU,
-                "memory" to Constants.Kit.CassandraPods.INIT_CONTAINER_MEMORY,
+                CPU to Quantity(Constants.Kit.CassandraPods.INIT_CONTAINER_CPU),
+                MEMORY_RESOURCE to Quantity(Constants.Kit.CassandraPods.INIT_CONTAINER_MEMORY),
             )
     }
 }

@@ -1367,6 +1367,12 @@ object Constants {
 
             /** Each init container's memory on Guaranteed nodes; the fetch streams the tarball through curl and tar. */
             const val INIT_CONTAINER_MEMORY = "512Mi"
+
+            /** The contributor's variable holding the cassandra container's resources, as JSON (YAML flow). */
+            const val CASSANDRA_RESOURCES_VARIABLE = "EDL_CASSANDRA_RESOURCES"
+
+            /** The contributor's variable holding every init container's resources, as JSON (YAML flow). */
+            const val INIT_RESOURCES_VARIABLE = "EDL_INIT_RESOURCES"
         }
 
         object Presto {

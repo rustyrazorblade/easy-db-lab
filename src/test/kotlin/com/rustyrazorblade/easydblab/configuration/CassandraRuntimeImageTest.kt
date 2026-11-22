@@ -24,15 +24,16 @@ class CassandraRuntimeImageTest {
     }
 
     /**
-     * The moving `<N>-jre` tag follows the newest Ubuntu, whose python3 (3.14 on 26.04) is newer
-     * than any tarball's cqlsh accepts (3.6-3.13 for 5.0), so cqlsh in the pod stops working. The
-     * base is pinned to a named Ubuntu release, which keeps one python3 for the release's life.
+     * The moving `<N>-jre` tag follows the newest Ubuntu, whose python3 (3.14 on 26.04, 3.12 on
+     * noble) is newer than older releases' cqlsh accepts (5.0.8 takes 3.8-3.11), so cqlsh in the pod
+     * stops working. Jammy's python3 3.10 is inside every 4.x and 5.0 cqlsh range, and a named
+     * Ubuntu release keeps one python3 for its life. `CassandraPodsTarballIntegrationTest` runs cqlsh.
      */
     @Test
     fun `the base image is pinned to an Ubuntu release whose python3 cqlsh accepts`() {
         val from = dockerfile.single { it.startsWith("FROM ") }
 
-        assertThat(from).isEqualTo("FROM eclipse-temurin:\${JAVA}-jre-noble")
+        assertThat(from).isEqualTo("FROM eclipse-temurin:\${JAVA}-jre-jammy")
     }
 
     @Test

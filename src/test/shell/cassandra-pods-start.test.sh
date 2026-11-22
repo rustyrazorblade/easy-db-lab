@@ -52,7 +52,17 @@ cat > "${WORK}/stubs/kubectl" << 'STUB'
 echo "$*" >> "${STUB_DIR}/kubectl.calls"
 case "$1" in
   apply) cat > "${STUB_DIR}/applied.yaml" ;;
-  exec) if [ -n "${STUB_NT_ERROR:-}" ]; then echo "${STUB_NT_ERROR}" >&2; exit 1; fi; i=0; while [ "$i" -lt "${STUB_UN:-0}" ]; do echo "UN  10.0.0.$i  1 GiB"; i=$((i + 1)); done ;;
+  exec)
+    if [ -n "${STUB_EXEC_IN_CONTAINER:-}" ]; then
+      while [ "$1" != "--" ]; do shift; done
+      shift
+      root="${STUB_EXEC_IN_CONTAINER}"
+      # The container's PATH holds only its own bin dir and the basic tools, never nodetool's home.
+      env -i PATH="${root}/usr/bin:/usr/bin:/bin" \
+        ${STUB_CONTAINER_HOME:+EDL_CASSANDRA_HOME="${root}${STUB_CONTAINER_HOME}"} "$@"
+      exit $?
+    fi
+    if [ -n "${STUB_NT_ERROR:-}" ]; then echo "${STUB_NT_ERROR}" >&2; exit 1; fi; i=0; while [ "$i" -lt "${STUB_UN:-0}" ]; do echo "UN  10.0.0.$i  1 GiB"; i=$((i + 1)); done ;;
   get) echo "EVENT-MARKER pod cassandra-pods-1 FailedScheduling" ;;
 esac
 STUB
@@ -499,6 +509,33 @@ begin "the UN wait timeout prints the last nodetool error"
 run_wait STUB_UN=0 STUB_NT_ERROR="Error: connection refused JMX" CASSANDRA_UN_WAIT_SECONDS=1
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"connection refused JMX"*) ;; *) fail "nodetool error dropped: ${out}" ;; esac
+
+# A container like each path's: $1 is the EDL_CASSANDRA_HOME it sets (empty for an --image pod,
+# whose nodetool is on PATH); only that path's nodetool exists. The stub runs the exec'd command
+# in it, as the container would.
+run_wait_in_container() {
+  local home="$1"
+  shift
+  rm -rf "${WORK}/container"
+  if [ -n "${home}" ]; then
+    mkdir -p "${WORK}/container${home}/bin"
+    tool="${WORK}/container${home}/bin/nodetool"
+  else
+    mkdir -p "${WORK}/container/usr/bin"
+    tool="${WORK}/container/usr/bin/nodetool"
+  fi
+  printf '#!/bin/sh\n[ "$1" = status ] || exit 2\necho "UN  10.0.0.1"\n' > "${tool}"
+  chmod +x "${tool}"
+  run_wait STUB_EXEC_IN_CONTAINER="${WORK}/container" STUB_CONTAINER_HOME="${home}" CASSANDRA_NODES=1 CASSANDRA_UN_WAIT_SECONDS=1 "$@"
+}
+
+begin "the UN wait finds nodetool in a tarball pod, where it is under EDL_CASSANDRA_HOME and not on PATH"
+run_wait_in_container /var/lib/cassandra/.edl/artifacts/sha256-abc
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+
+begin "the UN wait still finds nodetool on PATH in an --image pod"
+run_wait_in_container ""
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 
 bound_for() {
   run_wait STUB_UN="$1" CASSANDRA_NODES="$1"

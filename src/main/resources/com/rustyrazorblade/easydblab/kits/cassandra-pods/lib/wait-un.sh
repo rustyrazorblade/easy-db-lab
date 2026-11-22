@@ -18,11 +18,15 @@ poll="${EDL_POLL_SECONDS:-5}"
 pod="${KIT_NAME}-0"
 deadline=$(($(date +%s) + timeout))
 
+# Run in the container: a tarball pod has nodetool under its EDL_CASSANDRA_HOME, off PATH; an
+# --image pod sets no EDL_CASSANDRA_HOME and has nodetool on PATH.
+NODETOOL_STATUS='if [ -n "${EDL_CASSANDRA_HOME:-}" ]; then exec "$EDL_CASSANDRA_HOME/bin/nodetool" status; fi; exec nodetool status'
+
 nt_err="$(mktemp)"
 trap 'rm -f "${nt_err}"' EXIT
 
 while :; do
-  up="$(kubectl exec "${pod}" --namespace default -c cassandra -- nodetool status 2> "${nt_err}" | grep -c '^UN' || true)"
+  up="$(kubectl exec "${pod}" --namespace default -c cassandra -- sh -c "${NODETOOL_STATUS}" 2> "${nt_err}" | grep -c '^UN' || true)"
   if [ "${up}" -ge "${CASSANDRA_NODES}" ]; then
     echo "${up} nodes are UN."
     exit 0

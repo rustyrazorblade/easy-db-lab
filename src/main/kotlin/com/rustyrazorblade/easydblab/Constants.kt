@@ -1012,6 +1012,9 @@ object Constants {
         /** The longest DNS-1123 label Kubernetes accepts, e.g. for a pod volume name. */
         const val DNS_LABEL_MAX_LENGTH = 63
 
+        /** The longest DNS subdomain name Kubernetes accepts, e.g. for a ClusterRole or ClusterRoleBinding name. */
+        const val DNS_SUBDOMAIN_MAX_LENGTH = 253
+
         /**
          * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
          * when the port it was given was bound by another process after it was chosen: the first

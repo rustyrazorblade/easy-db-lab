@@ -40,7 +40,7 @@ operation opens a client through `K8sClientProvider.createClient()`, which reads
 `WorkspaceKubeconfig` resolves against `Context.workingDirectory`. Nothing else builds the kubeconfig
 path; call `WorkspaceKubeconfig.file`, `exists` or `require`. The read queries (`listJobs`, `listPods`,
 `listPodsByLabel`, `getNodes`, `isReachable`) are `K8sReadOperations`, part of `K8sService`; they return
-`Result<T>`, and a `null` namespace means all namespaces. No `K8sService` method has a default namespace: callers pass the cluster's, from `InstallScopeSource` (see `configuration/CLAUDE.md`, "Install Scope and Ownership"). Every create path adds the ownership labels: Koin binds `DefaultK8sService.owned`, which wraps `applyResource` (`OwnedManifestOperations`), `createJob(namespace, Job)` (`OwnedJobOperations`) and `createConfigMap` (`OwnedStorageOperations`).
+`Result<T>`, and a `null` namespace means all namespaces. No `K8sService` method has a default namespace: callers pass the cluster's, from `InstallScopeSource` (see `configuration/CLAUDE.md`, "Install Scope and Ownership"). Every create path adds the ownership labels: Koin binds `DefaultK8sService.owned`, which wraps `applyResource` (`OwnedManifestOperations`), `createJob(namespace, Job)` (`OwnedJobOperations`) and `createConfigMap` (`OwnedStorageOperations`). The untyped applies (`applyYaml`, `applyManifests`, `applyManifestFromResources`) are not labelled, and no main source calls them (`architecture/NoUntypedApplyTest`); apply a typed object instead.
 
 ## Loading the client: `KubeApi`, by path with an explicit context
 

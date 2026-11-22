@@ -5,8 +5,8 @@ on:
     tags:
       - 'v*'
   # Run by hand by a maintainer. Only publish-pyroscope-agent and publish-cassandra-runtime run on
-  # it, and they push only when it is run on main: on any other branch they build and check the
-  # images but push nothing, so an unreviewed branch can never publish a tag.
+  # it. The agent image is published from any branch, so a version bump can publish before it
+  # merges; the runtime image is pushed only when the run is on main (elsewhere it is only built).
   workflow_dispatch:
   workflow_run:
     workflows: ["PR Checks"]
@@ -96,9 +96,8 @@ jobs:
   # The Pyroscope Java agent image kit and stress pods copy their agent jar from
   # (Constants.Kit.Agents.PYROSCOPE_IMAGE). Its tag is the agent version and its content is fixed by
   # the Dockerfile's checksum and pinned base images. It is published only from trusted refs (a tag
-  # push, PR Checks passing on a push to main, or a maintainer's manual dispatch on main; never a
-  # branch dispatch, which only builds, or a pull request's own run), and a version that is
-  # already published is never overwritten.
+  # push, PR Checks passing on a push to main, or a maintainer's manual dispatch of a branch; never
+  # a pull request's own run), and a version that is already published is never overwritten.
   publish-pyroscope-agent:
     runs-on: ubuntu-latest
     # The push trigger fires only for v* tags (see on.push), so no branch push reaches this job;
@@ -172,15 +171,16 @@ jobs:
         with:
           context: docker/pyroscope-java-agent
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+          push: true
           tags: ghcr.io/rustyrazorblade/pyroscope-java-agent:${{ steps.version.outputs.version }}
 
   # The JRE image the cassandra-pods kit runs a Cassandra tarball on
   # (Constants.Kit.CassandraPods.RUNTIME_IMAGE_REPOSITORY), one tag per JDK, as
   # <revision>-jre<N>. The revision is read from the Dockerfile and bumped with
-  # Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION (CassandraRuntimeImageTest). Published from
-  # the same trusted refs as the Pyroscope agent; a published tag is never overwritten, and a tag
-  # missing linux/amd64 or linux/arm64 fails the job.
+  # Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION (CassandraRuntimeImageTest). Published on a
+  # tag push, after PR Checks pass on a push to main, or by a manual dispatch on main; a dispatch of
+  # any other branch builds and checks the images but pushes nothing (CassandraRuntimeImageTest). A
+  # published tag is never overwritten, and a tag missing linux/amd64 or linux/arm64 fails the job.
   publish-cassandra-runtime:
     runs-on: ubuntu-latest
     if: |

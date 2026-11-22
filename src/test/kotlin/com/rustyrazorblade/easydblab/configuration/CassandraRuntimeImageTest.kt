@@ -69,21 +69,31 @@ class CassandraRuntimeImageTest {
 
     /**
      * A manual dispatch runs on whatever branch the maintainer picks, and a published tag is never
-     * overwritten, so an unreviewed branch that pushed would fix its image under that tag for good.
-     * Each push in the workflow is therefore gated to main when the run is a dispatch.
+     * overwritten, so a runtime image pushed from an unreviewed branch would fix that tag for good.
+     * The cassandra-runtime job therefore pushes on a dispatch only from main. The Pyroscope agent job
+     * keeps the owner's branch-dispatch publish (so a version bump can publish before it merges).
      */
     @Test
-    fun `a manual dispatch pushes images only from main`() {
-        val pushes =
-            File(".github/workflows/publish-container.yml")
-                .readLines()
-                // A step's `with: push:`, never the workflow's own `on: push:` trigger.
-                .filter { it.startsWith("          push:") }
-                .map { it.trim() }
+    fun `a manual dispatch pushes the runtime image only from main, and the agent image from any branch`() {
+        val pushes = pushByJob(File(".github/workflows/publish-container.yml").readLines())
 
-        assertThat(pushes)
-            .isNotEmpty
-            .allMatch { it == "push: \${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}" }
+        assertThat(pushes).containsOnlyKeys("publish-pyroscope-agent", "publish-cassandra-runtime")
+        assertThat(pushes.getValue("publish-cassandra-runtime"))
+            .isEqualTo("\${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}")
+        assertThat(pushes.getValue("publish-pyroscope-agent")).isEqualTo("true")
+    }
+
+    /** Each job's step `with: push:` value, by the job it sits in; never the workflow's `on: push:` trigger. */
+    private fun pushByJob(workflow: List<String>): Map<String, String> {
+        var job: String? = null
+        val pushes = mutableMapOf<String, String>()
+        for (line in workflow) {
+            Regex("""^ {2}([a-z0-9-]+):$""").matchEntire(line)?.let { job = it.groupValues[1] }
+            Regex("""^ {10}push: (.+)$""").matchEntire(line)?.let { match ->
+                job?.let { pushes[it] = match.groupValues[1] }
+            }
+        }
+        return pushes
     }
 
     @Test

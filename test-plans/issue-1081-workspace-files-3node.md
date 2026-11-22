@@ -116,10 +116,10 @@ Pass: `kubectl` lists 4 Ready nodes, and `memcached status` reports running pods
 This step is the one deliberate exception to "always use `$EDB`": the wrapper `cd`s into the
 workspace, which is the very thing this step must avoid. Make an empty directory
 `OTHER=$(mktemp -d)`. Run the binary the wrapper calls (read its path from `$EDB`) as
-`(cd "$OTHER" && <that binary> status)`.
+`(cd "$OTHER" && <that binary> cassandra download-config)`.  Do not use `status` here: it reports "Cluster state does not exist yet" and exits 0 by design.
 
 Pass:
-- It fails with "No cluster state at $OTHER/state.json ... or run 'init' there first".
+- It exits 1 with "No cluster state at $OTHER/state.json ... or run 'init' there first".
 - `ls -A "$OTHER"` is empty afterwards.
 - `$EDB status` (in the workspace) still succeeds.
 

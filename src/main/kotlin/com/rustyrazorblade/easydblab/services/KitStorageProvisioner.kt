@@ -65,7 +65,7 @@ class KitStorageProvisioner(
         when (storage) {
             is KitStorage.Provisioned -> {
                 retainCheck.requireKitClass(storage.storageClass, eventBus)
-                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass, state)
+                if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass)
             }
             is KitStorage.LocalVolumes -> createLocalVolumes(volumes, storage.storageClassFor(volumes.kit), state)
         }
@@ -140,7 +140,6 @@ class KitStorageProvisioner(
     private fun reopenReleased(
         kit: String,
         storageClass: String,
-        state: ClusterState,
     ) {
         val reopened =
             k8sService

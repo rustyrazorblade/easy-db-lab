@@ -227,7 +227,7 @@ TiDB v8.x ships the OpenTracing API with a **Jaeger UDP reporter** (`[opentracin
 ```
 TiDB pod
   └─ [opentracing] reporter (Jaeger Thrift Compact, UDP)
-       └─ otel-collector.default.svc:6831
+       └─ otel-collector.<namespace>.svc:6831 (the cluster namespace)
             └─ OTel Collector jaeger receiver
                  └─ OTLP → Tempo
 ```
@@ -243,14 +243,14 @@ The `tidbcluster.yaml.template` configures TiDB's opentracing reporter:
   type = "const"
   param = 1.0
 [opentracing.reporter]
-  local-agent-host-port = "otel-collector.default.svc:6831"
+  local-agent-host-port = "__OTEL_COLLECTOR_HOST__:6831"
 ```
 
 `type = "const"` with `param = 1.0` means 100% sampling — all SQL requests produce a trace. Reduce `param` (e.g. `0.1` for 10%) on high-throughput clusters to limit Tempo ingestion volume.
 
 ### OTel Collector Jaeger Receiver
 
-The OTel Collector DaemonSet listens on UDP port 6831 (Jaeger Thrift Compact) on all nodes. The K8s Service `otel-collector.default.svc.cluster.local` exposes this port as UDP so TiDB pods can reach it via DNS without knowing the node IP.
+The OTel Collector DaemonSet listens on UDP port 6831 (Jaeger Thrift Compact) on all nodes. The K8s Service `otel-collector` in the cluster namespace (`otel-collector.<namespace>.svc`, the `__OTEL_COLLECTOR_HOST__` the template renders) exposes this port as UDP so TiDB pods can reach it via DNS without knowing the node IP.
 
 The Jaeger receiver is included in the `traces` pipeline alongside `otlp`, so TiDB traces flow through the same `spanmetrics` and `servicegraph` connectors as all other traces.
 

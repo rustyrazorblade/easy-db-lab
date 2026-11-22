@@ -3,7 +3,7 @@ set -euo pipefail
 
 KAFKA_POD=$(KUBECONFIG="$KUBECONFIG" kubectl get pods \
   -l strimzi.io/cluster=kafka,strimzi.io/broker-role=true \
-  -n default \
+  -n "${NAMESPACE}" \
   --field-selector=status.phase=Running \
   -o jsonpath='{.items[0].metadata.name}')
 
@@ -15,7 +15,7 @@ fi
 echo "Consumer perf test on pod $KAFKA_POD"
 echo "  topic=$TOPIC  messages=$NUM_RECORDS  group=$GROUP"
 
-KUBECONFIG="$KUBECONFIG" kubectl exec -n default "$KAFKA_POD" -- \
+KUBECONFIG="$KUBECONFIG" kubectl exec -n "${NAMESPACE}" "$KAFKA_POD" -- \
   bash -c "echo 'auto.offset.reset=earliest' > /tmp/consumer.properties && \
     bin/kafka-consumer-perf-test.sh \
     --bootstrap-server localhost:9092 \

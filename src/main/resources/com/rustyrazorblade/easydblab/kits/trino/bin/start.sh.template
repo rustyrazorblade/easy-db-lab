@@ -20,11 +20,11 @@ echo "Patching worker: Pyroscope profiling agent..."
 edl_patch_pyroscope trino-worker trino-worker trino "${CLUSTER_LABEL}" worker
 
 echo "Waiting for rollout to complete..."
-kubectl rollout status deployment/trino-coordinator --namespace default --timeout=180s
-kubectl rollout status deployment/trino-worker --namespace default --timeout=180s
+kubectl rollout status deployment/trino-coordinator --namespace "${NAMESPACE}" --timeout=180s
+kubectl rollout status deployment/trino-worker --namespace "${NAMESPACE}" --timeout=180s
 
 # Clients reach the coordinator through its NodePort Service on any node; the pod declares no hostPort.
 echo "Publishing the coordinator on its NodePort Service..."
-kubectl apply -f - < "${SCRIPT_DIR}/../nodeport-service.yaml"
+kubectl apply -f - -n "${NAMESPACE}" < "${SCRIPT_DIR}/../nodeport-service.yaml"
 
 echo "Trino is ready. Workers: __WORKERS__"

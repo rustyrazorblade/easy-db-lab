@@ -9,23 +9,23 @@ MANIFEST="${SCRIPT_DIR}/../daemonset.yaml"
 echo "Deploying cqlite-flight (image tag: __TAG__, Flight port: __FLIGHT_PORT__, data dir: __CASSANDRA_DATA_DIR__)..."
 # The detect-multidisk init container runs pod/detect-multidisk.sh from this ConfigMap. It carries
 # the kit label, so stop removes it with the DaemonSet; apply keeps a re-run of start idempotent.
-kubectl create configmap cqlite-flight-detect-multidisk --namespace default \
+kubectl create configmap cqlite-flight-detect-multidisk --namespace "${NAMESPACE}" \
   --from-file=detect-multidisk.sh="${SCRIPT_DIR}/../pod/detect-multidisk.sh" --dry-run=client -o yaml |
   kubectl label --local -f - easydblab/kit=cqlite-flight easydblab/role=flight -o yaml |
-  kubectl apply -f -
+  kubectl apply -f - -n "${NAMESPACE}"
 
-kubectl apply -f "${MANIFEST}"
+kubectl apply -f "${MANIFEST}" -n "${NAMESPACE}"
 
 echo "Waiting up to __ROLLOUT_TIMEOUT_SECONDS__s (--rollout-timeout) for the cqlite-flight DaemonSet rollout on db nodes..."
-if ! kubectl rollout status daemonset/cqlite-flight --namespace default --timeout=__ROLLOUT_TIMEOUT_SECONDS__s; then
+if ! kubectl rollout status daemonset/cqlite-flight --namespace "${NAMESPACE}" --timeout=__ROLLOUT_TIMEOUT_SECONDS__s; then
   cat >&2 <<'HINT'
 cqlite-flight did not roll out within __ROLLOUT_TIMEOUT_SECONDS__s. The first start on a node pulls
-ghcr.io/pmcfadin/cqlite-flight:__TAG__. If kubectl describe pod shows a pod still pulling it
+ghcr.io/pmcfadin/cqlite-flight:__TAG__. If kubectl describe pod -n __NAMESPACE__ shows a pod still pulling it
 (ContainerCreating, "Pulling image"), the pull is slow, not broken: run start again with a larger
 --rollout-timeout. Otherwise, --data-dir (__CASSANDRA_DATA_DIR__) and --data-root
 (__CASSANDRA_DATA_ROOT__) must both exist on every db node; a missing one fails the pod with
 "hostPath type check failed". The pod reads the data dir through --data-gid (__CASSANDRA_DATA_GID__),
-which must be the GID that owns it. See: kubectl describe pod -l app.kubernetes.io/name=cqlite-flight
+which must be the GID that owns it. See: kubectl describe pod -n __NAMESPACE__ -l app.kubernetes.io/name=cqlite-flight
 
 NOTE (issue #2114): cqlite-flight serves EXACTLY ONE --data-dir (__CASSANDRA_DATA_DIR__) and
 cannot span disks. On a multi-disk node (data_file_directories across /mnt/db1, /mnt/db2, ...)
@@ -33,7 +33,7 @@ the unserved disks are read as if absent — PARTIAL results with NO error. Each
 'detect-multidisk' init container scans --data-root (__CASSANDRA_DATA_ROOT__) and warns on
 more than one data dir, or that it cannot verify the layout when the served dir is not the
 only data dir under the root. Read it per node with:
-  kubectl logs -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
+  kubectl logs -n __NAMESPACE__ -l app.kubernetes.io/name=cqlite-flight -c detect-multidisk --prefix
 HINT
   exit 1
 fi

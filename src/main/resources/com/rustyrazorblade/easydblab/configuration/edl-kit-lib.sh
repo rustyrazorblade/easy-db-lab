@@ -18,7 +18,9 @@
 #   wait -n, and no "${arr[@]}" on an array that can be empty (it fails under set -u before 4.4).
 # - It needs no jq.
 #
-# The functions read KIT_NAME and KUBECONFIG (through kubectl) from the environment. A function
+# The functions read KIT_NAME, NAMESPACE and KUBECONFIG (through kubectl) from the environment. Every
+# function that calls the cluster acts in NAMESPACE, the cluster namespace easy-db-lab sets for every
+# kit process, and exits the calling script, before any cluster call, when it is not set. A function
 # that fails prints why to stderr and exits the calling script.
 
 # How long a pod may stay Pending, with no image pull error, before the wait gives up.
@@ -104,6 +106,7 @@ edl_require_dns_name() {
 # chose, so the over-limit error tells the user what to shrink. It ends with `create`, not `apply`:
 # apply's last-applied annotation would hold a second copy of the data and lower the limit.
 edl_create_configmap() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local flag="" hint=""
   if [ "${1:-}" = --flag ]; then
     [ "$#" -ge 2 ] && [ -n "$2" ] || edl_fail "edl_create_configmap --flag needs a flag name"
@@ -130,14 +133,15 @@ edl_create_configmap() {
     set -o pipefail
     kubectl create configmap "${name}" "${from[@]}" --dry-run=client -o yaml |
       kubectl label --local -f - "easydblab/kit=${KIT_NAME}" "easydblab/role=${role}" -o yaml |
-      kubectl create -f -
+      kubectl create -f - -n "${NAMESPACE}"
   ) > /dev/null || edl_fail "Could not create ConfigMap ${name}"
 }
 
 # Prints, one per line, the pods of this instance with role $1 that have not ended.
 edl_active_pods() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   # Commas in a field selector are AND, so this keeps every phase but the two that end a pod.
-  kubectl get pods -l "$(edl_labels "$1")" \
+  kubectl get pods -n "${NAMESPACE}" -l "$(edl_labels "$1")" \
     --field-selector=status.phase!=Succeeded,status.phase!=Failed \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' ||
     edl_fail "Could not list the $1 pods of ${KIT_NAME}"
@@ -146,8 +150,9 @@ edl_active_pods() {
 # Prints the fields of pod $1 that the jsonpath $2 selects. Returns 3 when the pod does not exist
 # and 1 when kubectl failed, which callers treat as a reason to ask again.
 edl_pod_get() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local out
-  out="$(kubectl get pod "$1" --ignore-not-found -o "jsonpath={.metadata.name}|$2")" || return 1
+  out="$(kubectl get pod "$1" -n "${NAMESPACE}" --ignore-not-found -o "jsonpath={.metadata.name}|$2")" || return 1
   [ -n "${out}" ] || return 3
   printf '%s\n' "${out#*|}"
 }
@@ -155,13 +160,15 @@ edl_pod_get() {
 # Deletes pod $1 that never started. Left Pending, it would keep its role label, so the start guard
 # and edl_active_pods would refuse the next run until `stop`. Its events were printed already.
 edl_delete_unstarted_pod() {
-  kubectl delete pod "$1" --ignore-not-found > /dev/null 2>&1 ||
+  : "${NAMESPACE:?NAMESPACE is not set}"
+  kubectl delete pod "$1" -n "${NAMESPACE}" --ignore-not-found > /dev/null 2>&1 ||
     printf 'warning: could not delete pod %s; run stop to remove it\n' "$1" >&2
 }
 
 # Returns once pod $1 has left Pending: Running, or already Succeeded or Failed. Fails at once on an
 # image pull error, and after EDL_POD_START_TIMEOUT_SECONDS otherwise, and deletes the pod first.
 edl_wait_for_pod_running() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local pod="$1" started status rc phase rest reason message
   started="$(date +%s)"
   while :; do
@@ -183,7 +190,7 @@ edl_wait_for_pod_running() {
         case "${reason}" in
           ErrImagePull | ImagePullBackOff | InvalidImageName)
             printf 'pod %s cannot start: %s: %s\n' "${pod}" "${reason}" "${message}" >&2
-            kubectl describe pod "${pod}" >&2 || true
+            kubectl describe pod "${pod}" -n "${NAMESPACE}" >&2 || true
             edl_delete_unstarted_pod "${pod}"
             edl_fail "pod ${pod} cannot pull its image (${reason})"
             ;;
@@ -191,7 +198,7 @@ edl_wait_for_pod_running() {
         ;;
     esac
     if [ $(($(date +%s) - started)) -ge "${EDL_POD_START_TIMEOUT_SECONDS}" ]; then
-      kubectl describe pod "${pod}" >&2 || true
+      kubectl describe pod "${pod}" -n "${NAMESPACE}" >&2 || true
       edl_delete_unstarted_pod "${pod}"
       edl_fail "pod ${pod} did not start within ${EDL_POD_START_TIMEOUT_SECONDS} seconds"
     fi
@@ -204,6 +211,7 @@ edl_wait_for_pod_running() {
 # --since-time has one-second precision, so a resumed stream can repeat up to a second of lines.
 # A failed `kubectl logs` never ends the calling script. Fails when the pod is deleted.
 edl_follow_pod_logs() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local pod="$1" handler="$2" since="" line stamp phase rc
   while :; do
     while IFS= read -r line; do
@@ -218,7 +226,7 @@ edl_follow_pod_logs() {
           ;;
       esac
       "${handler}" "${line}"
-    done < <(kubectl logs -f --timestamps ${since:+"--since-time=${since}"} "${pod}" || true)
+    done < <(kubectl logs -n "${NAMESPACE}" -f --timestamps ${since:+"--since-time=${since}"} "${pod}" || true)
 
     # The phase is read after the pause, right before a resume, so a pod that ended during the
     # pause is not streamed again.
@@ -239,6 +247,7 @@ edl_follow_pod_logs() {
 # Waits, with no time limit, until pod $1 has ended, and prints its container's exit code, or
 # `unknown` when a failed pod reports none. Fails when the pod is deleted.
 edl_wait_for_pod_exit() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local pod="$1" status rc code
   while :; do
     if status="$(edl_pod_get "${pod}" '{.status.phase}|{.status.containerStatuses[0].state.terminated.exitCode}')"; then
@@ -281,6 +290,7 @@ edl_wait_for_pod_exit() {
 # restores the caller's INT and TERM traps and then sends the signal to this shell again, so the
 # caller's trap runs or, with none, the script ends by the signal.
 edl_push_gauges() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local service="$1" now points="" sep="" value failure="" port="" tries=0
   local control pods pod="" name deleting
   shift
@@ -300,12 +310,12 @@ edl_push_gauges() {
     ! control="$(kubectl get nodes "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -l "${CONTROL_NODE_LABELS}" -o 'jsonpath={.items[0].metadata.name}' 2> /dev/null)"; then
     failure=": could not find the control node"
   elif [ -n "${control}" ]; then
-    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=otel-collector \
       "--field-selector=status.phase=Running,spec.nodeName=${control}" \
       -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
       failure=": could not list the otel-collector pods on control node ${control}"
   else
-    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n default -l app.kubernetes.io/name=otel-collector \
+    pods="$(kubectl get pods "--request-timeout=${EDL_GAUGE_PUSH_TIMEOUT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=otel-collector \
       "--field-selector=status.phase=Running" \
       -o 'jsonpath={range .items[*]}{.metadata.name}{" "}{.metadata.deletionTimestamp}{"\n"}{end}' 2> /dev/null)" ||
       failure=": could not list the otel-collector pods"
@@ -346,7 +356,7 @@ edl_push_gauges() {
     elif [ -n "${port}" ]; then
       local code=0
       curl -sf --max-time 2 -X POST \
-        "http://127.0.0.1:${port}/api/v1/namespaces/default/pods/${pod}:4318/proxy/v1/metrics" \
+        "http://127.0.0.1:${port}/api/v1/namespaces/${NAMESPACE}/pods/${pod}:4318/proxy/v1/metrics" \
         -H 'Content-Type: application/json' \
         --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
         > /dev/null 2>&1 || code=$?
@@ -392,7 +402,7 @@ edl_push_end() {
 # ---------------------------------------------------------------------------------------------
 # Helm-chart kits with a coordinator and workers (presto, trino).
 #
-# These functions need `helm` and `kubectl`, and work in the `default` namespace.
+# These functions need `helm` and `kubectl`, and work in the cluster namespace, NAMESPACE.
 # ---------------------------------------------------------------------------------------------
 
 # The catalogs the next edl_helm_upgrade_with_catalogs adds, as YAML map entries. Set by
@@ -450,6 +460,7 @@ edl_collect_catalogs() {
 # when edl_collect_catalogs found any catalog, a second values file <dir of $4>/.catalogs-override.yaml
 # that sets the chart value $5 to them. It does not wait for the rollout.
 edl_helm_upgrade_with_catalogs() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local release="$1" chart="$2" version="$3" values="$4" key="$5"
   local override extra=()
   override="$(dirname "${values}")/.catalogs-override.yaml"
@@ -459,7 +470,7 @@ edl_helm_upgrade_with_catalogs() {
   fi
   helm upgrade --install "${release}" "${chart}" \
     --version "${version}" \
-    --namespace default \
+    --namespace "${NAMESPACE}" \
     --create-namespace \
     --values "${values}" \
     ${extra[@]+"${extra[@]}"}
@@ -469,8 +480,9 @@ edl_helm_upgrade_with_catalogs() {
 # signal carries, so the profiling dashboards' cluster filter finds a kit's profiles. CLUSTER_NAME
 # is the bare name. Fails when `grafana update-config` has not run.
 edl_cluster_label() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local label
-  label="$(kubectl get configmap cluster-config -n default -o jsonpath='{.data.cluster_name}')"
+  label="$(kubectl get configmap cluster-config -n "${NAMESPACE}" -o jsonpath='{.data.cluster_name}')"
   [ -n "${label}" ] || edl_fail "ERROR: cluster-config has no cluster_name; run 'easy-db-lab grafana update-config' first."
   printf '%s\n' "${label}"
 }
@@ -491,6 +503,7 @@ edl_pyroscope_opts() {
 # JVM container mounts read-only, never from a host path, so the pods run on any node. The pod
 # declares no hostPort: clients reach a coordinator through its kit's NodePort Service.
 edl_patch_pyroscope() {
+  : "${NAMESPACE:?NAMESPACE is not set}"
   local deployment="$1" container="$2" app="$3" cluster_label="$4" component="$5" opts patch
   local image="${PYROSCOPE_AGENT_IMAGE:?run this through easy-db-lab, which sets PYROSCOPE_AGENT_IMAGE}"
   [ "$#" -eq 5 ] || edl_fail "edl_patch_pyroscope: expected 5 arguments, got $#"
@@ -499,17 +512,19 @@ edl_patch_pyroscope() {
   opts="${opts//\"/\\\"}"
   patch="{\"spec\":{\"template\":{\"spec\":{\"volumes\":[{\"name\":\"java-agents\",\"emptyDir\":{}}],\"initContainers\":[{\"name\":\"pyroscope-agent\",\"image\":\"${image}\",\"imagePullPolicy\":\"IfNotPresent\",\"command\":[\"cp\",\"/pyroscope.jar\",\"/agents/pyroscope.jar\"],\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":65532,\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]},\"seccompProfile\":{\"type\":\"RuntimeDefault\"}},\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/agents\"}]}],\"containers\":[{\"name\":\"${container}\",\"env\":[{\"name\":\"JAVA_TOOL_OPTIONS\",\"value\":\"${opts}\"}],\"volumeMounts\":[{\"name\":\"java-agents\",\"mountPath\":\"/edl/agents\",\"readOnly\":true}]}]}}}}"
   kubectl patch deployment "${deployment}" \
-    --namespace default \
+    --namespace "${NAMESPACE}" \
     --type=strategic \
     -p="${patch}"
 }
 
 # Scales the deployments $@ to zero replicas.
 edl_scale_to_zero() {
-  kubectl scale deployment "$@" --replicas=0 --namespace default
+  : "${NAMESPACE:?NAMESPACE is not set}"
+  kubectl scale deployment "$@" --replicas=0 --namespace "${NAMESPACE}"
 }
 
 # Uninstalls the helm release $1; a release that is already gone is not an error.
 edl_helm_uninstall() {
-  helm uninstall "$1" --namespace default --ignore-not-found
+  : "${NAMESPACE:?NAMESPACE is not set}"
+  helm uninstall "$1" --namespace "${NAMESPACE}" --ignore-not-found
 }

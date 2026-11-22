@@ -17,7 +17,6 @@ metrics:
 runtime:
   type: pods
   selector: "easydblab/kit=memcached"
-  namespace: default
 
 endpoints:
   - name: "memcached"
@@ -78,7 +77,7 @@ start:
       set -euo pipefail
       EXTSTORE_SIZE="${EXTSTORE_SIZE:-}"
       if [[ -z "${EXTSTORE_SIZE}" ]]; then
-        kubectl apply -f memcached.yaml
+        kubectl apply -f memcached.yaml -n "${NAMESPACE}"
         exit 0
       fi
       if [[ ! "${EXTSTORE_SIZE}" =~ ^[1-9][0-9]*[MGT]$ ]]; then
@@ -92,12 +91,12 @@ start:
           OPTIONS="${OPTIONS},${OPTION}"
         fi
       done
-      kubectl create configmap memcached-extstore-options --namespace default \
+      kubectl create configmap memcached-extstore-options --namespace "${NAMESPACE}" \
         --from-literal=EXTSTORE_OPTIONS="${OPTIONS}" \
         --dry-run=client -o yaml \
         | kubectl label --local -f - easydblab/kit=memcached -o yaml \
-        | kubectl apply -f -
-      kubectl apply -f memcached-extstore.yaml
+        | kubectl apply -f - -n "${NAMESPACE}"
+      kubectl apply -f memcached-extstore.yaml -n "${NAMESPACE}"
   - type: manifest
     template: nodeport-service.yaml
   - type: wait
@@ -110,13 +109,11 @@ stop:
   - type: delete
     kinds: [deployment, replicaset, pod, service, configmap]
     selector: easydblab/kit=memcached
-    namespace: default
 
 uninstall:
   - type: delete
     kinds: [deployment, replicaset, pod, service, configmap, pvc]
     selector: easydblab/kit=memcached
-    namespace: default
   # Deletes the extstore PV and its directory on the node; a no-op when extstore was never on.
   - type: kit-storage-delete
     node-type: db

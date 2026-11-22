@@ -24,7 +24,6 @@ metrics:
 runtime:
   type: pods
   selector: "strimzi.io/cluster=kafka"
-  namespace: default
 # Strimzi creates the Services of the Kafka resource's listeners, so no manifest of this kit declares
 # them: `<cluster>-kafka-bootstrap` for the internal `plain` listener and
 # `<cluster>-kafka-<listener>-bootstrap` for the `external` nodeport one. A port-forward targets them.
@@ -123,12 +122,14 @@ install:
   - type: helm-repo
     name: strimzi
     url: https://strimzi.io/charts/
+  - type: namespace
+    name: strimzi
   - type: helm
     chart: strimzi/strimzi-kafka-operator
     release: strimzi-operator
     namespace: strimzi
     values:
-      watchNamespaces: "{default}"
+      watchNamespaces: "{${NAMESPACE}}"
   - type: wait
     kind: deployment
     name: strimzi-cluster-operator
@@ -152,20 +153,20 @@ start:
       set -euo pipefail
       CLUSTER_ID_FILE=kafka-cluster-id
       if [ ! -s "$CLUSTER_ID_FILE" ]; then
-        kubectl apply -f kafka.yaml --namespace default
+        kubectl apply -f kafka.yaml --namespace "${NAMESPACE}"
         exit 0
       fi
       CLUSTER_ID=$(cat "$CLUSTER_ID_FILE")
       echo "Restoring KRaft cluster ID $CLUSTER_ID saved by the last stop"
       kubectl annotate --local -f kafka.yaml strimzi.io/pause-reconciliation=true -o yaml > kafka-paused.yaml
-      kubectl apply -f kafka-paused.yaml --namespace default
+      kubectl apply -f kafka-paused.yaml --namespace "${NAMESPACE}"
       # By jsonpath, not --for=condition: a paused Kafka keeps status.observedGeneration at 0, and
       # kubectl's condition wait accepts a condition only once that matches metadata.generation.
-      kubectl wait kafka/kafka --namespace default \
+      kubectl wait kafka/kafka --namespace "${NAMESPACE}" \
         --for=jsonpath='{.status.conditions[?(@.type=="ReconciliationPaused")].status}'=True --timeout=300s
-      kubectl patch kafka kafka --namespace default --subresource status --type merge \
+      kubectl patch kafka kafka --namespace "${NAMESPACE}" --subresource status --type merge \
         -p "{\"status\":{\"clusterId\":\"$CLUSTER_ID\"}}"
-      kubectl annotate kafka/kafka kafkanodepool/dual-role --namespace default strimzi.io/pause-reconciliation-
+      kubectl annotate kafka/kafka kafkanodepool/dual-role --namespace "${NAMESPACE}" strimzi.io/pause-reconciliation-
   - type: wait
     kind: kafka
     name: kafka
@@ -183,7 +184,7 @@ stop:
   - type: shell
     script: |
       set -euo pipefail
-      CLUSTER_ID=$(kubectl get kafka kafka --namespace default --ignore-not-found -o jsonpath='{.status.clusterId}')
+      CLUSTER_ID=$(kubectl get kafka kafka --namespace "${NAMESPACE}" --ignore-not-found -o jsonpath='{.status.clusterId}')
       if [ -n "$CLUSTER_ID" ]; then
         printf '%s\n' "$CLUSTER_ID" > kafka-cluster-id
         echo "Saved KRaft cluster ID $CLUSTER_ID for the next start"
@@ -224,7 +225,7 @@ uninstall:
     ignore-not-found: true
   - type: shell
     script: |
-      kubectl delete pvc -l strimzi.io/cluster=kafka --namespace default --ignore-not-found=true
+      kubectl delete pvc -l strimzi.io/cluster=kafka --namespace "${NAMESPACE}" --ignore-not-found=true
   - type: kit-storage-delete
     node-type: db
   - type: helm-uninstall

@@ -5,4 +5,4 @@
 set -euo pipefail
 
 echo "Stopping clickhouse-benchmark pods for kit ${KIT_NAME}..."
-kubectl --kubeconfig="${KUBECONFIG}" delete pods,configmaps -l "easydblab/kit=${KIT_NAME}" --ignore-not-found
+kubectl --kubeconfig="${KUBECONFIG}" delete pods,configmaps -n "${NAMESPACE}" -l "easydblab/kit=${KIT_NAME}" --ignore-not-found

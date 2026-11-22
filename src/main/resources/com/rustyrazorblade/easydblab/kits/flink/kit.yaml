@@ -16,7 +16,6 @@ metrics:
 runtime:
   type: pods
   selector: "app=flink-session"
-  namespace: default
 
 endpoints:
   - name: "Flink Web UI"
@@ -48,13 +47,11 @@ install:
   - type: helm
     chart: flink-operator-repo/flink-kubernetes-operator
     release: flink-kubernetes-operator
-    namespace: default
     values:
       webhook.create: "false"
   - type: wait
     kind: Deployment
     name: flink-kubernetes-operator
-    namespace: default
     condition: Available
 
 start:
@@ -63,11 +60,11 @@ start:
   - type: shell
     script: |
       echo "Waiting for Flink session cluster pods to be created..."
-      until kubectl get pods -l app=flink-session -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      until kubectl get pods -l app=flink-session -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -q .; do sleep 5; done
       echo "Pods exist, waiting for Ready..."
       kubectl wait --for=condition=Ready pods \
         -l app=flink-session \
-        --namespace default \
+        --namespace "${NAMESPACE}" \
         --timeout=300s
   - type: manifest
     template: nodeport-service.yaml
@@ -77,25 +74,22 @@ stop:
   # still has non-terminated jobs, so deleting the FlinkDeployment would otherwise hang.
   - type: shell
     script: |
-      JM=$(kubectl get pods -n default -l app=flink-session,component=jobmanager \
+      JM=$(kubectl get pods -n "${NAMESPACE}" -l app=flink-session,component=jobmanager \
         -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
       if [ -n "$JM" ]; then
-        for J in $(kubectl exec -n default "$JM" -- curl -s http://localhost:8081/jobs 2>/dev/null \
+        for J in $(kubectl exec -n "${NAMESPACE}" "$JM" -- curl -s http://localhost:8081/jobs 2>/dev/null \
             | jq -r '.jobs[]? | select(.status=="RUNNING") | .id'); do
           echo "Cancelling running job $J..."
-          kubectl exec -n default "$JM" -- curl -s -XPATCH "http://localhost:8081/jobs/$J?mode=cancel" >/dev/null || true
+          kubectl exec -n "${NAMESPACE}" "$JM" -- curl -s -XPATCH "http://localhost:8081/jobs/$J?mode=cancel" >/dev/null || true
         done
       fi
   - type: delete
     kind: FlinkDeployment
     name: flink-session
-    namespace: default
   - type: delete
     kind: Service
     name: flink-session-ui
-    namespace: default
 
 uninstall:
   - type: helm-uninstall
     release: flink-kubernetes-operator
-    namespace: default

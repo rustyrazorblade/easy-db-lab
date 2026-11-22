@@ -12,7 +12,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: ferrosa-data-@ORDINAL@
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     easydblab/kit: ferrosa
     easydblab/ferrosa-ordinal: "@ORDINAL@"
@@ -28,7 +28,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: ferrosa-@ORDINAL@
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     easydblab/kit: ferrosa
     app.kubernetes.io/name: ferrosa
@@ -109,7 +109,7 @@ spec:
             - name: FERROSA_HOST_ID
               value: "@HOST_ID@"
             - name: FERROSA_INTERNODE_BROADCAST
-              value: "ferrosa-@ORDINAL@.default.svc.cluster.local:17000"
+              value: "ferrosa-@ORDINAL@.__NAMESPACE__.svc:17000"
             - name: FERROSA_SEED # @IF_SEEDS@
               value: "@SEEDS@" # @IF_SEEDS@
             - name: FERROSA_CQL_BROADCAST
@@ -160,7 +160,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ferrosa-@ORDINAL@
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     easydblab/kit: ferrosa
     easydblab/ferrosa-ordinal: "@ORDINAL@"

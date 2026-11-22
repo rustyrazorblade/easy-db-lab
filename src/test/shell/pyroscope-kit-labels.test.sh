@@ -17,6 +17,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
 KIT_LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
@@ -151,9 +154,9 @@ for kit in presto trino; do
   fi
   # The coordinator reads its catalogs only at startup, so the change must restart it, and the
   # script must wait for the new coordinator: the shared helm helper does not wait for a rollout.
-  grep -qx "rollout restart deployment/${kit}-coordinator --namespace default" "${WORK}/kubectl.calls" 2>/dev/null \
+  grep -qx "rollout restart deployment/${kit}-coordinator --namespace lab-a" "${WORK}/kubectl.calls" 2>/dev/null \
     || fail "${kit}: update-catalogs did not restart the coordinator: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
-  grep -q "^rollout status deployment/${kit}-coordinator --namespace default" "${WORK}/kubectl.calls" 2>/dev/null \
+  grep -q "^rollout status deployment/${kit}-coordinator --namespace lab-a" "${WORK}/kubectl.calls" 2>/dev/null \
     || fail "${kit}: update-catalogs did not wait for the coordinator: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
 
   tests_run=$((tests_run + 1))
@@ -171,7 +174,7 @@ for kit in presto trino; do
   cp "${KITS}/${kit}/bin/uninstall.sh.template" "${WORK}/kit/bin/uninstall.sh"
   (cd "${WORK}" && PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" bash "${WORK}/kit/bin/uninstall.sh") > "${WORK}/out.txt" 2>&1 \
     || fail "${kit}: uninstall failed: $(cat "${WORK}/out.txt")"
-  grep -qx "delete service ${kit}-nodeport --namespace default --ignore-not-found" "${WORK}/kubectl.calls" 2>/dev/null \
+  grep -qx "delete service ${kit}-nodeport --namespace lab-a --ignore-not-found" "${WORK}/kubectl.calls" 2>/dev/null \
     || fail "${kit}: uninstall did not delete the NodePort Service idempotently: $(cat "${WORK}/kubectl.calls" 2>/dev/null)"
 done
 

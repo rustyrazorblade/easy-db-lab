@@ -33,6 +33,7 @@ start_test() {
   tests_run=$((tests_run + 1))
   reset_kit_stub_state
   unset ROLE_VARS
+  NO_NAMESPACE=""
 }
 
 # The role variables of an AWS cluster, as easy-db-lab sets them for every kit process. A case
@@ -42,13 +43,15 @@ AWS_ROLE_VARS=(APP_NODE_LABELS=type=app 'APP_NODE_SELECTOR={"type":"app"}' CONTR
 UNCONSTRAINED_ROLE_VARS=(APP_NODE_LABELS= 'APP_NODE_SELECTOR={}' CONTROL_NODE_LABELS=)
 
 # Runs shell code $1 after sourcing the library, under set -euo pipefail, with the role variables
-# of ROLE_VARS (the AWS ones when unset). Sets rc, and out and err to what it printed.
+# of ROLE_VARS (the AWS ones when unset), in the cluster namespace lab-a, or with no NAMESPACE at all
+# when NO_NAMESPACE is set. Sets rc, and out and err to what it printed.
 run_lib() {
-  local roles=("${AWS_ROLE_VARS[@]}")
+  local roles=("${AWS_ROLE_VARS[@]}") namespace=(NAMESPACE=lab-a)
+  [ -z "${NO_NAMESPACE}" ] || namespace=(-u NAMESPACE)
   [ -z "${ROLE_VARS+x}" ] || roles=("${ROLE_VARS[@]}")
   (
     cd "${WORK}" &&
-      env PATH="${WORK}/stubs:${PATH}" KIT_NAME=bench-ch KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
+      env "${namespace[@]}" PATH="${WORK}/stubs:${PATH}" KIT_NAME=bench-ch KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
         "${roles[@]}" \
         EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 "${BASH}" -c "set -euo pipefail; . \"\${EDL_KIT_LIB}\"; $1"
   ) > "${WORK}/out" 2> "${WORK}/err"
@@ -257,7 +260,7 @@ test_configmap_is_created_with_its_labels_in_one_call() {
   grep -Fqx "create configmap cm1 --from-file=queries.sql=${WORK}/q.sql --from-file=run-benchmark.sh=${WORK}/run.sh --dry-run=client -o yaml" <<< "${all}" ||
     fail "no client-side configmap render: ${all}"
   grep -Fqx "label --local -f - easydblab/kit=bench-ch easydblab/role=benchmark-run -o yaml" <<< "${all}" || fail "no local label: ${all}"
-  grep -Fqx "create -f -" <<< "${all}" || fail "did not end with create: ${all}"
+  grep -Fqx "create -f - -n lab-a" <<< "${all}" || fail "did not end with create: ${all}"
   if grep -q '^apply' <<< "${all}"; then fail "used apply: ${all}"; fi
   grep -Fq "# label easydblab/role=benchmark-run" "${STUB_STATE}/configmap.1" || fail "the created ConfigMap has no labels: $(cat "${STUB_STATE}/configmap.1")"
 }
@@ -291,7 +294,7 @@ test_each_pull_error_fails_fast_with_reason_message_and_events() {
     grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not print the events: ${err}"
     [ "$(grep -c '^get pod' <<< "$(calls)")" -eq 1 ] || fail "did not fail on the first poll: $(calls)"
     # A pod left Pending would keep its role label and block the next start or prepare.
-    grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
+    grep -Fqx "delete pod p1 -n lab-a --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
   done
 }
 
@@ -304,7 +307,7 @@ test_a_pod_pending_past_the_limit_fails_and_is_described() {
   [ "${rc}" -ne 0 ] || fail "exited 0"
   grep -q "pod p1 did not start within 3 seconds" <<< "${err}" || fail "no limit message: ${err}"
   grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not describe the pod: ${err}"
-  grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
+  grep -Fqx "delete pod p1 -n lab-a --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
 }
 
 test_a_failed_get_is_a_retry_not_a_phase() {
@@ -352,7 +355,7 @@ test_the_phase_is_read_again_after_the_pause_before_a_resume() {
   # that ended during the pause is not streamed again.
   awk '/^logs -f/ && n++ && prev !~ /^get pod / { bad = 1 } { prev = $0 } END { exit bad }' "${STUB_STATE}/kubectl.calls" ||
     fail "resumed without reading the phase after the pause: $(calls)"
-  [ "$(grep -c '^logs -f' "${STUB_STATE}/kubectl.calls")" -eq 2 ] || fail "streams: $(calls)"
+  [ "$(grep -c '^logs -n lab-a -f' "${STUB_STATE}/kubectl.calls")" -eq 2 ] || fail "streams: $(calls)"
 }
 
 test_a_failed_log_stream_does_not_end_a_pipefail_script() {
@@ -390,7 +393,7 @@ test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit() {
   start_test "gauge body"
   run_lib 'edl_push_gauges clickhouse-benchmark clickhouse_benchmark_qps 12.5 clickhouse_benchmark_errors abc clickhouse_benchmark_rows_per_second ""'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-c0:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" || fail "not sent to the control node's core collector pod through the API proxy: $(cat "${STUB_STATE}/curl.1")"
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-c0:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" || fail "not sent to the control node's core collector pod through the API proxy: $(cat "${STUB_STATE}/curl.1")"
   local gauges body
   gauges="$(pushed_gauges)"
   for expected in "clickhouse_benchmark_qps bench-ch 12.5" "clickhouse_benchmark_errors bench-ch 0" \
@@ -431,9 +434,9 @@ test_every_push_goes_to_the_control_nodes_core_pod() {
   printf '%s\n' "otel-collector-a1 app0" "otel-collector-d0 db0" "otel-collector-c0 control0" > "${STUB_STATE}/core-pods"
   run_lib 'edl_push_gauges sysbench sysbench_tps 1; printf "%s\n" "otel-collector-a1 app0" "otel-collector-c9 control0" > "${STUB_STATE}/core-pods"; edl_push_gauges sysbench sysbench_tps 2'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-c0:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-c0:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
     fail "first push not sent to the control node's pod: $(cat "${STUB_STATE}/curl.1")"
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-c9:4318/proxy/v1/metrics' "${STUB_STATE}/curl.2" ||
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-c9:4318/proxy/v1/metrics' "${STUB_STATE}/curl.2" ||
     fail "second push not sent to the control node's replacement pod: $(cat "${STUB_STATE}/curl.2")"
   grep -Fq -- '--field-selector=status.phase=Running,spec.nodeName=control0' <<< "$(calls)" ||
     fail "did not select the core pod by the control node: $(calls)"
@@ -456,7 +459,7 @@ test_with_no_control_selector_the_first_running_core_pod_by_name_receives_the_pu
   printf '%s\n' "otel-collector-zz n2" "otel-collector-aa n1 2026-11-14T00:00:00Z" "otel-collector-mm n3" > "${STUB_STATE}/core-pods"
   run_lib 'edl_push_gauges sysbench sysbench_tps 1'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-mm:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-mm:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
     fail "not sent to the first Running core pod by name: $(cat "${STUB_STATE}/curl.1" 2>/dev/null) ${err}"
   if grep -q '^get nodes' <<< "$(calls)"; then fail "looked up a control node with no control selector: $(calls)"; fi
 }
@@ -467,7 +470,7 @@ test_a_control_selector_matching_no_node_falls_back_to_the_first_core_pod() {
   printf '%s\n' "otel-collector-b n2" "otel-collector-a n1" > "${STUB_STATE}/core-pods"
   run_lib 'edl_push_gauges sysbench sysbench_tps 1'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-a:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-a:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
     fail "did not fall back to the first core pod by name: $(cat "${STUB_STATE}/curl.1" 2>/dev/null) ${err}"
 }
 
@@ -599,7 +602,7 @@ test_a_push_skips_a_terminating_core_pod() {
   printf '%s\n' "otel-collector-old control0 2026-11-14T00:00:00Z" "otel-collector-new control0" > "${STUB_STATE}/core-pods"
   run_lib 'edl_push_gauges sysbench sysbench_tps 1'
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
-  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-new:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-new:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
     fail "did not post to the pod that is not terminating: $(cat "${STUB_STATE}/curl.1" 2>/dev/null)"
 }
 
@@ -644,7 +647,7 @@ test_pyroscope_patch_declares_no_port_and_escapes_the_agent_options() {
   run_lib "PYROSCOPE_AGENT_IMAGE=agent:1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT='a\"b' edl_patch_pyroscope trino-coordinator trino-coordinator trino lab-1 coordinator"
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
   local patch
-  patch="$(sed -n "s/^patch deployment trino-coordinator --namespace default --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
+  patch="$(sed -n "s/^patch deployment trino-coordinator --namespace lab-a --type=strategic -p=//p" "${STUB_STATE}/kubectl.calls")"
   [ -n "${patch}" ] || { fail "no patch call: $(calls)"; return; }
   [ "$(jq -c ".spec.template.spec.containers[0] | has(\"ports\")" <<< "${patch}")" = "false" ] ||
     fail "the patch declares ports: $(jq -c ".spec.template.spec.containers[0].ports" <<< "${patch}")"
@@ -664,6 +667,53 @@ test_the_cluster_label_fails_when_cluster_config_has_none() {
   run_lib "edl_cluster_label"
   [ "${rc}" -ne 0 ] || fail "exited 0 with no cluster_name"
   case "${err}" in *"cluster-config has no cluster_name"*) ;; *) fail "message: ${err}" ;; esac
+}
+
+test_the_gauge_push_finds_the_core_pod_in_the_cluster_namespace() {
+  start_test "gauge push namespace"
+  run_lib 'edl_push_gauges clickhouse-benchmark clickhouse_benchmark_qps 1'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -q '^get pods --request-timeout=5s -n lab-a -l app.kubernetes.io/name=otel-collector ' <<< "$(calls)" ||
+    fail "the core pod was not looked up in lab-a: $(calls)"
+  grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-c0:4318/proxy/v1/metrics' "${STUB_STATE}/curl.1" ||
+    fail "not pushed through lab-a: $(cat "${STUB_STATE}/curl.1")"
+}
+
+test_the_helm_and_deployment_helpers_act_in_the_cluster_namespace() {
+  start_test "helm helpers namespace"
+  echo 'k: v' > "${WORK}/values.yaml"
+  run_lib "EDL_CATALOG_CONTENT=''; edl_helm_upgrade_with_catalogs presto prestodb/presto 0.4.0 '${WORK}/values.yaml' catalog; edl_helm_uninstall presto; edl_scale_to_zero presto-worker"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Fqx "helm upgrade --install presto prestodb/presto --version 0.4.0 --namespace lab-a --create-namespace --values ${WORK}/values.yaml" <<< "$(calls)" ||
+    fail "install not in lab-a: $(calls)"
+  grep -Fqx 'helm uninstall presto --namespace lab-a --ignore-not-found' <<< "$(calls)" || fail "uninstall not in lab-a: $(calls)"
+  grep -Fqx 'scale deployment presto-worker --replicas=0 --namespace lab-a' <<< "$(calls)" || fail "scale not in lab-a: $(calls)"
+}
+
+test_the_pod_helpers_and_the_cluster_label_act_in_the_cluster_namespace() {
+  start_test "pod helpers namespace"
+  echo "Succeeded|||0" > "${STUB_STATE}/state.default"
+  printf 'a=1\n' > "${WORK}/a.txt"
+  run_lib "edl_create_configmap cm-1 run a.txt=${WORK}/a.txt; edl_active_pods run; edl_wait_for_pod_exit p1; edl_delete_unstarted_pod p1; edl_cluster_label || true"
+  local call
+  for call in 'create -f - -n lab-a' 'get pods -n lab-a -l ' 'get pod p1 -n lab-a ' 'delete pod p1 -n lab-a ' 'get configmap cluster-config -n lab-a '; do
+    grep -qF -- "${call}" <<< "$(calls)" || fail "no '${call}' call: $(calls)"
+  done
+}
+
+test_every_cluster_helper_refuses_to_run_without_a_namespace() {
+  local helper
+  for helper in 'edl_create_configmap cm-1 run a.txt=a.txt' 'edl_active_pods run' 'edl_pod_get p1 x' \
+    'edl_delete_unstarted_pod p1' 'edl_wait_for_pod_running p1' 'edl_follow_pod_logs p1 echo' 'edl_wait_for_pod_exit p1' \
+    'edl_push_gauges svc g 1' 'edl_helm_upgrade_with_catalogs r c 1 v.yaml k' 'edl_cluster_label' \
+    'PYROSCOPE_AGENT_IMAGE=a edl_patch_pyroscope d c a l x' 'edl_scale_to_zero d' 'edl_helm_uninstall r'; do
+    start_test "no namespace: ${helper}"
+    NO_NAMESPACE=1
+    run_lib "${helper}"
+    [ "${rc}" -ne 0 ] || fail "exited 0"
+    grep -qF 'NAMESPACE is not set' <<< "${err}" || fail "message: ${err}"
+    [ -z "$(calls)" ] || fail "called the cluster: $(calls)"
+  done
 }
 
 test_sourcing_changes_no_option_and_defines_only_edl_names() {
@@ -747,6 +797,10 @@ test_pyroscope_patch_takes_exactly_five_arguments
 test_pyroscope_patch_needs_the_agent_image
 test_pyroscope_patch_declares_no_port_and_escapes_the_agent_options
 test_the_cluster_label_fails_when_cluster_config_has_none
+test_the_gauge_push_finds_the_core_pod_in_the_cluster_namespace
+test_the_helm_and_deployment_helpers_act_in_the_cluster_namespace
+test_the_pod_helpers_and_the_cluster_label_act_in_the_cluster_namespace
+test_every_cluster_helper_refuses_to_run_without_a_namespace
 
 echo "kit-lib (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

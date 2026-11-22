@@ -16,7 +16,7 @@ edl_helm_upgrade_with_catalogs presto prestodb/presto "${PRESTO_CHART_VERSION}" 
 
 # A catalog lives in a ConfigMap the coordinator reads only at startup, so restart it to load the
 # change. The pod declares no hostPort, so the rolling restart brings the new pod up beside the old.
-kubectl rollout restart deployment/presto-coordinator --namespace default
-kubectl rollout status deployment/presto-coordinator --namespace default --timeout=180s
+kubectl rollout restart deployment/presto-coordinator --namespace "${NAMESPACE}"
+kubectl rollout status deployment/presto-coordinator --namespace "${NAMESPACE}" --timeout=180s
 
 echo "Presto catalog update complete."

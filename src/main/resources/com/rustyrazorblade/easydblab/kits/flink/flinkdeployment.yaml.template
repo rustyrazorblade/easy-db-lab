@@ -2,7 +2,7 @@ apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata:
   name: flink-session
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   image: flink:__VERSION__
   # NOTE: flinkVersion is an enum (v1_20, v2_0, ...) and cannot be derived from the

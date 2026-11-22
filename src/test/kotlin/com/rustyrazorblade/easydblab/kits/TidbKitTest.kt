@@ -29,7 +29,8 @@ class TidbKitTest : BaseKoinTest() {
         // TiDB Operator labels every component's pods and PVCs app.kubernetes.io/instance=<cluster>,
         // the label the kit's runtime already selects its pods by.
         assertThat(parseLabelSelector(pvcDelete.selector)).isEqualTo(parseLabelSelector(requireNotNull(kit.config.runtime).selector))
-        assertThat(pvcDelete.namespace ?: "default").isEqualTo(requireNotNull(kit.config.runtime).namespace)
+        assertThat(pvcDelete.namespace).isNull()
+        assertThat(requireNotNull(kit.config.runtime).namespace).isNull()
 
         // Not under a running cluster: the guard that refuses while a TidbCluster exists runs first.
         val guard = uninstall.indexOfFirst { it is InstallStep.Shell && "get tidbcluster" in it.script }

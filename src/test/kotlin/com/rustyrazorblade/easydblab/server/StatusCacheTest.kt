@@ -605,9 +605,13 @@ class StatusCacheTest : BaseKoinTest() {
             }.readText()
         val kitDir = File(context.workingDirectory, name).apply { mkdirs() }
         File(kitDir, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
-        // The rendered NodePort Service, as install writes it; clickhouse's has no template variables.
+        // The rendered NodePort Service, as install writes it; clickhouse's only variable is the
+        // cluster namespace, `default` for this EC2 state.
         javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/nodeport-service.yaml.template")?.let {
-            File(kitDir, "nodeport-service.yaml").writeText(it.readText())
+            File(
+                kitDir,
+                "nodeport-service.yaml",
+            ).writeText(it.readText().replace("__NAMESPACE__", Constants.ContractDefaults.OWNED_NAMESPACE))
         }
     }
 

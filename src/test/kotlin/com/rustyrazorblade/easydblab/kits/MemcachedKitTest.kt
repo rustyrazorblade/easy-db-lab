@@ -152,9 +152,9 @@ class MemcachedKitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `stop and uninstall delete in the default namespace and run no shell step`() {
+        fun `stop and uninstall delete in the cluster namespace and run no shell step`() {
             for (phase in listOf(kit.config.stop, kit.config.uninstall)) {
-                assertThat(labelDelete(phase).namespace).isEqualTo("default")
+                assertThat(labelDelete(phase).namespace).isNull()
                 assertThat(phase).noneMatch { it is InstallStep.Shell }
             }
         }
@@ -236,7 +236,7 @@ class MemcachedKitTest : BaseKoinTest() {
         fun `start with no --extstore-size applies the RAM-only manifest and no extstore options`() {
             assertThat(runStart(emptyMap())).isEqualTo(0)
 
-            assertThat(applied()).containsExactly("apply -f memcached.yaml")
+            assertThat(applied()).containsExactly("apply -f memcached.yaml -n ${StubKubectl.NAMESPACE}")
             assertThat(stub.invocations()).noneMatch { it.contains("ext_") }
         }
 
@@ -244,7 +244,7 @@ class MemcachedKitTest : BaseKoinTest() {
         fun `tuning args without --extstore-size are ignored`() {
             assertThat(runStart(mapOf("--extstore-threads" to "8", "--extstore-item-size" to "512"))).isEqualTo(0)
 
-            assertThat(applied()).containsExactly("apply -f memcached.yaml")
+            assertThat(applied()).containsExactly("apply -f memcached.yaml -n ${StubKubectl.NAMESPACE}")
             assertThat(stub.invocations()).noneMatch { it.contains("ext_") }
         }
 
@@ -252,7 +252,7 @@ class MemcachedKitTest : BaseKoinTest() {
         fun `--extstore-size applies the extstore manifest with ext_path on the data volume`() {
             assertThat(runStart(mapOf("--extstore-size" to "100G"))).isEqualTo(0)
 
-            assertThat(applied()).containsExactly("apply -f memcached-extstore.yaml")
+            assertThat(applied()).containsExactly("apply -f memcached-extstore.yaml -n ${StubKubectl.NAMESPACE}")
             assertThat(extstoreOptions()).isEqualTo("ext_path=/data/extstore:100G")
             assertThat(stub.invocations()).anySatisfy { assertThat(it).contains("label --local -f - $KIT_LABEL=memcached") }
         }

@@ -14,7 +14,6 @@ metrics:
 runtime:
   type: helm
   release: trino
-  namespace: default
 # The coordinator's HTTP port is published on the kit's NodePort Service (nodeport-service.yaml,
 # applied by bin/start.sh), which each endpoint resolves to by its NodePort.
 endpoints:

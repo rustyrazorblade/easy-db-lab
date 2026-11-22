@@ -34,7 +34,6 @@ metrics:
 runtime:
   type: pods
   selector: "app.kubernetes.io/instance=tidb"
-  namespace: default
 endpoints:
   - name: "MySQL JDBC"
     node-type: app
@@ -107,14 +106,14 @@ start:
         local component=$1 appear_timeout=$2 ready_timeout=$3
         echo "Waiting for ${component} pods..."
         WAITED=0
-        until kubectl get pods -l "app.kubernetes.io/component=${component},app.kubernetes.io/instance=tidb" -n default --no-headers 2>/dev/null | grep -q .; do
+        until kubectl get pods -l "app.kubernetes.io/component=${component},app.kubernetes.io/instance=tidb" -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -q .; do
           sleep 5; WAITED=$((WAITED + 5))
           if [ "$WAITED" -ge "$appear_timeout" ]; then echo "Timed out waiting for ${component} pods to appear" >&2; exit 1; fi
         done
         echo "${component} pods found, waiting for Ready..."
         kubectl wait --for=condition=Ready pods \
           -l "app.kubernetes.io/component=${component},app.kubernetes.io/instance=tidb" \
-          --namespace default --timeout="${ready_timeout}s"
+          --namespace "${NAMESPACE}" --timeout="${ready_timeout}s"
       }
       wait_for_component pd      120 300
       wait_for_component tikv    120 600
@@ -127,24 +126,20 @@ stop:
   - type: delete
     kind: TidbCluster
     name: tidb
-    namespace: default
   - type: delete
     kind: Service
     name: tidb-nodeport
-    namespace: default
   - type: delete
     kind: Service
     name: pd-nodeport
-    namespace: default
   - type: delete
     kind: Service
     name: tiflash-nodeport
-    namespace: default
 
 uninstall:
   - type: shell
     script: |
-      if kubectl get tidbcluster tidb -n default &>/dev/null; then
+      if kubectl get tidbcluster tidb -n "${NAMESPACE}" &>/dev/null; then
         echo "Error: TiDB cluster is still running. Run 'tidb stop' before uninstalling." >&2
         exit 1
       fi
@@ -155,7 +150,6 @@ uninstall:
   - type: delete
     kinds: [PersistentVolumeClaim]
     selector: app.kubernetes.io/instance=tidb
-    namespace: default
   - type: kit-storage-delete
     node-type: app
   - type: kit-storage-delete

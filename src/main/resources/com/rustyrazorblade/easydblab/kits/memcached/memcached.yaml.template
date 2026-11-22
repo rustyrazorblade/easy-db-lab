@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: memcached
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     app: memcached
     easydblab/kit: memcached

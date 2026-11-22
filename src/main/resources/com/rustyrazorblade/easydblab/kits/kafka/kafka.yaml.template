@@ -2,7 +2,7 @@ apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: dual-role
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     strimzi.io/cluster: kafka
 spec:
@@ -26,7 +26,7 @@ apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: kafka
-  namespace: default
+  namespace: __NAMESPACE__
   annotations:
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled

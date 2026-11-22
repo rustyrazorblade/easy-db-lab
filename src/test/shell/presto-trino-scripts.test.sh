@@ -13,6 +13,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
@@ -101,7 +104,7 @@ check_update_catalogs() {
   run update-catalogs RUNNING_KITS=postgres
   [ "${rc}" -eq 0 ] || { fail "exited ${rc}: $(cat "${WORK}/out")"; return; }
 
-  grep -qF "helm upgrade --install ${release} ${chart} --version ${version} --namespace default --create-namespace --values ${WORK}/kit/bin/../values.yaml" "${WORK}/calls" ||
+  grep -qF "helm upgrade --install ${release} ${chart} --version ${version} --namespace lab-a --create-namespace --values ${WORK}/kit/bin/../values.yaml" "${WORK}/calls" ||
     fail "helm was not run for ${chart} at ${version}: $(calls)"
   grep -qF -- "--values ${WORK}/kit/bin/../.catalogs-override.yaml" "${WORK}/calls" || fail "the catalogs were not passed to helm: $(calls)"
   grep -q '^kind:' "${WORK}/kit/.catalogs-override.yaml" 2> /dev/null && fail "override file is not a values file"
@@ -114,8 +117,8 @@ check_update_catalogs() {
 
   local helm_at restart_at rollout_at
   helm_at="$(first_call 'helm upgrade')"
-  restart_at="$(first_call "kubectl rollout restart deployment/${kit}-coordinator --namespace default")"
-  rollout_at="$(first_call "kubectl rollout status deployment/${kit}-coordinator --namespace default --timeout=180s")"
+  restart_at="$(first_call "kubectl rollout restart deployment/${kit}-coordinator --namespace lab-a")"
+  rollout_at="$(first_call "kubectl rollout status deployment/${kit}-coordinator --namespace lab-a --timeout=180s")"
   [ -n "${helm_at}" ] && [ -n "${restart_at}" ] && [ -n "${rollout_at}" ] ||
     { fail "expected helm, then the coordinator restarted, then its rollout awaited: $(calls)"; return; }
   [ "${helm_at}" -lt "${restart_at}" ] && [ "${restart_at}" -lt "${rollout_at}" ] || fail "steps out of order: $(calls)"
@@ -226,14 +229,14 @@ check_stop_and_uninstall() {
   setup "${kit}"
   run stop
   [ "${rc}" -eq 0 ] || { fail "stop exited ${rc}: $(cat "${WORK}/out")"; return; }
-  grep -qx "kubectl scale deployment ${kit}-coordinator ${kit}-worker --replicas=0 --namespace default" "${WORK}/calls" ||
+  grep -qx "kubectl scale deployment ${kit}-coordinator ${kit}-worker --replicas=0 --namespace lab-a" "${WORK}/calls" ||
     fail "stop did not scale ${kit} to zero: $(calls)"
   # Uninstall can run without a stop first, so its own calls must remove the Service stop removes.
   : > "${WORK}/calls"
   run uninstall
   [ "${rc}" -eq 0 ] || { fail "uninstall exited ${rc}: $(cat "${WORK}/out")"; return; }
-  grep -qx "helm uninstall ${kit} --namespace default --ignore-not-found" "${WORK}/calls" || fail "uninstall did not remove the release: $(calls)"
-  grep -qx "kubectl delete service ${kit}-nodeport --namespace default --ignore-not-found" "${WORK}/calls" ||
+  grep -qx "helm uninstall ${kit} --namespace lab-a --ignore-not-found" "${WORK}/calls" || fail "uninstall did not remove the release: $(calls)"
+  grep -qx "kubectl delete service ${kit}-nodeport --namespace lab-a --ignore-not-found" "${WORK}/calls" ||
     fail "uninstall did not delete the NodePort Service: $(calls)"
 }
 

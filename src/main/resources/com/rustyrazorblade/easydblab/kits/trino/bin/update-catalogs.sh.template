@@ -22,7 +22,7 @@ edl_helm_upgrade_with_catalogs trino trinodb/trino "${TRINO_CHART_VERSION}" "${S
 
 # A catalog lives in a ConfigMap the coordinator reads only at startup, so restart it to load the
 # change. The pod declares no hostPort, so the rolling restart brings the new pod up beside the old.
-kubectl rollout restart deployment/trino-coordinator --namespace default
-kubectl rollout status deployment/trino-coordinator --namespace default --timeout=180s
+kubectl rollout restart deployment/trino-coordinator --namespace "${NAMESPACE}"
+kubectl rollout status deployment/trino-coordinator --namespace "${NAMESPACE}" --timeout=180s
 
 echo "Trino catalog update complete."

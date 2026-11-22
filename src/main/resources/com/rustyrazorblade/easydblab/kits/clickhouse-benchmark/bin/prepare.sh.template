@@ -38,10 +38,10 @@ POD="$(edl_resource_name "${ROLE}")"
 edl_create_configmap "${POD}" "${ROLE}" \
   "create-hits.sql=${KIT_DIR}/workloads/${WORKLOAD}/create-hits.sql" \
   "prepare-load.sh=${KIT_DIR}/pod/prepare-load.sh"
-trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
+trap 'kubectl delete configmap "${POD}" -n "${NAMESPACE}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
 
 echo "Preparing hits on ${TARGET_NATIVE_HOST}:${TARGET_NATIVE_PORT} with storage policy ${STORAGE_POLICY} (${IMAGE})..."
-kubectl run "${POD}" \
+kubectl run "${POD}" -n "${NAMESPACE}" \
   --image="${IMAGE}" \
   --restart=Never \
   --labels="$(edl_labels "${ROLE}")" \

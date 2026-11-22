@@ -7,7 +7,6 @@ collision-check: true
 runtime:
   type: pods
   selector: "app=ignite"
-  namespace: default
 
 endpoints:
   - name: "REST"
@@ -51,7 +50,7 @@ start:
       # Build comma-separated node address list for static IP finder
       NODE_LIST=""
       for i in $(seq 0 $((REPLICAS - 1))); do
-        NODE_LIST="${NODE_LIST}\"ignite-cluster-${i}.ignite-svc-headless.default.svc.cluster.local:3344\", "
+        NODE_LIST="${NODE_LIST}\"ignite-cluster-${i}.ignite-svc-headless.${NAMESPACE}.svc:3344\", "
       done
       NODE_LIST="${NODE_LIST%, }"
       # Only trailing X's are substituted by BSD mktemp (macOS operators run this
@@ -68,9 +67,9 @@ start:
       printf 'ignite { network: { port: 3344, nodeFinder: { netClusterNodes: [%s], type: STATIC } }, storage: { profiles: [{ name: default, engine: %s }] } }' \
         "${NODE_LIST}" "${STORAGE_PROFILE}" > "${CONF_FILE}"
       kubectl create configmap ignite-config \
-        --namespace default \
+        --namespace "${NAMESPACE}" \
         --from-file=ignite-config.conf="${CONF_FILE}" \
-        --dry-run=client -o yaml | kubectl apply -f -
+        --dry-run=client -o yaml | kubectl apply -f - -n "${NAMESPACE}"
       echo "ConfigMap created."
 
   - type: manifest
@@ -92,7 +91,7 @@ start:
       # Gating init on Ready would deadlock. The headless service publishes
       # not-Ready addresses, so the init Job can reach :10300 on not-Ready pods.
       echo "Waiting for Ignite 3 pods to be created..."
-      until kubectl get pods -l app=ignite -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      until kubectl get pods -l app=ignite -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -q .; do sleep 5; done
       echo "Pods found."
 
   - type: manifest
@@ -102,7 +101,6 @@ start:
     kind: job
     name: cluster-init
     condition: Complete
-    namespace: default
     # The init Job self-retries internally (~300s of attempts) and the outer Job
     # retries the Pod up to backoffLimit times, so give the wait a generous ceiling.
     timeout: 600s
@@ -117,7 +115,7 @@ start:
       echo "Waiting for Ignite 3 pods to become Ready (SQL port open)..."
       kubectl wait --for=condition=Ready pods \
         -l app=ignite \
-        --namespace default \
+        --namespace "${NAMESPACE}" \
         --timeout=300s
       echo "Pods Ready."
 
@@ -149,39 +147,34 @@ start:
       # not take effect until nodes restart. Roll the StatefulSet so the exporter activates
       # on the fresh boot (nodes re-read cluster config at join). Deterministic, kit-owned.
       echo "Rolling Ignite nodes so the OTLP exporter activates..."
-      kubectl rollout restart statefulset/ignite-cluster -n default
-      kubectl rollout status statefulset/ignite-cluster -n default --timeout=300s
+      kubectl rollout restart statefulset/ignite-cluster -n "${NAMESPACE}"
+      kubectl rollout status statefulset/ignite-cluster -n "${NAMESPACE}" --timeout=300s
       echo "OTLP metrics exporter active."
 
 stop:
   - type: delete
     kind: StatefulSet
     name: ignite-cluster
-    namespace: default
   - type: delete
     kind: Service
     name: ignite-nodeport
-    namespace: default
   - type: delete
     kind: Job
     name: cluster-init
-    namespace: default
   - type: delete
     kind: ConfigMap
     name: ignite-config
-    namespace: default
 
 uninstall:
   - type: delete
     kind: Service
     name: ignite-svc-headless
-    namespace: default
   - type: shell
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
       echo "Deleting Ignite 3 PersistentVolumeClaims..."
-      kubectl delete pvc -l app=ignite --namespace default --ignore-not-found=true
+      kubectl delete pvc -l app=ignite --namespace "${NAMESPACE}" --ignore-not-found=true
       echo "PVCs deleted."
   - type: kit-storage-delete
     node-type: db

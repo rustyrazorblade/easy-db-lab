@@ -14,7 +14,6 @@ metrics:
 runtime:
   type: pods
   selector: "easydblab/kit=neo4j"
-  namespace: default
 
 endpoints:
   - name: "Bolt"
@@ -69,11 +68,11 @@ start:
         echo "ERROR: no db node IP found in DB_NODE_IPS." >&2
         exit 1
       fi
-      kubectl create configmap neo4j-advertised --namespace default \
+      kubectl create configmap neo4j-advertised --namespace "${NAMESPACE}" \
         --from-literal=NEO4J_server_bolt_advertised__address="${FIRST_DB_IP}:30687" \
         --dry-run=client -o yaml \
         | kubectl label --local -f - easydblab/kit=neo4j -o yaml \
-        | kubectl apply -f -
+        | kubectl apply -f - -n "${NAMESPACE}"
   - type: manifest
     template: statefulset.yaml
   - type: manifest
@@ -82,18 +81,16 @@ start:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      kubectl rollout status statefulset/neo4j --namespace default --timeout=600s
+      kubectl rollout status statefulset/neo4j --namespace "${NAMESPACE}" --timeout=600s
 
 stop:
   - type: delete
     kinds: [statefulset, service, pod, configmap]
     selector: easydblab/kit=neo4j
-    namespace: default
 
 uninstall:
   - type: delete
     kinds: [statefulset, service, pod, configmap, pvc]
     selector: easydblab/kit=neo4j
-    namespace: default
   - type: kit-storage-delete
     node-type: db

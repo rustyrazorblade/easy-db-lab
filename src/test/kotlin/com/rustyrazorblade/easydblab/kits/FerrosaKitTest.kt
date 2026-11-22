@@ -25,7 +25,11 @@ import java.io.File
  */
 class FerrosaKitTest : BaseKoinTest() {
     private val kit by lazy {
-        BuiltinKitFixture("ferrosa", TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+        BuiltinKitFixture(
+            "ferrosa",
+            TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()),
+            namespace = StubKubectl.NAMESPACE,
+        )
     }
 
     private var runs = 0
@@ -181,10 +185,10 @@ class FerrosaKitTest : BaseKoinTest() {
             val run = runApply(3)
 
             assertThat(run.env(1))
-                .containsEntry("FERROSA_INTERNODE_BROADCAST", "ferrosa-1.default.svc.cluster.local:17000")
+                .containsEntry("FERROSA_INTERNODE_BROADCAST", "ferrosa-1.lab-a.svc:17000")
                 .containsEntry(
                     "FERROSA_SEED",
-                    "ferrosa-0.default.svc.cluster.local:17000,ferrosa-2.default.svc.cluster.local:17000",
+                    "ferrosa-0.lab-a.svc:17000,ferrosa-2.lab-a.svc:17000",
                 )
             for (i in 0..2) {
                 assertThat(run.env(i)["FERROSA_SEED"]).doesNotContain("ferrosa-$i.")

@@ -309,9 +309,9 @@ class Neo4jKitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `stop and uninstall delete in the default namespace and run no shell step`() {
+        fun `stop and uninstall delete in the cluster namespace and run no shell step`() {
             for (phase in listOf(kit.config.stop, kit.config.uninstall)) {
-                assertThat(labelDelete(phase).namespace).isEqualTo("default")
+                assertThat(labelDelete(phase).namespace).isNull()
                 assertThat(phase).noneMatch { it is InstallStep.Shell }
             }
         }

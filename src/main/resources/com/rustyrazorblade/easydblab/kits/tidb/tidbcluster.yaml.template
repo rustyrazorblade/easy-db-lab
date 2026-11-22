@@ -2,7 +2,7 @@ apiVersion: pingcap.com/v1alpha1
 kind: TidbCluster
 metadata:
   name: tidb
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   version: "__TIDB_VERSION__"
   timezone: UTC

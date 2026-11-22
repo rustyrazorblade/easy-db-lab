@@ -13,7 +13,6 @@ metrics:
 runtime:
   type: pods
   selector: "easydblab/kit=cassandra-pods"
-  namespace: default
 
 endpoints:
   - name: "CQL"
@@ -97,12 +96,10 @@ stop:
   - type: delete
     kinds: [statefulset, service, configmap]
     selector: easydblab/kit=cassandra-pods
-    namespace: default
 
 uninstall:
   - type: delete
     kinds: [statefulset, service, configmap, pvc]
     selector: easydblab/kit=cassandra-pods
-    namespace: default
   - type: kit-storage-delete
     node-type: db

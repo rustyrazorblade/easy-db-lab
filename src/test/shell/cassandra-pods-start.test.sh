@@ -8,6 +8,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/cassandra-pods"
 tests_run=0

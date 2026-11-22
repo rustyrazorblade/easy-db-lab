@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: tidb-nodeport
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   type: NodePort
   selector:
@@ -22,7 +22,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: pd-nodeport
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   type: NodePort
   selector:
@@ -38,7 +38,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: tiflash-nodeport
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   type: NodePort
   selector:

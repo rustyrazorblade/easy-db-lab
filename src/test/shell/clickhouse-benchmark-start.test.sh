@@ -13,6 +13,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/clickhouse-benchmark"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
@@ -169,8 +172,8 @@ test_a_pod_that_cannot_pull_its_image_is_deleted() {
   run_start
   [ "${rc}" -ne 0 ] || fail "exited 0"
   grep -q "ImagePullBackOff" <<< "${out}" || fail "no reason: ${out}"
-  grep -Eq "^delete pod ${INSTANCE}-benchmark-run-[0-9]+ --ignore-not-found$" <<< "$(calls)" || fail "left the pod: $(calls)"
-  grep -Eq "^delete configmap ${INSTANCE}-benchmark-run-[0-9]+ --ignore-not-found$" <<< "$(calls)" || fail "left the ConfigMap: $(calls)"
+  grep -Eq "^delete pod ${INSTANCE}-benchmark-run-[0-9]+ -n lab-a --ignore-not-found$" <<< "$(calls)" || fail "left the pod: $(calls)"
+  grep -Eq "^delete configmap ${INSTANCE}-benchmark-run-[0-9]+ -n lab-a --ignore-not-found$" <<< "$(calls)" || fail "left the ConfigMap: $(calls)"
 }
 
 test_own_queries_skip_the_hits_check_and_reach_the_pod() {
@@ -208,7 +211,7 @@ test_the_pod_runs_on_an_app_node_with_the_queries_mounted() {
   [ "$(jq -r '.spec.containers[0].name' "${STUB_STATE}/overrides.1")" = "${pod}" ] || fail "container: $(cat "${STUB_STATE}/overrides.1")"
   grep -Fq "# label easydblab/role=benchmark-run" "${STUB_STATE}/configmap.1" || fail "ConfigMap unlabelled"
   grep -Fq "# label easydblab/kit=${INSTANCE}" "${STUB_STATE}/configmap.1" || fail "ConfigMap unlabelled"
-  grep -Fq "delete configmap ${pod} --ignore-not-found" <<< "$(calls)" || fail "own ConfigMap not deleted: $(calls)"
+  grep -Fq "delete configmap ${pod} -n lab-a --ignore-not-found" <<< "$(calls)" || fail "own ConfigMap not deleted: $(calls)"
 }
 
 test_a_successful_run_pushes_gauges_and_writes_last_run() {

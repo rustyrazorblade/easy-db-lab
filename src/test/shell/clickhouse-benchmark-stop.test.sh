@@ -8,6 +8,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/clickhouse-benchmark/bin/stop.sh.template"
 # shellcheck source=kit-stubs.sh
@@ -31,7 +34,7 @@ test_stop_deletes_only_this_instances_pods_and_configmaps() {
   (PATH="${WORK}/stubs:${PATH}" KIT_NAME=clickhouse-benchmark-clickhouse KUBECONFIG="${WORK}/kubeconfig" \
     "${BASH}" "${TEMPLATE}") > "${WORK}/out" 2>&1 || fail "exited non-zero: $(cat "${WORK}/out")"
   [ "$(cat "${STUB_STATE}/kubectl.calls")" = \
-    "--kubeconfig=${WORK}/kubeconfig delete pods,configmaps -l easydblab/kit=clickhouse-benchmark-clickhouse --ignore-not-found" ] ||
+    "--kubeconfig=${WORK}/kubeconfig delete pods,configmaps -n lab-a -l easydblab/kit=clickhouse-benchmark-clickhouse --ignore-not-found" ] ||
     fail "kubectl calls: $(cat "${STUB_STATE}/kubectl.calls")"
 }
 

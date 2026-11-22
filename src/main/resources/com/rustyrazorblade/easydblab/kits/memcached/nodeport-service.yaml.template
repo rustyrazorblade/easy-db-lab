@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: memcached-nodeport
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     easydblab/kit: memcached
 spec:

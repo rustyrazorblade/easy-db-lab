@@ -4,7 +4,7 @@ metadata:
   # kit-storage names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
   # only when the StatefulSet is named after the kit and its claim template is `data`.
   name: cassandra-pods
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     app: cassandra-pods
     easydblab/kit: cassandra-pods
@@ -105,7 +105,7 @@ spec:
                   divisor: 1Mi
             # Pod 0 is the seed, reached by its stable DNS name.
             - name: CASSANDRA_SEEDS
-              value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
+              value: cassandra-pods-0.cassandra-pods-gossip.__NAMESPACE__.svc
             # HOST_IP must precede the variables that reference it.
             - name: HOST_IP
               valueFrom:

@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: cluster-init
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   # backoffLimit + activeDeadlineSeconds are the outer safety net; the container's
   # own retry loop is the primary mechanism. If the whole Pod dies mid-init (node

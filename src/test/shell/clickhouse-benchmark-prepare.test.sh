@@ -12,6 +12,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/clickhouse-benchmark"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
@@ -92,7 +95,7 @@ test_a_prepare_pod_that_cannot_pull_its_image_is_deleted() {
   echo "Pending|ErrImagePull|pull access denied|" > "${STUB_STATE}/state.default"
   run_prepare
   [ "${rc}" -ne 0 ] || fail "exited 0"
-  grep -Eq "^delete pod ${INSTANCE}-prepare-[0-9]+ --ignore-not-found$" "${STUB_STATE}/kubectl.calls" ||
+  grep -Eq "^delete pod ${INSTANCE}-prepare-[0-9]+ -n lab-a --ignore-not-found$" "${STUB_STATE}/kubectl.calls" ||
     fail "left the pod: $(cat "${STUB_STATE}/kubectl.calls")"
 }
 

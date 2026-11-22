@@ -21,7 +21,6 @@ dashboards:
 runtime:
   type: pods
   selector: "easydblab/kit=ferrosa"
-  namespace: default
 
 # Every NodePort selects the first pod (easydblab/ferrosa-ordinal=0); CQL drivers find the other
 # pods through system.peers.
@@ -216,21 +215,21 @@ start:
         SETTINGS+=("--from-literal=MALLOC_CONF=prof:true,prof_active:true,prof_final:true,prof_prefix:/var/lib/ferrosa/heap-profiles/ferrosa,lg_prof_sample:${HEAP_SAMPLE:-19}")
       fi
 
-      kubectl create configmap ferrosa-settings --namespace default "${SETTINGS[@]}" \
+      kubectl create configmap ferrosa-settings --namespace "${NAMESPACE}" "${SETTINGS[@]}" \
         --dry-run=client -o yaml \
         | kubectl label --local -f - easydblab/kit=ferrosa -o yaml \
-        | kubectl apply -f -
-      kubectl create configmap ferrosa-env --namespace default ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
+        | kubectl apply -f - -n "${NAMESPACE}"
+      kubectl create configmap ferrosa-env --namespace "${NAMESPACE}" ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
         --dry-run=client -o yaml \
         | kubectl label --local -f - easydblab/kit=ferrosa -o yaml \
-        | kubectl apply -f -
+        | kubectl apply -f - -n "${NAMESPACE}"
 
       for (( I = 0; I < DB_NODE_COUNT; I++ )); do
         HOST_ID=$(printf '00000000-0000-0000-0000-%012x' $(( I + 1 )))
         SEEDS=""
         for (( J = 0; J < DB_NODE_COUNT; J++ )); do
           (( J == I )) && continue
-          SEEDS="${SEEDS:+${SEEDS},}ferrosa-${J}.default.svc.cluster.local:17000"
+          SEEDS="${SEEDS:+${SEEDS},}ferrosa-${J}.${NAMESPACE}.svc:17000"
         done
         SED=(-e "s|@ORDINAL@|${I}|g" -e "s|@IMAGE@|${IMAGE}|g" -e "s|@HOST_ID@|${HOST_ID}|g"
           -e "s|@SEEDS@|${SEEDS}|g" -e "s|@CLUSTER_SIZE@|${DB_NODE_COUNT}|g")
@@ -238,7 +237,7 @@ start:
         # declared-topology gate needs 3 or more voters.
         if [[ -z "${SEEDS}" ]]; then SED+=(-e '/# @IF_SEEDS@/d'); else SED+=(-e 's| *# @IF_SEEDS@||'); fi
         if (( DB_NODE_COUNT >= 3 )); then SED+=(-e 's| *# @IF_CLUSTER_SIZE@||'); else SED+=(-e '/# @IF_CLUSTER_SIZE@/d'); fi
-        sed "${SED[@]}" ferrosa-node.yaml | kubectl apply -f -
+        sed "${SED[@]}" ferrosa-node.yaml | kubectl apply -f - -n "${NAMESPACE}"
       done
   - type: manifest
     template: nodeport-service.yaml
@@ -260,7 +259,7 @@ start:
         [[ "${HEAP_PROFILE:-false}" == "true" ]] || return 0
         local POD LOG IMG
         for POD in $(jq -r '.items[].metadata.name' <<< "${PODS}"); do
-          LOG=$(kubectl logs "${POD}" --namespace default -c ferrosa 2>/dev/null || true)
+          LOG=$(kubectl logs "${POD}" --namespace "${NAMESPACE}" -c ferrosa 2>/dev/null || true)
           if grep -q 'Invalid conf pair: prof' <<< "${LOG}"; then
             IMG=$(jq -r --arg pod "${POD}" '.items[] | select(.metadata.name == $pod) | .spec.containers[] | select(.name == "ferrosa") | .image' <<< "${PODS}")
             echo "ERROR: --heap-profile needs a FerrosaDB profiling build; ${IMG} is not one (pod ${POD} logged 'Invalid conf pair: prof')." >&2
@@ -269,7 +268,7 @@ start:
         done
       }
       while true; do
-        PODS=$(kubectl get pods --namespace default -l easydblab/kit=ferrosa -o json)
+        PODS=$(kubectl get pods --namespace "${NAMESPACE}" -l easydblab/kit=ferrosa -o json)
         PULL=$(jq -r '.items[] | .metadata.name as $pod
           | ((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[]
           | select((.state.waiting.reason // "") | test("^(ErrImagePull|ImagePullBackOff|InvalidImageName)$"))
@@ -289,7 +288,7 @@ start:
         if [[ -n "${CRASH}" ]]; then
           IFS=$'\t' read -r POD CONTAINER REASON <<< "${CRASH}"
           echo "ERROR: FerrosaDB pod ${POD} container ${CONTAINER} failed (${REASON}); the end of its previous log:" >&2
-          kubectl logs "${POD}" --namespace default -c "${CONTAINER}" --previous --tail=50 >&2 || true
+          kubectl logs "${POD}" --namespace "${NAMESPACE}" -c "${CONTAINER}" --previous --tail=50 >&2 || true
           exit 1
         fi
         check_profiling_build
@@ -314,12 +313,10 @@ stop:
   - type: delete
     kinds: [statefulset, pod, service, configmap]
     selector: easydblab/kit=ferrosa
-    namespace: default
 
 uninstall:
   - type: delete
     kinds: [statefulset, pod, service, configmap, pvc]
     selector: easydblab/kit=ferrosa
-    namespace: default
   - type: kit-storage-delete
     node-type: db

@@ -75,7 +75,7 @@ class ClickHouseBenchmarkKitTest : BaseKoinTest() {
         val runtime = requireNotNull(kit.config.runtime)
 
         assertThat(runtime.type).isEqualTo(KitRuntime.RuntimeType.PODS)
-        assertThat(runtime.namespace).isEqualTo("default")
+        assertThat(runtime.namespace).isNull()
         assertThat(parseLabelSelector(runtime.selector))
             .isEqualTo(mapOf("easydblab/kit" to "\${KIT_NAME}", "easydblab/role" to "benchmark-run"))
         assertThat(kit.config.collisionCheck.guards("start")).isTrue()

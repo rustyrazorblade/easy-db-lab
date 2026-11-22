@@ -42,6 +42,9 @@
 #   configmap.<n>     the YAML the n-th `kubectl create -f -` received
 #   curl.<n>          the arguments of the n-th curl call, one per line
 #   since-times       the --since-time of each resumed `kubectl logs -f`
+#   namespace.calls   the namespace of each kubectl call that names one before its verb
+#
+# and writes a helm stub that records each call among the kubectl calls as `helm <args>`.
 
 write_kit_stubs() {
   local dir="$1"
@@ -67,9 +70,13 @@ pod_state() {
   [ -n "${line}" ] || line="$(tail -n 1 "${file}")"
   echo "${line}"
 }
+# Global flags may come before the verb, as kubectl allows; the namespace is kept for the cases
+# that check it (namespace.calls, one per call that names one).
 while :; do
   case "${1:-}" in
     --kubeconfig=*) shift ;;
+    -n | --namespace) printf '%s\n' "$2" >> "${S}/namespace.calls"; shift 2 ;;
+    --namespace=*) printf '%s\n' "${1#--namespace=}" >> "${S}/namespace.calls"; shift ;;
     *) break ;;
   esac
 done
@@ -214,6 +221,9 @@ if [ "$*" = "+%s" ]; then
 fi
 exec /bin/date "$@"
 EOF
+  # helm records its arguments among the kubectl calls, prefixed with `helm`.
+  printf '#!/usr/bin/env bash\nprintf "helm %%s\\n" "$*" >> "${STUB_STATE:?}/kubectl.calls"\nexit 0\n' > "${dir}/helm"
+  chmod +x "${dir}/helm"
   # sleep records itself among the kubectl calls, so a test can check what a wait does after it.
   printf '#!/usr/bin/env bash\nprintf "sleep %%s\\n" "$*" >> "${STUB_STATE:?}/kubectl.calls"\nexit 0\n' > "${dir}/sleep"
   chmod +x "${dir}/kubectl" "${dir}/curl" "${dir}/date" "${dir}/sleep"

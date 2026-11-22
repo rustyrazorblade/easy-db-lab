@@ -91,7 +91,7 @@ class KafkaKitTest : BaseKoinTest() {
         val exit = stub.run(clusterIdStep(kit.config.start).script, emptyMap())
 
         assertThat(exit).withFailMessage(stub.output()).isEqualTo(0)
-        assertThat(stub.invocations()).containsExactly("apply -f kafka.yaml --namespace default")
+        assertThat(stub.invocations()).containsExactly("apply -f kafka.yaml --namespace ${StubKubectl.NAMESPACE}")
     }
 
     @Test

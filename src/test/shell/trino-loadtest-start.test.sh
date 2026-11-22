@@ -14,6 +14,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT_SRC="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/trino-loadtest"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
@@ -83,7 +86,7 @@ test_pushes_interval_figures_as_otlp_gauges_to_the_collector() {
   for call in "${STUB_STATE}"/curl.[0-9]*; do
     [ -e "${call}" ] || { fail "nothing was pushed"; return; }
     ! grep -q '/v1/statement' "${call}" || continue
-    grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/default/pods/otel-collector-c0:4318/proxy/v1/metrics' "${call}" || fail "push not sent to the collector's OTLP HTTP port: $(cat "${call}")"
+    grep -Fqx 'http://127.0.0.1:18001/api/v1/namespaces/lab-a/pods/otel-collector-c0:4318/proxy/v1/metrics' "${call}" || fail "push not sent to the collector's OTLP HTTP port: $(cat "${call}")"
   done
   if grep -q ':8428' "${STUB_STATE}"/curl.[0-9]*; then
     fail "must not push to the VictoriaMetrics import API"

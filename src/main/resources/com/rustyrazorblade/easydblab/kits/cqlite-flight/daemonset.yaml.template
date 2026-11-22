@@ -14,7 +14,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: cqlite-flight
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     app.kubernetes.io/name: cqlite-flight
     easydblab/kit: cqlite-flight
@@ -163,7 +163,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: cqlite-flight-nodeport
-  namespace: default
+  namespace: __NAMESPACE__
   labels:
     easydblab/kit: cqlite-flight
     easydblab/role: flight

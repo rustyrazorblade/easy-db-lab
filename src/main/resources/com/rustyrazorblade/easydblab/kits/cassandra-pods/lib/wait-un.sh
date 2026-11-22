@@ -22,7 +22,7 @@ nt_err="$(mktemp)"
 trap 'rm -f "${nt_err}"' EXIT
 
 while :; do
-  up="$(kubectl exec "${pod}" --namespace default -c cassandra -- nodetool status 2> "${nt_err}" | grep -c '^UN' || true)"
+  up="$(kubectl exec "${pod}" --namespace "${NAMESPACE}" -c cassandra -- nodetool status 2> "${nt_err}" | grep -c '^UN' || true)"
   if [ "${up}" -ge "${CASSANDRA_NODES}" ]; then
     echo "${up} nodes are UN."
     exit 0
@@ -36,5 +36,5 @@ if [ -s "${nt_err}" ]; then
   echo "Last nodetool status error:" >&2
   cat "${nt_err}" >&2
 fi
-kubectl get events --namespace default --sort-by=.lastTimestamp 2>&1 | tail -n 20 >&2 || true
+kubectl get events --namespace "${NAMESPACE}" --sort-by=.lastTimestamp 2>&1 | tail -n 20 >&2 || true
 exit 1

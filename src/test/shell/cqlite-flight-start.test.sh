@@ -14,6 +14,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT_SRC="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/cqlite-flight"
 # shellcheck source=kit-stubs.sh

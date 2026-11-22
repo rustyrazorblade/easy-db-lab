@@ -14,4 +14,4 @@ sed_escape() {
 }
 sed -e "s|@RESOLVED_IMAGE@|$(sed_escape "${RESOLVED_IMAGE}")|g" \
   -e "s|@RESOLVED_BUILD@|$(sed_escape "${RESOLVED_BUILD}")|g" statefulset.yaml |
-  kubectl apply -f -
+  kubectl apply -f - -n "${NAMESPACE}"

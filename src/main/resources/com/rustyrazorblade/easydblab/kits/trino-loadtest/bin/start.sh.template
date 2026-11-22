@@ -88,7 +88,7 @@ else
 fi
 
 echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
-kubectl run "${POD}" \
+kubectl run "${POD}" -n "${NAMESPACE}" \
   --image="${IMAGE}" \
   --restart=Never \
   --labels="$(edl_labels "${ROLE}")" \
@@ -138,7 +138,7 @@ edl_follow_pod_logs "${POD}" handle_line
 EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
 
 [ "${EXIT_CODE}" = 0 ] ||
-  edl_fail "The trino-loadtest run failed with exit code ${EXIT_CODE} (pod ${POD}; kubectl logs ${POD})"
+  edl_fail "The trino-loadtest run failed with exit code ${EXIT_CODE} (pod ${POD}; kubectl -n ${NAMESPACE} logs ${POD})"
 
 if [ -n "${SNAPSHOT_CHECK_CMD}" ]; then
   tl_run_snapshot_check "${SNAPSHOT_CHECK_CMD}" "${SNAPSHOT_CHECK_TIMEOUT_S}"

@@ -30,7 +30,6 @@ runtime:
   # collision check must not mistake one for the other. CNPG labels each instance pod with its
   # Cluster, which is named after the kit instance.
   selector: "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance"
-  namespace: default
 endpoints:
   - name: "PostgreSQL"
     node-type: db
@@ -69,6 +68,8 @@ install:
   - type: helm-repo
     name: cnpg
     url: https://cloudnative-pg.github.io/charts
+  - type: namespace
+    name: cnpg-system
   - type: helm
     chart: cnpg/cloudnative-pg
     release: cnpg-operator
@@ -86,11 +87,11 @@ start:
     script: |
       echo "Waiting for PostgreSQL instance pods to be created..."
       # Scoped to this instance's Cluster: postgres and postgres-<extension> run side by side.
-      until kubectl get pods -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" -n default --no-headers 2>/dev/null | grep -q .; do sleep 5; done
+      until kubectl get pods -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -q .; do sleep 5; done
       echo "Pods found, waiting for Ready..."
       kubectl wait --for=condition=Ready pods \
         -l "cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance" \
-        --namespace default \
+        --namespace "${NAMESPACE}" \
         --timeout=300s
   - type: manifest
     template: nodeport-service.yaml
@@ -99,19 +100,15 @@ stop:
   - type: delete
     kind: Cluster
     name: ${KIT_NAME}
-    namespace: default
   - type: delete
     kind: Service
     name: ${KIT_NAME}-nodeport
-    namespace: default
   - type: delete
     kind: Secret
     name: ${KIT_NAME}-credentials
-    namespace: default
   - type: delete
     kind: ImageCatalog
     name: ${KIT_NAME}-catalog
-    namespace: default
 
 uninstall:
   - type: kit-storage-delete

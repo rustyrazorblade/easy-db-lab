@@ -71,7 +71,10 @@ class StubKubectl(
         File(verbsDir, "$verb.sh").writeText(body)
     }
 
-    /** Runs [script] under bash with [env] added, returning the exit code; see [output]. */
+    /**
+     * Runs [script] under bash with [env] added, returning the exit code; see [output]. As `kit start`
+     * does, every step sees the cluster namespace as `NAMESPACE`: [NAMESPACE] unless [env] names one.
+     */
     fun run(
         script: String,
         env: Map<String, String>,
@@ -82,6 +85,7 @@ class StubKubectl(
             .redirectErrorStream(true)
             .redirectOutput(out)
             .also { pb ->
+                pb.environment()["NAMESPACE"] = NAMESPACE
                 pb.environment().putAll(env)
                 pb.environment()["PATH"] = "${dir.absolutePath}:${System.getenv("PATH")}"
             }.start()
@@ -130,4 +134,9 @@ class StubKubectl(
         done
         tee "${stdinDir.absolutePath}/${'$'}n"
         """.trimIndent() + "\n"
+
+    companion object {
+        /** The cluster namespace a stubbed step runs in. */
+        const val NAMESPACE = "lab-a"
+    }
 }

@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kafka-metrics-config
-  namespace: default
+  namespace: __NAMESPACE__
 data:
   kafka-metrics-config.yml: |
     lowercaseOutputName: true

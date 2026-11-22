@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: __KIT_NAME__-credentials
-  namespace: default
+  namespace: __NAMESPACE__
 type: kubernetes.io/basic-auth
 stringData:
   username: postgres
@@ -12,7 +12,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: ImageCatalog
 metadata:
   name: __KIT_NAME__-catalog
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   images:
     - major: __PG_MAJOR_VERSION__
@@ -22,7 +22,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: __KIT_NAME__
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   instances: __INSTANCES__
   postgresUID: __POSTGRES_UID__

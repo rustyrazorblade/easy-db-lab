@@ -8,6 +8,6 @@ export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 echo "Uninstalling Presto..."
 edl_helm_uninstall presto
 # start applies the NodePort Service with kubectl, outside the helm release.
-kubectl delete service presto-nodeport --namespace default --ignore-not-found
+kubectl delete service presto-nodeport --namespace "${NAMESPACE}" --ignore-not-found
 
 echo "Presto uninstalled."

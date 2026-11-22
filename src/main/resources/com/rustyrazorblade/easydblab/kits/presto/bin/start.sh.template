@@ -21,22 +21,22 @@ edl_patch_pyroscope presto-worker worker presto "${CLUSTER_LABEL}" worker
 
 echo "Waiting for coordinator rollout to complete..."
 kubectl rollout status deployment/presto-coordinator \
-  --namespace default \
+  --namespace "${NAMESPACE}" \
   --timeout=180s
 
 echo "Waiting for worker rollout to complete..."
 kubectl rollout status deployment/presto-worker \
-  --namespace default \
+  --namespace "${NAMESPACE}" \
   --timeout=180s
 
 echo "Waiting for Presto coordinator to become ready..."
 kubectl wait --for=condition=Ready pods \
   -l app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator \
-  --namespace default \
+  --namespace "${NAMESPACE}" \
   --timeout=180s
 
 # Clients reach the coordinator through its NodePort Service on any node; the pod declares no hostPort.
 echo "Publishing the coordinator on its NodePort Service..."
-kubectl apply -f - < "${SCRIPT_DIR}/../nodeport-service.yaml"
+kubectl apply -f - -n "${NAMESPACE}" < "${SCRIPT_DIR}/../nodeport-service.yaml"
 
 echo "Presto is ready. Workers: __WORKERS__"

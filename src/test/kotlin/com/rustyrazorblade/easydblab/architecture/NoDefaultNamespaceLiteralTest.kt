@@ -31,6 +31,9 @@ class NoDefaultNamespaceLiteralTest {
             """namespace: String = "default"""",
         ).map(::Regex)
 
+    private val resourceRoots = listOf(File("src/main/resources"), File("dashboards"))
+    private val binaryExtensions = setOf("jar", "png", "jpg", "gz", "zip", "tgz")
+
     /** File path (relative to [mainRoot]) to the text of the one line it may hold. */
     private val allowed = mapOf("Constants.kt" to "const val OWNED_NAMESPACE = \"default\"")
 
@@ -46,6 +49,33 @@ class NoDefaultNamespaceLiteralTest {
                 .map { (path, number, line) -> "$path:$number: $line" }
                 .toList()
 
+        assertThat(offending).isEmpty()
+    }
+
+    /**
+     * Kit files, the shell library, help text and the dashboards reach a cluster too, as manifests,
+     * scripts and text a user copies, so none of them may name `default` either; a kit acts in
+     * `${NAMESPACE}` / `__NAMESPACE__`. Every line counts, comments included: a comment there is
+     * what a user runs by hand. Dashboards live in the top-level tree the build copies to the
+     * classpath.
+     */
+    @Test
+    fun `no packaged resource or dashboard names the default namespace`() {
+        val offending =
+            resourceRoots
+                .flatMap { root ->
+                    root
+                        .walkTopDown()
+                        .filter { it.isFile && it.extension !in binaryExtensions && it.name != "CLAUDE.md" }
+                        .flatMap { file ->
+                            file.readLines().mapIndexedNotNull { index, line ->
+                                "${file.invariantSeparatorsPath}:${index + 1}: ${line.trim()}"
+                                    .takeIf { namespaceSpellings.any { it.containsMatchIn(line) } }
+                            }
+                        }.toList()
+                }
+
+        assertThat(resourceRoots).allMatch { it.isDirectory }
         assertThat(offending).isEmpty()
     }
 

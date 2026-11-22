@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: ignite-cluster
-  namespace: default
+  namespace: __NAMESPACE__
 spec:
   replicas: __REPLICAS__
   serviceName: ignite-svc-headless

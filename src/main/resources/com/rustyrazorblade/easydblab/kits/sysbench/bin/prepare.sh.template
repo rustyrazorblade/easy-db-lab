@@ -17,7 +17,7 @@ POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 run_to_completion() {
   local pod="$1" role="$2" image="$3" code
   shift 3
-  kubectl --kubeconfig="${KUBECONFIG}" run "${pod}" \
+  kubectl --kubeconfig="${KUBECONFIG}" run "${pod}" -n "${NAMESPACE}" \
     --image="${image}" \
     --restart=Never \
     --labels="$(edl_labels "${role}")" \
@@ -27,10 +27,10 @@ run_to_completion() {
   edl_wait_for_pod_running "${pod}"
   code="$(edl_wait_for_pod_exit "${pod}")"
   if [ "${code}" != 0 ]; then
-    kubectl --kubeconfig="${KUBECONFIG}" logs "${pod}" >&2 || true
+    kubectl --kubeconfig="${KUBECONFIG}" logs "${pod}" -n "${NAMESPACE}" >&2 || true
     edl_fail "pod ${pod} failed with exit code ${code}"
   fi
-  kubectl --kubeconfig="${KUBECONFIG}" delete pod "${pod}" --ignore-not-found
+  kubectl --kubeconfig="${KUBECONFIG}" delete pod "${pod}" -n "${NAMESPACE}" --ignore-not-found
 }
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then

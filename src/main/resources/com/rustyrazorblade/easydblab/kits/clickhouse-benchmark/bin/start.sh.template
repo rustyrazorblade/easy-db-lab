@@ -45,11 +45,11 @@ fi
 
 POD="$(edl_resource_name "${ROLE}")"
 edl_create_configmap "${POD}" "${ROLE}" "queries.sql=${CH_QUERIES_FILE}" "run-benchmark.sh=${KIT_DIR}/pod/run-benchmark.sh"
-trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
+trap 'kubectl delete configmap "${POD}" -n "${NAMESPACE}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
 
 echo "Starting clickhouse-benchmark against ${TARGET_NATIVE_HOST}:${TARGET_NATIVE_PORT} (${IMAGE}): queries=${CH_QUERIES_FILE}, concurrency=${CONCURRENCY}, duration=${DURATION}s, iterations=${ITERATIONS}..."
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-kubectl run "${POD}" \
+kubectl run "${POD}" -n "${NAMESPACE}" \
   --image="${IMAGE}" \
   --restart=Never \
   --labels="$(edl_labels "${ROLE}")" \
@@ -64,7 +64,7 @@ EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
 
 # The live stream can be cut and resumed, so the results come from the full log.
 FULL_LOG="$(mktemp)"
-kubectl logs "${POD}" > "${FULL_LOG}" 2>&1 || true
+kubectl logs "${POD}" -n "${NAMESPACE}" > "${FULL_LOG}" 2>&1 || true
 {
   echo "clickhouse-benchmark run"
   echo "queries:            ${CH_QUERIES_FILE}"

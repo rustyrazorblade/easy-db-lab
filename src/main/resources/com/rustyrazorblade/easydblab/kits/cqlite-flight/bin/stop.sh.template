@@ -10,6 +10,6 @@ ROLE="flight"
 LABELS="easydblab/kit=cqlite-flight,easydblab/role=${ROLE}"
 
 echo "Stopping cqlite-flight (deleting the DaemonSet, its NodePort Service and its ConfigMap by label selector: ${LABELS})..."
-kubectl delete daemonset,service,configmap -l "${LABELS}" --namespace default --ignore-not-found
+kubectl delete daemonset,service,configmap -l "${LABELS}" --namespace "${NAMESPACE}" --ignore-not-found
 
 echo "cqlite-flight stopped. The Cassandra data dir mount was read-only; nothing to clean up on-node."

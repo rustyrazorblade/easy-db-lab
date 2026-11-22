@@ -27,18 +27,26 @@ class BuiltinKitFixture(
     kitStorageClass: String? = null,
     roleSelectors: RoleSelectors? = null,
     clientNetworks: List<String>? = null,
+    namespace: String? = null,
 ) {
     /**
      * A cluster with one control node, two db nodes and one app node, enough to resolve every
      * template variable, in the VPC `172.16.0.0/16`. Its kit storage is local volumes, or the provisioned [kitStorageClass]; its
-     * role selectors are [roleSelectors], or the owned nodes' when null, and its client networks are
-     * [clientNetworks], or the VPC and cluster CIDR when null.
+     * role selectors are [roleSelectors], or the owned nodes' when null, its client networks are
+     * [clientNetworks], or the VPC and cluster CIDR when null, and its namespace is [namespace], or
+     * the EC2 default when null.
      */
     private val clusterState =
         ClusterState(
             name = "test-cluster",
             initConfig =
-                InitConfig(region = "us-west-2", name = "test-cluster", kitStorageClass = kitStorageClass, cidr = "172.16.0.0/16"),
+                InitConfig(
+                    region = "us-west-2",
+                    name = "test-cluster",
+                    kitStorageClass = kitStorageClass,
+                    cidr = "172.16.0.0/16",
+                    namespace = namespace,
+                ),
             hosts =
                 mapOf(
                     ServerType.Control to listOf(host("control0", "10.0.0.5")),
@@ -56,6 +64,9 @@ class BuiltinKitFixture(
 
     /** The kit's scrape metrics entries. */
     val scrapeMetrics: List<KitMetrics.Scrape> get() = config.metrics.filterIsInstance<KitMetrics.Scrape>()
+
+    /** Every variable a kit step and process sees, as `kit start` builds them with no args. */
+    val stepVariables: Map<String, String> get() = argDefaults + variables.toMap()
 
     private val variables: TemplateVariables
         get() = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = "10Gi")

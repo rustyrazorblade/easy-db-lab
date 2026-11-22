@@ -14,6 +14,9 @@
 
 set -uo pipefail
 
+# The cluster namespace, as easy-db-lab sets it for every kit process (TemplateVariables).
+export NAMESPACE=lab-a
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/stop.sh.template"
@@ -60,7 +63,7 @@ run_script() {
 }
 
 deletes_cleanup_pods() {
-  grep -q 'delete pods -l easydblab/kit=sb1,easydblab/role=sysbench-cleanup' "${WORK}/kubectl.calls"
+  grep -q 'delete pods -n lab-a -l easydblab/kit=sb1,easydblab/role=sysbench-cleanup' "${WORK}/kubectl.calls"
 }
 
 test_a_gone_target_still_stops_and_removes_the_cleanup_pod() {

@@ -65,6 +65,42 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
     }
 
     @Test
+    fun `a recorded kit-ref target that is not a kit name fails start and never reads outside the workspace`() {
+        // A decoy kit.yaml beside the workspace: reading it would give the script a target URL.
+        File(File(workingDir.parentFile, "x").also { it.mkdirs() }, "kit.yaml").writeText(
+            """
+            name: x
+            endpoints:
+              - name: JDBC
+                node-type: db
+                port: 8123
+                type: jdbc
+                scheme: decoy
+            """.trimIndent(),
+        )
+        writeKitYaml(
+            "bench",
+            """
+            name: bench
+            args:
+              - flag: --target
+                variable: TARGET
+                type: kit-ref
+            """.trimIndent(),
+        )
+        writeResolvedArgs("bench", mapOf("TARGET" to "../x"))
+        val ran = File(workingDir, "ran.txt")
+        writeScript("bench", "start", """echo "${'$'}{TARGET_JDBC_URL:-unset}" > "${ran.absolutePath}"""")
+
+        val outcome = runCatching { command("bench", "start").call() }
+
+        assertThat(outcome.exceptionOrNull())
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid kit name '../x'")
+        assertThat(ran).doesNotExist()
+    }
+
+    @Test
     fun `a target kit whose one-pod endpoint no pod serves fails the phase before the script runs`() {
         File(File(workingDir, "trino").also { it.mkdirs() }, "kit.yaml").writeText(
             """

@@ -539,7 +539,7 @@ easy-db-lab cassandra update-config [file] [options]
 **Aliases:** `uc`
 
 With no `file`, the patch is read from `cassandra.patch.yaml` in the workspace. A `file` you type is
-used as typed, and is uploaded to each node under its own file name. Each host's version conf
+used as typed, and is uploaded to each node as `cassandra.patch.yaml`. Each host's version conf
 directory (for example `5.0/`) is read from the workspace.
 
 | Option | Description |

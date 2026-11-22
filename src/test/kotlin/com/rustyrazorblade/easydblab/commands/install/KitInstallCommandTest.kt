@@ -28,6 +28,8 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
@@ -278,6 +280,50 @@ class KitInstallCommandTest : BaseKoinTest() {
                 .readLines()
                 .associate { it.substringBefore('=') to it.substringAfter('=') }
         assertThat(resolvedArgs["IMAGE"]).isEqualTo("ghcr.io/cloudnative-pg/postgresql:17")
+    }
+
+    /**
+     * A kit-ref or extension value becomes part of a workspace directory name, so a value that is
+     * not a kit name is refused before anything is read or written. `x/../clickhouse` would
+     * otherwise normalize onto the installed clickhouse kit, and `--force` would replace it.
+     */
+    @ParameterizedTest(name = "[{0}] {1}")
+    @CsvSource(
+        "TARGET, x/../clickhouse",
+        "TARGET, ../x",
+        "TARGET, a/b",
+        "TARGET, my kit",
+        "TARGET, -x",
+        "EXTENSION, x/../clickhouse",
+        "EXTENSION, my kit",
+    )
+    fun `a kit-ref or extension value that is not a kit name is refused and leaves every kit alone`(
+        variable: String,
+        value: String,
+    ) {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        val clickhouse = File(workingDir, "clickhouse").apply { mkdirs() }
+        File(clickhouse, Constants.Kit.CONFIG_FILE).writeText("name: clickhouse\n")
+        val config =
+            KitConfig(
+                name = "bench",
+                type = null,
+                args =
+                    listOf(
+                        KitArgSpec(flag = "--target", variable = "TARGET", type = KitArgSpec.ArgType.KIT_REF),
+                        KitArgSpec(flag = "--extension", variable = "EXTENSION", type = KitArgSpec.ArgType.EXTENSION, default = ""),
+                    ),
+            )
+        val cl = factory.build(config, source)
+        val cmd = cl.commandSpec.userObject() as KitInstallCommand
+        cmd.argValues[variable] = value
+        cmd.force = true
+
+        assertThatThrownBy { cmd.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid kit name '$value'")
+        assertThat(File(clickhouse, Constants.Kit.CONFIG_FILE)).hasContent("name: clickhouse")
+        assertThat(workingDir.list().orEmpty().filter { it.startsWith("bench") }).isEmpty()
     }
 
     @Test

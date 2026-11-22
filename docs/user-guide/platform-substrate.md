@@ -124,7 +124,7 @@ All templates receive these standard variables from cluster state:
 | `__STORAGE_CLASS_WFC__` | `local-storage-wfc` |
 | `__KIT_NAME__` | Kit name |
 | `__STORAGE_SIZE__` | Storage size (e.g., `100Gi`) |
-| `__KUBECONFIG__` | Path to local kubeconfig |
+| `__KUBECONFIG__` | Absolute path of the workspace kubeconfig, for typed steps and manifests; a kit script uses the `KUBECONFIG` the CLI sets for its process instead |
 | `__EASY_DB_LAB_EXEC__` | Path to the easy-db-lab executable |
 | `__RUNNING_KITS__` | Names of currently running kits |
 | `__OPENSEARCH_ENDPOINT__` | OpenSearch domain endpoint, if provisioned |

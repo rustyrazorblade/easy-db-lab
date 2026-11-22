@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -56,11 +57,11 @@ class Clean :
 
     override fun execute() {
         for (f in filesToClean) {
-            context.workspaceFile(f).deleteRecursively()
+            context.workspaceFile(f).deleteWithoutFollowingLinks()
         }
 
         for (d in directoriesToClean) {
-            context.workspaceFile(d).deleteRecursively()
+            context.workspaceFile(d).deleteWithoutFollowingLinks()
         }
         toolWrapperInstaller.remove(context.workingDirectory)
         val artifacts = context.workspaceFile("artifacts")

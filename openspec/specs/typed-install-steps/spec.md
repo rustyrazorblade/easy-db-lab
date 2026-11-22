@@ -143,9 +143,9 @@ non-zero exit code.
 Every kit `type: shell` step, in `install:` and in lifecycle phases, MUST run with:
 
 - `<workspace>/bin` first on `PATH`, ahead of the `PATH` it inherited, with the tool wrappers written before the step starts;
-- `KUBECONFIG` set to the absolute path of the workspace kubeconfig, replacing any relative value from the cluster state variables.
+- `KUBECONFIG` set to the absolute path of the workspace kubeconfig.
 
-The step MUST fail before it starts if the workspace kubeconfig does not exist. The workspace kubeconfig MUST be used as it is: no temporary or proxied copy of it is made. The `__KUBECONFIG__` template variable keeps its relative value.
+The step MUST fail before it starts if the workspace kubeconfig does not exist. The workspace kubeconfig MUST be used as it is: no temporary or proxied copy of it is made. The `__KUBECONFIG__` template variable is the same absolute path of the workspace kubeconfig. A packaged kit script MUST NOT write that path into its text: it MUST use the `KUBECONFIG` the CLI sets for its process, and a script that exports it MUST use `export KUBECONFIG="${KUBECONFIG:?run this through easy-db-lab, which sets KUBECONFIG}"`, so a moved or renamed workspace still reaches its own cluster and a path holding `"` or `$` cannot break the script.
 
 #### Scenario: kubectl in an install shell step
 

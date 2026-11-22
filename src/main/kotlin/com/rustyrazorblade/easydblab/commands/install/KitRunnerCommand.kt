@@ -5,7 +5,9 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
@@ -68,7 +70,7 @@ class KitRunnerCommand(
     private val kitEndpointResolver: KitEndpointResolver by inject()
     private val endpointHost: KitEndpointHost by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
-    private val workspace: File by lazy { context.workingDirectory.absoluteFile }
+    private val workspace: File by lazy { context.workingDirectory }
     private val workloadProbe: KitWorkloadProbe by inject()
 
     private var processExitCode: Int = 0
@@ -172,8 +174,9 @@ class KitRunnerCommand(
             config
                 ?.kitRefArg
                 ?.let { resolvedArgs[it.variable]?.takeIf { v -> v.isNotBlank() } }
-                ?.let { kitEndpointResolver.resolveTargetVars(File(workspace, it), clusterState, unservedEndpoints()) }
-                .orEmpty()
+                ?.let { target ->
+                    kitEndpointResolver.resolveTargetVars(context.workspaceFile(requireKitName(target)), clusterState, unservedEndpoints())
+                }.orEmpty()
         return env + ("BACKUP_NAME" to name) + targetVars
     }
 
@@ -212,7 +215,7 @@ class KitRunnerCommand(
     private fun removeKitDirectory() {
         println("Warning: no uninstall phase configured for '$kitName' — removing local directory only")
         eventBus.emit(Event.Kit.ScriptStarted(kit = kitName, script = phaseName))
-        kitDir.deleteRecursively()
+        kitDir.deleteWithoutFollowingLinks()
         processExitCode = 0
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 0))
     }
@@ -296,7 +299,7 @@ class KitRunnerCommand(
      */
     private fun completePhase(config: KitConfig) {
         if (phaseName == Constants.Kit.PHASE_UNINSTALL) {
-            kitDir.deleteRecursively()
+            kitDir.deleteWithoutFollowingLinks()
         }
         val controlHost =
             clusterState.getControlHost() ?: run {

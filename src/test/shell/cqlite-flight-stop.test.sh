@@ -24,7 +24,7 @@ trap 'rm -rf "${WORK}"' EXIT
 export STUB_STATE="${WORK}/state"
 write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin"
-sed -e "s|__KUBECONFIG__|${WORK}/kubeconfig|g" "${KIT_SRC}/bin/stop.sh.template" > "${WORK}/kit/bin/stop.sh"
+cp "${KIT_SRC}/bin/stop.sh.template" "${WORK}/kit/bin/stop.sh"
 
 fail() {
   echo "FAIL: ${current_test}: $1"
@@ -38,7 +38,7 @@ start_test() {
 }
 
 run_script() {
-  env PATH="${WORK}/stubs:${PATH}" "${BASH}" "${WORK}/kit/bin/stop.sh" > "${WORK}/out.txt" 2>&1
+  env PATH="${WORK}/stubs:${PATH}" KUBECONFIG="${WORK}/kubeconfig" "${BASH}" "${WORK}/kit/bin/stop.sh" > "${WORK}/out.txt" 2>&1
 }
 
 deletes() { grep '^delete ' "${STUB_STATE}/kubectl.calls" 2>/dev/null; }

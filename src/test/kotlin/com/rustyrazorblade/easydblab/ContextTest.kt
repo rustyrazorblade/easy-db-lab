@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Guards the [Context] workspace rules: the workspace directory is absolute, so workspace files
@@ -46,6 +47,40 @@ class ContextTest {
 
         assertThat(resolved).startsWithRaw(context.workingDirectory.toPath())
         assertThat(resolved).isNotEqualTo(context.workingDirectory.toPath())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["out/file", "out/new", "out/../out/file", "dead/new"])
+    fun `a name that leaves the workspace through a link is refused`(name: String) {
+        val context = context()
+        val outside = File(tempDir, "outside").apply { mkdirs() }
+        File(outside, "file").writeText("outside")
+        context.workingDirectory.mkdirs()
+        Files.createSymbolicLink(File(context.workingDirectory, "out").toPath(), outside.toPath())
+        Files.createSymbolicLink(File(context.workingDirectory, "dead").toPath(), File(outside, "missing").toPath())
+
+        assertThatThrownBy { context.workspaceFile(name) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("inside the workspace")
+    }
+
+    @Test
+    fun `a link as the last segment resolves to the link itself, so a caller can unlink it`() {
+        val context = context()
+        val outside = File(tempDir, "outside").apply { mkdirs() }
+        context.workingDirectory.mkdirs()
+        Files.createSymbolicLink(File(context.workingDirectory, "out").toPath(), outside.toPath())
+
+        assertThat(context.workspaceFile("out")).isEqualTo(File(context.workingDirectory, "out"))
+    }
+
+    @Test
+    fun `a link that stays inside the workspace is allowed`() {
+        val context = context()
+        val target = File(context.workingDirectory, "real").apply { mkdirs() }
+        Files.createSymbolicLink(File(context.workingDirectory, "alias").toPath(), target.toPath())
+
+        assertThat(context.workspaceFile("alias/file")).isEqualTo(File(context.workingDirectory, "alias/file"))
     }
 
     @ParameterizedTest(name = "[{0}] is profile {1}")

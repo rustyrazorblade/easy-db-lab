@@ -31,7 +31,7 @@ class ProcessSocksProxyMessageTest {
     private fun service(connectFailureHint: String? = null) =
         ProcessSocksProxyService(
             Context(
-                easyDbLabUserDirectory = tempDir,
+                easyDbLabUserDirectory = File(tempDir, "edl-user"),
                 workingDirectory = tempDir,
             ),
             unusedProbe,

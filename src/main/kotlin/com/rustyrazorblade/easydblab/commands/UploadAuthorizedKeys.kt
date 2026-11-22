@@ -52,6 +52,11 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
                 .listFiles(FileFilter { it.name.endsWith(".pub") })
                 ?.sortedBy { it.name } // listFiles order is filesystem-dependent
                 ?: error("Failed to list files in $keysDir")
+        // With no key, the append below would add a blank line to every node's authorized_keys.
+        if (files.isEmpty()) {
+            eventBus.emit(Event.Command.UploadKeysEmpty(keysDir.absolutePath))
+            throw CommandFailedException("No .pub files in ${keysDir.absolutePath}")
+        }
         println("Files: ${files.map { it.name }}")
 
         // collect all the keys into a single file then upload

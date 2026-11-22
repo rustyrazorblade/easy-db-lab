@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.kit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommand
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -36,11 +37,16 @@ class Uninstall : PicoBaseCommand() {
     }
 
     override fun execute() {
-        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
-            "Invalid kit name '$kit': use letters, digits, hyphens or underscores, and start with a letter or digit"
-        }
+        requireKitName(kit)
         val kitDir = context.workspaceFile(kit)
-        if (!kitDir.isDirectory) {
+        // Exact match, case included: on a case-insensitive file system `KAFKA` would otherwise
+        // open the `kafka` directory and delete it while the kit's workload kept running.
+        val installed =
+            context.workingDirectory
+                .list()
+                .orEmpty()
+                .toSet()
+        if (kit !in installed || !kitDir.isDirectory) {
             error("Kit '$kit' is not installed in ${context.workingDirectory}")
         }
         // Through the command executor, so the phase gets the SOCKS tunnel its @RequiresProxy

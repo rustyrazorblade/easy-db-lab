@@ -215,24 +215,26 @@ class UpdateConfigTest : BaseKoinTest() {
         assertThat(localDir.firstValue).isEqualTo(File(context.workingDirectory, "5.0"))
     }
 
-    /** A path the user types is read as typed, not re-rooted under the workspace; the node gets it under its own name. */
+    /** A path the user types is read as typed, not re-rooted under the workspace; the node always gets it under the fixed patch name. */
     @Test
-    fun `a typed absolute patch path is read as typed and uploaded under its file name`() {
+    fun `a typed patch path is read as typed and uploaded under the fixed remote name`() {
         File(context.workingDirectory, "cassandra.patch.yaml").delete()
+        // A name the remote shell would split or run: it must never reach the patch-config command.
         val typed =
-            File(tempDir, "elsewhere/big-heap.yaml").apply {
+            File(tempDir, "elsewhere/big heap;rm.yaml").apply {
                 parentFile.mkdirs()
                 writeText("num_tokens: 16\n")
             }
+        val remote = Constants.ConfigPaths.CASSANDRA_PATCH_FILE
         val uploaded = argumentCaptor<Path>()
-        whenever(mockRemoteOps.upload(any(), uploaded.capture(), eq("big-heap.yaml"), any())).then {
+        whenever(mockRemoteOps.upload(any(), uploaded.capture(), eq(remote), any())).then {
             assertThat(uploaded.lastValue.toFile().readText()).contains("num_tokens: 16", "listen_address: \"10.0.1.1\"")
         }
 
         UpdateConfig().apply { file = typed.absolutePath }.execute()
 
-        verify(mockRemoteOps).upload(any(), any(), eq("big-heap.yaml"), any())
-        verify(mockRemoteOps).executeRemotely(any<Host>(), eq("/usr/local/bin/patch-config big-heap.yaml"), any(), any())
+        verify(mockRemoteOps).upload(any(), any(), eq(remote), any())
+        verify(mockRemoteOps).executeRemotely(any<Host>(), eq("/usr/local/bin/patch-config $remote"), any(), any())
     }
 
     /** A node whose current link resolves to nothing would make the workspace itself its conf dir. */

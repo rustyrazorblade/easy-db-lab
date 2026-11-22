@@ -16,6 +16,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -24,11 +25,14 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.TimeUnit
 
 /**
  * `upload-keys` uploads the joined keys from a scratch file that it removes afterwards. A keys
@@ -49,7 +53,7 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
             on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
             on { upload(any(), any(), any(), any()) } doAnswer {
                 uploadedSources.add(it.getArgument<Path>(1))
-                if (failUpload) throw IllegalStateException("upload failed")
+                check(!failUpload) { "upload failed" }
                 uploadedContents += Files.readString(it.getArgument<Path>(1))
                 uploadedTargets += it.getArgument<String>(2)
             }
@@ -180,5 +184,43 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
             .isInstanceOf(CommandFailedException::class.java)
             .hasMessageContaining(expected)
         assertThat((get<OutputHandler>() as BufferedOutputHandler).messages).anyMatch { it.contains("$expected does not exist") }
+    }
+
+    /** A directory with no `.pub` file fails before any node is touched, instead of appending a blank line everywhere. */
+    @Test
+    fun `a keys directory with no public keys fails and changes no node`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "notes.txt").writeText("not a key\n")
+
+        assertThatThrownBy { UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining(keys.absolutePath)
+        verifyNoInteractions(remote)
+        assertThat((get<OutputHandler>() as BufferedOutputHandler).messages)
+            .anyMatch { it.contains("No .pub files in ${keys.absolutePath}") }
+    }
+
+    /**
+     * Every node's upload is in flight at once: each fake upload waits until all four have started,
+     * so a serial run never gets past the first node and fails the barrier's wait.
+     */
+    @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
+    fun `the keys go to every node at the same time`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+        val allStarted = CyclicBarrier(state.hosts.values.sumOf { it.size })
+        whenever(remote.upload(any(), any(), any(), any())).doAnswer {
+            allStarted.await(BARRIER_WAIT_SECONDS, TimeUnit.SECONDS)
+            uploadedContents += Files.readString(it.getArgument<Path>(1))
+        }
+
+        UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute()
+
+        assertThat(uploadedContents).hasSize(4).containsOnly("ssh-ed25519 AAA a\n")
+    }
+
+    private companion object {
+        const val BARRIER_WAIT_SECONDS = 10L
     }
 }

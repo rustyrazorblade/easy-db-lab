@@ -57,7 +57,7 @@ run_script() {
   (
     cd "${WORK}" &&
       PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${KIT_LIB}" CLUSTER_NAME=lab1 PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
-        bash "${WORK}/kit/bin/start.sh"
+        KUBECONFIG="${WORK}/kubeconfig" bash "${WORK}/kit/bin/start.sh"
   ) > "${WORK}/out.txt" 2>&1
 }
 

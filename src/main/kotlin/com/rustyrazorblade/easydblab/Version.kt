@@ -24,5 +24,9 @@ data class Version(
         fun fromString(version: String): Version = Version("/usr/local/cassandra/$version")
 
         fun fromRemotePath(path: String): Version = Version(path)
+
+        /** The one message for hosts whose `current` link names no version. */
+        fun noActiveVersionMessage(aliases: Collection<String>): String =
+            "${aliases.joinToString()} reports no active version (is /usr/local/cassandra/current set?)"
     }
 }

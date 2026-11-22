@@ -1,41 +1,47 @@
 package com.rustyrazorblade.easydblab.kits
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * A kit script that exports `KUBECONFIG` must name the workspace's kubeconfig by its absolute path,
- * so the script reaches the cluster whatever directory it runs from.
+ * Every packaged kit script uses the `KUBECONFIG` easy-db-lab sets for the process it launches
+ * (`KitProcessEnvironment`), and never a path written into the script when it is rendered.
+ *
+ * A rendered path goes stale when the workspace is moved or renamed, and a path holding `"` or `$`
+ * would break the unescaped shell string it lands in. The old `${SCRIPT_DIR}/../../__KUBECONFIG__`
+ * form only worked from a kit directory one level under the workspace.
  */
-class KitScriptKubeconfigTest : BaseKoinTest() {
-    @ParameterizedTest(name = "{0} {1}")
-    @CsvSource(
-        "presto, bin/start.sh.template",
-        "presto, bin/stop.sh.template",
-        "presto, bin/uninstall.sh.template",
-        "presto, bin/update-catalogs.sh.template",
-        "trino, bin/start.sh.template",
-        "trino, bin/stop.sh.template",
-        "trino, bin/uninstall.sh.template",
-        "trino, bin/update-catalogs.sh.template",
-        "cqlite-flight, bin/start.sh.template",
-        "cqlite-flight, bin/stop.sh.template",
-    )
-    fun `the exported KUBECONFIG is the workspace's absolute kubeconfig`(
-        kit: String,
-        script: String,
-    ) {
-        val fixture = BuiltinKitFixture(kit, TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()))
+class KitScriptKubeconfigTest {
+    private fun packagedScriptTemplates(): List<File> =
+        javaClass.classLoader
+            .getResources(KITS_RESOURCE_DIR)
+            .toList()
+            .flatMap { url -> File(url.toURI()).walkTopDown().filter { it.isFile && it.name.endsWith(".sh.template") }.toList() }
+            .distinctBy { it.relativeTo(File(it.path.substringBefore(KITS_RESOURCE_DIR))).path }
 
-        val exports = fixture.renderText(script).lines().filter { it.startsWith("export KUBECONFIG=") }
+    @Test
+    fun `every kit script that sets KUBECONFIG takes it from the environment easy-db-lab sets`() {
+        val exports =
+            packagedScriptTemplates().flatMap { script ->
+                script.readLines().filter { it.trimStart().startsWith("export KUBECONFIG=") }.map { script.name to it.trim() }
+            }
 
-        val expected = File(fixture.workspace, Constants.K3s.LOCAL_KUBECONFIG).absolutePath
-        assertThat(exports).containsExactly("export KUBECONFIG=\"$expected\"")
+        assertThat(exports).isNotEmpty()
+        assertThat(exports).allSatisfy { (_, line) -> assertThat(line).isEqualTo(PROCESS_KUBECONFIG_EXPORT) }
+    }
+
+    @Test
+    fun `no kit script bakes the kubeconfig path into its text`() {
+        val baked =
+            packagedScriptTemplates().filter { "__KUBECONFIG__" in it.readText() }.map { it.path.substringAfter(KITS_RESOURCE_DIR) }
+
+        assertThat(baked).isEmpty()
+    }
+
+    private companion object {
+        const val KITS_RESOURCE_DIR = "com/rustyrazorblade/easydblab/kits"
+        const val PROCESS_KUBECONFIG_EXPORT =
+            "export KUBECONFIG=\"\${KUBECONFIG:?run this through easy-db-lab, which sets KUBECONFIG}\""
     }
 }

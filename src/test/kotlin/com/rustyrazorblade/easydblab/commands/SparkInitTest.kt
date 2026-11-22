@@ -19,27 +19,21 @@ import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 class SparkInitTest : BaseKoinTest() {
     private lateinit var mockEmrProvisioningService: EMRProvisioningService
-    private lateinit var testClusterStateManager: ClusterStateManager
+    private val testClusterStateManager: ClusterStateManager get() = get()
 
-    override fun additionalTestModules(): List<Module> {
-        val stateFile = File(tempDir, "state.json")
-        testClusterStateManager = ClusterStateManager(stateFile)
-
-        return listOf(
+    override fun additionalTestModules(): List<Module> =
+        listOf(
             module {
                 single {
                     mock<EMRProvisioningService>().also {
                         mockEmrProvisioningService = it
                     }
                 }
-                single { testClusterStateManager }
             },
         )
-    }
 
     private fun saveState(state: ClusterState) {
         testClusterStateManager.replace(state)

@@ -66,9 +66,7 @@ class UpdateConfig : PicoBaseCommand() {
                 .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
         require(versions.isNotEmpty()) { "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'" }
         val unversioned = versions.filterValues { it.versionString.isBlank() }.keys
-        require(unversioned.isEmpty()) {
-            "${unversioned.joinToString()} reports no active version (is /usr/local/cassandra/current set?)"
-        }
+        require(unversioned.isEmpty()) { Version.noActiveVersionMessage(unversioned) }
         val missing = versions.filterValues { !context.workspaceFile(it.versionString).isDirectory }
         check(missing.isEmpty()) {
             "No local config directory for " +
@@ -81,8 +79,9 @@ class UpdateConfig : PicoBaseCommand() {
     override fun execute() {
         val versions = versionsWithLocalConfig()
         val patch = patchFile
-        // The node gets the file under its own name: a typed local path means nothing there.
-        val remotePatch = patch.name
+        // The node always gets the fixed name: a typed local name means nothing there, and it would
+        // reach the remote patch-config command unquoted.
+        val remotePatch = Constants.ConfigPaths.CASSANDRA_PATCH_FILE
 
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->

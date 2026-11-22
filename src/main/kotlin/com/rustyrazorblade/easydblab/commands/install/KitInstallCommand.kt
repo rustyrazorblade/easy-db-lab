@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.ExtensionResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -76,6 +78,7 @@ class KitInstallCommand(
         }
 
         applyArgDefaults()
+        requireNamedKitValues()
 
         validateKitRefTarget()
 
@@ -123,7 +126,7 @@ class KitInstallCommand(
                         ),
                 ).onFailure { e ->
                     log.debug(e) { "$instanceName install failed" }
-                    kitDir.deleteRecursively()
+                    kitDir.deleteWithoutFollowingLinks()
                     exitCode = Constants.ExitCodes.ERROR
                 }
         }
@@ -143,6 +146,17 @@ class KitInstallCommand(
         if (clusterState.getHosts(serverType).isNotEmpty()) return false
         eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
         return true
+    }
+
+    /**
+     * Refuses a kit-ref or extension value that is not a kit name, before anything reads the
+     * target or writes the instance directory: both become `<kit>-<value>` and the target's own
+     * directory name, so `x/../clickhouse` would otherwise land on the installed clickhouse kit.
+     */
+    private fun requireNamedKitValues() {
+        listOfNotNull(config.kitRefArg, config.extensionArg)
+            .mapNotNull { argValues[it.variable]?.takeIf { v -> v.isNotBlank() } }
+            .forEach { requireKitName(it) }
     }
 
     /**

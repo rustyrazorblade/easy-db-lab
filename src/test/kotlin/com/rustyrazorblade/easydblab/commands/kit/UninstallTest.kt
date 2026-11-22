@@ -9,6 +9,8 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 /** `kit uninstall` runs the kit's uninstall phase and exits with that phase's result. */
 class UninstallTest : KitRunnerCommandTestBase() {
@@ -38,8 +40,9 @@ class UninstallTest : KitRunnerCommandTestBase() {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = [".", "..", "a/../..", "../sibling"])
+    @ValueSource(strings = [".", "..", "a/../..", "../sibling", "a/b", "my kit", "-x", "a/"])
     fun `a kit name that is not a directory name is refused and deletes nothing`(name: String) {
+        File(workingDir, "a/b").mkdirs()
         File(workingDir, "a").mkdirs()
         File(workingDir.parentFile, "sibling").mkdirs()
         val insideWorkspace = File(workingDir, "keep-me").apply { writeText("workspace") }
@@ -50,8 +53,62 @@ class UninstallTest : KitRunnerCommandTestBase() {
         assertThat(insideWorkspace).hasContent("workspace")
         assertThat(aboveWorkspace).hasContent("parent")
         assertThat(File(workingDir.parentFile, "sibling")).isDirectory()
+        assertThat(File(workingDir, "a/b")).isDirectory()
         assertThat(outcome.exceptionOrNull())
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining(name)
+            .hasMessageContaining("Invalid kit name '$name'")
+    }
+
+    @Test
+    fun `a kit name that differs from the installed kit only by case is refused and deletes nothing`() {
+        writeKitYaml("mydb", kitYaml)
+
+        val outcome = runCatching { uninstall("MYDB") }
+
+        assertThat(File(workingDir, "mydb/${Constants.Kit.CONFIG_FILE}")).hasContent(kitYaml)
+        assertThat(outcome.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Kit 'MYDB' is not installed")
+    }
+
+    @Test
+    fun `uninstalling a kit directory that is a link removes the link and keeps its target`() {
+        val outside = File(workingDir.parentFile, "kit-checkout").apply { mkdirs() }
+        File(outside, Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+        val precious = File(outside, "precious.txt").apply { writeText("source") }
+        val link = File(workingDir, "mydb")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+
+        assertThat(uninstall()).isEqualTo(0)
+
+        assertThat(Files.exists(link.toPath(), LinkOption.NOFOLLOW_LINKS)).isFalse()
+        assertThat(precious).hasContent("source")
+    }
+
+    @Test
+    fun `uninstalling a kit with no uninstall phase removes a link to the kit and keeps its target`() {
+        val outside = File(workingDir.parentFile, "kit-checkout").apply { mkdirs() }
+        File(outside, Constants.Kit.CONFIG_FILE).writeText("name: mydb\n")
+        val precious = File(outside, "precious.txt").apply { writeText("source") }
+        val link = File(workingDir, "mydb")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+
+        assertThat(uninstall()).isEqualTo(0)
+
+        assertThat(Files.exists(link.toPath(), LinkOption.NOFOLLOW_LINKS)).isFalse()
+        assertThat(precious).hasContent("source")
+    }
+
+    @Test
+    fun `uninstalling a kit removes a link inside it and keeps the link's target`() {
+        writeKitYaml("mydb", kitYaml)
+        val outside = File(workingDir.parentFile, "shared-data").apply { mkdirs() }
+        val precious = File(outside, "precious.txt").apply { writeText("shared") }
+        Files.createSymbolicLink(File(workingDir, "mydb/data").toPath(), outside.toPath())
+
+        assertThat(uninstall()).isEqualTo(0)
+
+        assertThat(File(workingDir, "mydb")).doesNotExist()
+        assertThat(precious).hasContent("shared")
     }
 }

@@ -694,7 +694,7 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 
 ### Requirement: Workspace files resolve against the workspace
 
-Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, so no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path. A command SHALL create no file in the process's current directory unless that directory is the workspace.
+Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, and so SHALL a name whose directory, with its links followed, is outside the workspace's real path. A recursive delete of a workspace path SHALL unlink a symbolic link, at the top or anywhere below, and SHALL NOT delete what the link points at, so no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path, and a kit script SHALL use the `KUBECONFIG` the CLI sets for its process rather than a path rendered into it. A command SHALL create no file in the process's current directory unless that directory is the workspace.
 
 #### Scenario: State is read and written in the workspace
 
@@ -732,6 +732,12 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 - **GIVEN** a workspace W
 - **WHEN** a command resolves the workspace file `.`, `..`, `a/../..` or an absolute path, for example `kit uninstall ..`
 - **THEN** it fails naming the workspace and the name, and nothing inside or outside W is deleted
+
+#### Scenario: A workspace file name that leaves the workspace through a link is refused
+
+- **GIVEN** a workspace W holding `out`, a symbolic link to a directory outside W
+- **WHEN** a command resolves the workspace file `out/file`
+- **THEN** it fails naming the workspace and the name; resolving `out` itself returns the link, which a delete unlinks without touching its target
 
 #### Scenario: Uploading authorized keys leaves no file behind
 

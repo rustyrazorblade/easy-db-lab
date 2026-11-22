@@ -13,27 +13,21 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
-import java.io.File
 
 class SparkDownTest : BaseKoinTest() {
     private lateinit var mockEmrService: EMRService
-    private lateinit var testClusterStateManager: ClusterStateManager
+    private val testClusterStateManager: ClusterStateManager get() = get()
 
-    override fun additionalTestModules(): List<Module> {
-        val stateFile = File(tempDir, "state.json")
-        testClusterStateManager = ClusterStateManager(stateFile)
-
-        return listOf(
+    override fun additionalTestModules(): List<Module> =
+        listOf(
             module {
                 single {
                     mock<EMRService>().also {
                         mockEmrService = it
                     }
                 }
-                single { testClusterStateManager }
             },
         )
-    }
 
     private fun saveState(state: ClusterState) {
         testClusterStateManager.replace(state)

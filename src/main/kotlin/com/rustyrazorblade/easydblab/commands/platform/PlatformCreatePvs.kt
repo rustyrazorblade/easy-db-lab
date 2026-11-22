@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.PersistentVolumeConfig
 import org.koin.core.component.inject
@@ -48,9 +49,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
     var pvcTemplateName: String = "data"
 
     override fun execute() {
-        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
-            "Invalid --kit '$kit': use letters, digits, hyphens or underscores, and start with a letter or digit"
-        }
+        requireKitName(kit)
         val serverType = ServerType.from(nodeType)
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }

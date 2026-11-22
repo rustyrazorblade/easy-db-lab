@@ -14,9 +14,9 @@ import java.io.File
  * - `<workspace>/bin` first on `PATH`, with the tool wrappers written there before the process
  *   starts, so `kubectl`, `helm`, `curl` and the other wrapped tools go through the SOCKS tunnel
  *   (or straight to the nodes in the tailscale and direct network modes), indirect calls included;
- * - `KUBECONFIG` set to the absolute path of the workspace kubeconfig, used as it is. Shell steps run
- *   from the kit directory, where the relative `kubeconfig` from [TemplateVariables] points at
- *   nothing;
+ * - `KUBECONFIG` set to the absolute path of the workspace kubeconfig, used as it is. Kit scripts
+ *   read this value (`export KUBECONFIG="${KUBECONFIG:?...}"`) rather than a path rendered into
+ *   them, so a moved or renamed workspace still reaches its own cluster;
  * - `EDL_KIT_LIB` set to the absolute path of the shared kit shell library in `<workspace>/bin`,
  *   which kit scripts source.
  *

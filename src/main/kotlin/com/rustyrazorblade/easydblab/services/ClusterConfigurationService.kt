@@ -13,8 +13,8 @@ import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
+import com.rustyrazorblade.easydblab.resolveInWorkspace
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.File
 import java.nio.file.Path
 
 /**
@@ -108,10 +108,6 @@ class DefaultClusterConfigurationService(
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
-        const val SSH_CONFIG_FILE = Constants.Workspace.SSH_CONFIG_FILE
-        const val ENV_FILE = EnvScriptWriter.FILE_NAME
-        const val STRESS_ENV_FILE = Constants.Workspace.STRESS_ENV_FILE
-        const val AXONOPS_CONFIG_FILE = Constants.Workspace.AXONOPS_CONFIG_FILE
         const val DEFAULT_CLUSTER_NAME = "easy-db-lab"
     }
 
@@ -135,7 +131,7 @@ class DefaultClusterConfigurationService(
         // Built before the file is opened, so a host that cannot be routed fails the write instead of
         // leaving a half-written sshConfig behind.
         val proxyCommands = envScript.proxyCommandsFor(clusterState.hosts)
-        val sshConfigFile = File(workingDirectory.toFile(), SSH_CONFIG_FILE)
+        val sshConfigFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.SSH_CONFIG_FILE)
         sshConfigFile.bufferedWriter().use { writer ->
             ClusterConfigWriter.writeSshConfig(
                 writer,
@@ -166,7 +162,7 @@ class DefaultClusterConfigurationService(
             val cassandraHost = cassandraHosts.first().private
             val datacenter = clusterState.initConfig?.region ?: userConfig.region
 
-            val stressEnvFile = File(workingDirectory.toFile(), STRESS_ENV_FILE)
+            val stressEnvFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.STRESS_ENV_FILE)
             stressEnvFile.bufferedWriter().use { writer ->
                 writer.write("#!/usr/bin/env bash")
                 writer.newLine()
@@ -198,8 +194,8 @@ class DefaultClusterConfigurationService(
                     sshKeyPath = userConfigProvider.sshKeyPath,
                     clusterName = DEFAULT_CLUSTER_NAME,
                 )
-            val configFile = File(workingDirectory.toFile(), AXONOPS_CONFIG_FILE)
+            val configFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.AXONOPS_CONFIG_FILE)
             AxonOpsWorkbenchConfig.writeToFile(config, configFile)
-            eventBus.emit(Event.Provision.AxonOpsWorkbenchConfigWritten(AXONOPS_CONFIG_FILE))
+            eventBus.emit(Event.Provision.AxonOpsWorkbenchConfigWritten(Constants.Workspace.AXONOPS_CONFIG_FILE))
         }
 }

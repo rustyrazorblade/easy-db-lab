@@ -50,20 +50,10 @@ data class Context(
     var profileDir = File(profilesDir, profile).also { it.mkdirs() }
 
     /**
-     * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current directory.
-     *
-     * Fails fast unless the result is strictly inside the workspace: a blank or absolute name, or one
-     * whose `.` and `..` segments reach the workspace itself or above it, is refused, so a typed name
-     * can never make a caller read, upload or delete the workspace or its parent.
+     * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current
+     * directory, with the checks of [resolveInWorkspace].
      */
-    fun workspaceFile(name: String): File {
-        val root = workingDirectory.toPath().normalize()
-        val resolved = root.resolve(name).normalize()
-        require(name.isNotBlank() && !File(name).isAbsolute && resolved.startsWith(root) && resolved != root) {
-            "A workspace file must be inside the workspace $workingDirectory: '$name'"
-        }
-        return resolved.toFile()
-    }
+    fun workspaceFile(name: String): File = resolveInWorkspace(workingDirectory, name)
 
     /**
      * Version is either supplied by the in-repo script,

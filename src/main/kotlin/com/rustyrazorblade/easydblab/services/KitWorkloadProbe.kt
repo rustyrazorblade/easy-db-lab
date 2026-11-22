@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import java.time.Duration
 
@@ -43,8 +42,7 @@ class KitWorkloadProbe(
     fun find(
         kitName: String,
         runtime: KitRuntime?,
-        controlHost: ClusterHost,
-    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime, controlHost) }
+    ): Result<WorkloadPresence> = runCatching { lookUp(kitName, runtime) }
 
     /**
      * Waits for [kitName]'s workload to leave the cluster: every pod its [runtime] selects,
@@ -61,7 +59,6 @@ class KitWorkloadProbe(
     fun awaitGone(
         kitName: String,
         runtime: KitRuntime?,
-        controlHost: ClusterHost,
     ): Result<WorkloadPresence> =
         runCatching {
             pollUntil(
@@ -75,10 +72,9 @@ class KitWorkloadProbe(
     private fun lookUp(
         kitName: String,
         runtime: KitRuntime?,
-        controlHost: ClusterHost,
     ): WorkloadPresence =
         when (runtime?.type) {
-            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime, controlHost)
+            KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime)
             else -> findPods(podSelector(kitName, runtime), KitRuntime.namespaceOf(runtime))
         }
 
@@ -101,10 +97,9 @@ class KitWorkloadProbe(
     private fun findHelmRelease(
         kitName: String,
         runtime: KitRuntime,
-        controlHost: ClusterHost,
     ): WorkloadPresence {
         val release = runtime.release.ifBlank { kitName }
-        val exists = helmService.releaseExists(host = controlHost.toHost(), release = release, namespace = runtime.namespace)
+        val exists = helmService.releaseExists(release = release, namespace = runtime.namespace)
         return if (exists) {
             WorkloadPresence.Present(runtime.namespace, listOf("helm-release/$release"))
         } else {

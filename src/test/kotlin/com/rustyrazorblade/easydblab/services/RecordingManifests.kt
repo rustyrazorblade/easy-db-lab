@@ -25,4 +25,9 @@ class RecordingManifests : K8sManifestOperations {
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit> = error("not used")
+
+    override fun labelNodes(
+        nodeNames: List<String>,
+        labels: Map<String, String>,
+    ): Map<String, Result<Unit>> = error("not used")
 }

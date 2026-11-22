@@ -11,6 +11,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -71,10 +72,35 @@ internal class SSHClientStreamingIntegrationTest {
     fun `a failed command streams what it printed before the failure`() {
         assertThatThrownBy {
             client().executeRemoteCommand("echo working; echo 'ERROR: broken' >&2; exit 3", sink, secret = false)
-        }.isInstanceOf(RemoteCommandFailedException::class.java)
+        }.isInstanceOfSatisfying(RemoteCommandFailedException::class.java) { failure ->
+            assertThat(failure.exitStatus).isEqualTo(3)
+        }
 
         assertThat(lines(NodeStream.Stdout)).containsExactly("working")
         assertThat(lines(NodeStream.Stderr)).containsExactly("ERROR: broken")
+    }
+
+    /** The input reaches the command's stdin over the exec channel, byte for byte, and ends there. */
+    @Test
+    @Timeout(30)
+    fun `input is the command's stdin, and the command sees its end`() {
+        val input = "kind: ConfigMap\nname: 'quoted \"value\"' \$HOME ünïcödé\n"
+
+        val response = client().executeRemoteCommandWithInput("cat; echo done", input, sink)
+
+        assertThat(response.text).isEqualTo(input + "done\n")
+        assertThat(lines(NodeStream.Stdout)).containsExactly("kind: ConfigMap", "name: 'quoted \"value\"' \$HOME ünïcödé", "done")
+    }
+
+    @Test
+    @Timeout(30)
+    fun `a failed command with input keeps its exit status and stderr`() {
+        assertThatThrownBy {
+            client().executeRemoteCommandWithInput("cat >/dev/null; echo 'error: invalid' >&2; exit 4", "x: 1\n", sink)
+        }.isInstanceOfSatisfying(RemoteCommandFailedException::class.java) { failure ->
+            assertThat(failure.exitStatus).isEqualTo(4)
+            assertThat(failure.stderr).contains("error: invalid")
+        }
     }
 
     @Test

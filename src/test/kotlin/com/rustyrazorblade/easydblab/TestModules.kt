@@ -388,6 +388,13 @@ object TestModules {
                         secret: Boolean,
                     ): Response = Response("")
 
+                    override fun executeRemotelyWithInput(
+                        host: Host,
+                        command: String,
+                        input: String,
+                        output: Boolean,
+                    ): Response = Response("")
+
                     override fun upload(
                         host: Host,
                         local: Path,

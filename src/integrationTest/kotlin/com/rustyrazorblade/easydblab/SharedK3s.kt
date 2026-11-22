@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.readiness.Readiness
+import org.testcontainers.containers.Container
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.time.Duration
@@ -133,6 +134,12 @@ object SharedK3s {
 
     /** The cluster's kubeconfig, pointing at the container's API server port on the host. */
     fun kubeConfigYaml(): String = container.kubeConfigYaml
+
+    /**
+     * Runs [command] inside the K3s container, which holds `kubectl` and the kubeconfig at
+     * `Constants.K3s.REMOTE_KUBECONFIG`, as the control node does.
+     */
+    fun exec(vararg command: String): Container.ExecResult = container.execInContainer(*command)
 
     /** A new client for the shared cluster. The caller owns it and closes it. */
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()

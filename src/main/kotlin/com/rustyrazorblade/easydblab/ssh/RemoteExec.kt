@@ -7,6 +7,7 @@ import org.apache.sshd.client.channel.ClientChannel
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.SshConstants
 import org.apache.sshd.common.util.io.output.NoCloseOutputStream
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.OutputStream
@@ -20,12 +21,15 @@ private val log = KotlinLogging.logger {}
 
 /**
  * Runs one remote command and returns when it ends, writing its output to the given streams. A
- * non-zero exit throws [java.rmi.RemoteException]. [SSHClient] does its redaction, streaming and
- * failure reporting around this call, so tests can drive that logic with a fake.
+ * non-null `input` is the command's stdin, ended with EOF, so the command reads it as it would a
+ * pipe and nothing is staged on either side. A non-zero exit throws [java.rmi.RemoteException].
+ * [SSHClient] does its redaction, streaming and failure reporting around this call, so tests can
+ * drive that logic with a fake.
  */
 fun interface RemoteExec {
     fun run(
         command: String,
+        input: String?,
         stdout: OutputStream,
         stderr: OutputStream,
     )
@@ -52,10 +56,13 @@ class ChannelRemoteExec(
 ) : RemoteExec {
     override fun run(
         command: String,
+        input: String?,
         stdout: OutputStream,
         stderr: OutputStream,
     ) {
-        session.createExecChannel(command, Charset.defaultCharset(), null, emptyMap<String, Any>()).use { channel ->
+        val charset = Charset.defaultCharset()
+        session.createExecChannel(command, charset, null, emptyMap<String, Any>()).use { channel ->
+            input?.let { channel.setIn(ByteArrayInputStream(it.toByteArray(charset))) }
             // MINA closes a channel's streams with it; the caller owns these and closes them itself.
             channel.setOut(NoCloseOutputStream(stdout))
             channel.setErr(NoCloseOutputStream(stderr))

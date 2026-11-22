@@ -2,8 +2,9 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -40,16 +41,9 @@ class KitStatusCommand(
     private val endpointHost: KitEndpointHost by inject()
 
     override fun execute() {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: run {
-                    println("Status:    Unknown (no control node in cluster state)")
-                    return
-                }
-
         val state =
             if (installConfig.runtime != null) {
-                checkRuntimeState(installConfig.runtime, kubeService, controlHost)
+                checkRuntimeState(installConfig.runtime, kubeService)
             } else {
                 checkFallbackState(kubeService)
             }
@@ -71,20 +65,18 @@ class KitStatusCommand(
     private fun checkRuntimeState(
         runtime: KitRuntime,
         kubeService: K8sService,
-        controlHost: ClusterHost,
     ): KitRunningState {
         val namespace = runtime.namespace
         return when (runtime.type) {
             KitRuntime.RuntimeType.HELM -> {
                 val release = runtime.release.ifBlank { kitName }
-                if (!helmService.releaseExists(
-                        host = controlHost.toHost(),
-                        release = release,
-                        namespace = namespace,
-                    )
-                ) {
-                    return KitRunningState.Stopped
-                }
+                // A failed lookup (no control node, helm failing) is Unknown with its cause, never Stopped; Ctrl-C stops status.
+                val exists =
+                    runCatchingInterruptibly { helmService.releaseExists(release = release, namespace = namespace) }.getOrElse { e ->
+                        log.warn(e) { "Failed to look up helm release $release for kit $kitName" }
+                        return KitRunningState.Unknown("helm query failed: ${e.messageOrString()}")
+                    }
+                if (!exists) return KitRunningState.Stopped
                 val podSelector = withKitName(runtime.selector, kitName).ifBlank { "app.kubernetes.io/instance=$release" }
                 stateOfPods(kubeService, podSelector, namespace) { pods ->
                     KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)

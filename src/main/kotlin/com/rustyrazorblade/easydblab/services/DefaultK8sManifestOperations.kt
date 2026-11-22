@@ -3,8 +3,12 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
+import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -141,24 +145,61 @@ class DefaultK8sManifestOperations(
     override fun labelNode(
         nodeName: String,
         labels: Map<String, String>,
-    ): Result<Unit> =
-        runCatching {
-            log.info { "Labeling node $nodeName with labels: $labels" }
+    ): Result<Unit> = runCatching { labelNodes(listOf(nodeName), labels).getValue(nodeName).getOrThrow() }
 
-            clientProvider.createClient().use { client ->
-                checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
-
-                // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
-                // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
-                val patch =
-                    NodeBuilder()
-                        .withNewMetadata()
-                        .addToLabels(labels)
-                        .endMetadata()
-                        .build()
-                client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
-
-                log.info { "Labeled node $nodeName" }
+    override fun labelNodes(
+        nodeNames: List<String>,
+        labels: Map<String, String>,
+    ): Map<String, Result<Unit>> =
+        clientProvider.createClient().use { client ->
+            val outcomes = linkedMapOf<String, Result<Unit>>()
+            var stop: Pair<String, Throwable>? = null
+            for (nodeName in nodeNames) {
+                val outcome = runCatchingException { patchLabels(client, nodeName, labels) }
+                outcomes[nodeName] = outcome
+                stop = outcome.exceptionOrNull()?.takeIf(::endsTheBatch)?.let { nodeName to it }
+                if (stop != null) break
             }
+            stop?.let { (failedNode, cause) ->
+                nodeNames.filterNot(outcomes::containsKey).forEach { outcomes[it] = Result.failure(notTried(it, failedNode, cause)) }
+            }
+            outcomes
         }
+
+    /**
+     * Whether [failure] says the API cannot be reached at all, so every later node would wait out the
+     * same request timeout in turn. fabric8 gives a failure with no HTTP answer the code -1. An
+     * answer about one node (404, 403, a missing node) leaves the rest worth
+     * trying. An interrupt ends the batch too: fabric8 sets the flag again and every later call
+     * would fail on it at once.
+     */
+    private fun endsTheBatch(failure: Throwable): Boolean =
+        Thread.currentThread().isInterrupted || (failure is KubernetesClientException && failure.code <= 0)
+
+    private fun notTried(
+        nodeName: String,
+        failedNode: String,
+        cause: Throwable,
+    ) = IllegalStateException("Node $nodeName was not tried, because labelling $failedNode failed: ${cause.messageOrString()}", cause)
+
+    private fun patchLabels(
+        client: KubernetesClient,
+        nodeName: String,
+        labels: Map<String, String>,
+    ) {
+        log.info { "Labeling node $nodeName with labels: $labels" }
+        checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
+
+        // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
+        // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
+        val patch =
+            NodeBuilder()
+                .withNewMetadata()
+                .addToLabels(labels)
+                .endMetadata()
+                .build()
+        client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
+
+        log.info { "Labeled node $nodeName" }
+    }
 }

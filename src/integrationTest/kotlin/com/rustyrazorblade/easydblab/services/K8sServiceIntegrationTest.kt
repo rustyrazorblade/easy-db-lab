@@ -715,6 +715,41 @@ class K8sServiceIntegrationTest {
         }
     }
 
+    /**
+     * A kit `label` step labels every node through one client. A node that is not in the cluster
+     * fails on its own, named, and the nodes after it are still labelled.
+     */
+    @Test
+    @Order(28)
+    fun `labelling several nodes labels each one and reports a missing node by name`() {
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        val key = "easydblab.test/label-many"
+        try {
+            val outcomes =
+                DefaultK8sManifestOperations(WorkspaceK8s.provider(k3s.kubeConfigYaml), EventBus())
+                    .labelNodes(listOf("no-such-node", nodeName), mapOf(key to "yes"))
+
+            assertThat(outcomes.keys).containsExactly("no-such-node", nodeName)
+            assertThat(outcomes.getValue("no-such-node").exceptionOrNull()).hasMessageContaining("Node no-such-node not found")
+            assertThat(outcomes.getValue(nodeName).isSuccess).isTrue()
+            assertThat(
+                client
+                    .nodes()
+                    .withName(nodeName)
+                    .get()
+                    .metadata.labels,
+            ).containsEntry(key, "yes")
+        } finally {
+            unlabelNode(nodeName, listOf(key))
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------

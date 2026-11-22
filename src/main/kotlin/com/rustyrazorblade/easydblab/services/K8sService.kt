@@ -49,6 +49,20 @@ interface K8sManifestOperations {
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit>
+
+    /**
+     * Adds [labels] to every node in [nodeNames] through one client, and returns each node's outcome by
+     * name, in list order. A failure about one node (it is missing, or the API refused it) does not
+     * stop the others. A failure that reaches no API server, or an interrupt, stops the batch: the
+     * rest are reported as not tried with that cause, so an unreachable API costs one timeout, not one
+     * per node.
+     *
+     * @throws RuntimeException when no client can be built; then no node was patched
+     */
+    fun labelNodes(
+        nodeNames: List<String>,
+        labels: Map<String, String>,
+    ): Map<String, Result<Unit>>
 }
 
 /**

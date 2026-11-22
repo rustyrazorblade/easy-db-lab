@@ -1,41 +1,26 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import java.nio.file.Files
-import java.util.UUID
-import kotlin.io.path.writeText
+import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import io.fabric8.kubernetes.client.utils.Serialization
 
+/** What the kit steps and commands ask of kubectl, wherever it runs; [DefaultKubectlService] runs it through [ClusterTooling]. */
 interface KubectlService {
-    fun createNamespace(
-        host: Host,
-        name: String,
-    )
+    /** Creates namespace [name] if it is missing and leaves it alone otherwise, as `kubectl apply` does. */
+    fun createNamespace(name: String)
 
-    fun applyUrl(
-        host: Host,
-        url: String,
-    )
+    fun applyUrl(url: String)
 
-    fun applyKustomize(
-        host: Host,
-        url: String,
-    )
+    fun applyKustomize(url: String)
 
     /**
-     * Upload YAML content to the control node and apply it with kubectl.
+     * Apply YAML content with kubectl, passing it as input to the tool (see [ClusterTooling.runWithInput]).
      * Handles any resource kind including custom CRDs not known to the Fabric8 client.
      * Uses client-side apply intentionally — manifests applied here are small and do not
      * hit the 262 KB annotation limit. See [applyUrl] for the --server-side workaround.
      */
-    fun applyContent(
-        host: Host,
-        yamlContent: String,
-    )
+    fun applyContent(yamlContent: String)
 
     fun wait(
-        host: Host,
         kind: String,
         name: String,
         condition: String,
@@ -44,7 +29,6 @@ interface KubectlService {
     )
 
     fun delete(
-        host: Host,
         kind: String,
         name: String,
         namespace: String,
@@ -56,7 +40,6 @@ interface KubectlService {
      * matching is not an error and prints nothing; a failed lookup or delete throws.
      */
     fun deleteBySelector(
-        host: Host,
         kinds: List<String>,
         selector: String,
         namespace: String,
@@ -66,64 +49,41 @@ interface KubectlService {
      * The `kind/name` of every object of [resource] (a resource type such as
      * `clusters.postgresql.cnpg.io`) in any namespace. A failed lookup throws.
      */
-    fun listInAllNamespaces(
-        host: Host,
-        resource: String,
-    ): List<String>
-
-    companion object {
-        /** Prepend KUBECONFIG env var so remote CLI tools (helm, kubectl) find the cluster. */
-        fun withKubeconfig(command: String) = "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} $command"
-    }
+    fun listInAllNamespaces(resource: String): List<String>
 }
 
+/**
+ * Runs kubectl through [ClusterTooling]. It builds argument lists of raw values and never quotes one
+ * itself; [ClusterTooling] gets each value to kubectl unchanged.
+ */
 class DefaultKubectlService(
-    private val remoteOps: RemoteOperationsService,
+    private val tooling: ClusterTooling,
 ) : KubectlService {
-    override fun applyContent(
-        host: Host,
-        yamlContent: String,
-    ) {
-        val remotePath = "/tmp/easydblab-manifest-${UUID.randomUUID()}.yaml"
-        val tempFile = kotlin.io.path.createTempFile("easydblab-manifest", ".yaml")
-        try {
-            tempFile.writeText(yamlContent)
-            remoteOps.upload(host, tempFile, remotePath)
-            run(host, listOf("apply", "-f", remotePath))
-        } finally {
-            Files.deleteIfExists(tempFile)
-            remoteOps.executeRemotely(host, "rm -f $remotePath")
-        }
+    override fun applyContent(yamlContent: String) {
+        tooling.runWithInput(ClusterTool.KUBECTL, APPLY_FROM_INPUT, input = yamlContent)
     }
 
-    override fun createNamespace(
-        host: Host,
-        name: String,
-    ) {
-        remoteOps.executeRemotely(
-            host,
-            KubectlService.withKubeconfig("kubectl create namespace $name --dry-run=client -o yaml | kubectl apply -f -"),
-        )
+    override fun createNamespace(name: String) {
+        val namespace =
+            NamespaceBuilder()
+                .withNewMetadata()
+                .withName(name)
+                .endMetadata()
+                .build()
+        applyContent(Serialization.asYaml(namespace))
     }
 
-    override fun applyUrl(
-        host: Host,
-        url: String,
-    ) {
+    override fun applyUrl(url: String) {
         // --server-side required: some operator CRD bundles (e.g. TiDB) exceed the 262 KB
         // client-side apply annotation limit and fail with "metadata too large" without it.
-        run(host, listOf("apply", "--server-side", "-f", url))
+        tooling.run(ClusterTool.KUBECTL, listOf("apply", "--server-side", "-f", url))
     }
 
-    override fun applyKustomize(
-        host: Host,
-        url: String,
-    ) {
-        run(host, listOf("apply", "-k", url))
+    override fun applyKustomize(url: String) {
+        tooling.run(ClusterTool.KUBECTL, listOf("apply", "-k", url))
     }
 
     override fun wait(
-        host: Host,
         kind: String,
         name: String,
         condition: String,
@@ -136,11 +96,10 @@ class DefaultKubectlService(
                 addAll(listOf("-n", namespace))
                 addAll(listOf("--timeout", timeout))
             }
-        run(host, args)
+        tooling.run(ClusterTool.KUBECTL, args)
     }
 
     override fun delete(
-        host: Host,
         kind: String,
         name: String,
         namespace: String,
@@ -151,50 +110,33 @@ class DefaultKubectlService(
                 addAll(listOf("delete", "$kind/$name", "-n", namespace))
                 if (ignoreNotFound) add("--ignore-not-found")
             }
-        run(host, args)
+        tooling.run(ClusterTool.KUBECTL, args)
     }
 
     override fun deleteBySelector(
-        host: Host,
         kinds: List<String>,
         selector: String,
         namespace: String,
     ) {
         // `kubectl delete -l` prints a bare "No resources found" when nothing matches, so look the
         // objects up without echoing the result and delete only what the selector found.
-        val lookup = listOf("get", kinds.joinToString(","), "-l", shellQuote(selector), "-n", namespace, "-o", "name")
-        val found =
-            remoteOps
-                .executeRemotely(host, KubectlService.withKubeconfig((listOf("kubectl") + lookup).joinToString(" ")), output = false)
-                .text
-                .lines()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+        val lookup = listOf("get", kinds.joinToString(","), "-l", selector, "-n", namespace, "-o", "name")
+        val found = nonBlankLines(tooling.run(ClusterTool.KUBECTL, lookup, echo = false))
         if (found.isEmpty()) return
-        run(host, listOf("delete") + found.map(::shellQuote) + listOf("-n", namespace, "--ignore-not-found"))
+        tooling.run(ClusterTool.KUBECTL, listOf("delete") + found + listOf("-n", namespace, "--ignore-not-found"))
     }
 
-    override fun listInAllNamespaces(
-        host: Host,
-        resource: String,
-    ): List<String> =
-        remoteOps
-            .executeRemotely(
-                host,
-                KubectlService.withKubeconfig("kubectl get $resource --all-namespaces -o name"),
-                output = false,
-            ).text
+    override fun listInAllNamespaces(resource: String): List<String> =
+        nonBlankLines(tooling.run(ClusterTool.KUBECTL, listOf("get", resource, "--all-namespaces", "-o", "name"), echo = false))
+
+    private fun nonBlankLines(output: String): List<String> =
+        output
             .lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-    /** Single-quotes [value] for the remote shell, so a selector like `tier in (a, b)` stays one word. */
-    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
-
-    private fun run(
-        host: Host,
-        args: List<String>,
-    ) {
-        remoteOps.executeRemotely(host, KubectlService.withKubeconfig((listOf("kubectl") + args).joinToString(" ")))
+    private companion object {
+        /** `apply -f -`: the manifest comes in as input to the tool. */
+        val APPLY_FROM_INPUT = ToolArg.values("apply", "-f") + ToolArg.Input
     }
 }

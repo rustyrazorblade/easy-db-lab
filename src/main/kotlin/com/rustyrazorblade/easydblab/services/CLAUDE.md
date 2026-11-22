@@ -158,6 +158,18 @@ class DefaultMyService(...) : AbstractSystemDServiceManager(...), MyService {
 ### Service with Custom Behavior
 See `CassandraService` - overrides `restart()` to use a custom script and adds `waitForUpNormal()` method.
 
+## helm and kubectl: `ClusterTooling`
+
+`HelmService` and `KubectlService` are not SystemD services. They build helm and kubectl argument lists and run them through `ClusterTooling` (`ClusterTooling.kt`), which decides where the tool runs. They take no `host`.
+
+- `SshClusterTooling` (the Koin binding in `ServicesModule`, and today the only implementation) runs the tool on the control node with `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}`, through `RemoteOperationsService`. Every argument reaches the remote shell as one word: `shellQuote()` joins an argument of shell-safe characters as it is and single-quotes any other one (a space, `;`, `$`, `^`, which an interpolated kit variable or a helm filter can hold). `runWithInput` takes the arguments as `ToolArg`s with exactly one `ToolArg.Input`, which reaches the tool as `-`, and streams the input over the same SSH exec channel as the command's stdin (`RemoteOperationsService.executeRemotelyWithInput`): one round trip and no temp file. A plain value that is `-` stays a value. It maps a failure to `ClusterToolFailedException` with the exit status, stderr, stdout and the control node it ran on. A form that runs the tools on the developer's machine, for a local cluster, is deferred to #1163.
+- A new helm or kubectl call for kits or commands goes into one of those two services as an argument list. Never call `ProcessBuilder` for helm or kubectl, and never run them through `RemoteOperationsService` from a kit or command path.
+- Cilium's helm and kubectl calls go through the seam too: `CiliumService` probes its release with `HelmService.releaseExists`, and `CiliumInspectionService` reads the Cilium objects with `ClusterTooling.run`. The one exception is the `cilium` CLI itself (`cilium install` / `cilium upgrade` in `CiliumService`), which stays on `RemoteOperationsService` with the `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}` prefix.
+
+Test the services with `RecordingClusterTooling` (test sources), which records each call and asserts on the argument lists built; do not mock `RemoteOperationsService` for them. `SshClusterToolingTest` and `ClusterToolingSshCommandsTest` check the remote commands with a mocked `RemoteOperationsService`, including that each argument reaches a real `/bin/sh` as exactly one word. `SshClusterToolingK3sIntegrationTest` (integration tier) runs the real kubectl of a K3s container through the seam, and `SSHClientStreamingIntegrationTest` checks stdin over a real sshd.
+
+Kit steps that run a command on every node of a type (`platform-pvs-delete`, `platform-pvs`) run through `WorkloadStepExecutor.onEachHost`, which uses `HostOperationsService.collectFromHosts(parallel = true)`: every node runs, at most `Constants.Scale.HOST_CONCURRENCY` at once. The `label` step patches every node through one fabric8 client (`K8sManifestOperations.labelNodes`); a per-node API answer (missing node, 4xx) does not stop it, but a failure with no HTTP answer or an interrupt stops the batch and reports the rest as not tried. Either throws one `NodeStepFailedException` naming the first `Constants.Scale.MAX_NAMED_IN_ERROR` failed nodes and counting the rest.
+
 ## Error Handling
 
 All methods return `Result<T>` types for explicit error handling:

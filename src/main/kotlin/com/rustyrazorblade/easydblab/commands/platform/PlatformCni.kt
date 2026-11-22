@@ -37,7 +37,7 @@ class PlatformCni : PicoBaseCommand() {
             clusterState.hosts[ServerType.Control]?.firstOrNull()
                 ?: error("No control node found in cluster state.")
 
-        val inspection = ciliumInspectionService.inspect(controlHost.toHost()).getOrThrow()
+        val inspection = ciliumInspectionService.inspect().getOrThrow()
         println(buildReport(inspection, controlHost.privateIp))
     }
 

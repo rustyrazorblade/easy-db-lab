@@ -977,6 +977,15 @@ object Constants {
         const val NODE_CIDR_MASK_SIZE = 24
     }
 
+    // The helm and kubectl seam (services/ClusterTooling.kt)
+    object ClusterTooling {
+        /** How helm and kubectl spell the file argument that reads stdin (`apply -f -`, `--values -`). */
+        const val STDIN_ARGUMENT = "-"
+
+        /** The characters Go's `regexp.QuoteMeta` escapes; helm compiles `helm list -f` with Go's `regexp`. */
+        const val HELM_REGEX_METACHARACTERS = "\\.+*?()|[]{}^$"
+    }
+
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"

@@ -1,19 +1,16 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.Constants
 import java.io.File
-import java.util.UUID
 
+/** What the kit steps and commands ask of helm, wherever it runs; [DefaultHelmService] runs it through [ClusterTooling]. */
 interface HelmService {
     fun repoAdd(
-        host: Host,
         name: String,
         url: String,
     )
 
     fun upgradeInstall(
-        host: Host,
         release: String,
         chart: String,
         namespace: String,
@@ -26,32 +23,32 @@ interface HelmService {
     )
 
     fun uninstall(
-        host: Host,
         release: String,
         namespace: String,
     )
 
     fun releaseExists(
-        host: Host,
         release: String,
         namespace: String,
     ): Boolean
 }
 
+/**
+ * Runs helm through [ClusterTooling]. It builds argument lists of raw values and never quotes one
+ * itself; [ClusterTooling] gets each value to helm unchanged.
+ */
 class DefaultHelmService(
-    private val remoteOps: RemoteOperationsService,
+    private val tooling: ClusterTooling,
 ) : HelmService {
     override fun repoAdd(
-        host: Host,
         name: String,
         url: String,
     ) {
-        run(host, listOf("repo", "add", name, url, "--force-update"))
-        run(host, listOf("repo", "update", name))
+        tooling.run(ClusterTool.HELM, listOf("repo", "add", name, url, "--force-update"))
+        tooling.run(ClusterTool.HELM, listOf("repo", "update", name))
     }
 
     override fun upgradeInstall(
-        host: Host,
         release: String,
         chart: String,
         namespace: String,
@@ -62,60 +59,50 @@ class DefaultHelmService(
         wait: Boolean,
         timeout: String,
     ) {
-        val remoteValuesPath =
-            if (valuesFile != null) {
-                val remotePath = "/tmp/helm-values-${UUID.randomUUID()}.yaml"
-                remoteOps.upload(host, valuesFile.toPath(), remotePath)
-                remotePath
-            } else {
-                null
+        val args =
+            buildList {
+                addAll(listOf("upgrade", "--install", release, chart))
+                addAll(listOf("--namespace", namespace))
+                if (createNamespace) add("--create-namespace")
+                version?.let { addAll(listOf("--version", it)) }
             }
-
-        try {
-            val args =
-                buildList {
-                    addAll(listOf("upgrade", "--install", release, chart))
-                    addAll(listOf("--namespace", namespace))
-                    if (createNamespace) add("--create-namespace")
-                    version?.let { addAll(listOf("--version", it)) }
-                    remoteValuesPath?.let { addAll(listOf("--values", it)) }
-                    values.forEach { (k, v) -> addAll(listOf("--set", "$k=$v")) }
-                    if (wait) addAll(listOf("--wait", "--timeout", timeout))
-                }
-            run(host, args)
-        } finally {
-            if (remoteValuesPath != null) {
-                remoteOps.executeRemotely(host, "rm -f $remoteValuesPath", output = false)
+        val trailing =
+            buildList {
+                values.forEach { (k, v) -> addAll(listOf("--set", "$k=$v")) }
+                if (wait) addAll(listOf("--wait", "--timeout", timeout))
             }
+        if (valuesFile == null) {
+            tooling.run(ClusterTool.HELM, args + trailing)
+        } else {
+            val withValues = args.map(ToolArg::Value) + ToolArg.Value("--values") + ToolArg.Input + trailing.map(ToolArg::Value)
+            tooling.runWithInput(ClusterTool.HELM, withValues, input = valuesFile.readText())
         }
     }
 
     override fun uninstall(
-        host: Host,
         release: String,
         namespace: String,
     ) {
-        run(host, listOf("uninstall", release, "-n", namespace, "--ignore-not-found"))
+        tooling.run(ClusterTool.HELM, listOf("uninstall", release, "-n", namespace, "--ignore-not-found"))
     }
 
     override fun releaseExists(
-        host: Host,
         release: String,
         namespace: String,
     ): Boolean {
-        val response =
-            remoteOps.executeRemotely(
-                host,
-                KubectlService.withKubeconfig("helm list -n $namespace -f '^$release\$' -q"),
-                output = false,
-            )
-        return response.text.trim().isNotEmpty()
+        // `-f` is a regular expression; the name is matched literally and whole, so `my.app` does
+        // not match `myxapp` and `app` does not match `myapp`. `--all` lists every state: a release
+        // an interrupted install left pending still holds its name.
+        val filter = "^${quoteMeta(release)}\$"
+        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", filter, "--all", "-q"), echo = false)
+        return output.trim().isNotEmpty()
     }
 
-    private fun run(
-        host: Host,
-        args: List<String>,
-    ) {
-        remoteOps.executeRemotely(host, KubectlService.withKubeconfig((listOf("helm") + args).joinToString(" ")))
+    private companion object {
+        /** [text] as a Go regular expression that matches exactly [text], escaped as Go's `regexp.QuoteMeta` does. */
+        fun quoteMeta(text: String): String =
+            buildString {
+                text.forEach { c -> if (c in Constants.ClusterTooling.HELM_REGEX_METACHARACTERS) append('\\').append(c) else append(c) }
+            }
     }
 }

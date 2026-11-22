@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -38,15 +37,33 @@ class ShellStepFailedException(
 ) : RuntimeException("shell step exited with code $exitCode")
 
 /**
- * Bundles the per-execution context that every step needs, eliminating the
- * 7-parameter signatures on [WorkloadStepExecutor.execute] and [executeStep].
+ * A step that acts on every node of a type failed on some of them. Every node ran; [failures] maps
+ * each failed node's alias to its error, in host order. The message gives the count and the first
+ * [Constants.Scale.MAX_NAMED_IN_ERROR] nodes with their errors, then "and N more", so a step that
+ * fails on a whole large cluster stays readable; [failures] keeps every node.
+ */
+class NodeStepFailedException(
+    val action: String,
+    val failures: List<Pair<String, Throwable>>,
+) : RuntimeException(
+        "$action failed on ${failures.size} node(s): " +
+            failures.joinToString(
+                "; ",
+                limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                truncated = "and ${failures.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+            ) { (alias, error) -> "$alias: ${error.messageOrString()}" },
+    )
+
+/**
+ * The per-run context every step needs: the kit, the cluster state its node-targeting steps read,
+ * the step variables and the two directories. Where helm and kubectl run is [ClusterTooling]'s
+ * concern, so no host is carried here.
  *
  * @property kitDir the kit instance's directory, where shell steps run and relative files resolve
  * @property workspaceDir the cluster workspace, whose `bin/` wrappers and kubeconfig shell steps get
  */
 data class StepExecutionContext(
     val kitName: String,
-    val controlHost: ClusterHost,
     val clusterState: ClusterState,
     val variables: Map<String, String>,
     val kitDir: File,
@@ -56,7 +73,7 @@ data class StepExecutionContext(
 /**
  * Runs a kit's typed steps, in `install:` and in its lifecycle phases.
  *
- * Most steps act on the cluster through the control node or fabric8. A `shell` step runs on the
+ * Most steps act on the cluster through [ClusterTooling] or fabric8. A `shell` step runs on the
  * operator's machine through [KitProcessEnvironment], so it gets the workspace tool wrappers and
  * the absolute workspace kubeconfig.
  */
@@ -66,7 +83,8 @@ class WorkloadStepExecutor(
     private val kubectlService: KubectlService,
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
-    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+    private val hostOperations: HostOperationsService,
+    private val kitProcessEnvironment: KitProcessEnvironment,
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -117,11 +135,9 @@ class WorkloadStepExecutor(
         runCatching {
             fun interp(s: String) = interpolateStepVars(s, ctx.variables)
 
-            val host = ctx.controlHost.toHost()
-
             when (step) {
                 is InstallStep.HelmRepo -> {
-                    helmService.repoAdd(host = host, name = step.name, url = step.url)
+                    helmService.repoAdd(name = interp(step.name), url = interp(step.url))
                 }
 
                 is InstallStep.Helm -> {
@@ -132,7 +148,6 @@ class WorkloadStepExecutor(
                             null
                         }
                     helmService.upgradeInstall(
-                        host = host,
                         release = interp(step.release),
                         chart = interp(step.chart),
                         namespace = interp(step.namespace),
@@ -149,17 +164,17 @@ class WorkloadStepExecutor(
                         if (step.keepWhileAny.isBlank()) {
                             emptyList()
                         } else {
-                            kubectlService.listInAllNamespaces(host = host, resource = interp(step.keepWhileAny))
+                            kubectlService.listInAllNamespaces(resource = interp(step.keepWhileAny))
                         }
                     if (usedBy.isEmpty()) {
-                        helmService.uninstall(host = host, release = release, namespace = interp(step.namespace))
+                        helmService.uninstall(release = release, namespace = interp(step.namespace))
                     } else {
                         eventBus.emit(Event.Kit.HelmReleaseKept(kit = ctx.kitName, release = release, usedBy = usedBy))
                     }
                 }
 
                 is InstallStep.Namespace -> {
-                    kubectlService.createNamespace(host = host, name = interp(step.name))
+                    kubectlService.createNamespace(name = interp(step.name))
                 }
 
                 is InstallStep.Manifest -> {
@@ -168,20 +183,19 @@ class WorkloadStepExecutor(
                         "Manifest file not found: ${manifestFile.absolutePath}. Run 'install ${ctx.kitName}' first."
                     }
                     val content = if (step.interpolate) interp(manifestFile.readText()) else manifestFile.readText()
-                    kubectlService.applyContent(host = host, yamlContent = content)
+                    kubectlService.applyContent(yamlContent = content)
                 }
 
                 is InstallStep.ManifestUrl -> {
-                    kubectlService.applyUrl(host = host, url = interp(step.url))
+                    kubectlService.applyUrl(url = interp(step.url))
                 }
 
                 is InstallStep.Kustomize -> {
-                    kubectlService.applyKustomize(host = host, url = interp(step.url))
+                    kubectlService.applyKustomize(url = interp(step.url))
                 }
 
                 is InstallStep.Wait -> {
                     kubectlService.wait(
-                        host = host,
                         kind = interp(step.kind),
                         name = interp(step.name),
                         condition = interp(step.condition),
@@ -194,14 +208,12 @@ class WorkloadStepExecutor(
                     val namespace = step.namespace?.let { interp(it) } ?: "default"
                     if (step.bySelector) {
                         kubectlService.deleteBySelector(
-                            host = host,
                             kinds = step.kinds.map { interp(it) },
                             selector = interp(step.selector),
                             namespace = namespace,
                         )
                     } else {
                         kubectlService.delete(
-                            host = host,
                             kind = interp(step.kind),
                             name = interp(step.name),
                             namespace = namespace,
@@ -214,7 +226,13 @@ class WorkloadStepExecutor(
                     if (step.ifSet.isNotBlank() && ctx.variables[step.ifSet].isNullOrBlank()) {
                         log.info { "Skipping platform-pvs for ${ctx.kitName}: ${step.ifSet} is not set" }
                     } else {
-                        createPlatformPvs(step, ctx, interp(step.storageSize))
+                        val interpolated =
+                            step.copy(
+                                nodeType = interp(step.nodeType),
+                                volumeClaimTemplateName = interp(step.volumeClaimTemplateName),
+                                storageClass = interp(step.storageClass),
+                            )
+                        createPlatformPvs(interpolated, ctx, interp(step.storageSize))
                     }
                 }
 
@@ -223,9 +241,9 @@ class WorkloadStepExecutor(
                         .deleteLocalPersistentVolumes(
                             dbName = ctx.kitName,
                         ).getOrThrow()
-                    val dbHosts = ctx.clusterState.hosts[ServerType.from(step.nodeType)] ?: emptyList()
+                    val dbHosts = ctx.clusterState.hosts[ServerType.from(interp(step.nodeType))] ?: emptyList()
                     val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-                    for (clusterHost in dbHosts) {
+                    onEachHost(dbHosts, "Deleting $dataPath") { clusterHost ->
                         remoteOps.executeRemotely(host = clusterHost.toHost(), command = "sudo rm -rf $dataPath")
                         log.info { "Deleted data directory $dataPath on ${clusterHost.alias}" }
                     }
@@ -241,17 +259,14 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.Label -> {
-                    val serverType = ServerType.from(step.nodeType)
+                    val nodeType = interp(step.nodeType)
                     val targetHosts =
-                        ctx.clusterState.hosts[serverType]
-                            ?: error("No ${step.nodeType} nodes found for label step")
-                    for (host in targetHosts) {
-                        k8sService
-                            .labelNode(
-                                nodeName = host.alias,
-                                labels = step.labels.mapValues { (_, v) -> interp(v) },
-                            ).getOrThrow()
-                    }
+                        ctx.clusterState.hosts[ServerType.from(nodeType)]
+                            ?: error("No $nodeType nodes found for label step")
+                    val labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) }
+                    // One client for every node: the patches are API calls, not SSH round trips.
+                    val outcomes = k8sService.labelNodes(targetHosts.map { it.alias }, labels)
+                    throwForFailedNodes("Labelling the node", outcomes.toList())
                 }
 
                 is InstallStep.Exec -> {
@@ -330,7 +345,7 @@ class WorkloadStepExecutor(
         // the PV objects. platform-pvs-delete removes the directory on uninstall;
         // without this mkdir, a start after uninstall fails with "path does not exist"
         // when the pod tries to mount the local PV.
-        for (targetHost in targetHosts) {
+        onEachHost(targetHosts, "Creating $dataPath") { targetHost ->
             remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
             log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
         }
@@ -348,5 +363,30 @@ class WorkloadStepExecutor(
                         nodeType = step.nodeType,
                     ),
             ).getOrThrow()
+    }
+
+    /**
+     * Runs [perHost] on every host in [hosts] in parallel, through [HostOperationsService]'s
+     * bounded fan-out, so a step over 100 nodes does not take 100 sequential SSH round trips.
+     * Every host runs whatever happens on the others.
+     *
+     * @throws NodeStepFailedException naming the hosts whose action failed
+     */
+    private fun onEachHost(
+        hosts: List<ClusterHost>,
+        action: String,
+        perHost: (ClusterHost) -> Unit,
+    ) = throwForFailedNodes(
+        action,
+        hostOperations.collectFromHosts(hosts, parallel = true, action = perHost).map { it.host.alias to it.result },
+    )
+
+    /** Throws one [NodeStepFailedException] for the failed outcomes in [outcomes], if there are any. */
+    private fun throwForFailedNodes(
+        action: String,
+        outcomes: List<Pair<String, Result<Unit>>>,
+    ) {
+        val failures = outcomes.mapNotNull { (alias, result) -> result.exceptionOrNull()?.let { alias to it } }
+        if (failures.isNotEmpty()) throw NodeStepFailedException(action, failures)
     }
 }

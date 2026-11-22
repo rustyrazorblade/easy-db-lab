@@ -1,0 +1,113 @@
+# QA kit for test-plans/cluster-tooling-ssh-qa.md: every typed step that runs helm or kubectl,
+# through the SSH form of ClusterTooling on a real cluster. podinfo is a small public chart and
+# kustomization, so nothing here needs a private image.
+name: tooling-qa
+type: app
+description: Typed helm and kubectl steps for the cluster tooling QA run
+version: "1.0.0"
+collision-check:
+  start: true
+runtime:
+  type: helm
+  release: tooling-qa-podinfo
+  namespace: tooling-qa
+  # podinfo labels its pods with app.kubernetes.io/name, not the default app.kubernetes.io/instance.
+  selector: app.kubernetes.io/name=tooling-qa-podinfo
+
+# The per-node steps name their pool through ${POOL}, and the label key through ${KIT_NAME}, so
+# the QA run exercises step-field interpolation on a real cluster, not only in unit tests.
+args:
+  - flag: --pool
+    variable: POOL
+    description: Node pool the per-node steps act on
+    type: string
+    default: db
+
+install:
+  - type: helm-repo
+    name: podinfo
+    url: https://stefanprodan.github.io/podinfo
+  # namespace: one kubectl apply of a fabric8 Namespace through stdin.
+  - type: namespace
+    name: tooling-qa
+  # manifest-url: kubectl apply --server-side -f <url>.
+  - type: manifest-url
+    url: https://raw.githubusercontent.com/stefanprodan/podinfo/6.7.1/kustomize/hpa.yaml
+  # Per-node steps: each runs on all three db nodes at once, through the bounded fan-out.
+  - type: label
+    node-type: ${POOL}
+    labels:
+      easydblab/${KIT_NAME}: labelled
+  - type: platform-pvs
+    node-type: ${POOL}
+    count: 1
+    volume-claim-template-name: data
+    storage-size: 1Gi
+
+start:
+  # helm with a values file (stdin, --values -) and --set values.
+  - type: helm
+    chart: podinfo/podinfo
+    release: tooling-qa-podinfo
+    namespace: tooling-qa
+    version: 6.7.1
+    values-file: values.yaml
+    values:
+      ui.message: tooling qa
+  # kustomize: kubectl apply -k <url>, into default.
+  - type: kustomize
+    url: https://github.com/stefanprodan/podinfo//kustomize?ref=6.7.1
+  # manifest: kubectl apply -f - through stdin.
+  - type: manifest
+    template: labelled.yaml
+  - type: wait
+    kind: deployment
+    name: tooling-qa-podinfo
+    namespace: tooling-qa
+    condition: Available
+    timeout: 300s
+  - type: wait
+    kind: deployment
+    name: podinfo
+    namespace: default
+    condition: Available
+    timeout: 300s
+
+stop:
+  # A set-based selector with spaces and parentheses must reach kubectl as one argument.
+  - type: delete
+    kinds: [configmap]
+    selector: "tooling-qa in (selected, other)"
+    namespace: default
+  - type: delete
+    kind: deployment
+    name: podinfo
+    namespace: default
+  - type: delete
+    kind: service
+    name: podinfo
+    namespace: default
+  - type: delete
+    kind: hpa
+    name: podinfo
+    namespace: default
+  - type: helm-uninstall
+    release: tooling-qa-podinfo
+    namespace: tooling-qa
+
+# The deliberate failure for step 6: deleting an unknown kind with ignore-not-found off makes
+# kubectl exit 1, so the run shows ClusterToolFailedException's message. It sits in the backup
+# phase only because that is a typed phase the QA run can call on its own.
+backup:
+  - type: delete
+    kind: nosuchkind
+    name: x
+    namespace: default
+    ignore-not-found: false
+
+uninstall:
+  - type: platform-pvs-delete
+    node-type: ${POOL}
+  - type: delete
+    kind: namespace
+    name: tooling-qa

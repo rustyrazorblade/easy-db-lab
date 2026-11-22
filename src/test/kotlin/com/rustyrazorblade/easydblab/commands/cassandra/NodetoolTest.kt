@@ -70,7 +70,7 @@ class NodetoolTest : BaseKoinTest() {
                 whenever(ioSession.remoteAddress).thenReturn(InetSocketAddress(host.private, SSH_PORT))
                 val session = mock<ClientSession>()
                 whenever(session.ioSession).thenReturn(ioSession)
-                return SSHClient(session) { _, stdout, stderr ->
+                return SSHClient(session) { _, _, stdout, stderr ->
                     stdout.write(ringOf(host.alias).toByteArray())
                     if (host.alias == failingAlias) {
                         stderr.write(LONG_ERROR.toByteArray())

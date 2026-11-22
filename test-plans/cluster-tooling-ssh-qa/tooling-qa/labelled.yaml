@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tooling-qa-selected
+  namespace: default
+  labels:
+    tooling-qa: selected
+data:
+  role: matched by the set-based selector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tooling-qa-other
+  namespace: default
+  labels:
+    tooling-qa: other
+data:
+  role: matched by the set-based selector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tooling-qa-kept
+  namespace: default
+  labels:
+    tooling-qa: kept
+data:
+  role: not matched; must survive stop

@@ -301,6 +301,47 @@ class DefaultRemoteOperationsServiceTest :
         assertThat(nodeOutput.tail(TEST_HOST_NAME)).isEmpty()
     }
 
+    /**
+     * A command with input hands the client both the command and its input, and the command's
+     * output reaches the node output exactly as a plain command's does. A delegate that ran it as a
+     * plain command, dropping the input, would leave [MockSSHClient.commandInputs] empty.
+     */
+    @Test
+    fun `a command with input reaches the client with its input, and its output reaches the node output`() {
+        val client = MockSSHClient().apply { commandOutput = "configmap/a created\n" }
+        val command = "KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl apply -f -"
+
+        val response = serviceOver(client).executeRemotelyWithInput(namedHost, command, "kind: ConfigMap\n")
+
+        assertThat(client.commandInputs).containsExactly(command to "kind: ConfigMap\n")
+        assertThat(nodeOutput.stdout).containsExactly("[$TEST_HOST_NAME] configmap/a created")
+        assertThat(response.text).isEqualTo("configmap/a created\n")
+    }
+
+    @Test
+    fun `a command with input run without output reaches no node output`() {
+        val client = MockSSHClient().apply { commandOutput = "release values\n" }
+
+        serviceOver(client).executeRemotelyWithInput(namedHost, "helm upgrade --install r c --values -", "a: 1\n", output = false)
+
+        assertThat(client.commandInputs).hasSize(1)
+        assertThat(nodeOutput.printed).isEmpty()
+    }
+
+    /** A dropped connection is retried with the whole input again: the input is a string, never a consumed stream. */
+    @Test
+    fun `a command with input is retried after a dropped connection and sends the input again`() {
+        val inputs = mutableListOf<String>()
+        doAnswer { invocation ->
+            inputs += invocation.getArgument<String>(1)
+            if (inputs.size == 1) throw SshException("Connection reset") else Response("")
+        }.whenever(mockSSHClient).executeRemoteCommandWithInput(any(), any(), anyOrNull())
+
+        fastRetryService().executeRemotelyWithInput(namedHost, "kubectl apply -f -", "kind: Namespace\n")
+
+        assertThat(inputs).containsExactly("kind: Namespace\n", "kind: Namespace\n")
+    }
+
     @Test
     fun `an upload prints one notice and a directory upload prints one notice in total`(
         @TempDir localDir: File,

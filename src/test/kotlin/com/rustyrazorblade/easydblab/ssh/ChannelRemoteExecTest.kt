@@ -33,7 +33,7 @@ class ChannelRemoteExecTest {
         val channel = mock<ChannelExec> { on { open() } doReturn opening }
         val session = mock<ClientSession> { on { createExecChannel(any<String>(), any(), anyOrNull(), any()) } doReturn channel }
 
-        assertThatThrownBy { ChannelRemoteExec(session).run("sleep 60", ByteArrayOutputStream(), ByteArrayOutputStream()) }
+        assertThatThrownBy { ChannelRemoteExec(session).run("sleep 60", null, ByteArrayOutputStream(), ByteArrayOutputStream()) }
             .isInstanceOf(InterruptedException::class.java)
             .hasCause(openFailure)
         assertThat(Thread.currentThread().isInterrupted).isTrue()

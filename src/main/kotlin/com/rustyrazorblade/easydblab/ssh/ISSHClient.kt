@@ -22,6 +22,18 @@ interface ISSHClient {
     ): Response
 
     /**
+     * Execute a command on a remote host with [input] as its stdin, ended with EOF. A command with
+     * input is never secret: [input] is a manifest or a values file, and its output is streamed.
+     *
+     * @param sink receives each output line as it arrives; null shows nothing
+     */
+    fun executeRemoteCommandWithInput(
+        command: String,
+        input: String,
+        sink: RemoteOutputSink?,
+    ): Response
+
+    /**
      * Upload a file to a remote host
      */
     fun uploadFile(

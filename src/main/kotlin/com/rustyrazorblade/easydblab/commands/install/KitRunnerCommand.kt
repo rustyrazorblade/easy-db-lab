@@ -135,11 +135,8 @@ class KitRunnerCommand(
      * when its runtime declaration finds its workload already in the cluster; a failed cluster query
      * fails the command.
      */
-    private fun isAlreadyRunning(config: KitConfig): Boolean {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found in cluster state")
-        return when (val presence = workloadProbe.find(kitName, config.runtime, controlHost).getOrThrow()) {
+    private fun isAlreadyRunning(config: KitConfig): Boolean =
+        when (val presence = workloadProbe.find(kitName, config.runtime).getOrThrow()) {
             is WorkloadPresence.Absent -> false
             is WorkloadPresence.Present -> {
                 eventBus.emit(
@@ -154,7 +151,6 @@ class KitRunnerCommand(
                 true
             }
         }
-    }
 
     private fun buildAugmentedEnv(config: KitConfig?): Map<String, String> {
         val argDefaults = config?.args?.associate { it.variable to it.default }.orEmpty()
@@ -261,11 +257,10 @@ class KitRunnerCommand(
             } else {
                 executeScript(requireNotNull(findScriptFile(phase)) { "No script for '$phase' in kit '$kitName'" }, envVars)
             }
-        val controlHost = clusterState.getControlHost()
         val exitCode =
             when {
                 stepsExitCode != 0 -> stepsExitCode
-                controlHost == null || stoppedWorkloadIsGone(phase, config, controlHost) -> 0
+                stoppedWorkloadIsGone(phase, config) -> 0
                 else -> Constants.ExitCodes.ERROR
             }
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phase, exitCode = exitCode))
@@ -277,10 +272,6 @@ class KitRunnerCommand(
         steps: List<InstallStep>,
         envVars: Map<String, String>,
     ): Int {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found in cluster state")
-
         // The step executor has already reported a failed step as a typed event; rethrowing it
         // would have the command executor print it again as a raw exception.
         return workloadStepExecutor
@@ -290,7 +281,6 @@ class KitRunnerCommand(
                 context =
                     StepExecutionContext(
                         kitName = kitName,
-                        controlHost = controlHost,
                         clusterState = clusterState,
                         variables = envVars,
                         kitDir = kitDir,
@@ -335,11 +325,10 @@ class KitRunnerCommand(
     private fun stoppedWorkloadIsGone(
         phase: String,
         config: KitConfig,
-        controlHost: ClusterHost,
     ): Boolean {
         if (phase !in PHASES_THAT_REMOVE_THE_WORKLOAD || config.runtime == null) return true
         val remaining =
-            workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrElse { e ->
+            workloadProbe.awaitGone(kitName, config.runtime).getOrElse { e ->
                 log.warn(e) { "Could not confirm $kitName's workload left the cluster after $phase" }
                 eventBus.emit(
                     Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName, phase = phase),

@@ -85,9 +85,11 @@ val servicesModule =
         single { CiliumInstallAnnotator(get(), get()) }
         single { LokiPushClient(get()) }
         single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaClient>(), get(), get()) }
-        factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
+        factory<CiliumService> { DefaultCiliumService(get(), get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
+        // helm and kubectl run on the control node over SSH.
+        single<ClusterTooling> { SshClusterTooling(get(), get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies

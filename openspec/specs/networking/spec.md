@@ -356,7 +356,7 @@ When the CNI is Cilium, the K3s server SHALL be started with `--disable=traefik,
 #### Scenario: `up` is re-runnable on a Cilium cluster
 - **GIVEN** a `--cni=cilium` cluster where a previous `up` installed Cilium and then failed at a later step
 - **WHEN** the operator runs `up` again and the K3s server-ready hook fires
-- **THEN** the hook probes the helm release (`helm status cilium -n kube-system`, wrapped so the probe itself exits 0) and, finding it present, runs `cilium upgrade` with exactly the `--set` flag list `cilium install` uses, so a changed flag converges and the hook does not fail on "cannot reuse a name that is still in use"
+- **THEN** the hook probes the helm release through `HelmService.releaseExists` (`helm list -n kube-system -f '^cilium$' --all -q`, which lists a release in any state, a pending one included) and, finding it present, runs `cilium upgrade` with exactly the `--set` flag list `cilium install` uses, so a changed flag converges and the hook does not fail on "cannot reuse a name that is still in use"
 - **AND** the Tailscale masquerade chain is re-applied idempotently afterwards
 
 #### Scenario: Invalid CNI value is rejected

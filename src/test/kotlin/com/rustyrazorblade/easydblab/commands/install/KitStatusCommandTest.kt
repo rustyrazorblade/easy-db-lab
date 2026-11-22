@@ -14,13 +14,18 @@ import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -149,6 +154,55 @@ class KitStatusCommandTest : BaseKoinTest() {
             .contains("not served", "no running, ready pod matches app=mydb in namespace default")
     }
 
+    /**
+     * The helm lookup is how status learns there is nowhere to run helm (no control node) or that
+     * helm failed: either is Unknown with the cause, never Stopped, and no pod is looked up. A
+     * failure with no message still names what failed, never `null`.
+     */
+    @ParameterizedTest
+    @MethodSource("helmLookupFailures")
+    fun `a failed helm release lookup is Unknown with the cause, not Stopped`(case: HelmLookupFailure) {
+        whenever(mockHelmService.releaseExists(any(), any())).thenThrow(case.failure)
+
+        val output = runStatus(listOf(runningPod), KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"))
+
+        assertThat(output.trim()).isEqualTo("Status:    Unknown (helm query failed: ${case.shown})")
+        verifyNoInteractions(mockKubeService)
+    }
+
+    /**
+     * Ctrl-C during the helm lookup stops `kit status`: the interrupt propagates and no status is
+     * printed, instead of reading as one more failed lookup.
+     */
+    @Test
+    fun `an interrupt during the helm release lookup stops status instead of printing Unknown`() {
+        // doAnswer, not thenThrow: Mockito rejects a checked exception the Kotlin method does not declare.
+        doAnswer { throw InterruptedException("Ctrl-C") }.whenever(mockHelmService).releaseExists(any(), any())
+        val config =
+            KitConfig(name = "mydb", runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"), endpoints = listOf(bolt))
+        val stdout = ByteArrayOutputStream()
+        val original = System.out
+        System.setOut(PrintStream(stdout))
+        val thrown =
+            try {
+                catchThrowable { KitStatusCommand("mydb", config).execute() }
+            } finally {
+                System.setOut(original)
+            }
+
+        assertThat(thrown).isInstanceOf(InterruptedException::class.java)
+        assertThat(stdout.toString()).doesNotContain("Unknown")
+        verifyNoInteractions(mockKubeService)
+    }
+
+    /** A lookup failure and the cause status shows for it. */
+    class HelmLookupFailure(
+        val failure: RuntimeException,
+        val shown: String,
+    ) {
+        override fun toString() = failure.javaClass.simpleName + (failure.message?.let { " with a message" } ?: " with no message")
+    }
+
     @Test
     fun `a stopped kit lists no endpoints`() {
         val output = runStatus(emptyList())
@@ -202,7 +256,7 @@ class KitStatusCommandTest : BaseKoinTest() {
 
     @Test
     fun `a failed pod query for an installed helm release is Unknown with the cause`() {
-        whenever(mockHelmService.releaseExists(any(), any(), any())).thenReturn(true)
+        whenever(mockHelmService.releaseExists(any(), any())).thenReturn(true)
 
         val output =
             runStatus(
@@ -280,5 +334,17 @@ class KitStatusCommandTest : BaseKoinTest() {
             "http://10.0.1.2:8080",
             "http://10.0.1.3:8080",
         )
+    }
+
+    companion object {
+        @JvmStatic
+        fun helmLookupFailures() =
+            listOf(
+                HelmLookupFailure(
+                    IllegalStateException("No control node found. Please ensure the environment is running."),
+                    "No control node found. Please ensure the environment is running.",
+                ),
+                HelmLookupFailure(NullPointerException(), "java.lang.NullPointerException"),
+            )
     }
 }

@@ -105,8 +105,20 @@ If no typed steps are defined for a phase and a matching script exists in `bin/`
 
 All phases use the same set of typed steps.
 
+### Where helm and kubectl run
+
+The `helm-repo`, `helm`, `helm-uninstall`, `namespace`, `manifest`, `manifest-url`, `kustomize`,
+`wait` and `delete` steps (and the kit status check that asks helm whether a release exists) run
+`helm` and `kubectl` on the control node over SSH, with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.
+The tools are baked into the AMI; nothing is needed on your machine for these steps. A manifest or
+a values file is sent as the command's stdin over the same SSH call; nothing is written to disk.
+
+A failed step reports the command, the control node it ran on, the tool's exit status, and the last
+lines of its stderr and stdout.
+
 ### `helm-repo`
-Adds a Helm chart repository.
+Adds a Helm chart repository. `name` and `url` accept `${VAR}` interpolation, like the other
+helm steps.
 ```yaml
 - type: helm-repo
   name: altinity
@@ -186,8 +198,9 @@ Waits for a K8s resource to reach a condition.
 
 ### `delete`
 Deletes K8s resources, either one object by name or every object a label selector matches.
-Both forms run `kubectl` on the control node. A step that mixes the two forms, or has neither, is
-rejected when `kit.yaml` loads.
+Both forms run `kubectl` where the other typed steps do (see [Where helm and kubectl
+run](#where-helm-and-kubectl-run)). A step that mixes the two forms, or has neither, is rejected
+when `kit.yaml` loads.
 
 By name — `kind` and `name` are required:
 ```yaml

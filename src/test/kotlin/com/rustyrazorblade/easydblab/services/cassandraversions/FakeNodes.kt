@@ -93,6 +93,13 @@ class FakeNodes : RemoteOperationsService {
         }
     }
 
+    override fun executeRemotelyWithInput(
+        host: Host,
+        command: String,
+        input: String,
+        output: Boolean,
+    ): Response = executeRemotely(host, command, output, secret = false)
+
     private fun failure(
         command: String,
         stderr: String,

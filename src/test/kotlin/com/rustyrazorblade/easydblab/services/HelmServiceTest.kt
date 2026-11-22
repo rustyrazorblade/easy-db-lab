@@ -1,194 +1,96 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.atLeastOnce
-import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.doThrow
-import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.times
-import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
 
-class HelmServiceTest : BaseKoinTest() {
-    private lateinit var mockRemoteOps: RemoteOperationsService
-
-    private val testHost =
-        Host(
-            public = "54.1.2.3",
-            private = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-        )
-
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
-            },
-        )
-
-    @BeforeEach
-    fun setup() {
-        mockRemoteOps = getKoin().get()
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).doReturn(Response(""))
-    }
-
-    private fun makeService(): DefaultHelmService = DefaultHelmService(remoteOps = getKoin().get())
+/**
+ * The decisions [DefaultHelmService] makes, through a [RecordingClusterTooling]: how a values file
+ * reaches helm and how `helm list` output reads as a release. The commands each method runs on the
+ * control node are in [ClusterToolingSshCommandsTest].
+ */
+internal class HelmServiceTest {
+    @TempDir
+    lateinit var tempDir: File
 
     @Test
-    fun `repoAdd invokes helm repo add with --force-update then repo update`() {
-        makeService().repoAdd(host = testHost, name = "myrepo", url = "https://example.com/charts")
+    fun `upgradeInstall passes the values file's content as input to --values -`() {
+        val valuesFile = File(tempDir, "values.yaml").also { it.writeText("key: value\n") }
+        val tooling = RecordingClusterTooling()
 
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps, times(2)).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
+        DefaultHelmService(
+            tooling,
+        ).upgradeInstall(release = "myapp", chart = "myrepo/myapp", namespace = "default", valuesFile = valuesFile)
 
-        val commands = commandCaptor.allValues
-        assertThat(commands[0]).contains("helm repo add myrepo https://example.com/charts --force-update")
-        assertThat(commands[1]).contains("helm repo update myrepo")
+        val call = tooling.calls.single()
+        assertThat(call.input).isEqualTo("key: value\n")
+        assertThat(call.args).containsSequence("--values", "-")
     }
 
     @Test
-    fun `repoAdd commands include KUBECONFIG prefix`() {
-        makeService().repoAdd(host = testHost, name = "myrepo", url = "https://example.com/charts")
+    fun `upgradeInstall without a values file passes no input and no --values`() {
+        val tooling = RecordingClusterTooling()
 
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps, times(2)).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
+        DefaultHelmService(tooling).upgradeInstall(release = "r", chart = "c", namespace = "n")
 
-        assertThat(commandCaptor.allValues).allMatch { it.startsWith("KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}") }
+        assertThat(tooling.calls.single().input).isNull()
+        assertThat(tooling.calls.single().args).doesNotContain("--values")
     }
 
     @Test
-    fun `upgradeInstall builds correct helm upgrade --install command`() {
-        makeService().upgradeInstall(
-            host = testHost,
-            release = "myapp",
-            chart = "myrepo/myapp",
-            namespace = "default",
-            version = "1.2.3",
-            values = mapOf("key1" to "val1", "key2" to "val2"),
-        )
+    fun `releaseExists reads any listed name as present, and blank output as absent, asking quietly`() {
+        val listed = RecordingClusterTooling { "myapp\n" }
+        val blank = RecordingClusterTooling { "  \n" }
 
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
-
-        val command = commandCaptor.firstValue
-        assertThat(command).contains("helm upgrade --install myapp myrepo/myapp")
-        assertThat(command).contains("--namespace default")
-        assertThat(command).contains("--version 1.2.3")
-        assertThat(command).contains("--set key1=val1")
-        assertThat(command).contains("--set key2=val2")
-        assertThat(command).doesNotContain("--wait")
-        assertThat(command).doesNotContain("--create-namespace")
+        assertThat(DefaultHelmService(listed).releaseExists("myapp", "default")).isTrue()
+        assertThat(DefaultHelmService(blank).releaseExists("noapp", "default")).isFalse()
+        assertThat(listed.calls.single().echo).isFalse()
     }
 
+    /**
+     * `helm list` shows only deployed and failed releases unless asked for all. A release an
+     * interrupted install left `pending-install` still holds its name, so the lookup must list
+     * every state, or a re-run of `up` would try to install over it. The fake answers as helm
+     * does for a release left `pending-install`: listed only when `--all` asks for every state.
+     */
     @Test
-    fun `upgradeInstall with wait=true includes --wait and --timeout`() {
-        makeService().upgradeInstall(
-            host = testHost,
-            release = "myapp",
-            chart = "myrepo/myapp",
-            namespace = "default",
-            wait = true,
-            timeout = "10m",
-        )
+    fun `releaseExists finds a release an interrupted install left pending`() {
+        val pendingOnly = RecordingClusterTooling { call -> if ("--all" in call.args) "cilium\n" else "" }
 
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
-
-        assertThat(commandCaptor.firstValue).contains("--wait --timeout 10m")
+        assertThat(DefaultHelmService(pendingOnly).releaseExists("cilium", "kube-system")).isTrue()
     }
 
+    /**
+     * Property over names holding every regex metacharacter helm's Go `regexp` knows: the `-f`
+     * filter matches the name itself and nothing that differs from it only where a metacharacter
+     * would have matched something else, nor a name that only contains it. Go's `MatchString`
+     * finds the pattern anywhere in the name, so the check is `containsMatchIn`, and it is the
+     * filter's anchors that make the match whole. Java's regex reads these escapes as Go's does.
+     */
     @Test
-    fun `upgradeInstall with createNamespace=true includes --create-namespace`() {
-        makeService().upgradeInstall(
-            host = testHost,
-            release = "myapp",
-            chart = "myrepo/myapp",
-            namespace = "mynamespace",
-            createNamespace = true,
-        )
-
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
-
-        assertThat(commandCaptor.firstValue).contains("--create-namespace")
-    }
-
-    @Test
-    fun `upgradeInstall with valuesFile uploads file and passes remote path to helm`() {
-        val valuesFile = File(tempDir, "values.yaml").also { it.writeText("key: value") }
-
-        makeService().upgradeInstall(
-            host = testHost,
-            release = "myapp",
-            chart = "myrepo/myapp",
-            namespace = "default",
-            valuesFile = valuesFile,
-        )
-
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
-
-        assertThat(commandCaptor.allValues).anyMatch { it.contains("--values /tmp/helm-values-") }
-    }
-
-    @Test
-    fun `uninstall invokes helm uninstall with --ignore-not-found`() {
-        makeService().uninstall(host = testHost, release = "myapp", namespace = "default")
-
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps).executeRemotely(eq(testHost), commandCaptor.capture(), any(), any())
-
-        assertThat(commandCaptor.firstValue).contains("helm uninstall myapp -n default --ignore-not-found")
-    }
-
-    @Test
-    fun `upgradeInstall propagates exception from executeRemotely`() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
-            .doThrow(RuntimeException("SSH command failed"))
-
-        assertThatThrownBy {
-            makeService().upgradeInstall(
-                host = testHost,
-                release = "r",
-                chart = "c",
-                namespace = "n",
+    fun `releaseExists filters on the release name matched literally and whole`() {
+        val cases =
+            listOf(
+                "app" to listOf("myapp", "apps"),
+                "my.app" to listOf("myxapp", "my.app2", "amy.app"),
+                "a+b" to listOf("aab", "aaab"),
+                "x*" to listOf("xxx", ""),
+                "v1?" to listOf("v"),
+                "(a|b)" to listOf("a", "b"),
+                "[ab]" to listOf("a"),
+                "c{2}" to listOf("cc"),
+                "^\\$" to listOf(""),
             )
-        }.isInstanceOf(RuntimeException::class.java)
-            .hasMessageContaining("SSH command failed")
-    }
 
-    @Test
-    fun `releaseExists returns true when helm list returns non-empty text`() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
-            .doReturn(Response("myapp"))
+        cases.forEach { (release, others) ->
+            val tooling = RecordingClusterTooling()
+            DefaultHelmService(tooling).releaseExists(release, "default")
+            val args = tooling.calls.single().args
+            val filter = Regex(args[args.indexOf("-f") + 1])
 
-        val result = makeService().releaseExists(host = testHost, release = "myapp", namespace = "default")
-
-        assertThat(result).isTrue()
-    }
-
-    @Test
-    fun `releaseExists returns false when helm list returns empty text`() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
-            .doReturn(Response(""))
-
-        val result = makeService().releaseExists(host = testHost, release = "noapp", namespace = "default")
-
-        assertThat(result).isFalse()
+            assertThat(filter.containsMatchIn(release)).describedAs("%s matches itself", filter).isTrue()
+            assertThat(others).describedAs("%s matches only %s", filter, release).noneMatch { filter.containsMatchIn(it) }
+        }
     }
 }

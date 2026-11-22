@@ -47,6 +47,13 @@ class InstallFileTest {
             return Response("")
         }
 
+        override fun executeRemotelyWithInput(
+            host: Host,
+            command: String,
+            input: String,
+            output: Boolean,
+        ): Response = executeRemotely(host, command, output, secret = false)
+
         override fun upload(
             host: Host,
             local: Path,

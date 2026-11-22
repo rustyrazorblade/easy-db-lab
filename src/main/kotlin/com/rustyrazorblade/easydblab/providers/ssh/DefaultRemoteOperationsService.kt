@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.output.NodeOutput
 import com.rustyrazorblade.easydblab.output.NodeStream
 import com.rustyrazorblade.easydblab.redactUrlCredentials
 import com.rustyrazorblade.easydblab.runCleaningUpOnFailure
+import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.RemoteOutputSink
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -97,12 +98,32 @@ class DefaultRemoteOperationsService(
         }
         // A secret command echoes its own argument, so it gets no sink here; SSHClient refuses one too.
         val sink = if (output && !secret) NodeLineSink(host) else null
+        return withRetriedCommand(host, sink) { client -> client.executeRemoteCommand(command, sink, secret) }
+    }
+
+    override fun executeRemotelyWithInput(
+        host: Host,
+        command: String,
+        input: String,
+        output: Boolean,
+    ): Response {
+        log.debug { "Executing command with input on ${host.alias}: ${redactUrlCredentials(command)}" }
+        val sink = if (output) NodeLineSink(host) else null
+        return withRetriedCommand(host, sink) { client -> client.executeRemoteCommandWithInput(command, input, sink) }
+    }
+
+    /** Runs [run] on [host]'s connection under [withRetry], marking each retry in [sink]'s node output. */
+    private fun withRetriedCommand(
+        host: Host,
+        sink: RemoteOutputSink?,
+        run: (ISSHClient) -> Response,
+    ): Response {
         var attempt = 0
         return withRetry(host) {
             attempt++
             // A retry can run the command again: mark where the next run's lines start, in the tail too.
             if (sink != null && attempt > 1) nodeOutput.mark(host.alias, "retrying the command (attempt $attempt)")
-            connectionProvider.getConnection(host).executeRemoteCommand(command, sink, secret)
+            run(connectionProvider.getConnection(host))
         }
     }
 

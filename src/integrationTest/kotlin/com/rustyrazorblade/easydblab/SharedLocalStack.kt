@@ -115,6 +115,14 @@ object SharedLocalStack {
     /** EC2 client pointed at the shared container. */
     fun ec2Client(): Ec2Client = Ec2Client.builder().local().build()
 
+    /** EC2 client pointed at the shared container in [region]; LocalStack keeps each region's EC2 resources apart. */
+    fun ec2Client(region: String): Ec2Client =
+        Ec2Client
+            .builder()
+            .local()
+            .region(Region.of(region))
+            .build()
+
     /** IAM client pointed at the shared container. */
     fun iamClient(): IamClient = IamClient.builder().local().build()
 

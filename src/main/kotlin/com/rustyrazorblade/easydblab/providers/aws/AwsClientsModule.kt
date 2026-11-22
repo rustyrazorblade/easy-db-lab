@@ -4,11 +4,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
+import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SdkSsmSessionTerminator
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmCliCredentials
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSessionCommandBuilder
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSessionTerminator
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
+import org.koin.core.scope.Scope
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
@@ -37,7 +40,7 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  * Koin module for the AWS adapter's SDK-facing bindings.
  *
  * Provides the region, the credentials provider, the SDK clients, [AccountIdentity], [IamRoles],
- * [RegionalS3Clients], [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
+ * [RegionalS3Clients], [RegionalEc2Clients], [AWSClientFactory], [AWSCredentialsManager] (a factory), the [AwsErrorHandler] registered as a
  * [ProviderErrorHandler], and the SSM Session Manager transport bindings. Its only edges outside
  * `providers/aws` are `configuration`, `events` and `Context`; the bindings of `services/aws`
  * classes live in `AwsServicesModule`.
@@ -150,36 +153,48 @@ val awsClientsModule =
         // S3 clients for a region named at call time (the account bucket's region)
         single { RegionalS3Clients(get<AwsCredentialsProvider>()) }
 
+        // EC2 clients for a region named at call time (an AMI build's own region)
+        single { RegionalEc2Clients(get<AwsCredentialsProvider>()) }
+
         // Role policy set for the EC2 instance role
         single { InstanceRolePolicies(get()) }
 
-        // SSM Session Manager SSH transport
-        single {
-            val user = get<User>()
-            val credentialsManager = get<AWSCredentialsManager>()
-            val profileDir = get<Context>().profileDir
-            SsmSessionCommandBuilder(
-                user.region,
-                { SsmCliCredentials.forUser(user, credentialsManager) },
-                sshProxyWrapper = { SsmProxyWrapper(profileDir).install() },
-            )
-        }
+        // SSM Session Manager SSH transport, in the profile region
+        single { ssmSessionCommands(get<User>().region) }
 
-        single<SsmSessionTerminator> {
-            val region = Region.of(get<User>().region)
-            val credentials = get<AwsCredentialsProvider>()
-            // The client is built on first use, off the main thread, not here at Koin resolution.
-            SdkSsmSessionTerminator(credentials) {
-                SsmClient
-                    .builder()
-                    .region(region)
-                    .credentialsProvider(credentials)
-                    // Bounded per attempt and overall, so the SDK's retries fit in the stop's 20s budget.
-                    .overrideConfiguration { config ->
-                        config
-                            .apiCallAttemptTimeout(Duration.ofSeconds(Constants.Ssm.TERMINATE_SESSION_ATTEMPT_TIMEOUT_SECONDS))
-                            .apiCallTimeout(Duration.ofSeconds(Constants.Ssm.TERMINATE_SESSION_TIMEOUT_SECONDS))
-                    }.build()
-            }
+        single<SsmSessionTerminator> { ssmSessionTerminator(get<User>().region) }
+
+        // The SSM route for a region named at call time (an AMI build's own region)
+        single<RegionalSsmRoutes> {
+            RegionalSsmRoutes { region, sshPort -> SsmSshRoute(ssmSessionCommands(region), sshPort, ssmSessionTerminator(region)) }
         }
     }
+
+/** The `aws ssm start-session` command lines for instances in [region], with the profile's credentials. */
+private fun Scope.ssmSessionCommands(region: String): SsmSessionCommandBuilder {
+    val user = get<User>()
+    val credentialsManager = get<AWSCredentialsManager>()
+    val profileDir = get<Context>().profileDir
+    return SsmSessionCommandBuilder(
+        region,
+        { SsmCliCredentials.forUser(user, credentialsManager) },
+        sshProxyWrapper = { SsmProxyWrapper(profileDir).install() },
+    )
+}
+
+/** Ends sessions in [region]; the client is built on first use, off the main thread, not at Koin resolution. */
+private fun Scope.ssmSessionTerminator(region: String): SsmSessionTerminator {
+    val credentials = get<AwsCredentialsProvider>()
+    return SdkSsmSessionTerminator(credentials) {
+        SsmClient
+            .builder()
+            .region(Region.of(region))
+            .credentialsProvider(credentials)
+            // Bounded per attempt and overall, so the SDK's retries fit in the stop's 20s budget.
+            .overrideConfiguration { config ->
+                config
+                    .apiCallAttemptTimeout(Duration.ofSeconds(Constants.Ssm.TERMINATE_SESSION_ATTEMPT_TIMEOUT_SECONDS))
+                    .apiCallTimeout(Duration.ofSeconds(Constants.Ssm.TERMINATE_SESSION_TIMEOUT_SECONDS))
+            }.build()
+    }
+}

@@ -1,14 +1,11 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.containers.Packer
-import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
-import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.ProfileResourceMarkers
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -27,10 +24,8 @@ class BuildCassandraImage : PicoBaseCommand() {
     @Mixin
     var buildArgs = BuildArgsMixin()
 
-    private val awsInfrastructure: AwsInfrastructureService by inject()
     private val awsResourceSetupService: AWSResourceSetupService by inject()
     private val profileResourceMarkers: ProfileResourceMarkers by inject()
-    private val externalIpService: ExternalIpService by inject()
     private val userConfig: User by inject()
 
     override fun execute() {
@@ -45,9 +40,7 @@ class BuildCassandraImage : PicoBaseCommand() {
         // and give it and the key pair any marker tag they lack
         profileResourceMarkers.ensureAccountBucketAndKeyPair(userConfig)
 
-        // Ensure Packer VPC infrastructure exists before building, scoping SSH to this machine's IP
-        awsInfrastructure.ensurePackerInfrastructure(Constants.Network.SSH_PORT, externalIpService.getExternalCidr())
-
+        // The packer network is ensured by the build itself, in the build region (see Packer).
         val packer = Packer(context, "cassandra")
         packer.build("cassandra.pkr.hcl", buildArgs)
     }

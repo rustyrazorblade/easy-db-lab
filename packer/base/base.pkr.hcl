@@ -47,6 +47,21 @@ variable "ssh_interface" {
   default = ""
 }
 
+# How often Packer sends an SSH keepalive to the builder, and how long one SSH read or write may
+# wait before Packer drops the connection. easy-db-lab passes both from Constants.Packer. A live
+# stream answers a keepalive every interval, so a quiet script never reaches the timeout; a dead
+# stream (an SSM session that AWS still shows Connected but that carries no data) fails within it
+# instead of hanging the build, and easy-db-lab runs a build that lost its session again.
+variable "ssh_keep_alive_interval" {
+  type    = string
+  default = "10s"
+}
+
+variable "ssh_read_write_timeout" {
+  type    = string
+  default = "2m"
+}
+
 # The marker tags put on the builder instance and its volumes, the AMI and its snapshots.  easy-db-lab passes them from
 # Constants.Vpc.MARKER_TAGS (the new easy_db_lab key and the legacy easy_cass_lab key, which the
 # IAM conditions match on), so the keys live in one place.  No default: a build without them
@@ -83,6 +98,8 @@ source "amazon-ebs" "ubuntu" {
   ssh_private_key_file = var.ssh_private_key_file
   # null leaves the argument unset, so direct-transport builds keep Packer's own default.
   ssh_interface        = var.ssh_interface != "" ? var.ssh_interface : null
+  ssh_keep_alive_interval = var.ssh_keep_alive_interval
+  ssh_read_write_timeout  = var.ssh_read_write_timeout
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {

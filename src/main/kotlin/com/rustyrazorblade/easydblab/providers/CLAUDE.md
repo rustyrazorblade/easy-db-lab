@@ -7,9 +7,11 @@ This package contains low-level infrastructure providers for AWS, SSH, and Docke
 ```
 providers/
 ├── aws/                    # AWS SDK wrappers and data types
-│   ├── AwsClientsModule.kt # Koin: region, credentials, the SDK clients, AccountIdentity, IamRoles, RegionalS3Clients, AWSClientFactory, AWSCredentialsManager (factory), AwsErrorHandler, SSM
+│   ├── AwsClientsModule.kt # Koin: region, credentials, the SDK clients, AccountIdentity, IamRoles, RegionalS3Clients, RegionalEc2Clients, AWSClientFactory, AWSCredentialsManager (factory), AwsErrorHandler, SSM
 │   ├── AwsErrorHandler.kt  # Classifies AWS credential and permission failures for the ProviderErrorHandler contract
 │   ├── RegionalS3Clients.kt # Builds an S3Client for a named region, so services/aws never builds an SDK client
+│   ├── RegionalEc2Clients.kt # Builds an Ec2Client for a named region (an AMI build's own region)
+│   ├── Ec2BuilderInstances.kt # The EC2 adapter of containers/BuilderInstances: one AMI build's live instances (its build id, in an easy-db-lab packer VPC)
 │   ├── AccountIdentity.kt  # AccountIdentity interface + StsAccountIdentity (STS: account ID, credential check)
 │   ├── IamRoles.kt         # IamRoles interface (roles, instance profiles, inline policies, service-linked role) + RoleValidationResult
 │   ├── AwsIamRoles.kt      # IamRoles on IamClient
@@ -44,11 +46,12 @@ providers/
 │   ├── DefaultSSHConnectionProvider.kt
 │   ├── SshRoute.kt        # How each SSH transport reaches a node (DirectSshRoute)
 │   ├── RemoteOperationsService.kt
+│   ├── OpenSshPublicKey.kt # The OpenSSH public key line of a private key file (a build key pair is imported from it)
 │   ├── InstallFile.kt     # RemoteOperationsService.installFile: the one stage-then-sudo-mv sequence (unique staging name, mode, quoted paths)
 │   └── DefaultRemoteOperationsService.kt
 ```
 
-The SSM Session Manager SSH transport lives in `providers/aws/ssm/` (it is AWS, so the SDK boundary applies), and its Koin bindings are in `AwsClientsModule`: `SsmSessionCommand` (`aws ssm start-session` command lines and credentials), `SsmProxyWrapper` (installs the `edl-ssm-proxy` ProxyCommand wrapper into the profile dir), `SsmSessionTerminator` (ends a stopped forward's session with TerminateSession), `SsmForwardNotReadyException` (unchecked, retryable: a forward exited or timed out before ready) and `SsmSshRoute` (the `ssm` `SshRoute`: ProxyCommands and per-instance port forwards).
+The SSM Session Manager SSH transport lives in `providers/aws/ssm/` (it is AWS, so the SDK boundary applies), and its Koin bindings are in `AwsClientsModule`: `SsmSessionCommand` (`aws ssm start-session` command lines and credentials), `SsmProxyWrapper` (installs the `edl-ssm-proxy` ProxyCommand wrapper into the profile dir), `SsmSessionTerminator` (ends a stopped forward's session with TerminateSession), `SsmForwardNotReadyException` (unchecked, retryable: a forward exited or timed out before ready) and `SsmSshRoute` (the `ssm` `SshRoute`: ProxyCommands and per-instance port forwards). A session reaches only instances in its own region, so `AwsClientsModule` also binds `RegionalSsmRoutes`, which builds an `SsmSshRoute` for a region named at call time; `ssh/RegionalRemoteOperations` (bound in `SSHModule`) uses it to give an AMI build outside the profile region SSH connections of its own under `ssm` (direct, and the profile region, use the shared service). They open on the first connection asked for, so a build that never reaches its builder starts no SSH client, and closing its `RegionRemote` stops them (or closes the unused route). `containers/Packer.inBuildRegion` opens the site and the remote for the build region together.
 
 ## What Belongs Here vs `services/aws/`
 

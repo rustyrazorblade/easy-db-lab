@@ -746,6 +746,19 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 - **WHEN** a command resolves the workspace file `out/file`
 - **THEN** it fails naming the workspace and the name; resolving `out` itself returns the link, which a delete unlinks without touching its target
 
+#### Scenario: A directory the CLI writes into does not lead outside the workspace through a link
+
+- **GIVEN** a workspace W whose `logs` (or `profiles`, `profiles/<host>`, `bin`, the restored `k8s`, or a Cassandra version conf directory) is a symbolic link to a directory outside W
+- **WHEN** a command writes into that directory: the SOCKS tunnel log, the profiling fetch or flamegraph, the tool wrappers, a backup restore, or `cassandra download-config`
+- **THEN** it fails naming the workspace and the directory, and nothing is written outside W
+- **AND** a link to a directory inside W is followed as usual
+
+#### Scenario: A failed cleanup does not hide the failure that caused it
+
+- **GIVEN** a kit install or a `cassandra download-config` that fails and then cannot delete its partial directory
+- **WHEN** the command reports the failure
+- **THEN** the reported error is the one that stopped the command, and the failed delete is attached to it
+
 #### Scenario: Uploading authorized keys leaves no file behind
 
 - **WHEN** the user runs `upload-keys`

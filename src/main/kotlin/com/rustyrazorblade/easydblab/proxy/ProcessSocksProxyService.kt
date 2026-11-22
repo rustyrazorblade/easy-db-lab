@@ -381,9 +381,10 @@ class ProcessSocksProxyService(
 
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
         // silently discarded and the transcript we rely on for diagnosis would be lost.
-        val logDir = context.workspaceFile(LOGS_DIR)
+        // workspaceDir: a `logs` link to a directory outside the workspace is refused, not written through.
+        val logDir = context.workspaceDir(LOGS_DIR)
         logDir.mkdirs()
-        val logFile = File(logDir, Constants.Proxy.SOCKS5_PROXY_LOG_FILE)
+        val logFile = context.workspaceFileForWrite("$LOGS_DIR/${Constants.Proxy.SOCKS5_PROXY_LOG_FILE}")
 
         val retry = Retry.of("socks5-proxy-start", RetryUtil.createLocalPortBindRetryConfig())
         val launched =

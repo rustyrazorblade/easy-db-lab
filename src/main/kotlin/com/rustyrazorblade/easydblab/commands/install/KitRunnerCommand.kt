@@ -38,6 +38,7 @@ import kotlinx.serialization.json.jsonObject
 import org.koin.core.component.inject
 import picocli.CommandLine
 import java.io.File
+import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -214,7 +215,14 @@ class KitRunnerCommand(
     private fun removeKitDirectory() {
         println("Warning: no uninstall phase configured for '$kitName' — removing local directory only")
         eventBus.emit(Event.Kit.ScriptStarted(kit = kitName, script = phaseName))
-        kitDir.deleteWithoutFollowingLinks()
+        try {
+            kitDir.deleteWithoutFollowingLinks()
+        } catch (e: IOException) {
+            // A subscriber that saw the start sees the end too, before the failure propagates.
+            processExitCode = Constants.ExitCodes.ERROR
+            eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = processExitCode))
+            throw e
+        }
         processExitCode = 0
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phaseName, exitCode = 0))
     }

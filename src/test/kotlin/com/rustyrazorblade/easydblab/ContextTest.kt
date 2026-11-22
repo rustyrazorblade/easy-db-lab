@@ -89,6 +89,47 @@ class ContextTest {
         assertThat(link.toFile()).hasContent("new")
     }
 
+    /**
+     * A directory the CLI writes into (`logs`, `profiles`, `k8s`) is refused when it, or a
+     * directory under it, is a link that leads outside the workspace; a missing one, a real one
+     * and a link inside the workspace are allowed.
+     */
+    @ParameterizedTest(name = "[{0}] allowed: {1}")
+    @CsvSource(
+        "logs, false",
+        "profiles/db0, false",
+        "missing, true",
+        "real, true",
+        "real/db0, true",
+        "inner, true",
+        "dead, false",
+    )
+    fun `a directory to write into must not lead outside the workspace through a link`(
+        name: String,
+        allowed: Boolean,
+    ) {
+        val context = context()
+        val outside = File(tempDir, "outside").apply { mkdirs() }
+        val ws = context.workingDirectory
+        File(ws, "real").mkdirs()
+        File(ws, "profiles").mkdirs()
+        Files.createSymbolicLink(File(ws, "logs").toPath(), outside.toPath())
+        Files.createSymbolicLink(File(ws, "profiles/db0").toPath(), outside.toPath())
+        Files.createSymbolicLink(File(ws, "inner").toPath(), File(ws, "real").toPath())
+        Files.createSymbolicLink(File(ws, "dead").toPath(), File(outside, "missing").toPath())
+
+        val outcome = runCatching { context.workspaceDir(name) }
+
+        if (allowed) {
+            assertThat(outcome.getOrThrow()).isEqualTo(File(ws, name))
+        } else {
+            assertThat(outcome.exceptionOrNull())
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("leads outside it through a link")
+        }
+        assertThat(outside.list()).isEmpty()
+    }
+
     @Test
     fun `a link that stays inside the workspace is allowed`() {
         val context = context()

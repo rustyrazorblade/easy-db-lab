@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.kit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandTestBase
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -93,6 +94,8 @@ class UninstallTest : KitRunnerCommandTestBase() {
 
     @Test
     fun `a kit directory that cannot be deleted fails kit uninstall and names the directory`() {
+        // Root deletes a file in a read-only directory, so the delete would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
         writeKitYaml("mydb", kitYaml)
         val locked = File(workingDir, "mydb/locked").apply { mkdirs() }
         File(locked, "f").writeText("x")

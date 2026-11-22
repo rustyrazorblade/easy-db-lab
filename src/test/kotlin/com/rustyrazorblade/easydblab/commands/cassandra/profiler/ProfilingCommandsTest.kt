@@ -23,6 +23,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -34,6 +35,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 
@@ -958,6 +960,25 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `fetch refuses a profiles link to a directory outside the workspace and downloads nothing`(
+        @TempDir outside: File,
+    ) {
+        context.workingDirectory.mkdirs()
+        Files.createSymbolicLink(
+            File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR).toPath(),
+            outside.toPath(),
+        )
+        whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(listOf("/p/a.jfr"))
+
+        assertThatThrownBy { ProfilingFetch().execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("inside the workspace")
+
+        verify(profilingService, never()).fetchChunks(any(), any(), any())
+        assertThat(outside.list()).isEmpty()
+    }
+
+    @Test
     fun `fetch asks each node for the number of chunks the user requested`() {
         // --last is the only control the operator has over how much history comes back; dropping it
         // on the floor would still leave every other fetch assertion passing.
@@ -994,6 +1015,24 @@ class ProfilingCommandsTest : BaseKoinTest() {
 
         assertThatThrownBy { command.execute() }.hasMessageContaining("-o")
         verify(profilingService, never()).convertToFlamegraph(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `flamegraph refuses a host directory that links outside the workspace and downloads nothing`(
+        @TempDir outside: File,
+    ) {
+        val profiles = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR).apply { mkdirs() }
+        Files.createSymbolicLink(File(profiles, "db0").toPath(), outside.toPath())
+        whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(listOf("/p/a.jfr"))
+        whenever(profilingService.convertToFlamegraph(any(), any(), any(), any()))
+            .thenReturn("/mnt/db1/cassandra/artifacts/flame-db0-1.html")
+
+        assertThatThrownBy { ProfilingFlamegraph().execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("leads outside it through a link")
+
+        verify(profilingService, never()).download(any(), any(), any())
+        assertThat(outside.list()).isEmpty()
     }
 
     @Test

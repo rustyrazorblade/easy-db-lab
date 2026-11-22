@@ -13,6 +13,8 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -25,6 +27,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 
 /**
  * Tests for [DownloadConfig]: it downloads a version's config into the workspace once, and says
@@ -175,5 +178,27 @@ class DownloadConfigTest : BaseKoinTest() {
         assertThatThrownBy { DownloadConfig().execute() }.hasMessageContaining("ssh dropped")
 
         assertThat(File(context.workingDirectory, "5.0")).doesNotExist()
+    }
+
+    /** A cleanup that fails as well is attached to the download error, which stays the reported cause. */
+    @Test
+    fun `a failed download whose cleanup also fails reports the download error`() {
+        // Root deletes a file in a read-only directory, so the cleanup would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
+        val locked = File(context.workingDirectory, "5.0/locked")
+        whenever(remoteOps.downloadDirectory(any(), any(), any(), any(), any())).thenAnswer {
+            locked.mkdirs()
+            File(locked, "cassandra.yaml").writeText("partial")
+            locked.setWritable(false)
+            error("ssh dropped")
+        }
+        try {
+            val thrown = catchThrowable { DownloadConfig().execute() }
+
+            assertThat(thrown).isInstanceOf(IllegalStateException::class.java).hasMessage("ssh dropped")
+            assertThat(thrown.suppressed.single()).isInstanceOf(IOException::class.java)
+        } finally {
+            locked.setWritable(true)
+        }
     }
 }

@@ -23,6 +23,8 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
@@ -36,6 +38,7 @@ import org.koin.test.get
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 
 /**
@@ -388,6 +391,29 @@ class KitInstallCommandTest : BaseKoinTest() {
                 assertThat(File(workingDir, "br")).doesNotExist()
             }
         }
+
+    /** A scaffold cleanup that fails as well is attached to the install error, which stays the reported cause. */
+    @Test
+    fun `a failed install whose scaffold cleanup also fails reports the install error`() {
+        // Root deletes a file in a read-only directory, so the cleanup would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
+        var locked: File? = null
+        whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenAnswer {
+            val scaffold = workingDir.listFiles().orEmpty().single { it.name.startsWith(".tmp-plain-") }
+            locked = File(scaffold, "locked").apply { mkdirs() }
+            File(scaffold, "locked/f").writeText("x")
+            File(scaffold, "locked").setWritable(false)
+            error("render failed")
+        }
+        try {
+            val thrown = catchThrowable { buildAndRun(KitConfig(name = "plain", type = null), emptyMap()) }
+
+            assertThat(thrown).isInstanceOf(IllegalStateException::class.java).hasMessage("render failed")
+            assertThat(thrown.suppressed.single()).isInstanceOf(IOException::class.java)
+        } finally {
+            locked?.setWritable(true)
+        }
+    }
 
     /** Parses [args] as the user would type them, then runs the install. */
     private fun parseAndRun(

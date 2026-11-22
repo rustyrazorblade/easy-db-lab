@@ -32,6 +32,19 @@ fun File.deleteWithoutFollowingLinks() {
 }
 
 /**
+ * [deleteWithoutFollowingLinks] as the cleanup after [primary] failed: a delete that fails too is
+ * attached to [primary] as a suppressed exception, so the error the user sees is the one that
+ * stopped the work, with the cleanup failure beside it.
+ */
+fun File.deleteAfterFailure(primary: Throwable) {
+    try {
+        deleteWithoutFollowingLinks()
+    } catch (e: IOException) {
+        primary.addSuppressed(e)
+    }
+}
+
+/**
  * Deletes each entry the walk reaches. The walk does not follow links, so a link arrives as a
  * file and [Files.delete] removes the link itself.
  */

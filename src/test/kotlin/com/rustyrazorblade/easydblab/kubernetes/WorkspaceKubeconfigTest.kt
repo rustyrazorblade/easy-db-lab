@@ -5,6 +5,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 
 class WorkspaceKubeconfigTest {
     @TempDir
@@ -30,6 +31,21 @@ class WorkspaceKubeconfigTest {
 
         assertThat(WorkspaceKubeconfig.exists(workspace)).isTrue()
         assertThat(WorkspaceKubeconfig.require(workspace)).isEqualTo(WorkspaceKubeconfig.file(workspace))
+    }
+
+    @Test
+    fun `the kubeconfig up writes replaces a link with a regular file and keeps the link target`(
+        @TempDir outside: File,
+    ) {
+        val owner = File(outside, "kubeconfig").apply { writeText("owner") }
+        val link = File(workspace, "kubeconfig").toPath()
+        Files.createSymbolicLink(link, owner.toPath())
+
+        WorkspaceKubeconfig.fileForWrite(workspace).writeText("new")
+
+        assertThat(owner).hasContent("owner")
+        assertThat(Files.isSymbolicLink(link)).isFalse()
+        assertThat(link.toFile()).hasContent("new")
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -57,7 +58,28 @@ class LinkSafeDeleteTest {
     }
 
     @Test
+    fun `a cleanup delete that fails is attached to the failure that caused the cleanup`() {
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
+        val target = File(tempDir, "ws/scaffold").apply { mkdirs() }
+        val locked = File(target, "locked").apply { mkdirs() }
+        File(locked, "f").writeText("x")
+        assertThat(locked.setWritable(false)).isTrue()
+        val primary = IllegalStateException("render failed")
+        try {
+            target.deleteAfterFailure(primary)
+
+            assertThat(primary.suppressed.single())
+                .isInstanceOf(IOException::class.java)
+                .hasMessageContaining("Could not delete ${target.absolutePath}")
+        } finally {
+            locked.setWritable(true)
+        }
+    }
+
+    @Test
     fun `a file that cannot be deleted fails the delete and names the path`() {
+        // Root deletes a file in a read-only directory, so the delete would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
         val target = File(tempDir, "ws/target").apply { mkdirs() }
         val locked = File(target, "locked").apply { mkdirs() }
         File(locked, "f").writeText("x")

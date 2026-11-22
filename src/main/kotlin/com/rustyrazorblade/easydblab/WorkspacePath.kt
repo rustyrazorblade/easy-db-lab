@@ -57,18 +57,44 @@ fun resolveInWorkspaceForWrite(
 }
 
 /**
- * True when the directory holding [resolved], with every link in it followed, is inside the real
- * workspace. A parent that does not exist yet is checked through its nearest existing ancestor; a
- * link whose target is missing counts as outside.
+ * Resolves [name] like [resolveInWorkspace], for a directory the CLI writes files into (`logs`,
+ * `profiles`, the restored `k8s`, `bin`). The directory itself, with its links followed, must be
+ * inside the workspace: [resolveInWorkspace] leaves the last segment alone, so without this check a
+ * `logs` link to a directory outside would take every file written under it outside too.
+ *
+ * @throws IllegalArgumentException naming the workspace and [name] when the directory, or a link
+ *   at its name, leads outside the workspace
  */
+fun resolveDirInWorkspace(
+    workspace: File,
+    name: String,
+): File {
+    val dir = resolveInWorkspace(workspace, name)
+    require(staysInside(workspace.toPath().normalize(), dir.toPath())) {
+        "A workspace directory must be inside the workspace $workspace: '$name' leads outside it through a link"
+    }
+    return dir
+}
+
+/** True when the directory holding [resolved] stays inside the workspace, by [staysInside]. */
 private fun parentStaysInside(
     root: Path,
     resolved: Path,
+): Boolean = staysInside(root, resolved.parent)
+
+/**
+ * True when [path], with every link in it followed, is inside the real workspace [root]. A path
+ * that does not exist yet is checked through its nearest existing ancestor; a link whose target is
+ * missing counts as outside.
+ */
+private fun staysInside(
+    root: Path,
+    path: Path,
 ): Boolean {
     if (Files.notExists(root)) return true
     val realRoot = root.toRealPath()
     val nearestExisting =
-        generateSequence(resolved.parent) { it.parent }
+        generateSequence(path) { it.parent }
             .first { it == root || Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
     return runCatching { nearestExisting.toRealPath().startsWith(realRoot) }.getOrDefault(false)
 }

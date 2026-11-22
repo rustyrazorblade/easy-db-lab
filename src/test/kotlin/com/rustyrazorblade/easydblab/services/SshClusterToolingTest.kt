@@ -19,7 +19,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeast
-import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
@@ -30,8 +29,6 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * [SshClusterTooling] against a mocked [RemoteOperationsService], which CLAUDE.md allows for remote
@@ -41,9 +38,6 @@ import java.nio.file.Path
 internal class SshClusterToolingTest {
     @TempDir
     lateinit var stateDir: File
-
-    @TempDir
-    lateinit var tempDir: File
 
     private val remoteOps: RemoteOperationsService = mock()
     private lateinit var stateManager: ClusterStateManager
@@ -67,8 +61,9 @@ internal class SshClusterToolingTest {
     fun setup() {
         stateManager = ClusterStateManager(File(stateDir, "state.json"))
         saveState(controlHost)
-        tooling = SshClusterTooling(remoteOps, stateManager, tempDir.toPath())
+        tooling = SshClusterTooling(remoteOps, stateManager)
         whenever(remoteOps.executeRemotely(any(), any(), any(), any())).doReturn(Response("out"))
+        whenever(remoteOps.executeRemotelyWithInput(any(), any(), any(), any())).doReturn(Response("in-out"))
     }
 
     private fun remoteCommands(): List<String> {
@@ -77,15 +72,12 @@ internal class SshClusterToolingTest {
         return commands.allValues
     }
 
-    private fun uploadedPath(): String =
-        argumentCaptor<String>()
-            .also {
-                verify(remoteOps).upload(any(), any(), it.capture(), any())
-            }.firstValue
-
     private fun failToolWith(failure: RemoteCommandFailedException) {
         whenever(remoteOps.executeRemotely(any(), argThat { startsWith(kubeconfig) }, any(), any())).doThrow(failure)
+        whenever(remoteOps.executeRemotelyWithInput(any(), argThat { startsWith(kubeconfig) }, any(), any())).doThrow(failure)
     }
+
+    private val applyFromInput = ToolArg.values("apply", "-f") + ToolArg.Input
 
     @Test
     fun `a command runs on the control node with its kubeconfig, shows output only when asked, and returns stdout`() {
@@ -123,7 +115,7 @@ internal class SshClusterToolingTest {
         awkward.forEach { value ->
             val remote: RemoteOperationsService = mock()
             whenever(remote.executeRemotely(any(), any(), any(), any())).doReturn(Response(""))
-            SshClusterTooling(remote, stateManager, tempDir.toPath()).run(ClusterTool.HELM, listOf("x", value))
+            SshClusterTooling(remote, stateManager).run(ClusterTool.HELM, listOf("x", value))
             val command = argumentCaptor<String>().also { verify(remote).executeRemotely(any(), it.capture(), any(), any()) }.firstValue
             val quoted = command.removePrefix("$kubeconfig helm x ")
 
@@ -136,96 +128,57 @@ internal class SshClusterToolingTest {
     }
 
     @Test
-    fun `stdin is uploaded, the dash becomes the remote path, and the remote file is removed quietly afterwards`() {
-        val uploads = mutableListOf<Pair<Path, String>>()
-        doAnswer { uploads += it.getArgument<Path>(1).let { local -> local to Files.readString(local) } }
-            .whenever(remoteOps)
-            .upload(any(), any(), any(), any())
+    fun `input is sent as the command's stdin, the input argument is a dash, and nothing else runs`() {
+        val args = ToolArg.values("upgrade", "--install", "r", "chart", "--values") + ToolArg.Input + ToolArg.values("--set", "a=b")
 
-        tooling.run(ClusterTool.HELM, listOf("upgrade", "--install", "r", "chart", "--values", "-", "--set", "a=b"), stdin = "x: 1\n")
+        assertThat(tooling.runWithInput(ClusterTool.HELM, args, input = "x: 1\n", echo = false)).isEqualTo("in-out")
 
-        val path = uploadedPath()
-        assertThat(path).matches("/tmp/easydblab-input-[0-9a-f-]{36}\\.yaml")
-        assertThat(uploads.single().second).isEqualTo("x: 1\n")
-        assertThat(uploads.single().first.parent).isEqualTo(tempDir.toPath())
-        assertThat(remoteCommands()).containsExactly(
-            "$kubeconfig helm upgrade --install r chart --values $path --set a=b",
-            "rm -f $path",
+        verify(remoteOps).executeRemotelyWithInput(
+            controlHost.toHost(),
+            "$kubeconfig helm upgrade --install r chart --values - --set a=b",
+            "x: 1\n",
+            false,
         )
-        verify(remoteOps).executeRemotely(any(), eq("rm -f $path"), eq(false), any())
-        assertThat(tempDir.list()).isEmpty()
+        assertThat(remoteCommands()).isEmpty()
+        verify(remoteOps, never()).upload(any(), any(), any(), any())
     }
 
     @Test
-    fun `both files are removed when the command fails, and when the upload fails`() {
-        failToolWith(RemoteCommandFailedException("c", "", "boom", "summary", exitStatus = 1))
-        assertThatThrownBy { tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x: 1\n") }
-            .isInstanceOf(ClusterToolFailedException::class.java)
-        assertThat(remoteCommands().last()).isEqualTo("rm -f ${uploadedPath()}")
-        assertThat(tempDir.list()).isEmpty()
+    fun `a value that is a dash is passed as a value, not taken for the input`() {
+        tooling.run(ClusterTool.KUBECTL, listOf("logs", "-f", "-"))
+        tooling.runWithInput(ClusterTool.KUBECTL, ToolArg.values("apply", "-f") + ToolArg.Input + ToolArg.values("-l", "-"), input = "x")
 
-        val failedUpload: RemoteOperationsService = mock()
-        doThrow(IllegalStateException("scp down")).whenever(failedUpload).upload(any(), any(), any(), any())
-        assertThatThrownBy {
-            SshClusterTooling(
-                failedUpload,
-                stateManager,
-                tempDir.toPath(),
-            ).run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x")
-        }.hasMessage("scp down")
-        verify(failedUpload).executeRemotely(any(), argThat { startsWith("rm -f /tmp/easydblab-input-") }, eq(false), any())
-        assertThat(tempDir.list()).isEmpty()
+        assertThat(remoteCommands()).containsExactly("$kubeconfig kubectl logs -f -")
+        verify(remoteOps).executeRemotelyWithInput(any(), eq("$kubeconfig kubectl apply -f - -l -"), eq("x"), any())
     }
 
     @Test
-    fun `a failing cleanup never replaces the tool's own result`() {
-        whenever(remoteOps.executeRemotely(any(), argThat { startsWith("rm -f ") }, any(), any()))
-            .doThrow(IllegalStateException("connection lost"))
-
-        assertThat(tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x")).isEqualTo("out")
-
-        failToolWith(RemoteCommandFailedException("c", "", "the real error", "summary", exitStatus = 7))
-        val failure =
-            catchThrowableOfType(ClusterToolFailedException::class.java) {
-                tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x")
-            }
-        assertThat(failure.exitStatus).isEqualTo(7)
-        assertThat(failure.stderr).isEqualTo("the real error")
-    }
-
-    @Test
-    fun `an interrupt during cleanup is not swallowed`() {
-        // doAnswer, not doThrow: Mockito rejects a checked exception the Kotlin method does not declare.
-        doAnswer { throw InterruptedException("cancelled") }
-            .whenever(remoteOps)
-            .executeRemotely(any(), argThat { startsWith("rm -f ") }, any(), any())
-
-        try {
-            assertThat(tooling.run(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), stdin = "x")).isEqualTo("out")
-            assertThat(Thread.currentThread().isInterrupted).isTrue()
-        } finally {
-            Thread.interrupted() // clear the flag so it cannot leak into the next test on this thread
-        }
-    }
-
-    @Test
-    fun `stdin without exactly one dash fails before touching the cluster, with credentials redacted`() {
-        listOf(listOf("apply", "-f", "https://u:s3cret@example.com/m.yaml"), listOf("apply", "-f", "-", "-f", "-")).forEach { args ->
-            assertThatThrownBy { tooling.run(ClusterTool.KUBECTL, args, stdin = "x") }
+    fun `input without exactly one input argument fails before touching the cluster, with credentials redacted`() {
+        listOf(
+            ToolArg.values("apply", "-f", "https://u:s3cret@example.com/m.yaml"),
+            applyFromInput + ToolArg.values("-f") + ToolArg.Input,
+        ).forEach { args ->
+            assertThatThrownBy { tooling.runWithInput(ClusterTool.KUBECTL, args, input = "x") }
                 .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("exactly one input argument")
                 .hasMessageNotContaining("s3cret")
         }
 
         verifyNoInteractions(remoteOps)
-        assertThat(tempDir.list()).isEmpty()
     }
 
     @Test
-    fun `a dash argument without stdin is passed through untouched`() {
-        tooling.run(ClusterTool.KUBECTL, listOf("logs", "-f", "-"))
+    fun `a failing command with input becomes a cluster tool failure with its status and stderr`() {
+        failToolWith(RemoteCommandFailedException("c", "", "error: bad manifest", "summary", exitStatus = 1))
 
-        verify(remoteOps, never()).upload(any(), any(), any(), any())
-        assertThat(remoteCommands()).containsExactly("$kubeconfig kubectl logs -f -")
+        val failure =
+            catchThrowableOfType(ClusterToolFailedException::class.java) {
+                tooling.runWithInput(ClusterTool.KUBECTL, applyFromInput, input = "x")
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(1)
+        assertThat(failure.stderr).isEqualTo("error: bad manifest")
+        assertThat(failure).hasMessageContaining("kubectl apply -f - failed on control0 (54.1.2.3)")
     }
 
     @Test
@@ -257,7 +210,7 @@ internal class SshClusterToolingTest {
         val failure = catchThrowableOfType(ClusterToolFailedException::class.java) { tooling.run(ClusterTool.KUBECTL, listOf("get", "x")) }
 
         assertThat(failure.tool).isEqualTo(ClusterTool.KUBECTL)
-        assertThat(failure.args).containsExactly("get", "x")
+        assertThat(failure).hasMessageStartingWith("kubectl get x failed on control0 (54.1.2.3) with exit status 1")
         assertThat(failure.exitStatus).isEqualTo(1)
         assertThat(failure.stderr).isEqualTo("error: no such kind")
         assertThat(failure.stdout).isEqualTo("some stdout")

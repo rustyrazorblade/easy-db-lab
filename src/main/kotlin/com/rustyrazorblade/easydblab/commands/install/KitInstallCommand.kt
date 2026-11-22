@@ -100,9 +100,6 @@ class KitInstallCommand(
         )
 
         if (config.install.isNotEmpty()) {
-            val controlHost =
-                clusterState.getControlHost()
-                    ?: error("No control node found in cluster state")
             val kitDir = File(context.workingDirectory, instanceName)
             val variables =
                 TemplateVariables
@@ -119,7 +116,6 @@ class KitInstallCommand(
                     context =
                         StepExecutionContext(
                             kitName = instanceName,
-                            controlHost = controlHost,
                             clusterState = clusterState,
                             variables = variables,
                             kitDir = kitDir,

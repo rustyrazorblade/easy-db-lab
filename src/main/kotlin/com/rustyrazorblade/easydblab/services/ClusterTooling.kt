@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
 import com.rustyrazorblade.easydblab.redact
 
@@ -16,27 +17,73 @@ enum class ClusterTool(
 }
 
 /**
+ * One argument of a command run with input ([ClusterTooling.runWithInput]): a plain [Value], or
+ * [Input], the file argument that reads the input (`apply -f <Input>`, `--values <Input>`).
+ *
+ * The input's position is a type, not a magic string, so a value that happens to be `-` is never
+ * taken for it, and a command with input says where the input goes.
+ */
+sealed interface ToolArg {
+    /** An argument passed to the tool exactly as [text]. */
+    data class Value(
+        val text: String,
+    ) : ToolArg
+
+    /** The file argument that reads the command's input; both tools spell it `-`. */
+    data object Input : ToolArg
+
+    companion object {
+        /** [texts] as plain values. */
+        fun values(vararg texts: String): List<ToolArg> = texts.map(::Value)
+    }
+}
+
+/** The argument list a tool sees: each [ToolArg.Value] as its text and [ToolArg.Input] as `-`. */
+internal fun List<ToolArg>.toToolArguments(): List<String> =
+    map { arg ->
+        when (arg) {
+            is ToolArg.Value -> arg.text
+            ToolArg.Input -> Constants.ClusterTooling.STDIN_ARGUMENT
+        }
+    }
+
+/**
  * The one seam through which `KubectlService` and `HelmService` run helm and kubectl.
  *
  * A service builds an argument list and never says where the tool runs, so a cluster reached some
  * other way than SSH to the control node needs a new implementation, not new service code.
  * [SshClusterTooling] is the only implementation today; the local form comes with #1163.
+ *
+ * Every argument reaches the tool as exactly the value passed, so a caller passes raw values and
+ * never quotes one itself. [echo] shows stdout to the user; callers that parse stdout pass false.
+ *
+ * Both functions throw:
+ * - [ClusterToolFailedException] when the tool ran and exited non-zero;
+ * - [IllegalStateException] when there is no cluster to run it on (for SSH, no control node in
+ *   cluster state);
+ * - the transport's own exception when the cluster cannot be reached after the transport's
+ *   retries (for SSH, MINA's `SshException`, an `IOException`). It is not wrapped: the command
+ *   never ran, and the transport's message is what explains why.
  */
 interface ClusterTooling {
-    /**
-     * Runs [tool] with [args], feeding [stdin] when given, and returns its stdout.
-     *
-     * A file argument of `-` (`apply -f -`, `--values -`) reads [stdin]; when [stdin] is given,
-     * exactly one argument must be `-`. Every argument reaches the tool as exactly the value passed,
-     * so a caller passes raw values and never quotes one itself. [echo] shows stdout to the user;
-     * callers that parse stdout pass false.
-     *
-     * @throws ClusterToolFailedException when the tool exits non-zero
-     */
+    /** Runs [tool] with [args] and no input, and returns its stdout. */
     fun run(
         tool: ClusterTool,
         args: List<String>,
-        stdin: String? = null,
+        echo: Boolean = true,
+    ): String
+
+    /**
+     * Runs [tool] with [args], feeding it [input] at the one [ToolArg.Input] argument, and returns
+     * its stdout.
+     *
+     * @throws IllegalArgumentException when [args] does not hold exactly one [ToolArg.Input]; the
+     *   cluster is not touched
+     */
+    fun runWithInput(
+        tool: ClusterTool,
+        args: List<ToolArg>,
+        input: String,
         echo: Boolean = true,
     ): String
 }
@@ -46,14 +93,16 @@ interface ClusterTooling {
  *
  * It names the command, where it ran and its exit status, and carries the tool's stderr and stdout,
  * because stderr is what explains the failure. [stderr] and [stdout] arrive already tailed and
- * redacted by the transport; the command in the message is redacted here. [exitStatus] is null when
- * the transport reported none. [args] is kept exactly as the caller passed it, unredacted, for code
- * that inspects the failure, so never print it directly. Like `RemoteCommandFailedException` it
- * carries no cause, whose message would repeat the unredacted command.
+ * redacted by the transport, and the command in the message is redacted here; the raw arguments are
+ * not kept, because a kit variable interpolated into them can hold a credential. [exitStatus] is
+ * null when the transport reported none. Like `RemoteCommandFailedException` it carries no cause,
+ * whose message would repeat the unredacted command.
+ *
+ * @param args the arguments as the tool saw them, used only for the redacted message
  */
 class ClusterToolFailedException(
     val tool: ClusterTool,
-    val args: List<String>,
+    args: List<String>,
     val exitStatus: Int?,
     val location: String,
     val stderr: String,

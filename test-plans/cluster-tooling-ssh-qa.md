@@ -5,12 +5,13 @@
 Validate on a real 3-node cluster that every helm and kubectl call the CLI makes for kits goes
 through `SshClusterTooling` and works: the typed steps (helm-repo, helm with a values file and
 `--set`, namespace, manifest, manifest-url, kustomize, wait, delete by name and by a set-based
-selector, helm-uninstall), the `kit status` helm lookup, the postgres and memcached kits, a
-deliberate failure, and input-file cleanup on the control node.
+selector, helm-uninstall), the per-node steps (platform-pvs, label) on all 3 db nodes, the
+`kit status` helm lookup, the postgres and memcached kits, a deliberate failure, and that input
+(manifests, helm values) travels as stdin and leaves no file on the control node.
 
 Success: every step below passes, the deliberate failure prints `ClusterToolFailedException`'s
 message (the command, `failed on control0 (<ip>)`, the exit status, and stderr), no
-`/tmp/easydblab-input-*` file is left on the control node, Grafana answers, and `down` exits 0 and
+input file is left in the control node's `/tmp`, Grafana answers, and `down` exits 0 and
 leaves no AWS resources.
 
 ## Cluster Name
@@ -90,13 +91,17 @@ $EDB kit install tooling-qa
 $EDB tooling-qa start
 $EDB tooling-qa status
 "$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get hpa -n default podinfo -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm get values tooling-qa-podinfo -n tooling-qa'
+"$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get nodes -l easydblab/tooling-qa=labelled -o name'
+for n in db0 db1 db2; do "$(dirname "$EDB")/bin/ssh" "$n" 'test -d /mnt/db1/tooling-qa && echo "$(hostname) has the data dir"'; done
 ```
 
-Expect: install runs helm-repo, namespace (one `kubectl apply -f /tmp/easydblab-input-*.yaml`) and
-manifest-url (`hpa/podinfo`). `start` installs podinfo with the values file (replicaCount 2) and
+Expect: install runs helm-repo, namespace (one `kubectl apply -f -`, the manifest on stdin) and
+manifest-url (`hpa/podinfo`), then labels all three db nodes and creates `/mnt/db1/tooling-qa` on
+each (the per-node fan-out). `start` installs podinfo with the values file on stdin (`--values -`, replicaCount 2) and
 `ui.message=tooling qa`, applies the kustomization, applies the three ConfigMaps, and both waits
 pass. `status` (the kit status command: `helm status` of the runtime release, then its pods) reports
-`Running (2/2 pods ready)`.
+`Running (2/2 pods ready)`. The node query lists all three db nodes, and each db node has the data
+directory.
 
 ### 6. Deliberate kubectl failure
 
@@ -117,17 +122,21 @@ $EDB tooling-qa stop
 "$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get cm -n default -l tooling-qa -o name; KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm list -A'
 $EDB tooling-qa uninstall
 "$(dirname "$EDB")/bin/ssh" control0 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get ns tooling-qa'
+for n in db0 db1 db2; do "$(dirname "$EDB")/bin/ssh" "$n" 'test -e /mnt/db1/tooling-qa && echo "$(hostname) still has the data dir" || echo gone'; done
 $EDB kit source remove tooling-qa-plan
 ```
 
 Expect: after `stop`, only `configmap/tooling-qa-kept` remains: the set-based selector
 `tooling-qa in (selected, other)` reached kubectl as one argument. The `tooling-qa-podinfo`
-release is gone. `uninstall` deletes the namespace (`NotFound`, or `Terminating` for a short time).
+release is gone. `uninstall` removes `/mnt/db1/tooling-qa` from all three db nodes (three `gone` lines) and deletes
+the namespace (`NotFound`, or `Terminating` for a short time).
 
 ### 8. No input files left on the control node
 
+Input travels over the SSH channel as stdin, so nothing is staged in `/tmp`.
+
 ```bash
-"$(dirname "$EDB")/bin/ssh" control0 'ls /tmp/easydblab-input-* 2>/dev/null | wc -l'
+"$(dirname "$EDB")/bin/ssh" control0 'ls /tmp | grep -c -i -e easydblab -e \.yaml$'
 ```
 
 Expect: `0`.

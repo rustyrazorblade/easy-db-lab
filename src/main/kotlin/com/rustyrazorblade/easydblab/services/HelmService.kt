@@ -65,11 +65,18 @@ class DefaultHelmService(
                 addAll(listOf("--namespace", namespace))
                 if (createNamespace) add("--create-namespace")
                 version?.let { addAll(listOf("--version", it)) }
-                if (valuesFile != null) addAll(listOf("--values", Constants.ClusterTooling.STDIN_ARGUMENT))
+            }
+        val trailing =
+            buildList {
                 values.forEach { (k, v) -> addAll(listOf("--set", "$k=$v")) }
                 if (wait) addAll(listOf("--wait", "--timeout", timeout))
             }
-        tooling.run(ClusterTool.HELM, args, stdin = valuesFile?.readText())
+        if (valuesFile == null) {
+            tooling.run(ClusterTool.HELM, args + trailing)
+        } else {
+            val withValues = args.map(ToolArg::Value) + ToolArg.Value("--values") + ToolArg.Input + trailing.map(ToolArg::Value)
+            tooling.runWithInput(ClusterTool.HELM, withValues, input = valuesFile.readText())
+        }
     }
 
     override fun uninstall(
@@ -83,7 +90,18 @@ class DefaultHelmService(
         release: String,
         namespace: String,
     ): Boolean {
-        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", "^$release\$", "-q"), echo = false)
+        // `-f` is a regular expression; the name is matched literally and whole, so `my.app` does
+        // not match `myxapp` and `app` does not match `myapp`.
+        val filter = "^${quoteMeta(release)}\$"
+        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", filter, "-q"), echo = false)
         return output.trim().isNotEmpty()
+    }
+
+    private companion object {
+        /** [text] as a Go regular expression that matches exactly [text], escaped as Go's `regexp.QuoteMeta` does. */
+        fun quoteMeta(text: String): String =
+            buildString {
+                text.forEach { c -> if (c in Constants.ClusterTooling.HELM_REGEX_METACHARACTERS) append('\\').append(c) else append(c) }
+            }
     }
 }

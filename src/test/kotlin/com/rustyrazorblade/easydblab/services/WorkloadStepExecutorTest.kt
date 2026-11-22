@@ -12,39 +12,33 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.StepExecutionContext
+import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.util.Collections
 
 class WorkloadStepExecutorTest : BaseKoinTest() {
     private lateinit var k8sService: K8sService
     private lateinit var helmService: HelmService
     private lateinit var kubectlService: KubectlService
     private lateinit var executor: WorkloadStepExecutor
-
-    private val controlHost =
-        ClusterHost(
-            publicIp = "1.2.3.4",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-ctrl",
-        )
 
     private val dbHost =
         ClusterHost(
@@ -97,15 +91,16 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         variables: Map<String, String> = emptyMap(),
         kitDir: File = tempDir,
         phase: String = "start",
+        state: ClusterState = clusterState,
+        stepExecutor: WorkloadStepExecutor = executor,
     ): Result<Unit> =
-        executor.execute(
+        stepExecutor.execute(
             steps = steps,
             phase = phase,
             context =
                 StepExecutionContext(
                     kitName = "testdb",
-                    controlHost = controlHost,
-                    clusterState = clusterState,
+                    clusterState = state,
                     variables = variables,
                     kitDir = kitDir,
                     workspaceDir = workspace,
@@ -138,6 +133,93 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         verify(helmService).repoAdd("\${UNSET_NAME}", "https://example.com/\${UNSET_PATH}")
     }
 
+    /**
+     * A tool failure inside a step reaches [Event.Kit.StepFailed] with what explains it: the
+     * command, where it ran, the exit status and the tool's stderr.
+     */
+    @Test
+    fun `a failed helm or kubectl call is reported as a step failure carrying its exit status and stderr`() {
+        // doAnswer, not thenThrow: Mockito rejects a checked exception the Kotlin method does not declare.
+        doAnswer {
+            throw ClusterToolFailedException(ClusterTool.KUBECTL, listOf("apply", "-f", "-"), 1, "control0 (1.2.3.4)", "error: forbidden\n")
+        }.whenever(kubectlService).createNamespace(any())
+        val events = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val result = execute(listOf(InstallStep.Namespace(name = "cache")))
+
+        assertThat(result.exceptionOrNull()).isInstanceOf(ClusterToolFailedException::class.java)
+        val failed = events.filterIsInstance<Event.Kit.StepFailed>().single()
+        assertThat(failed.stepType).isEqualTo("Namespace")
+        assertThat(failed.error)
+            .contains("kubectl apply -f - failed on control0 (1.2.3.4) with exit status 1")
+            .contains("stderr:\nerror: forbidden")
+    }
+
+    /** A step over every node of a type, the node that fails it, and how to tell that node ran. */
+    class NodeStepCase(
+        val name: String,
+        val step: InstallStep,
+    ) {
+        override fun toString() = name
+    }
+
+    /**
+     * Each per-node step runs on every node at once, through the bounded fan-out, and a node that
+     * fails is named in the step's failure while the others still run. The control row, with no
+     * failing node, shows the same step succeeding on all three.
+     */
+    @ParameterizedTest
+    @MethodSource("nodeSteps")
+    fun `a per-node step runs on every node and names the node that failed`(case: NodeStepCase) {
+        val hosts = (0..2).map { dbHost.copy(alias = "db$it", privateIp = "10.0.0.${10 + it}") }
+        val state = clusterState.copy(hosts = mapOf(ServerType.Cassandra to hosts))
+        val touched = Collections.synchronizedList(mutableListOf<String>())
+        var failOn: String? = null
+        val remoteOps = mock<RemoteOperationsService>()
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
+            val alias = invocation.getArgument<Host>(0).alias
+            touched += alias
+            if (alias == failOn) error("disk is read-only") else Response("")
+        }
+        whenever(k8sService.labelNode(any(), any())).thenAnswer { invocation ->
+            val alias = invocation.getArgument<String>(0)
+            touched += alias
+            // Thrown, not a failed Result: a Mockito answer of Result.failure reads as success (an inline class).
+            if (alias == failOn) error("disk is read-only") else Result.success(Unit)
+        }
+        whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+        val fanOutExecutor =
+            WorkloadStepExecutor(
+                k8sService = k8sService,
+                helmService = helmService,
+                kubectlService = kubectlService,
+                remoteOps = remoteOps,
+                eventBus = get<EventBus>(),
+            )
+        val run = { execute(listOf(case.step), mapOf("STORAGE_SIZE" to "1Gi"), state = state, stepExecutor = fanOutExecutor) }
+
+        assertThat(run().isSuccess).describedAs("control: no node fails").isTrue()
+        assertThat(touched).containsExactlyInAnyOrder("db0", "db1", "db2")
+
+        touched.clear()
+        failOn = "db1"
+        val failure = run().exceptionOrNull()
+
+        assertThat(touched).containsExactlyInAnyOrder("db0", "db1", "db2")
+        assertThat(failure).isInstanceOf(NodeStepFailedException::class.java).hasMessageContaining("1 node(s): db1: disk is read-only")
+        assertThat((failure as NodeStepFailedException).failures.map { it.first }).containsExactly("db1")
+    }
+
     @Test
     fun `a platform-pvs-delete step interpolates its node-type`() {
         val remoteOps = mock<RemoteOperationsService>()
@@ -158,7 +240,6 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 context =
                     StepExecutionContext(
                         kitName = "testdb",
-                        controlHost = controlHost,
                         clusterState = clusterState,
                         variables = mapOf("POOL" to "app"),
                         kitDir = tempDir,
@@ -603,5 +684,15 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(capturedContent).isEqualTo("imageName: \${IMAGE}")
         }
+    }
+
+    companion object {
+        @JvmStatic
+        fun nodeSteps() =
+            listOf(
+                NodeStepCase("platform-pvs-delete rm -rf", InstallStep.PlatformPvsDelete(nodeType = "db")),
+                NodeStepCase("platform-pvs mkdir -p", InstallStep.PlatformPvs(nodeType = "db")),
+                NodeStepCase("label", InstallStep.Label(labels = mapOf("kit" to "x"), nodeType = "db")),
+            )
     }
 }

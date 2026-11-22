@@ -24,7 +24,7 @@ internal class HelmServiceTest {
         ).upgradeInstall(release = "myapp", chart = "myrepo/myapp", namespace = "default", valuesFile = valuesFile)
 
         val call = tooling.calls.single()
-        assertThat(call.stdin).isEqualTo("key: value\n")
+        assertThat(call.input).isEqualTo("key: value\n")
         assertThat(call.args).containsSequence("--values", "-")
     }
 
@@ -34,7 +34,7 @@ internal class HelmServiceTest {
 
         DefaultHelmService(tooling).upgradeInstall(release = "r", chart = "c", namespace = "n")
 
-        assertThat(tooling.calls.single().stdin).isNull()
+        assertThat(tooling.calls.single().input).isNull()
         assertThat(tooling.calls.single().args).doesNotContain("--values")
     }
 
@@ -46,5 +46,35 @@ internal class HelmServiceTest {
         assertThat(DefaultHelmService(listed).releaseExists("myapp", "default")).isTrue()
         assertThat(DefaultHelmService(blank).releaseExists("noapp", "default")).isFalse()
         assertThat(listed.calls.single().echo).isFalse()
+    }
+
+    /**
+     * Property over names holding every regex metacharacter helm's Go `regexp` knows: the `-f`
+     * filter matches the name itself and nothing that differs from it only where a metacharacter
+     * would have matched something else. Java's regex reads these escapes as Go's does.
+     */
+    @Test
+    fun `releaseExists filters on the release name matched literally and whole`() {
+        val cases =
+            listOf(
+                "my.app" to listOf("myxapp", "my.app2", "amy.app"),
+                "a+b" to listOf("aab", "aaab"),
+                "x*" to listOf("xxx", ""),
+                "v1?" to listOf("v"),
+                "(a|b)" to listOf("a", "b"),
+                "[ab]" to listOf("a"),
+                "c{2}" to listOf("cc"),
+                "^\\$" to listOf(""),
+            )
+
+        cases.forEach { (release, others) ->
+            val tooling = RecordingClusterTooling()
+            DefaultHelmService(tooling).releaseExists(release, "default")
+            val args = tooling.calls.single().args
+            val filter = Regex(args[args.indexOf("-f") + 1])
+
+            assertThat(filter.matches(release)).describedAs("%s matches itself", filter).isTrue()
+            assertThat(others).describedAs("%s matches only %s", filter, release).noneMatch { filter.matches(it) }
+        }
     }
 }

@@ -38,15 +38,28 @@ class ShellStepFailedException(
 ) : RuntimeException("shell step exited with code $exitCode")
 
 /**
- * Bundles the per-execution context that every step needs, eliminating the
- * 7-parameter signatures on [WorkloadStepExecutor.execute] and [executeStep].
+ * A step that acts on every node of a type failed on some of them. Every node ran; [failures] maps
+ * each failed node's alias to its error, in host order, and the message names them all, so one run
+ * shows the whole problem.
+ */
+class NodeStepFailedException(
+    val action: String,
+    val failures: List<Pair<String, Throwable>>,
+) : RuntimeException(
+        "$action failed on ${failures.size} node(s): " +
+            failures.joinToString("; ") { (alias, error) -> "$alias: ${error.messageOrString()}" },
+    )
+
+/**
+ * The per-run context every step needs: the kit, the cluster state its node-targeting steps read,
+ * the step variables and the two directories. Where helm and kubectl run is [ClusterTooling]'s
+ * concern, so no host is carried here.
  *
  * @property kitDir the kit instance's directory, where shell steps run and relative files resolve
  * @property workspaceDir the cluster workspace, whose `bin/` wrappers and kubeconfig shell steps get
  */
 data class StepExecutionContext(
     val kitName: String,
-    val controlHost: ClusterHost,
     val clusterState: ClusterState,
     val variables: Map<String, String>,
     val kitDir: File,
@@ -67,6 +80,7 @@ class WorkloadStepExecutor(
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
     private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+    private val fanOut: BoundedParallel = BoundedParallel(),
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -225,7 +239,7 @@ class WorkloadStepExecutor(
                         ).getOrThrow()
                     val dbHosts = ctx.clusterState.hosts[ServerType.from(interp(step.nodeType))] ?: emptyList()
                     val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
-                    for (clusterHost in dbHosts) {
+                    onEachHost(dbHosts, "Deleting $dataPath") { clusterHost ->
                         remoteOps.executeRemotely(host = clusterHost.toHost(), command = "sudo rm -rf $dataPath")
                         log.info { "Deleted data directory $dataPath on ${clusterHost.alias}" }
                     }
@@ -245,12 +259,9 @@ class WorkloadStepExecutor(
                     val targetHosts =
                         ctx.clusterState.hosts[ServerType.from(nodeType)]
                             ?: error("No $nodeType nodes found for label step")
-                    for (host in targetHosts) {
-                        k8sService
-                            .labelNode(
-                                nodeName = host.alias,
-                                labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) },
-                            ).getOrThrow()
+                    val labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) }
+                    onEachHost(targetHosts, "Labelling the node") { host ->
+                        k8sService.labelNode(nodeName = host.alias, labels = labels).getOrThrow()
                     }
                 }
 
@@ -330,7 +341,7 @@ class WorkloadStepExecutor(
         // the PV objects. platform-pvs-delete removes the directory on uninstall;
         // without this mkdir, a start after uninstall fails with "path does not exist"
         // when the pod tries to mount the local PV.
-        for (targetHost in targetHosts) {
+        onEachHost(targetHosts, "Creating $dataPath") { targetHost ->
             remoteOps.executeRemotely(host = targetHost.toHost(), command = "sudo mkdir -p $dataPath")
             log.debug { "Ensured data directory $dataPath exists on ${targetHost.alias}" }
         }
@@ -348,5 +359,25 @@ class WorkloadStepExecutor(
                         nodeType = step.nodeType,
                     ),
             ).getOrThrow()
+    }
+
+    /**
+     * Runs [action] on every host in [hosts], at most [BoundedParallel]'s limit at once, so a step
+     * over 100 nodes does not take 100 sequential SSH round trips. Every host runs whatever
+     * happens on the others.
+     *
+     * @throws NodeStepFailedException naming every host whose action failed
+     */
+    private fun onEachHost(
+        hosts: List<ClusterHost>,
+        action: String,
+        perHost: (ClusterHost) -> Unit,
+    ) {
+        val failures =
+            fanOut
+                .map(hosts, perHost)
+                .zip(hosts)
+                .mapNotNull { (result, host) -> result.exceptionOrNull()?.let { host.alias to it } }
+        if (failures.isNotEmpty()) throw NodeStepFailedException(action, failures)
     }
 }

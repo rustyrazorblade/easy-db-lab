@@ -1,77 +1,41 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.doThrow
-import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.times
-import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 
 /**
- * Tests [DefaultCiliumInspectionService]: the kubectl commands it runs on the control node, and
+ * Tests [DefaultCiliumInspectionService]: the kubectl reads it runs through [ClusterTooling], and
  * the parse of real-shaped `cilium-config` and `CiliumNode` JSON into the report model.
  */
-class CiliumInspectionServiceTest : BaseKoinTest() {
-    private lateinit var mockRemoteOps: RemoteOperationsService
-
-    private val controlHost =
-        Host(
-            public = "54.1.2.3",
-            private = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-        )
-
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
-            },
-        )
-
-    @BeforeEach
-    fun setup() {
-        mockRemoteOps = getKoin().get()
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
-            val command = invocation.getArgument<String>(1)
-            when {
-                command.contains("get cm cilium-config") -> Response(CONFIG_JSON)
-                command.contains("get ciliumnode") -> Response(NODES_JSON)
-                else -> error("unexpected command: $command")
+class CiliumInspectionServiceTest {
+    private val tooling =
+        RecordingClusterTooling { call ->
+            when (call.args) {
+                DefaultCiliumInspectionService.CONFIG_ARGS -> CONFIG_JSON
+                DefaultCiliumInspectionService.NODES_ARGS -> NODES_JSON
+                else -> error("unexpected call: $call")
             }
         }
-    }
 
-    private fun makeService() = DefaultCiliumInspectionService(remoteOps = getKoin().get())
+    private fun makeService() = DefaultCiliumInspectionService(tooling)
 
     @Test
-    fun `inspect reads the cilium-config ConfigMap and the CiliumNode list with the remote kubeconfig`() {
-        makeService().inspect(controlHost).getOrThrow()
+    fun `inspect reads the cilium-config ConfigMap and the CiliumNode list without echoing them`() {
+        makeService().inspect().getOrThrow()
 
-        val commandCaptor = argumentCaptor<String>()
-        verify(mockRemoteOps, times(2)).executeRemotely(eq(controlHost), commandCaptor.capture(), any(), any())
-
-        val commands = commandCaptor.allValues
-        assertThat(commands).allSatisfy { assertThat(it).startsWith("KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} kubectl") }
-        assertThat(commands[0]).contains("-n kube-system get cm cilium-config -o json")
-        assertThat(commands[1]).contains("get ciliumnode -o json")
+        assertThat(tooling.calls).containsExactly(
+            RecordingClusterTooling.Call(
+                ClusterTool.KUBECTL,
+                listOf("-n", "kube-system", "get", "cm", "cilium-config", "-o", "json"),
+                echo = false,
+            ),
+            RecordingClusterTooling.Call(ClusterTool.KUBECTL, listOf("get", "ciliumnode", "-o", "json"), echo = false),
+        )
     }
 
     @Test
     fun `inspect parses the effective agent configuration from the ConfigMap data`() {
-        val config = makeService().inspect(controlHost).getOrThrow().config
+        val config = makeService().inspect().getOrThrow().config
 
         assertThat(config.routingMode).isEqualTo("native")
         assertThat(config.ipamMode).isEqualTo("eni")
@@ -83,7 +47,7 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
 
     @Test
     fun `inspect summarises each node's ENIs, subnets, and IP pool from its CiliumNode`() {
-        val nodes = makeService().inspect(controlHost).getOrThrow().nodes
+        val nodes = makeService().inspect().getOrThrow().nodes
 
         assertThat(nodes.map { it.name }).containsExactly("ip-10-0-1-10", "ip-10-0-2-20")
 
@@ -117,14 +81,13 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `inspect returns failure when kubectl cannot be run`() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
-            .doThrow(RuntimeException("ssh: connect to host 10.0.0.1 port 22: Connection refused"))
+    fun `inspect returns failure when kubectl fails`() {
+        val failing =
+            RecordingClusterTooling { throw ClusterToolFailedException(ClusterTool.KUBECTL, it.args, 1, "control0", "forbidden") }
 
-        val result = makeService().inspect(controlHost)
+        val result = DefaultCiliumInspectionService(failing).inspect()
 
-        assertThat(result.isFailure).isTrue()
-        assertThat(result.exceptionOrNull()).hasMessageContaining("Connection refused")
+        assertThat(result.exceptionOrNull()).isInstanceOf(ClusterToolFailedException::class.java).hasMessageContaining("forbidden")
     }
 
     companion object {

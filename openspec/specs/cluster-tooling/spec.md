@@ -4,15 +4,11 @@
 How the CLI runs helm and kubectl for kits and services: one `ClusterTooling` seam, today run on the control node over SSH, with failures that name the command, the node, the exit status and the tool's output.
 ## Requirements
 ### Requirement: helm and kubectl run through one cluster tooling seam
-The CLI SHALL run every helm and kubectl command that `KubectlService` and `HelmService` issue through a single `ClusterTooling` seam.  Its one form today, `SshClusterTooling`, runs the tool on the control node over SSH with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.  The services SHALL NOT take a target host; the SSH form SHALL resolve the control host from cluster state on every call.  A form that runs the tools on the developer's machine is deferred to #1163.
+The CLI SHALL run every helm and kubectl command that `KubectlService`, `HelmService` and `CiliumInspectionService` issue, and the Cilium release probe, through a single `ClusterTooling` seam.  Only the `cilium` CLI (`cilium install` / `cilium upgrade`) runs directly on the control node.  Its one form today, `SshClusterTooling`, runs the tool on the control node over SSH with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.  The services SHALL NOT take a target host; the SSH form SHALL resolve the control host from cluster state on every call.  A form that runs the tools on the developer's machine is deferred to #1163.
 
 #### Scenario: The tools run on the control node
 - **WHEN** a typed kit step that runs helm or kubectl runs
 - **THEN** the command runs on the control node over SSH prefixed with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`
-
-#### Scenario: The SSH form is the default binding
-- **WHEN** the CLI starts
-- **THEN** `ClusterTooling` resolves to `SshClusterTooling`
 
 ### Requirement: Every argument reaches the remote tool as one argument
 The SSH form SHALL join an argument made only of shell-safe characters as it is and single-quote any other argument, so a value holding a space, `;`, `$` or `^` (an interpolated kit variable, a helm filter) reaches the tool as exactly that one argument and runs nothing else.
@@ -29,11 +25,23 @@ A helm or kubectl command that exits non-zero SHALL raise a `ClusterToolFailedEx
 - **WHEN** a command run by the SSH form exits with status 1
 - **THEN** a `ClusterToolFailedException` is raised with exit status 1, the remote stderr, and the control node's alias and address
 
-### Requirement: Cluster tool input leaves no temporary files behind
-A command with input (a manifest or helm values) SHALL take it on stdin through exactly one `-` argument.  The SSH form SHALL upload it to a temporary file on the control node, run the command against that path, and remove both the remote file and its local staging copy whether the command succeeds or fails.  A failed cleanup SHALL NOT replace the command's own result.
+### Requirement: Cluster tool input travels as the command's stdin
+A command with input (a manifest or helm values) SHALL mark the position of that input with exactly one input argument, which reaches the tool as `-`.  The SSH form SHALL stream the input over the same exec channel as the command's stdin, in one round trip, and SHALL write no file for it on either machine.
 
-#### Scenario: SSH input file removed after a failure
-- **WHEN** the SSH form runs a command with input and the command fails
-- **THEN** the uploaded input file is removed from the control node
-- **AND** the local staging copy is removed
+#### Scenario: A namespace is created in one round trip
+- **WHEN** a kit's namespace step runs
+- **THEN** one `kubectl apply -f -` command runs on the control node with the namespace manifest as its stdin
+- **AND** no input file is left on the control node or the developer's machine
+
+#### Scenario: A failed command with input keeps its status
+- **WHEN** the SSH form runs a command with input and the command exits with status 4
+- **THEN** the failure carries exit status 4 and the command's stderr
+
+### Requirement: A per-node kit step runs on every node and names each failure
+A kit step that acts on every node of a type (deleting or creating the kit's data directory, labelling the nodes) SHALL run on those nodes concurrently, with a bounded number at once, and SHALL run on every node even when some fail.  When any node fails, the step SHALL fail with one error that names each failed node and its error.
+
+#### Scenario: One node of three fails
+- **WHEN** a per-node step runs on three nodes and the second fails
+- **THEN** the step ran on all three
+- **AND** the step fails naming the second node and its error
 

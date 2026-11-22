@@ -12,18 +12,16 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
 /**
  * Each [KubectlService] and [HelmService] method run through the real [SshClusterTooling] against a
- * mocked [RemoteOperationsService], asserting the exact remote commands, in order, and whether each
- * one's output is shown. These are what a kit step runs on the control node.
+ * mocked [RemoteOperationsService], asserting the exact remote commands, in order, whether each
+ * one's output is shown, and the input sent as stdin. These are what a kit step runs on the control
+ * node.
  */
 internal class ClusterToolingSshCommandsTest {
     @TempDir
@@ -43,6 +41,9 @@ internal class ClusterToolingSshCommandsTest {
     /** Every remote command run, in order, with whether its output was shown. */
     private val commands = mutableListOf<Pair<String, Boolean>>()
 
+    /** The stdin of each command run with input, in order. */
+    private val inputs = mutableListOf<String>()
+
     @BeforeEach
     fun setup() {
         val stateManager = ClusterStateManager(File(stateDir, "state.json"))
@@ -57,20 +58,22 @@ internal class ClusterToolingSshCommandsTest {
             commands += command to it.getArgument<Boolean>(2)
             Response(answers[command].orEmpty())
         }
-        val tooling = SshClusterTooling(remoteOps, stateManager, tempDir.toPath())
+        whenever(remoteOps.executeRemotelyWithInput(any(), any(), any(), any())).doAnswer {
+            commands += it.getArgument<String>(1) to it.getArgument<Boolean>(3)
+            inputs += it.getArgument<String>(2)
+            Response("")
+        }
+        val tooling = SshClusterTooling(remoteOps, stateManager)
         kubectl = DefaultKubectlService(tooling)
         helm = DefaultHelmService(tooling)
     }
 
-    /** The remote path of the one upload, which stands for `-` in the command. */
-    private fun uploadedPath(): String =
-        argumentCaptor<String>().also { verify(remoteOps, atLeast(0)).upload(any(), any(), it.capture(), any()) }.allValues.single()
-
-    /** One service call and the remote commands it must run; `$IN` stands for the uploaded input file. */
+    /** One service call, the remote commands it must run, and the stdin of those run with input. */
     private data class Case(
         val name: String,
         val call: (KubectlService, HelmService) -> Unit,
         val expected: List<Pair<String, Boolean>>,
+        val expectedInputs: List<String> = emptyList(),
     )
 
     @Test
@@ -98,18 +101,15 @@ internal class ClusterToolingSshCommandsTest {
                 Case(
                     "applyContent",
                     { kc, _ -> kc.applyContent("kind: ConfigMap") },
-                    listOf(
-                        "$k kubectl apply -f \$IN" to true,
-                        "rm -f \$IN" to false,
-                    ),
+                    listOf("$k kubectl apply -f -" to true),
+                    listOf("kind: ConfigMap"),
                 ),
                 Case(
                     "createNamespace",
                     { kc, _ -> kc.createNamespace("cache") },
-                    listOf(
-                        "$k kubectl apply -f \$IN" to true,
-                        "rm -f \$IN" to false,
-                    ),
+                    // One round trip: the manifest is the command's stdin, with no upload and no cleanup.
+                    listOf("$k kubectl apply -f -" to true),
+                    listOf("---\napiVersion: \"v1\"\nkind: \"Namespace\"\nmetadata:\n  name: \"cache\"\n"),
                 ),
                 Case(
                     "wait",
@@ -178,7 +178,8 @@ internal class ClusterToolingSshCommandsTest {
                 Case(
                     "upgradeInstall, values file",
                     { _, h -> h.upgradeInstall(release = "myapp", chart = "myrepo/myapp", namespace = "default", valuesFile = valuesFile) },
-                    listOf("$k helm upgrade --install myapp myrepo/myapp --namespace default --values \$IN" to true, "rm -f \$IN" to false),
+                    listOf("$k helm upgrade --install myapp myrepo/myapp --namespace default --values -" to true),
+                    listOf("key: value"),
                 ),
                 Case(
                     "uninstall",
@@ -198,13 +199,12 @@ internal class ClusterToolingSshCommandsTest {
 
         cases.forEach { case ->
             commands.clear()
-            org.mockito.Mockito.clearInvocations(remoteOps)
+            inputs.clear()
 
             case.call(kubectl, helm)
 
-            val input = if (case.expected.any { "\$IN" in it.first }) uploadedPath() else null
-            val expected = case.expected.map { (command, shown) -> (input?.let { command.replace("\$IN", it) } ?: command) to shown }
-            assertThat(commands).describedAs(case.name).containsExactlyElementsOf(expected)
+            assertThat(commands).describedAs(case.name).containsExactlyElementsOf(case.expected)
+            assertThat(inputs).describedAs("${case.name} input").containsExactlyElementsOf(case.expectedInputs)
         }
     }
 
@@ -232,6 +232,7 @@ internal class ClusterToolingSshCommandsTest {
                 { k, _ -> k.wait(value, value, value, value, value) },
                 { k, _ -> k.delete(value, value, value, ignoreNotFound = true) },
                 { k, _ -> k.listInAllNamespaces(value) },
+                { k, _ -> k.deleteBySelector(listOf(value), value, value) },
             )
 
         calls.forEach { call ->

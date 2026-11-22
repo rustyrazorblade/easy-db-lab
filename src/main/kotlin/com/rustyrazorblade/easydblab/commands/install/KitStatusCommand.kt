@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -39,11 +40,6 @@ class KitStatusCommand(
     private val endpointHost: KitEndpointHost by inject()
 
     override fun execute() {
-        if (clusterState.getControlHost() == null) {
-            println("Status:    Unknown (no control node in cluster state)")
-            return
-        }
-
         val state =
             if (installConfig.runtime != null) {
                 checkRuntimeState(installConfig.runtime, kubeService)
@@ -73,9 +69,13 @@ class KitStatusCommand(
         return when (runtime.type) {
             KitRuntime.RuntimeType.HELM -> {
                 val release = runtime.release.ifBlank { kitName }
-                if (!helmService.releaseExists(release = release, namespace = namespace)) {
-                    return KitRunningState.Stopped
-                }
+                // A failed lookup (no control node, helm failing) is Unknown with its cause, never Stopped.
+                val exists =
+                    runCatchingException { helmService.releaseExists(release = release, namespace = namespace) }.getOrElse { e ->
+                        log.warn(e) { "Failed to look up helm release $release for kit $kitName" }
+                        return KitRunningState.Unknown("helm query failed: ${e.message}")
+                    }
+                if (!exists) return KitRunningState.Stopped
                 val podSelector = withKitName(runtime.selector, kitName).ifBlank { "app.kubernetes.io/instance=$release" }
                 stateOfPods(kubeService, podSelector, namespace) { pods ->
                     KitRunningState.Running(readyPods = countReadyPods(pods), totalPods = pods.size)

@@ -20,7 +20,7 @@ internal class KubectlServiceTest {
 
         val call = tooling.calls.single()
         assertThat(call.args).containsExactly("apply", "-f", "-")
-        assertThat(Serialization.unmarshal(call.stdin, Namespace::class.java).metadata.name).isEqualTo("cache")
+        assertThat(Serialization.unmarshal(call.input, Namespace::class.java).metadata.name).isEqualTo("cache")
     }
 
     @Test

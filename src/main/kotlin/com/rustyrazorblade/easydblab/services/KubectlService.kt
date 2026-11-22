@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.client.utils.Serialization
 
@@ -61,7 +60,7 @@ class DefaultKubectlService(
     private val tooling: ClusterTooling,
 ) : KubectlService {
     override fun applyContent(yamlContent: String) {
-        tooling.run(ClusterTool.KUBECTL, APPLY_FROM_INPUT, stdin = yamlContent)
+        tooling.runWithInput(ClusterTool.KUBECTL, APPLY_FROM_INPUT, input = yamlContent)
     }
 
     override fun createNamespace(name: String) {
@@ -138,6 +137,6 @@ class DefaultKubectlService(
 
     private companion object {
         /** `apply -f -`: the manifest comes in as input to the tool. */
-        val APPLY_FROM_INPUT = listOf("apply", "-f", Constants.ClusterTooling.STDIN_ARGUMENT)
+        val APPLY_FROM_INPUT = ToolArg.values("apply", "-f") + ToolArg.Input
     }
 }

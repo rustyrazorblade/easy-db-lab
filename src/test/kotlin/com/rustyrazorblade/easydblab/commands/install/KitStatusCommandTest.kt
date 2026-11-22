@@ -150,22 +150,21 @@ class KitStatusCommandTest : BaseKoinTest() {
             .contains("not served", "no running, ready pod matches app=mydb in namespace default")
     }
 
+    /**
+     * The helm lookup is how status learns there is nowhere to run helm (no control node) or that
+     * helm failed: either is Unknown with the cause, never Stopped, and no pod is looked up.
+     */
     @Test
-    fun `a cluster with no control node is Unknown, and the kit is not looked up`() {
-        whenever(mockClusterStateManager.load()).thenReturn(
-            ClusterState(
-                name = "test-cluster",
-                hosts =
-                    mapOf(
-                        ServerType.Cassandra to listOf(host("db0", "10.0.2.1")),
-                    ),
-            ),
+    fun `a failed helm release lookup is Unknown with the cause, not Stopped`() {
+        whenever(mockHelmService.releaseExists(any(), any()))
+            .thenThrow(IllegalStateException("No control node found. Please ensure the environment is running."))
+
+        val output = runStatus(listOf(runningPod), KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"))
+
+        assertThat(output.trim()).isEqualTo(
+            "Status:    Unknown (helm query failed: No control node found. Please ensure the environment is running.)",
         )
-
-        val output = runStatus(listOf(runningPod))
-
-        assertThat(output.trim()).isEqualTo("Status:    Unknown (no control node in cluster state)")
-        verifyNoInteractions(mockKubeService, mockHelmService)
+        verifyNoInteractions(mockKubeService)
     }
 
     @Test

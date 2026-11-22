@@ -63,7 +63,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
-import java.nio.file.Path
 
 /**
  * Koin module for registering business services.
@@ -86,12 +85,11 @@ val servicesModule =
         single { CiliumInstallAnnotator(get(), get()) }
         single { LokiPushClient(get()) }
         single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaClient>(), get(), get()) }
-        factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
+        factory<CiliumService> { DefaultCiliumService(get(), get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
-        // helm and kubectl run on the control node over SSH. The directory holds the local staging
-        // copy of stdin; it is injected because the JVM caches java.io.tmpdir at startup.
-        single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }
+        // helm and kubectl run on the control node over SSH.
+        single<ClusterTooling> { SshClusterTooling(get(), get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -163,7 +161,8 @@ val servicesModule =
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
-        factoryOf(::WorkloadStepExecutor)
+        // Built by hand, not factoryOf: the fan-out is not a Koin definition and keeps its default.
+        factory { WorkloadStepExecutor(get(), get(), get(), get(), get(), get()) }
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
         single { KitEndpointHost.of { get<K8sReadOperations>() } }

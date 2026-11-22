@@ -15,7 +15,9 @@ import com.rustyrazorblade.easydblab.services.CiliumInspection
 import com.rustyrazorblade.easydblab.services.CiliumInspectionService
 import com.rustyrazorblade.easydblab.services.CiliumInspectionServiceTest
 import com.rustyrazorblade.easydblab.services.CiliumNodeSummary
+import com.rustyrazorblade.easydblab.services.ClusterTooling
 import com.rustyrazorblade.easydblab.services.DefaultCiliumInspectionService
+import com.rustyrazorblade.easydblab.services.SshClusterTooling
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -52,6 +54,7 @@ class PlatformCniTest : BaseKoinTest() {
             module {
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
                 single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
+                single<ClusterTooling> { SshClusterTooling(get(), get()) }
                 single<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
             },
         )
@@ -182,7 +185,7 @@ class PlatformCniTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(state(CniMode.Cilium))
         val service: CiliumInspectionService = getKoin().get()
 
-        val report = PlatformCni.buildReport(service.inspect(controlHost.toHost()).getOrThrow(), controlHost.privateIp)
+        val report = PlatformCni.buildReport(service.inspect().getOrThrow(), controlHost.privateIp)
 
         assertThat(report).contains("Routing mode:            native")
         assertThat(report).contains("ip-10-0-1-10").contains("ip-10-0-2-20")

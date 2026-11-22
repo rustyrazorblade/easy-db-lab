@@ -24,6 +24,16 @@ install:
   # manifest-url: kubectl apply --server-side -f <url>.
   - type: manifest-url
     url: https://raw.githubusercontent.com/stefanprodan/podinfo/6.7.1/kustomize/hpa.yaml
+  # Per-node steps: each runs on all three db nodes at once, through the bounded fan-out.
+  - type: label
+    node-type: db
+    labels:
+      easydblab/tooling-qa: labelled
+  - type: platform-pvs
+    node-type: db
+    count: 1
+    volume-claim-template-name: data
+    storage-size: 1Gi
 
 start:
   # helm with a values file (stdin, --values -) and --set values.
@@ -87,6 +97,8 @@ backup:
     ignore-not-found: false
 
 uninstall:
+  - type: platform-pvs-delete
+    node-type: db
   - type: delete
     kind: namespace
     name: tooling-qa

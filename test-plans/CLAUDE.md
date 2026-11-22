@@ -40,3 +40,13 @@ Every plan must:
 2. Use `$EDB` (or `$EDB_DC1`/`$EDB_DC2`) for every `easy-db-lab` command — never `bin/easy-db-lab` directly, and never prefix with `cd`
 3. Derive any workspace path it needs from the wrapper rather than hardcoding one, e.g. `CLUSTER_DIR=$(dirname "$EDB")`
 4. End with `$EDB down --auto-approve`
+
+## Kit fixtures for a plan
+
+A plan that needs a kit of its own (a QA kit that exercises steps no shipped kit uses) keeps it in a
+directory named after the plan: `test-plans/<plan-name>/<kit-name>/kit.yaml`, next to
+`test-plans/<plan-name>.md`. The plan registers `test-plans/<plan-name>` as a kit source by absolute
+path (`$EDB kit source add <name> "$REPO/test-plans/<plan-name>"`), deriving `REPO` from the binary
+the `$EDB` wrapper runs, and removes the source again before `down`. See
+`cluster-tooling-ssh-qa.md` and `cluster-tooling-ssh-qa/tooling-qa/`. These fixtures are for
+running a plan from a checkout; they are not packaged and no feature reads them.

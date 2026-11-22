@@ -28,6 +28,20 @@ interface RemoteOperationsService {
     ): Response
 
     /**
+     * Execute a command on a remote host with [input] as its stdin, sent over the SSH channel and
+     * ended with EOF, so nothing is staged on either side. Retried as [executeRemotely] is.
+     *
+     * @param output Whether to show the command's output under the node
+     * @throws com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException when the command exits non-zero
+     */
+    fun executeRemotelyWithInput(
+        host: Host,
+        command: String,
+        input: String,
+        output: Boolean = true,
+    ): Response
+
+    /**
      * Upload a file to a remote host.
      *
      * @param host The target host

@@ -932,17 +932,11 @@ object Constants {
 
     // The helm and kubectl seam (services/ClusterTooling.kt)
     object ClusterTooling {
-        /** The file argument that means "read stdin" (`apply -f -`, `--values -`). */
+        /** How helm and kubectl spell the file argument that reads stdin (`apply -f -`, `--values -`). */
         const val STDIN_ARGUMENT = "-"
 
-        /** Directory on the control node that holds an uploaded stdin copy until the command ends. */
-        const val REMOTE_INPUT_DIRECTORY = "/tmp"
-
-        /** Name prefix of the temporary file that holds stdin, locally before upload and on the control node. */
-        const val INPUT_FILE_PREFIX = "easydblab-input"
-
-        /** Name suffix of the temporary stdin file. */
-        const val INPUT_FILE_SUFFIX = ".yaml"
+        /** The characters Go's `regexp.QuoteMeta` escapes; helm compiles `helm list -f` with Go's `regexp`. */
+        const val HELM_REGEX_METACHARACTERS = "\\.+*?()|[]{}^$"
     }
 
     // K8s observability configuration

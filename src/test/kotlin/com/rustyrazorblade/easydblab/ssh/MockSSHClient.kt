@@ -57,6 +57,18 @@ class MockSSHClient : ISSHClient {
         return response
     }
 
+    /** The stdin each command run with input was given, in order. */
+    val commandInputs = mutableListOf<Pair<String, String>>()
+
+    override fun executeRemoteCommandWithInput(
+        command: String,
+        input: String,
+        sink: RemoteOutputSink?,
+    ): Response {
+        commandInputs += command to input
+        return executeRemoteCommand(command, sink, secret = false)
+    }
+
     private fun stream(
         text: String,
         stream: NodeStream,

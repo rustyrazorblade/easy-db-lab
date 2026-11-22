@@ -48,15 +48,15 @@ interface CiliumService {
  */
 class DefaultCiliumService(
     private val remoteOps: RemoteOperationsService,
+    private val helmService: HelmService,
     private val eventBus: EventBus,
     private val installAnnotator: CiliumInstallAnnotator,
 ) : CiliumService {
     companion object {
         private val log = KotlinLogging.logger {}
-        private const val INSTALLED = "installed"
-        const val RELEASE_PROBE =
-            "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} helm status cilium -n ${Constants.Cilium.NAMESPACE} " +
-                ">/dev/null 2>&1 && echo $INSTALLED || echo absent"
+
+        /** The helm release `cilium install` creates. */
+        const val RELEASE = "cilium"
         private const val MASQUERADE_SCRIPT = "install-tailscale-masquerade.sh"
         private const val MASQUERADE_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/$MASQUERADE_SCRIPT"
         const val MASQUERADE_REMOTE_PATH = "/tmp/$MASQUERADE_SCRIPT"
@@ -70,12 +70,11 @@ class DefaultCiliumService(
             // The install window on the Grafana timeline starts here, probe included.
             installAnnotator.installStarted()
             // Converge, do not fail: a re-run of `up` after a later failure hits this hook again,
-            // and `cilium install` refuses a release name that is in use. `helm status` exits 0
-            // when the release exists and non-zero when it does not, which is the cleanest
-            // installed-or-not signal (`cilium status` also exits non-zero for an unhealthy
-            // install). The `&& || echo` keeps the probe's own exit at 0 so only an SSH or helm
-            // failure propagates.
-            val installed = remoteOps.executeRemotely(controlHost, RELEASE_PROBE, output = false).text.trim() == INSTALLED
+            // and `cilium install` refuses a release name that is in use. Whether the helm release
+            // is listed is the installed-or-not signal (`cilium status` also exits non-zero for an
+            // unhealthy install); `helm list` exits 0 either way, so only an SSH or helm failure
+            // fails the install.
+            val installed = helmService.releaseExists(release = RELEASE, namespace = Constants.Cilium.NAMESPACE)
             val verb = if (installed) "upgrade" else "install"
             eventBus.emit(if (installed) Event.Cilium.Upgrading else Event.Cilium.Installing)
             eventBus.emit(Event.Cilium.InstallingChart)

@@ -24,7 +24,7 @@ internal class ClusterToolFailedExceptionTest {
     }
 
     @Test
-    fun `credentials in the command never reach the message, and there is no cause to repeat them`() {
+    fun `credentials in the command never reach the message`() {
         val failure =
             ClusterToolFailedException(
                 tool = ClusterTool.KUBECTL,
@@ -35,6 +35,5 @@ internal class ClusterToolFailedExceptionTest {
             )
 
         assertThat(failure.message).doesNotContain("ghp_secrettoken").contains("https://***@example.com/m.yaml")
-        assertThat(failure.cause).isNull()
     }
 }

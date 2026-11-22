@@ -20,6 +20,7 @@ import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.reset
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -29,6 +30,18 @@ import java.nio.file.Path
 class CiliumServiceTest : BaseKoinTest() {
     private val emittedEvents = mutableListOf<Event>()
     private lateinit var mockRemoteOps: RemoteOperationsService
+
+    /** Whether `helm list` reports the cilium release; [releaseInstalled] sets it. */
+    private var releaseListed = false
+
+    /** Probe failure to throw from helm, or null for a working helm. */
+    private var helmFailure: RuntimeException? = null
+
+    private val tooling =
+        RecordingClusterTooling { _ ->
+            helmFailure?.let { throw it }
+            if (releaseListed) "cilium\n" else ""
+        }
 
     private val controlHost =
         Host(
@@ -72,42 +85,40 @@ class CiliumServiceTest : BaseKoinTest() {
     private fun makeService(): DefaultCiliumService =
         DefaultCiliumService(
             remoteOps = getKoin().get(),
+            helmService = DefaultHelmService(tooling),
             eventBus = getKoin().get(),
             installAnnotator = annotator(),
         )
 
     private val vpcCidr = "10.0.0.0/16"
 
-    /** The two commands `install` issues, in order: the helm release probe, then the chart command. */
+    /** The one command `install` runs on the control node: the `cilium install|upgrade` chart command. */
     private class CiliumCommands(
-        val probe: String,
         val chartCommand: String,
     )
 
     private fun ciliumCommands(): CiliumCommands {
         val captor = argumentCaptor<String>()
-        verify(mockRemoteOps, times(2)).executeRemotely(eq(controlHost), captor.capture(), any(), any())
-        return CiliumCommands(probe = captor.firstValue, chartCommand = captor.secondValue)
+        verify(mockRemoteOps, times(1)).executeRemotely(eq(controlHost), captor.capture(), any(), any())
+        return CiliumCommands(chartCommand = captor.firstValue)
     }
 
     /** Every `--set key=value` pair of a `cilium install|upgrade` command, in order. */
     private fun setFlags(command: String): List<String> = Regex("--set (\\S+)").findAll(command).map { it.groupValues[1] }.toList()
 
     private fun releaseInstalled() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
-            val command = invocation.getArgument<String>(1)
-            if (command == DefaultCiliumService.RELEASE_PROBE) Response("installed\n") else Response("")
-        }
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).doReturn(Response(""))
+        releaseListed = true
     }
 
     @Test
-    fun `install probes the helm release with an always-zero-exit command before choosing a verb`() {
+    fun `install asks helm whether the cilium release exists before choosing a verb`() {
         makeService().install(controlHost, vpcCidr)
 
-        val commands = ciliumCommands()
-        assertThat(commands.probe).isEqualTo(
-            "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} helm status cilium -n kube-system >/dev/null 2>&1 && echo installed || echo absent",
+        assertThat(tooling.calls).containsExactly(
+            RecordingClusterTooling.Call(ClusterTool.HELM, listOf("list", "-n", "kube-system", "-f", "^cilium$", "-q"), echo = false),
         )
+        val commands = ciliumCommands()
         assertThat(commands.chartCommand).startsWith("KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} cilium install --version")
         assertThat(emittedEvents).contains(Event.Cilium.Installing).doesNotContain(Event.Cilium.Upgrading)
     }
@@ -131,14 +142,13 @@ class CiliumServiceTest : BaseKoinTest() {
 
     @Test
     fun `install fails and records the failure when the release probe itself cannot run`() {
-        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any()))
-            .doThrow(RuntimeException("ssh: connect to host 10.0.0.1 port 22: Connection refused"))
+        helmFailure = RuntimeException("ssh: connect to host 10.0.0.1 port 22: Connection refused")
 
         val result = makeService().install(controlHost, vpcCidr)
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()).hasMessageContaining("Connection refused")
-        verify(mockRemoteOps, times(1)).executeRemotely(any(), any(), any(), any())
+        verify(mockRemoteOps, never()).executeRemotely(any(), any(), any(), any())
         assertThat(emittedEvents.filterIsInstance<Event.Cilium.InstallFailed>()).hasSize(1)
     }
 

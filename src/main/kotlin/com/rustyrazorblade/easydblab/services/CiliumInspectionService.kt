@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -61,17 +59,15 @@ data class CiliumInspection(
 /**
  * Reads Cilium's live configuration and per-node ENI state off a running cluster.
  *
- * Runs `kubectl` on the control node over SSH — the CLI and kubeconfig are baked into the AMI,
- * and nothing here needs the developer's machine to reach the cluster API.
+ * Runs `kubectl` through [ClusterTooling], so nothing here says where the tool runs.
  */
 interface CiliumInspectionService {
     /**
      * Reads the `cilium-config` ConfigMap and every `CiliumNode` object.
      *
-     * @param controlHost The control node, where `kubectl` and the kubeconfig live.
      * @return The parsed inspection, or a failure if either read or parse fails.
      */
-    fun inspect(controlHost: Host): Result<CiliumInspection>
+    fun inspect(): Result<CiliumInspection>
 }
 
 /**
@@ -82,18 +78,20 @@ interface CiliumInspectionService {
  * see whether ENI IPAM is actually handing out addresses.
  */
 class DefaultCiliumInspectionService(
-    private val remoteOps: RemoteOperationsService,
+    private val tooling: ClusterTooling,
 ) : CiliumInspectionService {
     companion object {
-        private const val KUBECTL = "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} kubectl"
-        const val CONFIG_COMMAND = "$KUBECTL -n ${Constants.Cilium.NAMESPACE} get cm ${Constants.Cilium.CONFIG_MAP_NAME} -o json"
-        const val NODES_COMMAND = "$KUBECTL get ciliumnode -o json"
+        /** `kubectl` arguments that read the agent's ConfigMap as JSON. */
+        val CONFIG_ARGS = listOf("-n", Constants.Cilium.NAMESPACE, "get", "cm", Constants.Cilium.CONFIG_MAP_NAME, "-o", "json")
+
+        /** `kubectl` arguments that read every `CiliumNode` as JSON. */
+        val NODES_ARGS = listOf("get", "ciliumnode", "-o", "json")
     }
 
-    override fun inspect(controlHost: Host): Result<CiliumInspection> =
+    override fun inspect(): Result<CiliumInspection> =
         runCatching {
-            val configJson = remoteOps.executeRemotely(controlHost, CONFIG_COMMAND, output = false).text
-            val nodesJson = remoteOps.executeRemotely(controlHost, NODES_COMMAND, output = false).text
+            val configJson = tooling.run(ClusterTool.KUBECTL, CONFIG_ARGS, echo = false)
+            val nodesJson = tooling.run(ClusterTool.KUBECTL, NODES_ARGS, echo = false)
             CiliumInspection(
                 config = parseCiliumConfig(configJson),
                 nodes = parseCiliumNodes(nodesJson),

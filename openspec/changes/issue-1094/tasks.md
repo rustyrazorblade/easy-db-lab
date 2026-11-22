@@ -23,7 +23,7 @@ Start only after #1231 (round-4 main merge) and #1227 (#1102 error handler) merg
 
 ## 2. PR 2: kits, shell and the D10 flip
 
-- [ ] 2.1 `TemplateVariables`: add `NAMESPACE` to the map and to `RESERVED_NAMES`. `TemplateVariablesTest`: `RESERVED_NAMES` equals the keys; a kit arg named `NAMESPACE` is refused
+- [x] 2.1 `TemplateVariables`: add `NAMESPACE` to the map and to `RESERVED_NAMES`. `TemplateVariablesTest`: `RESERVED_NAMES` equals the keys; a kit arg named `NAMESPACE` is refused
 - [ ] 2.2 `KitRuntime.namespace` and the `InstallStep` namespace fields become `String? = null`; `WorkloadStepExecutor` resolves `step.namespace?.let(::interp) ?: scope.namespace`; `KitWorkloadProbe`, `KitEndpointServices`, `KitStatusCommand` take the cluster namespace. Tests: a step with no namespace acts in the cluster namespace; a runtime block with none probes the cluster namespace
 - [ ] 2.3 Convert every built-in kit (about 40 files): delete `namespace: default`; `-n default` and `--namespace default` become `"${NAMESPACE}"`; every `.default.svc.cluster.local` becomes `<svc>.${NAMESPACE}.svc` (`cassandra-pods` seed, `ferrosa`, `ignite3`, presto and trino catalogs, `kafka` README); include the kits #1231 added (`cqlite-flight`, `trino-loadtest`)
 - [ ] 2.4 `kafka`: `watchNamespaces: "{${NAMESPACE}}"`; render test that the value interpolates

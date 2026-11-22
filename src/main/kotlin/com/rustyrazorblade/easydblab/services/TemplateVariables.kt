@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
@@ -27,6 +28,9 @@ import java.io.File
  *
  * `CLIENT_NETWORKS_JSON` (a JSON list of CIDRs) and `CLIENT_NETWORKS_HBA_JSON` (one `pg_hba` trust
  * line per CIDR) come from [clientNetworks].
+ *
+ * `NAMESPACE` is the cluster namespace (`init --namespace`, else the environment default): kit
+ * steps, runtime probes and scripts act in it, and kit Service DNS names are `<svc>.${NAMESPACE}.svc`.
  */
 data class TemplateVariables(
     val clusterName: String,
@@ -49,6 +53,7 @@ data class TemplateVariables(
     val opensearchEndpoint: String,
     val pyroscopeUrl: String,
     val tenant: String,
+    val namespace: K8sNamespace,
     val serviceDns: ServiceDns,
 ) {
     fun toMap(): Map<String, String> =
@@ -73,6 +78,8 @@ data class TemplateVariables(
             "OPENSEARCH_ENDPOINT" to opensearchEndpoint,
             "PYROSCOPE_URL" to pyroscopeUrl,
             "TENANT" to tenant,
+            // The cluster namespace: where kit objects go and where in-cluster Services live.
+            "NAMESPACE" to namespace.value,
             // The core OTel collector's in-cluster Service addresses (`.svc` form), so a kit's pods
             // and scripts push telemetry to their own node's core pod instead of a node IP.
             "OTEL_COLLECTOR_HOST" to serviceDns.collectorHost(),
@@ -123,6 +130,7 @@ data class TemplateVariables(
                 "OPENSEARCH_ENDPOINT",
                 "PYROSCOPE_URL",
                 "TENANT",
+                "NAMESPACE",
                 "OTEL_COLLECTOR_HOST",
                 "OTEL_OTLP_HTTP_ENDPOINT",
                 "OTEL_OTLP_GRPC_ENDPOINT",
@@ -159,7 +167,8 @@ data class TemplateVariables(
             val appNodes = state.hosts[ServerType.Stress] ?: emptyList()
             val region = state.initConfig?.region.orEmpty()
             val kitStorage = KitStorage.from(state)
-            val serviceDns = ServiceDns(InstallScope.of(state, ClusterContract.of(state)).namespace)
+            val namespace = InstallScope.of(state, ClusterContract.of(state)).namespace
+            val serviceDns = ServiceDns(namespace)
             return TemplateVariables(
                 clusterName = state.name,
                 bucketName = state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
@@ -186,6 +195,7 @@ data class TemplateVariables(
                 // stack on a redirect cluster. Every write carries the cluster's tenant.
                 pyroscopeUrl = pyroscopeIngestBaseUrl(state.initConfig?.telemetryRedirect, serviceDns),
                 tenant = state.tenant(),
+                namespace = namespace,
                 serviceDns = serviceDns,
             )
         }

@@ -178,6 +178,23 @@ class TemplateVariablesTest : BaseKoinTest() {
     }
 
     @Test
+    fun `NAMESPACE is the namespace the cluster records, and the collector endpoints live in it`() {
+        val base = stateWith()
+        val state = base.copy(initConfig = base.initConfig?.copy(namespace = "lab-a"))
+        val map = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi").toMap()
+
+        assertThat(map["NAMESPACE"]).isEqualTo("lab-a")
+        assertThat(map["OTEL_COLLECTOR_HOST"]).isEqualTo("otel-collector.lab-a.svc")
+    }
+
+    @Test
+    fun `NAMESPACE on an EC2 cluster with none recorded is default`() {
+        val map = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "100Gi").toMap()
+
+        assertThat(map["NAMESPACE"]).isEqualTo("default")
+    }
+
+    @Test
     fun `on local volumes a kit's class is its own and the size is 10Ti`() {
         val map = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "").toMap()
 

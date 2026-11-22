@@ -1440,7 +1440,7 @@ class KitConfigTest {
     @Nested
     inner class ReservedCommandArgNames {
         @ParameterizedTest
-        @ValueSource(strings = ["CLUSTER_NAME", "DB_NODE_IPS", "KUBECONFIG", "BACKUP_NAME", "TENANT"])
+        @ValueSource(strings = ["CLUSTER_NAME", "DB_NODE_IPS", "KUBECONFIG", "BACKUP_NAME", "TENANT", "NAMESPACE"])
         fun `a command arg named like a cluster variable is rejected, naming the arg and the variable`(variable: String) {
             assertThatThrownBy {
                 parse(

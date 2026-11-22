@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.redact
 import com.rustyrazorblade.easydblab.shellQuote
 
 /**
@@ -45,10 +44,7 @@ class SshClusterTooling(
         input: String,
         echo: Boolean,
     ): String {
-        val toolArgs = args.toToolArguments()
-        require(args.count { it == ToolArg.Input } == 1) {
-            "A command with input needs exactly one input argument, got " + redact((listOf(tool.executable) + toolArgs).joinToString(" "))
-        }
+        val toolArgs = args.toToolArguments(tool)
         val host = controlHost()
         return failingAsTool(tool, toolArgs, host) {
             remoteOps.executeRemotelyWithInput(host, command(tool, toolArgs), input, output = echo).text

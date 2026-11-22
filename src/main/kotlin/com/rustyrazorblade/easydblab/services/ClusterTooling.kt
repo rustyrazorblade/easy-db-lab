@@ -38,14 +38,27 @@ sealed interface ToolArg {
     }
 }
 
-/** The argument list a tool sees: each [ToolArg.Value] as its text and [ToolArg.Input] as `-`. */
-internal fun List<ToolArg>.toToolArguments(): List<String> =
-    map { arg ->
-        when (arg) {
-            is ToolArg.Value -> arg.text
-            ToolArg.Input -> Constants.ClusterTooling.STDIN_ARGUMENT
+/**
+ * The argument list [tool] sees for [ClusterTooling.runWithInput]: each [ToolArg.Value] as its text
+ * and [ToolArg.Input] as `-`. The port's one-input rule is checked here, so every implementation
+ * enforces it the same way before it touches a cluster.
+ *
+ * @throws IllegalArgumentException when the list does not hold exactly one [ToolArg.Input]; the
+ *   message holds the command redacted
+ */
+internal fun List<ToolArg>.toToolArguments(tool: ClusterTool): List<String> {
+    val rendered =
+        map { arg ->
+            when (arg) {
+                is ToolArg.Value -> arg.text
+                ToolArg.Input -> Constants.ClusterTooling.STDIN_ARGUMENT
+            }
         }
+    require(count { it == ToolArg.Input } == 1) {
+        "A command with input needs exactly one input argument, got " + redact((listOf(tool.executable) + rendered).joinToString(" "))
     }
+    return rendered
+}
 
 /**
  * The one seam through which `KubectlService` and `HelmService` run helm and kubectl.

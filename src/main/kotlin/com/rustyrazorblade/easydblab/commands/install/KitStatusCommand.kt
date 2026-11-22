@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.messageOrString
-import com.rustyrazorblade.easydblab.runCatchingException
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -70,9 +70,9 @@ class KitStatusCommand(
         return when (runtime.type) {
             KitRuntime.RuntimeType.HELM -> {
                 val release = runtime.release.ifBlank { kitName }
-                // A failed lookup (no control node, helm failing) is Unknown with its cause, never Stopped.
+                // A failed lookup (no control node, helm failing) is Unknown with its cause, never Stopped; Ctrl-C stops status.
                 val exists =
-                    runCatchingException { helmService.releaseExists(release = release, namespace = namespace) }.getOrElse { e ->
+                    runCatchingInterruptibly { helmService.releaseExists(release = release, namespace = namespace) }.getOrElse { e ->
                         log.warn(e) { "Failed to look up helm release $release for kit $kitName" }
                         return KitRunningState.Unknown("helm query failed: ${e.messageOrString()}")
                     }

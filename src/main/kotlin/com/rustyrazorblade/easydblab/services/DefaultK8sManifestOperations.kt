@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -141,24 +142,34 @@ class DefaultK8sManifestOperations(
     override fun labelNode(
         nodeName: String,
         labels: Map<String, String>,
-    ): Result<Unit> =
-        runCatching {
-            log.info { "Labeling node $nodeName with labels: $labels" }
+    ): Result<Unit> = runCatching { labelNodes(listOf(nodeName), labels).getValue(nodeName).getOrThrow() }
 
-            clientProvider.createClient().use { client ->
-                checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
-
-                // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
-                // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
-                val patch =
-                    NodeBuilder()
-                        .withNewMetadata()
-                        .addToLabels(labels)
-                        .endMetadata()
-                        .build()
-                client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
-
-                log.info { "Labeled node $nodeName" }
-            }
+    override fun labelNodes(
+        nodeNames: List<String>,
+        labels: Map<String, String>,
+    ): Map<String, Result<Unit>> =
+        clientProvider.createClient().use { client ->
+            nodeNames.associateWith { nodeName -> runCatching { patchLabels(client, nodeName, labels) } }
         }
+
+    private fun patchLabels(
+        client: KubernetesClient,
+        nodeName: String,
+        labels: Map<String, String>,
+    ) {
+        log.info { "Labeling node $nodeName with labels: $labels" }
+        checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
+
+        // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
+        // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
+        val patch =
+            NodeBuilder()
+                .withNewMetadata()
+                .addToLabels(labels)
+                .endMetadata()
+                .build()
+        client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
+
+        log.info { "Labeled node $nodeName" }
+    }
 }

@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -39,15 +38,20 @@ class ShellStepFailedException(
 
 /**
  * A step that acts on every node of a type failed on some of them. Every node ran; [failures] maps
- * each failed node's alias to its error, in host order, and the message names them all, so one run
- * shows the whole problem.
+ * each failed node's alias to its error, in host order. The message gives the count and the first
+ * [Constants.Scale.MAX_NAMED_IN_ERROR] nodes with their errors, then "and N more", so a step that
+ * fails on a whole large cluster stays readable; [failures] keeps every node.
  */
 class NodeStepFailedException(
     val action: String,
     val failures: List<Pair<String, Throwable>>,
 ) : RuntimeException(
         "$action failed on ${failures.size} node(s): " +
-            failures.joinToString("; ") { (alias, error) -> "$alias: ${error.messageOrString()}" },
+            failures.joinToString(
+                "; ",
+                limit = Constants.Scale.MAX_NAMED_IN_ERROR,
+                truncated = "and ${failures.size - Constants.Scale.MAX_NAMED_IN_ERROR} more",
+            ) { (alias, error) -> "$alias: ${error.messageOrString()}" },
     )
 
 /**
@@ -79,8 +83,8 @@ class WorkloadStepExecutor(
     private val kubectlService: KubectlService,
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
-    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
-    private val fanOut: BoundedParallel = BoundedParallel(),
+    private val hostOperations: HostOperationsService,
+    private val kitProcessEnvironment: KitProcessEnvironment,
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -260,9 +264,9 @@ class WorkloadStepExecutor(
                         ctx.clusterState.hosts[ServerType.from(nodeType)]
                             ?: error("No $nodeType nodes found for label step")
                     val labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) }
-                    onEachHost(targetHosts, "Labelling the node") { host ->
-                        k8sService.labelNode(nodeName = host.alias, labels = labels).getOrThrow()
-                    }
+                    // One client for every node: the patches are API calls, not SSH round trips.
+                    val outcomes = k8sService.labelNodes(targetHosts.map { it.alias }, labels)
+                    throwForFailedNodes("Labelling the node", outcomes.toList())
                 }
 
                 is InstallStep.Exec -> {
@@ -362,22 +366,27 @@ class WorkloadStepExecutor(
     }
 
     /**
-     * Runs [action] on every host in [hosts], at most [BoundedParallel]'s limit at once, so a step
-     * over 100 nodes does not take 100 sequential SSH round trips. Every host runs whatever
-     * happens on the others.
+     * Runs [perHost] on every host in [hosts] in parallel, through [HostOperationsService]'s
+     * bounded fan-out, so a step over 100 nodes does not take 100 sequential SSH round trips.
+     * Every host runs whatever happens on the others.
      *
-     * @throws NodeStepFailedException naming every host whose action failed
+     * @throws NodeStepFailedException naming the hosts whose action failed
      */
     private fun onEachHost(
         hosts: List<ClusterHost>,
         action: String,
         perHost: (ClusterHost) -> Unit,
+    ) = throwForFailedNodes(
+        action,
+        hostOperations.collectFromHosts(hosts, parallel = true, action = perHost).map { it.host.alias to it.result },
+    )
+
+    /** Throws one [NodeStepFailedException] for the failed outcomes in [outcomes], if there are any. */
+    private fun throwForFailedNodes(
+        action: String,
+        outcomes: List<Pair<String, Result<Unit>>>,
     ) {
-        val failures =
-            fanOut
-                .map(hosts, perHost)
-                .zip(hosts)
-                .mapNotNull { (result, host) -> result.exceptionOrNull()?.let { host.alias to it } }
+        val failures = outcomes.mapNotNull { (alias, result) -> result.exceptionOrNull()?.let { alias to it } }
         if (failures.isNotEmpty()) throw NodeStepFailedException(action, failures)
     }
 }

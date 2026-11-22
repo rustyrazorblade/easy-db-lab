@@ -12,11 +12,13 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
@@ -33,6 +35,8 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.util.Collections
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.TimeUnit
 
 class WorkloadStepExecutorTest : BaseKoinTest() {
     private lateinit var k8sService: K8sService
@@ -71,17 +75,22 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         k8sService = get()
         helmService = get()
         kubectlService = get()
-        executor =
-            WorkloadStepExecutor(
-                k8sService = k8sService,
-                helmService = helmService,
-                kubectlService = kubectlService,
-                remoteOps = get(),
-                eventBus = get<EventBus>(),
-            )
+        executor = executorWith(get())
         workspace.mkdirs()
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
     }
+
+    /** The executor over [remoteOps], with the real fan-out and the real shell-step environment. */
+    private fun executorWith(remoteOps: RemoteOperationsService) =
+        WorkloadStepExecutor(
+            k8sService = k8sService,
+            helmService = helmService,
+            kubectlService = kubectlService,
+            remoteOps = remoteOps,
+            eventBus = get<EventBus>(),
+            hostOperations = HostOperationsService(get()),
+            kitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
+        )
 
     /** The cluster workspace the steps run in; it holds the kubeconfig every shell step needs. */
     private val workspace: File get() = File(tempDir, "workspace")
@@ -172,47 +181,57 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         override fun toString() = name
     }
 
+    /** [count] db nodes, `db0` to `db<count-1>`, and the cluster state that holds them. */
+    private fun dbNodes(count: Int): ClusterState =
+        clusterState.copy(
+            hosts = mapOf(ServerType.Cassandra to (0 until count).map { dbHost.copy(alias = "db$it", privateIp = "10.0.0.${10 + it}") }),
+        )
+
     /**
-     * Each per-node step runs on every node at once, through the bounded fan-out, and a node that
-     * fails is named in the step's failure while the others still run. The control row, with no
-     * failing node, shows the same step succeeding on all three.
+     * A remote-ops fake that records each node it runs on and fails on the nodes in [failOn]. The
+     * failure is thrown, not a failed Result: a Mockito answer of Result.failure reads as success.
+     */
+    private fun recordingRemoteOps(
+        touched: MutableList<String>,
+        failOn: () -> Set<String>,
+        beforeAnswer: () -> Unit = {},
+    ): RemoteOperationsService =
+        mock<RemoteOperationsService>().also { remoteOps ->
+            whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
+                val alias = invocation.getArgument<Host>(0).alias
+                touched += alias
+                beforeAnswer()
+                if (alias in failOn()) error("disk is read-only") else Response("")
+            }
+        }
+
+    /**
+     * Each per-node step runs on every node, whatever happens on the others, and a node that
+     * fails is named in the step's failure. The control run, with no failing node, shows the same
+     * step succeeding on all three.
      */
     @ParameterizedTest
     @MethodSource("nodeSteps")
     fun `a per-node step runs on every node and names the node that failed`(case: NodeStepCase) {
-        val hosts = (0..2).map { dbHost.copy(alias = "db$it", privateIp = "10.0.0.${10 + it}") }
-        val state = clusterState.copy(hosts = mapOf(ServerType.Cassandra to hosts))
+        val state = dbNodes(3)
         val touched = Collections.synchronizedList(mutableListOf<String>())
-        var failOn: String? = null
-        val remoteOps = mock<RemoteOperationsService>()
-        whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
-            val alias = invocation.getArgument<Host>(0).alias
-            touched += alias
-            if (alias == failOn) error("disk is read-only") else Response("")
-        }
-        whenever(k8sService.labelNode(any(), any())).thenAnswer { invocation ->
-            val alias = invocation.getArgument<String>(0)
-            touched += alias
-            // Thrown, not a failed Result: a Mockito answer of Result.failure reads as success (an inline class).
-            if (alias == failOn) error("disk is read-only") else Result.success(Unit)
+        var failOn = emptySet<String>()
+        whenever(k8sService.labelNodes(any(), any())).thenAnswer { invocation ->
+            invocation.getArgument<List<String>>(0).associateWith { alias ->
+                touched += alias
+                if (alias in failOn) Result.failure(IllegalStateException("disk is read-only")) else Result.success(Unit)
+            }
         }
         whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
         whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
-        val fanOutExecutor =
-            WorkloadStepExecutor(
-                k8sService = k8sService,
-                helmService = helmService,
-                kubectlService = kubectlService,
-                remoteOps = remoteOps,
-                eventBus = get<EventBus>(),
-            )
+        val fanOutExecutor = executorWith(recordingRemoteOps(touched, { failOn }))
         val run = { execute(listOf(case.step), mapOf("STORAGE_SIZE" to "1Gi"), state = state, stepExecutor = fanOutExecutor) }
 
         assertThat(run().isSuccess).describedAs("control: no node fails").isTrue()
         assertThat(touched).containsExactlyInAnyOrder("db0", "db1", "db2")
 
         touched.clear()
-        failOn = "db1"
+        failOn = setOf("db1")
         val failure = run().exceptionOrNull()
 
         assertThat(touched).containsExactlyInAnyOrder("db0", "db1", "db2")
@@ -220,18 +239,62 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         assertThat((failure as NodeStepFailedException).failures.map { it.first }).containsExactly("db1")
     }
 
+    /**
+     * The SSH per-node steps run their nodes at the same time, not one after another: each node's
+     * command waits at a barrier that opens only when all three nodes have reached it. A sequential
+     * loop leaves the first node waiting alone, its barrier times out, and the step fails.
+     */
+    @ParameterizedTest
+    @MethodSource("sshNodeSteps")
+    @Timeout(30)
+    fun `an SSH per-node step runs its nodes at the same time`(case: NodeStepCase) {
+        val barrier = CyclicBarrier(3)
+        val touched = Collections.synchronizedList(mutableListOf<String>())
+        val remoteOps = recordingRemoteOps(touched, { emptySet() }) { barrier.await(5, TimeUnit.SECONDS) }
+        whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.createLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+
+        val result = execute(listOf(case.step), mapOf("STORAGE_SIZE" to "1Gi"), state = dbNodes(3), stepExecutor = executorWith(remoteOps))
+
+        assertThat(result.exceptionOrNull()).isNull()
+        assertThat(touched).containsExactlyInAnyOrder("db0", "db1", "db2")
+    }
+
+    /**
+     * A step that fails on more nodes than [Constants.Scale.MAX_NAMED_IN_ERROR] names that many, with
+     * their errors, and counts the rest, so the message and the event stay readable on a large
+     * cluster. [NodeStepFailedException.failures] still holds every node.
+     */
+    @Test
+    fun `a step failing on many nodes names the first ones and counts the rest`() {
+        val nodes = Constants.Scale.MAX_NAMED_IN_ERROR + 5
+        val touched = Collections.synchronizedList(mutableListOf<String>())
+        whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
+        val failAll = executorWith(recordingRemoteOps(touched, { touched.toSet() }))
+
+        val failure =
+            execute(
+                listOf(InstallStep.PlatformPvsDelete(nodeType = "db")),
+                state = dbNodes(nodes),
+                stepExecutor = failAll,
+            ).exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(NodeStepFailedException::class.java)
+        val message = failure?.message.orEmpty()
+        val last = "db${nodes - 1}"
+        assertThat(message)
+            .startsWith("Deleting /mnt/db1/testdb failed on $nodes node(s): db0: disk is read-only")
+            .contains("db${Constants.Scale.MAX_NAMED_IN_ERROR - 1}: disk is read-only")
+            .endsWith("; and 5 more")
+            .doesNotContain("$last:")
+        assertThat((failure as NodeStepFailedException).failures).hasSize(nodes)
+    }
+
     @Test
     fun `a platform-pvs-delete step interpolates its node-type`() {
         val remoteOps = mock<RemoteOperationsService>()
         whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
-        val recordingExecutor =
-            WorkloadStepExecutor(
-                k8sService = k8sService,
-                helmService = helmService,
-                kubectlService = kubectlService,
-                remoteOps = remoteOps,
-                eventBus = get<EventBus>(),
-            )
+        val recordingExecutor = executorWith(remoteOps)
 
         val result =
             recordingExecutor.execute(
@@ -255,18 +318,18 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
     @Test
     fun `a label step interpolates its node-type`() {
-        whenever(k8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.labelNodes(any(), any())).thenReturn(mapOf("app0" to Result.success(Unit)))
 
         val result =
             execute(listOf(InstallStep.Label(nodeType = "\${POOL}", labels = mapOf("kit" to "x"))), mapOf("POOL" to "app"))
 
         assertThat(result.isSuccess).isTrue()
-        verify(k8sService).labelNode("app0", mapOf("kit" to "x"))
+        verify(k8sService).labelNodes(listOf("app0"), mapOf("kit" to "x"))
     }
 
     @Test
     fun `a label step interpolates the keys of its labels`() {
-        whenever(k8sService.labelNode(any(), any())).thenReturn(Result.success(Unit))
+        whenever(k8sService.labelNodes(any(), any())).thenReturn(mapOf("db0" to Result.success(Unit)))
 
         val result =
             execute(
@@ -275,7 +338,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             )
 
         assertThat(result.isSuccess).isTrue()
-        verify(k8sService).labelNode("db0", mapOf("workload" to "bench"))
+        verify(k8sService).labelNodes(listOf("db0"), mapOf("workload" to "bench"))
     }
 
     /**
@@ -694,5 +757,8 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 NodeStepCase("platform-pvs mkdir -p", InstallStep.PlatformPvs(nodeType = "db")),
                 NodeStepCase("label", InstallStep.Label(labels = mapOf("kit" to "x"), nodeType = "db")),
             )
+
+        @JvmStatic
+        fun sshNodeSteps() = nodeSteps().filterNot { it.step is InstallStep.Label }
     }
 }

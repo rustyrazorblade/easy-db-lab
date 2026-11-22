@@ -161,8 +161,7 @@ val servicesModule =
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
         factoryOf(::KitProcessEnvironment)
-        // Built by hand, not factoryOf: the fan-out is not a Koin definition and keeps its default.
-        factory { WorkloadStepExecutor(get(), get(), get(), get(), get(), get()) }
+        factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
         single { KitEndpointHost.of { get<K8sReadOperations>() } }

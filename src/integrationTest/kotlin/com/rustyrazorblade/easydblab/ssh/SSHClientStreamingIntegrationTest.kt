@@ -11,6 +11,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -81,6 +82,7 @@ internal class SSHClientStreamingIntegrationTest {
 
     /** The input reaches the command's stdin over the exec channel, byte for byte, and ends there. */
     @Test
+    @Timeout(30)
     fun `input is the command's stdin, and the command sees its end`() {
         val input = "kind: ConfigMap\nname: 'quoted \"value\"' \$HOME ünïcödé\n"
 
@@ -91,6 +93,7 @@ internal class SSHClientStreamingIntegrationTest {
     }
 
     @Test
+    @Timeout(30)
     fun `a failed command with input keeps its exit status and stderr`() {
         assertThatThrownBy {
             client().executeRemoteCommandWithInput("cat >/dev/null; echo 'error: invalid' >&2; exit 4", "x: 1\n", sink)

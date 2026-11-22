@@ -49,6 +49,17 @@ interface K8sManifestOperations {
         nodeName: String,
         labels: Map<String, String>,
     ): Result<Unit>
+
+    /**
+     * Adds [labels] to every node in [nodeNames] through one client. Every node is patched whatever
+     * happens to the others, and the result holds each node's outcome by name, in list order.
+     *
+     * @throws RuntimeException when no client can be built; then no node was patched
+     */
+    fun labelNodes(
+        nodeNames: List<String>,
+        labels: Map<String, String>,
+    ): Map<String, Result<Unit>>
 }
 
 /**

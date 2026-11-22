@@ -64,12 +64,15 @@ internal class HelmServiceTest {
     /**
      * Property over names holding every regex metacharacter helm's Go `regexp` knows: the `-f`
      * filter matches the name itself and nothing that differs from it only where a metacharacter
-     * would have matched something else. Java's regex reads these escapes as Go's does.
+     * would have matched something else, nor a name that only contains it. Go's `MatchString`
+     * finds the pattern anywhere in the name, so the check is `containsMatchIn`, and it is the
+     * filter's anchors that make the match whole. Java's regex reads these escapes as Go's does.
      */
     @Test
     fun `releaseExists filters on the release name matched literally and whole`() {
         val cases =
             listOf(
+                "app" to listOf("myapp", "apps"),
                 "my.app" to listOf("myxapp", "my.app2", "amy.app"),
                 "a+b" to listOf("aab", "aaab"),
                 "x*" to listOf("xxx", ""),
@@ -86,8 +89,8 @@ internal class HelmServiceTest {
             val args = tooling.calls.single().args
             val filter = Regex(args[args.indexOf("-f") + 1])
 
-            assertThat(filter.matches(release)).describedAs("%s matches itself", filter).isTrue()
-            assertThat(others).describedAs("%s matches only %s", filter, release).noneMatch { filter.matches(it) }
+            assertThat(filter.containsMatchIn(release)).describedAs("%s matches itself", filter).isTrue()
+            assertThat(others).describedAs("%s matches only %s", filter, release).noneMatch { filter.containsMatchIn(it) }
         }
     }
 }

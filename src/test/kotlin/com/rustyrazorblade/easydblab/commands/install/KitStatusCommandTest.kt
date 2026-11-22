@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import com.rustyrazorblade.easydblab.services.KitRuntime
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -21,6 +22,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
@@ -165,6 +167,31 @@ class KitStatusCommandTest : BaseKoinTest() {
         val output = runStatus(listOf(runningPod), KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"))
 
         assertThat(output.trim()).isEqualTo("Status:    Unknown (helm query failed: ${case.shown})")
+        verifyNoInteractions(mockKubeService)
+    }
+
+    /**
+     * Ctrl-C during the helm lookup stops `kit status`: the interrupt propagates and no status is
+     * printed, instead of reading as one more failed lookup.
+     */
+    @Test
+    fun `an interrupt during the helm release lookup stops status instead of printing Unknown`() {
+        // doAnswer, not thenThrow: Mockito rejects a checked exception the Kotlin method does not declare.
+        doAnswer { throw InterruptedException("Ctrl-C") }.whenever(mockHelmService).releaseExists(any(), any())
+        val config =
+            KitConfig(name = "mydb", runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"), endpoints = listOf(bolt))
+        val stdout = ByteArrayOutputStream()
+        val original = System.out
+        System.setOut(PrintStream(stdout))
+        val thrown =
+            try {
+                catchThrowable { KitStatusCommand("mydb", config).execute() }
+            } finally {
+                System.setOut(original)
+            }
+
+        assertThat(thrown).isInstanceOf(InterruptedException::class.java)
+        assertThat(stdout.toString()).doesNotContain("Unknown")
         verifyNoInteractions(mockKubeService)
     }
 

@@ -13,7 +13,7 @@ interface KubectlService {
     fun applyKustomize(url: String)
 
     /**
-     * Apply YAML content with kubectl, passing it as input to the tool (see [ClusterTooling.run]).
+     * Apply YAML content with kubectl, passing it as input to the tool (see [ClusterTooling.runWithInput]).
      * Handles any resource kind including custom CRDs not known to the Fabric8 client.
      * Uses client-side apply intentionally — manifests applied here are small and do not
      * hit the 262 KB annotation limit. See [applyUrl] for the --server-side workaround.

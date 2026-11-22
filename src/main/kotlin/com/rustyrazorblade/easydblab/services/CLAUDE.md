@@ -168,7 +168,7 @@ See `CassandraService` - overrides `restart()` to use a custom script and adds `
 
 Test the services with `RecordingClusterTooling` (test sources), which records each call and asserts on the argument lists built; do not mock `RemoteOperationsService` for them. `SshClusterToolingTest` and `ClusterToolingSshCommandsTest` check the remote commands with a mocked `RemoteOperationsService`, including that each argument reaches a real `/bin/sh` as exactly one word. `SshClusterToolingK3sIntegrationTest` (integration tier) runs the real kubectl of a K3s container through the seam, and `SSHClientStreamingIntegrationTest` checks stdin over a real sshd.
 
-Kit steps that act on every node of a type (`platform-pvs-delete`, `platform-pvs`, `label`) run through `WorkloadStepExecutor.onEachHost`: a `BoundedParallel` fan-out that runs every node and throws one `NodeStepFailedException` naming each failed node.
+Kit steps that run a command on every node of a type (`platform-pvs-delete`, `platform-pvs`) run through `WorkloadStepExecutor.onEachHost`, which uses `HostOperationsService.collectFromHosts(parallel = true)`: every node runs, at most `Constants.Scale.HOST_CONCURRENCY` at once. The `label` step patches every node through one fabric8 client (`K8sManifestOperations.labelNodes`). Either throws one `NodeStepFailedException` naming the first `Constants.Scale.MAX_NAMED_IN_ERROR` failed nodes and counting the rest.
 
 ## Error Handling
 

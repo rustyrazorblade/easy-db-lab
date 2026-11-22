@@ -32,7 +32,7 @@ internal class RecordingClusterTooling(
         args: List<ToolArg>,
         input: String,
         echo: Boolean,
-    ): String = record(Call(tool, args.toToolArguments(), input, echo))
+    ): String = record(Call(tool, args.toToolArguments(tool), input, echo))
 
     private fun record(call: Call): String {
         calls += call

@@ -9,7 +9,8 @@
 #   2. cassandra.patch.yaml, the workspace patch with the common keys and the user's edits;
 #   3. placement.patch.yaml: seeds, directories, the snitch and the native port;
 #   4. this pod's addresses: listen and rpc on POD_IP, broadcast_rpc on HOST_IP (clients dial the node).
-# cassandra.in.sh is the tarball's own file followed by the packer snippet; the cassandra container
+# cassandra.in.sh is the tarball's own file, then cassandra_storagedir pinned to the claim (no directory
+# cassandra.yaml leaves unset may default into the cached tree), then the packer snippet; the cassandra container
 # points CASSANDRA_INCLUDE at it. cassandra-rackdc.properties is copied from the ConfigMap.
 #
 # POSIX sh: the runtime image runs it under /bin/sh. Tested by
@@ -19,6 +20,8 @@ set -eu
 config="${EDL_CONFIG_DIR:-/edl/config}"
 home="${EDL_CASSANDRA_HOME:?EDL_CASSANDRA_HOME must name the cached Cassandra tree}"
 conf="${CASSANDRA_CONF:?CASSANDRA_CONF must name the directory to render into}"
+# The claim's mount point in every container of the pod.
+storage_dir=/var/lib/cassandra
 pod_ip="${POD_IP:-}"
 host_ip="${HOST_IP:-}"
 
@@ -53,6 +56,11 @@ rm -f "${addresses}"
 cp "${config}/cassandra-rackdc.properties" "${conf}/cassandra-rackdc.properties"
 {
   [ ! -f "${home}/bin/cassandra.in.sh" ] || cat "${home}/bin/cassandra.in.sh"
+  # bin/cassandra passes -Dcassandra.storagedir=$cassandra_storagedir, under which Cassandra puts
+  # every directory cassandra.yaml leaves unset (accord_journal on trunk, cdc_raw). The tarball sets
+  # it to $CASSANDRA_HOME/data, the per-sha256 cached tree an upgrade replaces, so it is pinned to the
+  # claim here: no directory can default into the cache and be left behind by an upgrade.
+  printf '\n# easy-db-lab cassandra-pods: every defaulted directory lives on the claim.\ncassandra_storagedir="%s"\n' "${storage_dir}"
   cat "${config}/cassandra.in.sh"
 } > "${conf}/cassandra.in.sh"
 echo "Rendered the Cassandra config into ${conf}."

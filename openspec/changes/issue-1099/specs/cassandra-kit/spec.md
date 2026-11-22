@@ -128,7 +128,7 @@ A `cassandra-render` init container SHALL build `cassandra.yaml` into an `emptyD
 3. the kit placement patch: seeds, directories under `/var/lib/cassandra`, the snitch, and `native_transport_port` 30942;
 4. the per-pod addresses.
 
-It SHALL also write `cassandra.in.sh` (the tarball's own file followed by the packer snippet) into that `emptyDir`, and set `CASSANDRA_INCLUDE` to it. It SHALL write `cassandra-rackdc.properties` with DC `--dc` and rack `rack1`.
+It SHALL also write `cassandra.in.sh` (the tarball's own file, then `cassandra_storagedir=/var/lib/cassandra`, then the packer snippet) into that `emptyDir`, and set `CASSANDRA_INCLUDE` to it. So every directory `cassandra.yaml` leaves unset, such as the Accord journal and `cdc_raw`, defaults onto the claim and never into the per-sha256 cached tree. It SHALL write `cassandra-rackdc.properties` with DC `--dc` and rack `rack1`.
 
 The scripts SHALL reach the pod in the kit ConfigMap `cassandra-pods-config`, copied at build time from `packer/cassandra/`. They SHALL NOT be baked into the image. When the workspace has no `cassandra.patch.yaml` (any environment other than AWS), the contributor SHALL write the common patch itself. For the same version, the rendered `cassandra.yaml` SHALL differ from the VM path's only in addresses, ports, paths and the snitch.
 
@@ -143,6 +143,10 @@ The scripts SHALL reach the pod in the kit ConfigMap `cassandra-pods-config`, co
 #### Scenario: Placement wins over VM keys
 - **WHEN** the workspace `cassandra.patch.yaml` holds the `Ec2Snitch`, the `/mnt/db1` directories and VM seed IPs that `write-config` writes
 - **THEN** each pod's rendered `cassandra.yaml` has GossipingPropertyFileSnitch, directories under `/var/lib/cassandra` and the pod-0 DNS seed
+
+#### Scenario: No directory defaults into the cached tree
+- **WHEN** a pod starts a build whose `cassandra.yaml` leaves `accord.journal_directory` or `cdc_raw_directory` unset
+- **THEN** Cassandra runs with `-Dcassandra.storagedir=/var/lib/cassandra`, so those directories sit on the claim and survive an `upgrade` to another sha256
 
 #### Scenario: No workspace patch off AWS
 - **WHEN** the kit starts in a workspace with no `cassandra.patch.yaml`

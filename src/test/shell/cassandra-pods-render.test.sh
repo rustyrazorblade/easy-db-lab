@@ -73,7 +73,7 @@ listen_address: localhost
 rpc_address: localhost
 native_transport_port: 9042
 EOF
-echo 'CASSANDRA_HOME_FROM_TARBALL=1' > "${WORK}/tree/bin/cassandra.in.sh"
+printf 'CASSANDRA_HOME_FROM_TARBALL=1\ncassandra_storagedir="$CASSANDRA_HOME/data"\n' > "${WORK}/tree/bin/cassandra.in.sh"
 echo '<configuration/>' > "${WORK}/tree/conf/logback.xml"
 echo '-Xss256k' > "${WORK}/tree/conf/jvm-server.options"
 cp "${WORK}/tree/conf/cassandra.yaml" "${WORK}/tarball-cassandra.yaml"
@@ -101,6 +101,19 @@ check "the rest of the tarball's conf is copied" '[ -f "${WORK}/conf/logback.xml
 check "the rackdc file names the DC and rack" '[ "$(cat "${WORK}/conf/cassandra-rackdc.properties")" = "$(printf "dc=east\nrack=rack1")" ]'
 check "cassandra.in.sh is the tarball's own file, then the packer snippet" \
   '[ "$(head -n 1 "${WORK}/conf/cassandra.in.sh")" = CASSANDRA_HOME_FROM_TARBALL=1 ] && grep -q "Begin easy-db-lab customizations" "${WORK}/conf/cassandra.in.sh"'
+
+# bin/cassandra passes -Dcassandra.storagedir=$cassandra_storagedir, the parent of every directory
+# cassandra.yaml leaves unset (accord_journal on trunk, cdc_raw). The tarball's cassandra.in.sh sets it
+# to $CASSANDRA_HOME/data, the per-sha256 cached tree, which an upgrade replaces. Sourced as
+# bin/cassandra sources it, with a stub java so the packer snippet's JDK probe runs anywhere.
+mkdir -p "${WORK}/java-stub"
+printf '#!/bin/sh\necho "openjdk version \\"17.0.2\\" 2022-01-18" >&2\n' > "${WORK}/java-stub/java"
+chmod +x "${WORK}/java-stub/java"
+storagedir="$(env -i PATH="${WORK}/java-stub:/usr/bin:/bin" CASSANDRA_HOME="${WORK}/tree" EDL_CASSANDRA_BUILD=5.0.6 \
+  EDL_CASSANDRA_LOG_DIR="${WORK}/logs" ECL_AGENTS_LIB=/nonexistent "${POSIX_SH}" -c \
+  '. "$1" > /dev/null 2>&1; printf "%s" "${cassandra_storagedir:-}"' sh "${WORK}/conf/cassandra.in.sh")"
+check "the storage dir every unset directory defaults under is the claim, never the cached tree" \
+  "[ '${storagedir}' = /var/lib/cassandra ]"
 
 rm -rf "${WORK}/conf"/*
 run_render POD_IP=""

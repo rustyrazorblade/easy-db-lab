@@ -15,7 +15,7 @@ Two paths, chosen by `--image`:
   `otel-agent`, `cassandra-fetch` (`config/fetch-tarball.sh`: the sha256 cache on the claim,
   `.edl/artifacts/sha256-<hex>/.complete`) and `cassandra-render` (`config/render-config.sh`: the VM
   path's merge into the `conf` emptyDir). Cassandra runs `bin/cassandra -f` from the cache, with
-  `CASSANDRA_INCLUDE` the rendered `cassandra.in.sh` (the tarball's plus the packer snippet). Template:
+  `CASSANDRA_INCLUDE` the rendered `cassandra.in.sh` (the tarball's, then `cassandra_storagedir=/var/lib/cassandra`, then the packer snippet). The tarball sets the storage dir to `$CASSANDRA_HOME/data`, the cached tree, where every directory `cassandra.yaml` leaves unset (trunk's Accord journal, `cdc_raw`) would land and be stranded by an upgrade; pinning it to the claim covers every such directory, present and future. Template:
   `statefulset.yaml.template`.
 - **`--image`**: today's image entrypoint path, `statefulset-image.yaml.template`. `lib/check-start.sh`
   looks the image up only on this path and writes `resolved-image.env` (`@RESOLVED_IMAGE@`,

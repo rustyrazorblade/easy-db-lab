@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.CassandraPodTarget
 import org.assertj.core.api.Assertions.assertThat
@@ -30,8 +31,10 @@ class StressTargetResolverTest {
         dbHosts: List<ClusterHost> = emptyList(),
         runningKits: Set<String> = emptySet(),
         infrastructure: InfrastructureState? = InfrastructureState(vpcId = "vpc-1", region = "us-west-2"),
+        namespace: String? = null,
     ) = ClusterState(
         name = "lab",
+        initConfig = namespace?.let { InitConfig(region = "us-west-2", name = "lab", namespace = it) },
         hosts = if (dbHosts.isEmpty()) emptyMap() else mapOf(ServerType.Cassandra to dbHosts),
         infrastructure = infrastructure,
         runningKits = runningKits,
@@ -39,7 +42,7 @@ class StressTargetResolverTest {
 
     private fun installKit(
         resolvedArgs: String = "CASSANDRA_DC=east\n",
-        namespace: String = "lab",
+        namespace: String? = "lab",
         endpoints: String = cqlEndpoint,
         withConfig: Boolean = true,
         withService: Boolean = true,
@@ -50,7 +53,8 @@ class StressTargetResolverTest {
             if (withConfig) {
                 File(this, Constants.Kit.CONFIG_FILE).writeText(
                     "name: cassandra-pods\ntype: db\nruntime:\n  type: pods\n" +
-                        "  selector: \"easydblab/kit=cassandra-pods\"\n  namespace: $namespace\n" +
+                        "  selector: \"easydblab/kit=cassandra-pods\"\n" +
+                        namespace?.let { "  namespace: $it\n" }.orEmpty() +
                         "endpoints:\n" + endpoints.prependIndent("  ") + "\n",
                 )
             }
@@ -61,7 +65,7 @@ class StressTargetResolverTest {
                     kind: Service
                     metadata:
                       name: cql-front
-                      namespace: $namespace
+                      ${namespace?.let { "namespace: $it" }.orEmpty()}
                     spec:
                       type: NodePort
                       ports:
@@ -85,6 +89,15 @@ class StressTargetResolverTest {
         val target = resolver.resolve(state(runningKits = kitRunning), workspace)
 
         assertThat(target).isEqualTo(StressTarget("cql-front.lab.svc", 31942, "east"))
+    }
+
+    @Test
+    fun `a kit and Service that name no namespace are targeted in the cluster namespace`() {
+        installKit(namespace = null)
+
+        val target = resolver.resolve(state(runningKits = kitRunning, namespace = "lab-a"), workspace)
+
+        assertThat(target.contactPoint).isEqualTo("cql-front.lab-a.svc")
     }
 
     @Test

@@ -169,6 +169,31 @@ class KitStatusCommandTest : BaseKoinTest() {
         verify(mockKubeService).listPodsByLabel("app.kubernetes.io/name=mydb", "default")
     }
 
+    /** A cluster `init` recorded with namespace `lab-a` (issue 1094). */
+    private fun inClusterNamespaceLabA() {
+        val state = mockClusterStateManager.load()
+        whenever(mockClusterStateManager.load())
+            .thenReturn(state.copy(initConfig = state.initConfig?.copy(namespace = "lab-a")))
+    }
+
+    @Test
+    fun `status queries a runtime without a namespace in the cluster namespace`() {
+        inClusterNamespaceLabA()
+
+        runStatus(emptyList(), KitRuntime(type = KitRuntime.RuntimeType.PODS, selector = "easydblab/kit=mydb"))
+
+        verify(mockKubeService).listPodsByLabel("easydblab/kit=mydb", "lab-a")
+    }
+
+    @Test
+    fun `status queries a kit without a runtime block in the cluster namespace`() {
+        inClusterNamespaceLabA()
+
+        runStatus(emptyList(), runtime = null)
+
+        verify(mockKubeService).listPodsByLabel("app.kubernetes.io/name=mydb", "lab-a")
+    }
+
     @Test
     fun `a failed pod query for a runtime-declared kit is Unknown with the cause, not Stopped`() {
         val output =

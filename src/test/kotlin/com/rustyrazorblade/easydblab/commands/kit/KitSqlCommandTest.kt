@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -108,9 +109,10 @@ class KitSqlCommandTest : BaseKoinTest() {
     private fun buildCommand(
         connectionFactory: JdbcConnectionFactory = JdbcConnectionFactory { _, _ -> mock() },
         driverClass: String = "",
+        serviceIn: (String) -> KitService = { namespace -> KitService(namespace, "presto") },
     ) = KitSqlCommand(
         kitName = "presto",
-        serviceIn = { namespace -> KitService(namespace, "presto") },
+        serviceIn = serviceIn,
         endpoint = jdbcEndpoint,
         user = "easy-db-lab",
         driverClass = driverClass,
@@ -125,6 +127,24 @@ class KitSqlCommandTest : BaseKoinTest() {
         command.execute()
 
         assertThat(outputHandler.messages.joinToString("\n")).contains("42")
+    }
+
+    @Test
+    fun `the kit Service is looked up in the cluster namespace`() {
+        val state = mockClusterStateManager.load()
+        whenever(mockClusterStateManager.load())
+            .thenReturn(state.copy(initConfig = InitConfig(region = "us-west-2", name = "test", namespace = "lab-a")))
+        val namespaces = mutableListOf<String>()
+        val command =
+            buildCommand(
+                connectionFactory = mockSuccessConnection(listOf("one"), listOf(listOf("1"))),
+                serviceIn = { namespace -> KitService(namespace, "presto").also { namespaces += namespace } },
+            )
+        command.statement = "SELECT 1"
+
+        command.execute()
+
+        assertThat(namespaces).containsExactly("lab-a")
     }
 
     @Test

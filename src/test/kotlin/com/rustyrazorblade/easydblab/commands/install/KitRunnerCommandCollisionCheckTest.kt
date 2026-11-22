@@ -90,6 +90,45 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
             .contains("mydb", "pod/mydb-0")
     }
 
+    /** A runtime that names no namespace runs in the cluster namespace `init` recorded (issue 1094). */
+    private fun inClusterNamespaceLabA() {
+        writeKitYaml(
+            "mydb",
+            collisionCheckedHeader.replace("\n  namespace: db", "") + "\n" +
+                """
+                start:
+                  - type: shell
+                    script: echo start
+                stop:
+                  - type: shell
+                    script: echo stop
+                """.trimIndent(),
+        )
+        whenever(mockClusterStateManager.load())
+            .thenReturn(clusterState.copy(initConfig = clusterState.initConfig?.copy(namespace = LAB_A)))
+        whenever(mockKubeService.listPodsByLabel("easydblab/kit=mydb", LAB_A))
+            .thenReturn(Result.success(listOf(runningPod.copy(namespace = LAB_A))))
+    }
+
+    @Test
+    fun `start looks for a runtime without a namespace in the cluster namespace`() {
+        inClusterNamespaceLabA()
+
+        val events = captureEvents { command("mydb", "start").call() }
+
+        assertThat(events.filterIsInstance<Event.Kit.CollisionDetected>().single().namespace).isEqualTo(LAB_A)
+    }
+
+    @Test
+    fun `stop waits for a runtime without a namespace in the cluster namespace`() {
+        inClusterNamespaceLabA()
+
+        val events = captureEvents { command("mydb", "stop").call() }
+
+        verify(mockKubeService, times(STOP_WAIT_POLLS)).listPodsByLabel("easydblab/kit=mydb", LAB_A)
+        assertThat(events.filterIsInstance<Event.Kit.StopIncomplete>().single().namespace).isEqualTo(LAB_A)
+    }
+
     @Test
     fun `start runs when nothing of the kit is in the cluster`() {
         writeCollisionCheckedKit()
@@ -342,5 +381,9 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
 
         assertThat(command("mydb", "stop").call()).isEqualTo(0)
         verifyNoInteractions(mockKubeService)
+    }
+
+    private companion object {
+        const val LAB_A = "lab-a"
     }
 }

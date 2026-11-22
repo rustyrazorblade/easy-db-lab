@@ -9,7 +9,12 @@ import com.rustyrazorblade.easydblab.proxy.defaultSocksTcpBridgeFactory
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointHost
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.Types
 import java.util.Properties
 
 /**
@@ -86,21 +91,62 @@ class KitJdbcSqlService(
     ): SqlQueryResult =
         conn.createStatement().use { stmt ->
             if (stmt.execute(sql)) {
-                stmt.resultSet.use { rs ->
-                    val meta = rs.metaData
-                    val columnCount = meta.columnCount
-                    val columns = (1..columnCount).map { meta.getColumnName(it) }
-                    val rows = mutableListOf<List<String>>()
-                    while (rs.next()) {
-                        rows.add((1..columnCount).map { rs.getString(it) ?: "NULL" })
-                    }
-                    log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
-                    SqlQueryResult(columns = columns, rows = rows)
-                }
+                stmt.resultSet.use { readRows(it) }
             } else {
                 val count = stmt.updateCount
                 log.debug { "Statement complete: $count rows affected" }
                 SqlQueryResult(columns = listOf("rows affected"), rows = listOf(listOf(count.toString())))
             }
         }
+
+    /** Every row of [rs] as text, with the column types read once. */
+    private fun readRows(rs: ResultSet): SqlQueryResult {
+        val meta = rs.metaData
+        val columnCount = meta.columnCount
+        val columns = (1..columnCount).map { meta.getColumnName(it) }
+        val types = (1..columnCount).map { meta.getColumnType(it) }
+        val rows = mutableListOf<List<String>>()
+        while (rs.next()) {
+            rows.add((1..columnCount).map { cellText(rs, types[it - 1], it) })
+        }
+        log.debug { "Query complete: ${rows.size} rows, $columnCount columns" }
+        return SqlQueryResult(columns = columns, rows = rows)
+    }
+
+    /**
+     * The text of one cell. A binary column is read as bytes: some drivers (Presto, for a
+     * ClickHouse `String` seen through its connector) return the array's `toString()` from
+     * `getString`. Bytes that are valid UTF-8 with no control character but tab, LF and CR print
+     * as text; any others print as `0x` hex, so `unhex('000102')` cannot put NUL or escape bytes
+     * on the terminal.
+     */
+    private fun cellText(
+        rs: ResultSet,
+        columnType: Int,
+        column: Int,
+    ): String {
+        if (columnType !in BINARY_TYPES) return rs.getString(column) ?: NULL_TEXT
+        val bytes = rs.getBytes(column) ?: return NULL_TEXT
+        return decodeUtf8(bytes)?.takeIf(::isPrintable) ?: bytes.joinToString("", prefix = "0x") { "%02x".format(it) }
+    }
+
+    private fun decodeUtf8(bytes: ByteArray): String? =
+        try {
+            Charsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: CharacterCodingException) {
+            null
+        }
+
+    private fun isPrintable(text: String): Boolean = text.none { Character.isISOControl(it) && it !in TEXT_CONTROLS }
+
+    private companion object {
+        const val NULL_TEXT = "NULL"
+        val TEXT_CONTROLS = setOf('\t', '\n', '\r')
+        val BINARY_TYPES = setOf(Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB)
+    }
 }

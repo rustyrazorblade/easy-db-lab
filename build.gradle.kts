@@ -22,10 +22,11 @@ plugins {
 }
 
 // Configuration for OpenTelemetry Java agent
-val otelAgentConfig: Configuration by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-}
+val otelAgentConfig: Configuration =
+    configurations.create("otelAgentConfig") {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+    }
 
 val copyOtelAgent =
     tasks.register<Copy>("copyOtelAgent") {
@@ -168,12 +169,11 @@ testing {
         // Pin both suites to the same JUnit Jupiter version as the `libs.testing` bundle so the
         // suite DSL doesn't fall back to its JUnit 4 default and pull a stray junit4 jar onto
         // either test classpath.
-        val test by getting(JvmTestSuite::class) {
+        named<JvmTestSuite>("test") {
             useJUnitJupiter(libs.versions.jupiter)
         }
 
-        @Suppress("UnusedPrivateProperty")
-        val integrationTest by registering(JvmTestSuite::class) {
+        register<JvmTestSuite>("integrationTest") {
             useJUnitJupiter(libs.versions.jupiter)
         }
     }
@@ -192,7 +192,6 @@ dependencies {
 
     // CLI and UI
     implementation(libs.picocli)
-    implementation(libs.picocli.shell.jline3)
     implementation(libs.jline)
     implementation(libs.mordant)
 
@@ -289,14 +288,14 @@ kotlin {
 }
 
 sourceSets {
-    val main by getting {
+    named("main") {
         java.srcDirs("src/main/kotlin")
         resources.srcDirs("build/aws")
     }
-    val test by getting {
+    named("test") {
         java.srcDirs("src/test/kotlin")
     }
-    val integrationTest by getting {
+    named("integrationTest") {
         java.srcDirs("src/integrationTest/kotlin")
     }
 }
@@ -466,11 +465,12 @@ tasks.named<Test>("test") {
 
 // The Pyroscope Java agent at the pinned version, resolved from Maven Central through the Gradle
 // cache, for PyroscopeAgentReplayIntegrationTest. Not transitive: the agent jar is self-contained.
-val pyroscopeAgentConfig: Configuration by configurations.creating {
-    isCanBeConsumed = false
-    isCanBeResolved = true
-    isTransitive = false
-}
+val pyroscopeAgentConfig: Configuration =
+    configurations.create("pyroscopeAgentConfig") {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+        isTransitive = false
+    }
 
 val pyroscopeAgentVersion: String =
     libs.versions.pyroscope.agent

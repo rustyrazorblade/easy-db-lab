@@ -5081,6 +5081,102 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /** What became of a failed AMI build attempt's build instances. */
+        @Serializable
+        enum class BuilderState {
+            /** No instance of the build was found. */
+            @SerialName("not-found")
+            NOT_FOUND,
+
+            /** Every instance of the build was terminated. */
+            @SerialName("terminated")
+            TERMINATED,
+
+            /** The instances were left running for --keep-on-error. */
+            @SerialName("kept")
+            KEPT,
+
+            /** The build's instances could not be listed, so one may still be running. */
+            @SerialName("lookup-failed")
+            LOOKUP_FAILED,
+
+            /** The terminate call failed, so the instances may still be running. */
+            @SerialName("terminate-failed")
+            TERMINATE_FAILED,
+
+            /** The cleanup itself failed, so nothing is known about the instances. */
+            @SerialName("cleanup-failed")
+            CLEANUP_FAILED,
+        }
+
+        /**
+         * One `packer build` attempt failed. [sessionDropped] says whether it lost its SSH session
+         * to the builder (an `ssm` session that ended, or a stream silent past the read/write
+         * timeout); only such an attempt is run again, from a new builder, while [willRetry].
+         * [reason] is Packer's own error and [logPath] the attempt's full Packer debug log, null
+         * when the attempt wrote none (the container never ran Packer).
+         *
+         * [builderState] says what became of the attempt's build instances, [builderInstanceIds]
+         * (in [region], tagged with [buildId]); [builderError] says why they could not be cleared
+         * when the state is a failed one. A lost session within the limit is not retried while a
+         * builder may still be running. It is an error only when no attempt follows.
+         */
+        @Serializable
+        @SerialName("Ami.BuildAttemptFailed")
+        data class BuildAttemptFailed(
+            val template: String,
+            val buildId: String,
+            val region: String,
+            val attempt: Int,
+            val maxAttempts: Int,
+            val sessionDropped: Boolean,
+            val willRetry: Boolean,
+            val reason: String,
+            val logPath: String?,
+            val builderState: BuilderState,
+            val builderInstanceIds: List<String>,
+            val builderError: String? = null,
+            val keepOnError: Boolean = false,
+        ) : Ami {
+            override fun toDisplayString(): String {
+                val cause = if (sessionDropped) "lost its SSH session to the build instance" else "failed"
+                val next =
+                    when {
+                        willRetry -> "Running it again on a new build instance."
+                        !sessionDropped -> "Not retried: the build itself failed (only a lost SSH session is retried)."
+                        attempt >= maxAttempts -> "No attempts left."
+                        else -> "Not retried while its build instance may still be running."
+                    }
+                val log = logPath?.let { "Packer log: $it" } ?: "No Packer log was written."
+                return "AMI build $template attempt $attempt of $maxAttempts $cause: $reason\n${builderLine()}\n$next $log"
+            }
+
+            private fun builderLine(): String {
+                val ids = builderInstanceIds.joinToString(" ")
+                val terminate = "aws ec2 terminate-instances --region $region --instance-ids $ids"
+                val lookFor =
+                    "Look for instances tagged ${Constants.Packer.BUILD_ID_TAG_KEY}=$buildId in the " +
+                        "${Constants.Vpc.PACKER_VPC_NAME} VPC in $region and terminate them."
+                return when (builderState) {
+                    BuilderState.NOT_FOUND -> "No build instance of this build was found."
+                    BuilderState.TERMINATED ->
+                        when {
+                            willRetry && keepOnError ->
+                                "Build instance $ids terminated so the build can run again; " +
+                                    "--keep-on-error keeps only the last failed attempt's instance."
+                            willRetry || keepOnError -> "Build instance $ids terminated."
+                            else -> "Build instance $ids terminated (set --keep-on-error to keep it for debugging)."
+                        }
+                    BuilderState.KEPT -> "Build instance $ids left running (--keep-on-error). Terminate it when done: $terminate"
+                    BuilderState.LOOKUP_FAILED -> "This build's instances could not be listed ($builderError). $lookFor"
+                    BuilderState.TERMINATE_FAILED -> "Build instance $ids could not be terminated ($builderError). Terminate it: $terminate"
+                    BuilderState.CLEANUP_FAILED -> "Cleaning up this build's instances failed ($builderError). $lookFor"
+                }
+            }
+
+            override fun isError(): Boolean = !willRetry
+        }
+
         @Serializable
         @SerialName("Ami.PruningStarting")
         data class PruningStarting(

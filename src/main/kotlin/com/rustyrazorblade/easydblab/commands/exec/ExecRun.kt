@@ -115,35 +115,48 @@ class ExecRun : PicoBaseCommand() {
         val systemdRunCmd = buildSystemdRunCommand(systemdUnit, commandString)
 
         val failure =
-            try {
+            hostFailure {
                 if (background) {
                     remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
                     eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
                 } else {
                     runInForeground(host, systemdUnit, systemdRunCmd)
                 }
-                return true
-            } catch (e: IOException) {
-                e
-            } catch (e: EasyDBLabException) {
-                e
-            } catch (e: SsmForwardNotReadyException) {
-                e
-            } catch (e: IllegalArgumentException) {
-                // The ssm route refuses a host that has no instance ID.
-                e
-            }
+            } ?: return true
         eventBus.emit(Event.Command.HostExecError(host.alias, reason(failure)))
         return false
     }
 
     /**
-     * Why [failure] failed, for the host's error event. A failed remote command already printed its
-     * stdout and stderr, tagged with the host, while it ran, so only its summary is repeated here.
+     * Runs [block] and returns the host failure it threw, or null when it succeeded. These are the
+     * failures the SSH layer reports for one host; anything else is a bug and propagates.
      */
-    private fun reason(failure: Exception): String =
-        when (failure) {
-            is RemoteCommandFailedException -> failure.summary
+    private inline fun hostFailure(block: () -> Unit): Exception? =
+        try {
+            block()
+            null
+        } catch (e: IOException) {
+            e
+        } catch (e: EasyDBLabException) {
+            e
+        } catch (e: SsmForwardNotReadyException) {
+            e
+        } catch (e: IllegalArgumentException) {
+            // The ssm route refuses a host that has no instance ID.
+            e
+        }
+
+    /**
+     * Why [failure] failed, for the host's error event. A remote command that [streamed] its output
+     * already printed its stdout and stderr, tagged with the host, while it ran, so only its summary
+     * is repeated; one that did not stream (the unit stop) reports its output here, its only place.
+     */
+    private fun reason(
+        failure: Exception,
+        streamed: Boolean = true,
+    ): String =
+        when {
+            failure is RemoteCommandFailedException && streamed -> failure.summary
             else -> failure.message ?: failure::class.simpleName ?: "Unknown error"
         }
 
@@ -151,6 +164,10 @@ class ExecRun : PicoBaseCommand() {
      * Runs the unit and waits for it, then prints its output from the journal. `systemd-run --wait`
      * exits non-zero when the unit fails, so the journal is printed on failure too: the unit's own
      * output is the reason it failed. The run's failure is rethrown, not the journal's.
+     *
+     * An interrupted run (Ctrl-C) stops the unit before the interrupt goes on. The SSH layer signals
+     * only the session's processes, `systemd-run` among them, and the unit runs under systemd, outside
+     * them, so without the stop the command would keep running on the node.
      */
     private fun runInForeground(
         host: Host,
@@ -158,8 +175,39 @@ class ExecRun : PicoBaseCommand() {
         systemdRunCmd: String,
     ) {
         val run = runCatching { remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false) }
+        val failure = run.exceptionOrNull()
+        if (failure is InterruptedException) {
+            stopUnit(host, systemdUnit)
+            throw failure
+        }
         if (run.isFailure) runCatching { printUnitOutput(host, systemdUnit) } else printUnitOutput(host, systemdUnit)
         run.getOrThrow()
+    }
+
+    /**
+     * Stops [systemdUnit] on [host] after an interrupt. The interrupt flag is cleared for the stop's own
+     * SSH call, which an interrupted thread could not make, and restored after it. The stop runs first
+     * and only fails when the unit is still active afterwards, so a unit that ends on its own between
+     * a check and the stop is not reported. The stop's output is kept and printed only when the unit
+     * is still active, so a stop that fails is reported for the host with systemctl's reason; the
+     * interrupt still goes on. The stop runs without streaming, so the report carries its stderr.
+     */
+    private fun stopUnit(
+        host: Host,
+        systemdUnit: String,
+    ) {
+        val interrupted = Thread.interrupted()
+        try {
+            val stop =
+                "out=\$(sudo systemctl stop $systemdUnit 2>&1) || ! systemctl is-active --quiet $systemdUnit" +
+                    " || { echo \"\$out\" >&2; false; }"
+            hostFailure { remoteOps.executeRemotely(host, stop, output = false, secret = false) }?.let {
+                val why = reason(it, streamed = false)
+                eventBus.emit(Event.Command.HostExecError(host.alias, "could not stop $systemdUnit: $why"))
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
 
     /**

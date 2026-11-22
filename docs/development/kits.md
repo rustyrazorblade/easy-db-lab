@@ -979,7 +979,7 @@ Database kits that expose a SQL interface should declare the `sql` capability:
 capabilities:
   - type: sql
     user: default                            # default username
-    driver-class: com.clickhouse.jdbc.ClickHouseDriver  # JDBC driver (optional)
+    driver-class: com.clickhouse.jdbc.Driver  # JDBC driver (optional)
 ```
 
 The `user` and `driver-class` fields are used when constructing `TARGET_JDBC_USER` and

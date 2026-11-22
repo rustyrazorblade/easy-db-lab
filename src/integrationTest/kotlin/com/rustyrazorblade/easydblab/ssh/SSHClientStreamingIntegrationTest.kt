@@ -19,6 +19,7 @@ import org.testcontainers.images.builder.Transferable
 import java.io.File
 import java.time.Duration
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -145,6 +146,79 @@ internal class SSHClientStreamingIntegrationTest {
     }
 
     /**
+     * Ctrl-C in the REPL interrupts the command thread. MINA's own wait ignores an interrupt, so the
+     * command ran to its end; the interrupt must end the call now, and the session must still run
+     * the next command.
+     */
+    @Test
+    fun `an interrupted caller stops a running command, and the session runs the next one`() {
+        val outcome = CompletableFuture<Throwable?>()
+        val caller =
+            Thread.ofVirtual().start {
+                val failure =
+                    runCatching { client().executeRemoteCommand("echo long-start; sleep $INTERRUPTED_SLEEP_SECONDS", sink, secret = false) }
+                outcome.complete(failure.exceptionOrNull())
+            }
+        await("long-start") { lines(NodeStream.Stdout).contains("long-start") }
+        val interruptedAt = System.nanoTime()
+
+        caller.interrupt()
+        val failure = outcome.get(SATURATION_DEADLINE_SECONDS, TimeUnit.SECONDS)
+
+        assertThat(failure).isInstanceOf(InterruptedException::class.java)
+        assertThat(Duration.ofNanos(System.nanoTime() - interruptedAt)).isLessThan(Duration.ofSeconds(INTERRUPT_STOP_SECONDS))
+        // The session runs the next command, and the interrupted command's process is gone. The
+        // pattern brackets one digit so it does not match the shell that runs pgrep.
+        val left = client().executeRemoteCommand(LEFT_SLEEP_QUERY, null, secret = false).text.trim()
+        assertThat(left).describedAs("remote processes left after the interrupt").isEqualTo(NONE_LEFT)
+    }
+
+    /**
+     * A command that ignores INT outlives the first signal; KILL, one grace period later, must stop
+     * it, and the call must return soon after rather than when the command ends.
+     */
+    @Test
+    fun `an interrupted command that ignores INT is killed after the grace period`() {
+        val grace = Duration.ofMillis(KILL_GRACE_MS)
+        val outcome = CompletableFuture<Throwable?>()
+        val caller =
+            Thread.ofVirtual().start {
+                val command = "trap '' INT; echo trap-start; sleep $INT_IGNORING_SLEEP_SECONDS"
+                val failure =
+                    runCatching {
+                        SSHClient(
+                            session,
+                            ChannelRemoteExec(session, grace),
+                        ).executeRemoteCommand(command, sink, secret = false)
+                    }
+                outcome.complete(failure.exceptionOrNull())
+            }
+        await("trap-start") { lines(NodeStream.Stdout).contains("trap-start") }
+        val interruptedAt = System.nanoTime()
+
+        caller.interrupt()
+        val failure = outcome.get(SATURATION_DEADLINE_SECONDS, TimeUnit.SECONDS)
+        val elapsed = Duration.ofNanos(System.nanoTime() - interruptedAt)
+
+        assertThat(failure).isInstanceOf(InterruptedException::class.java)
+        assertThat(elapsed).describedAs("INT is ignored, so the call waits out the grace").isGreaterThanOrEqualTo(grace)
+        assertThat(elapsed).isLessThan(grace.multipliedBy(2).plusMillis(SLOW_MARGIN_MS))
+        val left = client().executeRemoteCommand(LEFT_INT_IGNORING_QUERY, null, secret = false).text.trim()
+        assertThat(left).describedAs("remote processes left after KILL").isEqualTo(NONE_LEFT)
+    }
+
+    private fun await(
+        what: String,
+        condition: () -> Boolean,
+    ) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(SATURATION_DEADLINE_SECONDS).toNanos()
+        while (!condition()) {
+            check(System.nanoTime() < deadline) { "timed out waiting for $what" }
+            Thread.sleep(POLL_MS)
+        }
+    }
+
+    /**
      * A virtual caller's SCP calls run on a platform thread; the SCP client must be in hand before
      * that hop, or the platform thread waits for the lock its virtual caller holds.
      */
@@ -177,19 +251,45 @@ internal class SSHClientStreamingIntegrationTest {
         private const val CALLERS_PER_CARRIER = 3
         private const val SLOW_SINK_MS = 200L
         private const val SATURATION_DEADLINE_SECONDS = 60L
+        private const val INTERRUPT_STOP_SECONDS = 10L
+
+        /** A sleep length nothing else in the container uses, so pgrep finds only the interrupted command. */
+        private const val INTERRUPTED_SLEEP_SECONDS = 6123
+        private const val NONE_LEFT = "none-left"
+        private const val LEFT_SLEEP_QUERY = "pgrep -f 'sleep [6]123' || echo $NONE_LEFT"
+        private const val POLL_MS = 50L
+
+        /** As [INTERRUPTED_SLEEP_SECONDS], for the command that ignores INT. */
+        private const val INT_IGNORING_SLEEP_SECONDS = 6124
+        private const val LEFT_INT_IGNORING_QUERY = "pgrep -f 'sleep [6]124' || echo $NONE_LEFT"
+
+        /** A short grace, so the KILL test does not wait out the production one. */
+        private const val KILL_GRACE_MS = 500L
 
         /** `0600`: sshd refuses an `authorized_keys` others can write. */
         private const val AUTHORIZED_KEYS_MODE = 384
 
-        /** An Alpine `sshd` that takes the test's key for root, pinned to the alpine:3.20 image index; `openssh-client` brings the `scp` the SCP test runs remotely. */
+        /** The login user, not root, as on a node: OpenSSH refuses a `signal` request on a root session. */
+        private const val LOGIN_USER = "ubuntu"
+
+        /**
+         * An Alpine `sshd` that takes the test's key for [LOGIN_USER], pinned to the alpine:3.20 image
+         * index; `openssh-client` brings the `scp` the SCP test runs remotely. The user's password is
+         * `*`, not Alpine's locked `!`, which sshd would refuse even for a key. The key is copied
+         * in as root after the image is built, so the container gives it to the user before sshd starts.
+         */
         private val SSHD_DOCKERFILE =
             """
             FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
             RUN apk add --no-cache openssh-server openssh-client \
              && ssh-keygen -A \
-             && mkdir -p /root/.ssh \
-             && chmod 700 /root/.ssh
-            CMD ["/usr/sbin/sshd", "-D", "-e", "-o", "PermitRootLogin=prohibit-password", "-o", "PasswordAuthentication=no"]
+             && adduser -D -s /bin/sh $LOGIN_USER \
+             && sed -i 's/^$LOGIN_USER:!:/$LOGIN_USER:*:/' /etc/shadow \
+             && mkdir -p /home/$LOGIN_USER/.ssh \
+             && chown $LOGIN_USER:$LOGIN_USER /home/$LOGIN_USER/.ssh \
+             && chmod 700 /home/$LOGIN_USER/.ssh
+            CMD chown $LOGIN_USER:$LOGIN_USER /home/$LOGIN_USER/.ssh/authorized_keys \
+             && exec /usr/sbin/sshd -D -e -o PasswordAuthentication=no
             """.trimIndent()
 
         @TempDir
@@ -206,11 +306,11 @@ internal class SSHClientStreamingIntegrationTest {
             val keygen = ProcessBuilder("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privateKey.absolutePath).inheritIO().start()
             check(keygen.waitFor() == 0) { "ssh-keygen failed" }
             sshd =
-                GenericContainer(ImageFromDockerfile("edl-test-sshd-scp", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
+                GenericContainer(ImageFromDockerfile("edl-test-sshd-user", false).withFileFromString("Dockerfile", SSHD_DOCKERFILE))
                     .withExposedPorts(SSHD_PORT)
                     .withCopyToContainer(
                         Transferable.of(File(keyDirectory, "id_ed25519.pub").readText(), AUTHORIZED_KEYS_MODE),
-                        "/root/.ssh/authorized_keys",
+                        "/home/$LOGIN_USER/.ssh/authorized_keys",
                     ).waitingFor(Wait.forListeningPort())
             sshd.start()
 
@@ -223,7 +323,7 @@ internal class SSHClientStreamingIntegrationTest {
         /** A new authenticated session to the container's sshd. */
         private fun connectSession(): ClientSession =
             mina
-                .connect("root", sshd.host, sshd.getMappedPort(SSHD_PORT))
+                .connect(LOGIN_USER, sshd.host, sshd.getMappedPort(SSHD_PORT))
                 .verify(Duration.ofSeconds(CONNECT_SECONDS))
                 .session
                 .also { it.auth().verify(Duration.ofSeconds(CONNECT_SECONDS)) }

@@ -832,7 +832,7 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 
 Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
 
-In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable. A host whose command printed nothing shows `[db0] no output`.
+In the foreground, each line of the unit's output is printed tagged with its host, `[db0] ...`, so the output of a parallel run (`-p`) stays readable. A host whose command printed nothing shows `[db0] no output`. Ctrl-C on a foreground run stops the unit on every host it is still running on, so the command does not keep running on the node.
 
 ```bash
 # Foreground (blocks until complete, shows output)
@@ -924,6 +924,8 @@ Start interactive REPL.
 ```bash
 easy-db-lab repl
 ```
+
+Type any command without the `easy-db-lab` prefix. TAB completes commands, subcommands and options; Alt+S toggles the command description under the input line. `help` lists the commands, `cls` (or `clear`) clears the screen, and `exit`, `quit` or Ctrl-D leaves the REPL. History is kept in the profile directory. A line is passed to the command as typed: the REPL does not expand `$VAR`, `~` or `!` history events such as `!!`, does not read a leading `NAME=value` as a variable, and does not treat `|`, `&&`, `;`, `>` or `&` as operators, so a remote command such as `exec run "ps aux | grep java"` reaches the node unchanged. Ctrl-C stops the running command, remote processes included, prints `Interrupted`, and returns to the prompt.
 
 ### server
 

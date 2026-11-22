@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.koin.dsl.module
 
@@ -36,4 +37,18 @@ val sshModule =
 
         // Remote operations service - factory because it's stateless
         factory<RemoteOperationsService> { DefaultRemoteOperationsService(get()) }
+
+        // Remote operations for hosts in another region (an AMI build's own). Only the ssm
+        // transport is bound to a region; direct dials the host's address from anywhere.
+        factory {
+            val user = get<User>()
+            val config = get<SSHConfiguration>()
+            RegionalRemoteOperations.forProfile(
+                shared = get(),
+                transport = user.sshTransport,
+                profileRegion = user.region,
+                ssmRouteFor = { region -> get<RegionalSsmRoutes>().forRegion(region, config.sshPort) },
+                connectionsOver = { route -> DefaultSSHConnectionProvider(config, route) },
+            )
+        }
     }

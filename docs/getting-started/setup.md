@@ -310,9 +310,17 @@ easy-db-lab build-image --region eu-west-1
 Building an AMI takes approximately 10-15 minutes. Docker must be installed and running.
 ```
 
+The whole build runs in its `--region`. It sets up the `easy-db-lab-packer` VPC, subnet and
+security group there on first use. When that region is not your profile's, your profile's key pair
+does not exist there, so the build imports your profile's public key into the build region as a key
+pair of its own, `easy-db-lab-build-<build id>`, and deletes it when the build ends. A build
+instance kept with `--keep-on-error` therefore still accepts your profile's `secret.pem`; the build
+prints its path.
+
 If your profile's SSH transport is `ssm`, AMI builds reach the build instance over SSM Session
-Manager too. The first such build also builds a local Packer image with the Session Manager plugin
-added (see [AMI builds](../user-guide/network-connectivity.md#ami-builds)).
+Manager too, in the build region. The first such build also builds a local Packer image with the Session Manager plugin
+added. A build that loses its session runs again on a new build instance, up to 3 attempts (see
+[AMI builds](../user-guide/network-connectivity.md#ami-builds)).
 
 ## Environment Variables
 

@@ -30,6 +30,7 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
+├── AwsBuildSites.kt          # The AWS adapter of containers/BuildSites: an AMI build's packer network, key pair (imported into a non-profile region, deleted on close) and builders, in its own region
 ├── AwsKeyPairService.kt       # Creates the EC2 key pair for profile setup (both marker tags); saves secret.pem owner-only; backfills a missing marker on an existing key pair (up, build-image, profile setup)
 ├── ProfileResourceMarkers.kt  # The image builds' backfill: ensures the account bucket and gives it and the key pair any missing marker tag
 ├── AwsServicesModule.kt       # Koin bindings for this package

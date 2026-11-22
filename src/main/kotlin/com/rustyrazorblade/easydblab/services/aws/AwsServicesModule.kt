@@ -3,11 +3,14 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.containers.BuildSites
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.providers.aws.RegionalEc2Clients
 import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Clients
 import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
@@ -169,6 +172,24 @@ val awsServicesModule =
             )
         }
         factory { ProfileResourceMarkers(get(), get()) }
+
+        // Where an AMI build runs: the packer network, key pair and builders in the build's own region
+        factory<BuildSites> {
+            val user = get<User>()
+            val regionalEc2 = get<RegionalEc2Clients>()
+            val eventBus = get<EventBus>()
+            val emrService = get<EMRService>()
+            val openSearchService = get<OpenSearchService>()
+            AwsBuildSites(
+                ec2For = regionalEc2::forRegion,
+                infrastructureFor = { vpcService -> AwsInfrastructureService(vpcService, emrService, openSearchService, eventBus) },
+                eventBus = eventBus,
+                externalIpService = get(),
+                profileRegion = user.region,
+                profileKeyName = user.keyName,
+                profileKeyFile = File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE),
+            )
+        }
 
         factory { BucketRegion(get()) }
         factory {

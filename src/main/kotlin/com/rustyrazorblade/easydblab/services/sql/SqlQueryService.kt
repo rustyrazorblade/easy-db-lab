@@ -40,7 +40,8 @@ fun ensureJdbcDriversLoaded() {
     listOf(
         "org.postgresql.Driver",
         "com.mysql.cj.jdbc.Driver",
-        "com.clickhouse.jdbc.ClickHouseDriver",
+        // The V2 driver. `com.clickhouse.jdbc.ClickHouseDriver` is a deprecated proxy to it.
+        "com.clickhouse.jdbc.Driver",
         "com.facebook.presto.jdbc.PrestoDriver",
         "io.trino.jdbc.TrinoDriver",
     ).forEach { driverClass ->

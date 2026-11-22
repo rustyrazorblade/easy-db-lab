@@ -11,41 +11,25 @@ import com.rustyrazorblade.easydblab.commands.socks.Socks
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.jline.console.SystemRegistry
-import org.jline.console.impl.SystemRegistryImpl
-import org.jline.reader.EndOfFileException
-import org.jline.reader.LineReader
-import org.jline.reader.LineReaderBuilder
-import org.jline.reader.Parser
-import org.jline.reader.UserInterruptException
-import org.jline.reader.impl.DefaultParser
-import org.jline.terminal.Terminal
 import org.jline.terminal.TerminalBuilder
-import org.jline.widget.TailTipWidgets
 import org.koin.core.component.get
 import org.koin.core.component.inject
 import picocli.CommandLine
 import picocli.CommandLine.Command
-import picocli.shell.jline3.PicocliCommands
-import java.nio.file.Paths
-import java.util.function.Supplier
 
 /**
- * Shell-specific command that includes all easy-db-lab commands plus ClearScreen.
- * This is used only in the REPL context.
+ * The root of the REPL's command tree: every easy-db-lab command the REPL offers.
+ * This is used only in the REPL context; `cls`, `help` and `exit` are shell commands.
  */
 @Command(
     name = "",
     description = ["easy-db-lab interactive shell"],
     subcommands = [
-        // Shell-specific commands
-        PicocliCommands.ClearScreen::class,
         // Top-level commands
         Version::class,
         Clean::class,
@@ -81,13 +65,13 @@ class ShellCommands : Runnable {
 }
 
 /**
- * Interactive REPL with full PicoCLI integration.
+ * Interactive REPL with full PicoCLI integration, on jline's shell.
  *
  * Features:
- * - Tab completion for commands, options, and arguments
+ * - Tab completion for commands, subcommands and options, at any depth
  * - Command history with persistence
- * - Inline help via TailTipWidgets (toggle with Alt+S)
- * - Built-in shell commands (clear, exit)
+ * - Inline help via tail tips (toggle with Alt+S)
+ * - Built-in shell commands (cls/clear, exit/quit)
  */
 @RequireProfileSetup
 @Command(
@@ -118,166 +102,28 @@ class Repl : PicoBaseCommand() {
     }
 
     private fun runRepl() {
-        val terminal = createTerminal()
-        val commandLine = createCommandLine(terminal)
-        val picocliCommands = PicocliCommands(commandLine)
-        val parser: Parser = DefaultParser()
-
-        // Set up working directory supplier
-        val workDir = Supplier { Paths.get(context.workingDirectory.absolutePath) }
-
-        // Create system registry with just picocli commands (skip builtins for simplicity)
-        val systemRegistry: SystemRegistry = SystemRegistryImpl(parser, terminal, workDir, null)
-        systemRegistry.setCommandRegistries(picocliCommands)
-
-        // Build LineReader with completers
-        val reader = createLineReader(terminal, systemRegistry, parser)
-
-        // Set up TailTipWidgets for command descriptions
-        val widgets =
-            TailTipWidgets(
-                reader,
-                systemRegistry::commandDescription,
-                TAILTIP_DESCRIPTION_LINES,
-                TailTipWidgets.TipType.COMPLETER,
-            )
-        widgets.enable()
+        val terminal = TerminalBuilder.builder().name("easy-db-lab").build()
+        val group = ReplCommandGroup(createCommandLine(), terminal)
+        val shell = ReplShell.build(terminal, group, context.profileDir.resolve(".repl_history").toPath())
 
         printWelcomeMessage()
-
-        // Run the REPL loop
-        runReplLoop(reader, systemRegistry)
+        // The shell does not own a terminal it was given, so it is closed here.
+        terminal.use { shell.use { it.run() } }
     }
 
-    private fun createTerminal(): Terminal =
-        TerminalBuilder
-            .builder()
-            .name("easy-db-lab")
-            .build()
+    private fun createCommandLine(): CommandLine {
+        val cmd = CommandLine(ShellCommands::class.java, KoinCommandFactory())
 
-    private fun createCommandLine(terminal: Terminal): CommandLine {
-        // Use PicocliCommandsFactory to support ClearScreen which needs Terminal access
-        val picocliFactory = PicocliCommands.PicocliCommandsFactory()
-        val koinFactory = KoinCommandFactory()
-
-        // Chain factories: try picocli factory first (for ClearScreen), then Koin (for commands)
-        val chainedFactory = ChainedCommandFactory(picocliFactory, koinFactory)
-
-        val cmd = CommandLine(ShellCommands::class.java, chainedFactory)
-
-        // Set terminal for ClearScreen command
-        picocliFactory.setTerminal(terminal)
-
-        // Set execution strategy to use our CommandExecutor
-        // Get CommandExecutor lazily to avoid resolving AWS dependencies on REPL startup
+        // The CommandExecutor is resolved when a command runs, so REPL startup resolves no AWS dependency.
         cmd.executionStrategy =
-            CommandLine.IExecutionStrategy { parseResult ->
-                var currentParseResult = parseResult.subcommand()
-                while (currentParseResult?.subcommand() != null) {
-                    currentParseResult = currentParseResult.subcommand()
-                }
-
-                if (currentParseResult != null) {
-                    val userObj = currentParseResult.commandSpec().userObject()
-                    if (userObj is PicoCommand) {
-                        // Get CommandExecutor lazily when a command actually runs
-                        val executor = get<CommandExecutor>() as DefaultCommandExecutor
-                        return@IExecutionStrategy executor.executeTopLevel(userObj)
-                    }
-                }
-
-                CommandLine.RunLast().execute(parseResult)
-            }
-
+            ReplExecutionStrategy { command -> (get<CommandExecutor>() as DefaultCommandExecutor).executeTopLevel(command) }
         return cmd
     }
-
-    private fun createLineReader(
-        terminal: Terminal,
-        systemRegistry: SystemRegistry,
-        parser: Parser,
-    ): LineReader =
-        LineReaderBuilder
-            .builder()
-            .terminal(terminal)
-            .completer(systemRegistry.completer())
-            .parser(parser)
-            .variable(LineReader.LIST_MAX, MAX_COMPLETION_CANDIDATES)
-            .variable(LineReader.HISTORY_FILE, context.profileDir.resolve(".repl_history").absolutePath)
-            .build()
 
     private fun printWelcomeMessage() {
         println(
             "easy-db-lab interactive shell. Type 'help' for commands, TAB for completion.\n" +
                 "Press Alt+S to toggle command description tips.\n",
         )
-    }
-
-    private fun runReplLoop(
-        reader: LineReader,
-        systemRegistry: SystemRegistry,
-    ) {
-        var running = true
-        while (running) {
-            running = processReplInput(reader, systemRegistry)
-        }
-    }
-
-    private fun processReplInput(
-        reader: LineReader,
-        systemRegistry: SystemRegistry,
-    ): Boolean =
-        runCatchingException {
-            systemRegistry.cleanUp()
-            val line = reader.readLine(PROMPT)
-            when {
-                line.isBlank() -> true
-                isExitCommand(line) -> false
-                else -> {
-                    systemRegistry.execute(line)
-                    true
-                }
-            }
-        }.getOrElse { e ->
-            when (e) {
-                is UserInterruptException -> true
-                is EndOfFileException -> false
-                // A thread interrupt is a request to stop, not one more failed line.
-                is InterruptedException -> false
-                else -> {
-                    systemRegistry.trace(e)
-                    true
-                }
-            }
-        }
-
-    private fun isExitCommand(line: String): Boolean {
-        val trimmed = line.trim()
-        return trimmed.equals("exit", ignoreCase = true) || trimmed.equals("quit", ignoreCase = true)
-    }
-}
-
-private const val PROMPT = "easy-db-lab> "
-private const val MAX_COMPLETION_CANDIDATES = 50
-private const val TAILTIP_DESCRIPTION_LINES = 5
-
-/**
- * Factory that chains multiple PicoCLI factories together.
- * Tries each factory in order until one succeeds.
- */
-private class ChainedCommandFactory(
-    private vararg val factories: CommandLine.IFactory,
-) : CommandLine.IFactory {
-    override fun <K : Any> create(cls: Class<K>): K {
-        for (factory in factories) {
-            // A factory that cannot construct the class is skipped; the next one gets its turn.
-            try {
-                return factory.create(cls)
-            } catch (_: ReflectiveOperationException) {
-                continue
-            }
-        }
-        // Fall back to default factory
-        return CommandLine.defaultFactory().create(cls)
     }
 }

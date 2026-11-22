@@ -7,12 +7,9 @@ import com.rustyrazorblade.easydblab.redact
 import com.rustyrazorblade.easydblab.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.commons.io.output.TeeOutputStream
-import org.apache.sshd.client.channel.ClientChannel
 import org.apache.sshd.client.session.ClientSession
-import org.apache.sshd.common.util.io.output.NoCloseOutputStream
 import org.apache.sshd.scp.client.CloseableScpClient
 import org.apache.sshd.scp.client.ScpClientCreator
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
@@ -47,9 +44,11 @@ import kotlin.concurrent.withLock
  * when close() is called.
  *
  * @property session The underlying Apache SSHD ClientSession
+ * @property exec Runs one command on [session]; the default is [ChannelRemoteExec]
  */
 class SSHClient(
     private val session: ClientSession,
+    private val exec: RemoteExec = ChannelRemoteExec(session),
 ) : ISSHClient {
     private val log = KotlinLogging.logger {}
 
@@ -89,47 +88,27 @@ class SSHClient(
         command: String,
         sink: RemoteOutputSink?,
         secret: Boolean,
-    ): Response =
-        execute(command, sink, secret) { stdout, stderr ->
-            session.executeRemoteCommand(command, stdout, stderr, Charset.defaultCharset())
-        }
+    ): Response = execute(command, input = null, sink, secret)
 
     /**
-     * Runs [command] with [input] as its stdin. The bytes go over the exec channel and are closed
-     * with EOF, so the command reads them as it would a pipe and nothing is staged on either side.
-     *
-     * MINA's `executeRemoteCommand` takes no input, so this opens the exec channel the same way it
-     * does (2.18: `createExecChannel`, then open, wait for close, `validateCommandExitStatusCode`)
-     * and sets the channel's input before it opens. A non-zero exit therefore fails exactly as
-     * [executeRemoteCommand]'s does.
+     * Runs [command] with [input] as its stdin, through the same [exec] as [executeRemoteCommand],
+     * so a non-zero exit fails the same way and an interrupt stops it the same way.
      */
     override fun executeRemoteCommandWithInput(
         command: String,
         input: String,
         sink: RemoteOutputSink?,
-    ): Response =
-        execute(command, sink, secret = false) { stdout, stderr ->
-            val charset = Charset.defaultCharset()
-            session.createExecChannel(command, charset, null, emptyMap<String, Any>()).use { channel ->
-                channel.setIn(ByteArrayInputStream(input.toByteArray(charset)))
-                channel.setOut(NoCloseOutputStream(stdout))
-                channel.setErr(NoCloseOutputStream(stderr))
-                channel.open().verify()
-                channel.waitFor(ClientSession.REMOTE_COMMAND_WAIT_EVENTS, 0L)
-                ClientChannel.validateCommandExitStatusCode(command, channel.exitStatus)
-            }
-        }
+    ): Response = execute(command, input, sink, secret = false)
 
     /**
-     * Runs [command] through [run], which writes its stdout and stderr into the two streams it is
-     * given, capturing both, streaming each line to [sink] and turning MINA's failure into a
-     * [RemoteCommandFailedException].
+     * Runs [command] through [exec], capturing stdout and stderr, streaming each line to [sink] and
+     * turning MINA's failure into a [RemoteCommandFailedException].
      */
     private fun execute(
         command: String,
+        input: String?,
         sink: RemoteOutputSink?,
         secret: Boolean,
-        run: (OutputStream, OutputStream) -> Unit,
     ): Response =
         operationLock.withLock {
             require(command.isNotBlank()) { "Command cannot be blank" }
@@ -155,7 +134,9 @@ class SSHClient(
             val stdoutLines = lineSink?.let { lines(it, NodeStream.Stdout) }
             val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {
-                PlatformThreadCall.run { run(tee(stdoutStream, stdoutLines), tee(stderrStream, stderrLines)) }
+                PlatformThreadCall.run {
+                    exec.run(command, input, tee(stdoutStream, stdoutLines), tee(stderrStream, stderrLines))
+                }
             } catch (e: RemoteException) {
                 throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)
             } finally {

@@ -2,24 +2,26 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import java.io.File
 
 /**
- * Cleans up generated files from the current directory.
+ * Cleans up generated files from the workspace.
  *
  * It removes only what easy-db-lab wrote. In `bin/` that is the tool wrappers and their marker, by
  * name; any other file there stays, and so does `bin/` itself while it holds one.
  */
 @Command(
     name = "clean",
-    description = ["Clean up generated files from the current directory"],
+    description = ["Clean up generated files from the workspace"],
 )
 class Clean :
     PicoCommand,
@@ -31,18 +33,18 @@ class Clean :
     companion object {
         val filesToClean =
             listOf(
-                "cassandra.patch.yaml",
-                "sshConfig",
-                "env.sh",
-                "environment.sh",
-                "setup_instance.sh",
-                "state.json",
+                Constants.ConfigPaths.CASSANDRA_PATCH_FILE,
+                Constants.Workspace.SSH_CONFIG_FILE,
+                EnvScriptWriter.FILE_NAME,
+                Constants.Workspace.STRESS_ENV_FILE,
+                Constants.Workspace.SETUP_INSTANCE_SCRIPT,
+                CLUSTER_STATE,
                 Constants.ClusterStateFile.LOCK_FILE,
-                "axonops-workbench.json",
-                ".socks5-proxy-state",
+                Constants.Workspace.AXONOPS_CONFIG_FILE,
+                Constants.Vpc.SOCKS5_PROXY_STATE_FILE,
                 Constants.Proxy.ENV_FILE,
                 Constants.Proxy.ENV_LOCK_FILE,
-                "kubeconfig",
+                Constants.K3s.LOCAL_KUBECONFIG,
             )
 
         val directoriesToClean =
@@ -55,14 +57,14 @@ class Clean :
 
     override fun execute() {
         for (f in filesToClean) {
-            File(context.workingDirectory, f).deleteRecursively()
+            context.workspaceFile(f).deleteWithoutFollowingLinks()
         }
 
         for (d in directoriesToClean) {
-            File(context.workingDirectory, d).deleteRecursively()
+            context.workspaceFile(d).deleteWithoutFollowingLinks()
         }
         toolWrapperInstaller.remove(context.workingDirectory)
-        val artifacts = File(context.workingDirectory, "artifacts")
+        val artifacts = context.workspaceFile("artifacts")
 
         if (artifacts.isDirectory) {
             if (artifacts.listFiles().isEmpty()) {

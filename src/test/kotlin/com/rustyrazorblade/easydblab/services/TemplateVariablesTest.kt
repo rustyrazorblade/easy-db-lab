@@ -87,7 +87,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from builds correct db and app counts`() {
         val state = stateWith(dbCount = 3, appCount = 2)
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.dbNodeCount).isEqualTo(3)
         assertThat(vars.appNodeCount).isEqualTo(2)
@@ -96,7 +102,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from builds comma-joined db node IPs`() {
         val state = stateWith(dbCount = 3)
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.dbNodeIps).isEqualTo("10.0.2.0,10.0.2.1,10.0.2.2")
     }
@@ -104,7 +110,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from produces empty dbNodeIps when no db nodes`() {
         val state = stateWith(dbCount = 0)
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.dbNodeIps).isEmpty()
     }
@@ -112,7 +118,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from builds comma-joined app node IPs`() {
         val state = stateWith(appCount = 2)
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.appNodeIps).isEqualTo("10.0.3.0,10.0.3.1")
     }
@@ -120,7 +126,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from produces empty appNodeIps when no app nodes`() {
         val state = stateWith(appCount = 0)
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.appNodeIps).isEmpty()
     }
@@ -128,7 +134,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `toMap includes APP_NODE_IPS key`() {
         val state = stateWith(appCount = 2)
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.toMap()).containsKey("APP_NODE_IPS")
         assertThat(vars.toMap()["APP_NODE_IPS"]).isEqualTo("10.0.3.0,10.0.3.1")
@@ -137,7 +143,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from sets control host public IP`() {
         val state = stateWith()
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.controlHostPublic).isEqualTo("54.1.2.3")
     }
@@ -145,7 +157,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from sets control host private IP`() {
         val state = stateWith()
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.controlHostPrivate).isEqualTo("10.0.1.1")
     }
@@ -153,7 +171,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from sets accountBucket from s3Bucket`() {
         val state = stateWith(bucketName = "account-level-bucket")
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.accountBucket).isEqualTo("account-level-bucket")
     }
@@ -161,7 +185,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `toMap includes ACCOUNT_BUCKET key`() {
         val state = stateWith(bucketName = "my-account-bucket")
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.toMap()).containsKey("ACCOUNT_BUCKET")
         assertThat(vars.toMap()["ACCOUNT_BUCKET"]).isEqualTo("my-account-bucket")
@@ -170,7 +200,13 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from sets storageClassWfc to the WFC constant`() {
         val state = stateWith()
-        val vars = TemplateVariables.from(state = state, kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = state,
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.storageClassWfc).isEqualTo(Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
     }
@@ -183,6 +219,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         val vars =
             TemplateVariables.from(
                 state = state,
+                workspace = context.workingDirectory,
                 kitName = "mydb",
                 storageSize = "50Gi",
             )
@@ -215,7 +252,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(rendered).contains("controlHost: 54.1.2.3")
         assertThat(rendered).contains("controlHostPublic: 54.1.2.3")
         assertThat(rendered).contains("controlHostPrivate: 10.0.1.1")
-        assertThat(rendered).contains("kubeconfig: ${Constants.K3s.LOCAL_KUBECONFIG}")
+        assertThat(rendered).contains("kubeconfig: ${File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).absolutePath}")
         assertThat(rendered).doesNotContain("__")
     }
 
@@ -224,7 +261,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         val state = stateWith()
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
-        val vars = TemplateVariables.from(state = state, kitName = "mydb", storageSize = "50Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "mydb", storageSize = "50Gi")
         val template = "replicas: __REPLICAS__\nshards: __SHARDS__"
 
         val unresolved = mutableListOf<String>()
@@ -238,7 +275,7 @@ class TemplateVariablesTest : BaseKoinTest() {
         val state = stateWith()
         whenever(mockClusterStateManager.load()).thenReturn(state)
 
-        val vars = TemplateVariables.from(state = state, kitName = "mydb", storageSize = "50Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "mydb", storageSize = "50Gi")
         val template = "workload: __KIT_NAME__"
 
         var called = false
@@ -271,7 +308,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from produces empty runningKits when none started`() {
         val state = stateWith()
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.runningKits).isEmpty()
     }
@@ -279,7 +316,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `from builds comma-joined runningKits from state`() {
         val state = stateWith().also { it.runningKits = mutableSetOf("cassandra", "clickhouse") }
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.runningKits.split(",")).containsExactlyInAnyOrder("cassandra", "clickhouse")
     }
@@ -287,7 +324,7 @@ class TemplateVariablesTest : BaseKoinTest() {
     @Test
     fun `toMap includes RUNNING_KITS key`() {
         val state = stateWith().also { it.runningKits = mutableSetOf("cassandra") }
-        val vars = TemplateVariables.from(state = state, kitName = "presto", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "presto", storageSize = "0Gi")
 
         assertThat(vars.toMap()).containsKey("RUNNING_KITS")
         assertThat(vars.toMap()["RUNNING_KITS"]).isEqualTo("cassandra")
@@ -295,28 +332,46 @@ class TemplateVariablesTest : BaseKoinTest() {
 
     @Test
     fun `from uses vpcCidr from initConfig cidr`() {
-        val vars = TemplateVariables.from(state = stateWith(cidr = "10.1.0.0/16"), kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = stateWith(cidr = "10.1.0.0/16"),
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.vpcCidr).isEqualTo("10.1.0.0/16")
     }
 
     @Test
     fun `from defaults vpcCidr to DEFAULT_CIDR when cidr not specified`() {
-        val vars = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = stateWith(),
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.vpcCidr).isEqualTo(Constants.Vpc.DEFAULT_CIDR)
     }
 
     @Test
     fun `toMap includes VPC_CIDR key`() {
-        val vars = TemplateVariables.from(state = stateWith(), kitName = "clickhouse", storageSize = "100Gi")
+        val vars =
+            TemplateVariables.from(
+                state = stateWith(),
+                workspace = context.workingDirectory,
+                kitName = "clickhouse",
+                storageSize = "100Gi",
+            )
 
         assertThat(vars.toMap()).containsKey("VPC_CIDR")
     }
 
     @Test
     fun `from produces empty opensearchEndpoint when no opensearch domain`() {
-        val vars = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = stateWith(), workspace = context.workingDirectory, kitName = "trino", storageSize = "0Gi")
 
         assertThat(vars.opensearchEndpoint).isEmpty()
     }
@@ -332,7 +387,7 @@ class TemplateVariablesTest : BaseKoinTest() {
                         endpoint = "search-my-domain-xyz.us-east-1.es.amazonaws.com",
                     )
             }
-        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "trino", storageSize = "0Gi")
 
         assertThat(vars.opensearchEndpoint).isEqualTo("search-my-domain-xyz.us-east-1.es.amazonaws.com")
     }
@@ -348,14 +403,21 @@ class TemplateVariablesTest : BaseKoinTest() {
                         endpoint = "search-my-domain-xyz.us-east-1.es.amazonaws.com",
                     )
             }
-        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "0Gi")
+        val vars = TemplateVariables.from(state = state, workspace = context.workingDirectory, kitName = "trino", storageSize = "0Gi")
 
         assertThat(vars.toMap()).containsEntry("OPENSEARCH_ENDPOINT", "search-my-domain-xyz.us-east-1.es.amazonaws.com")
     }
 
     @Test
     fun `a kit's profile endpoint is the control node's Pyroscope on a local cluster`() {
-        val vars = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap()
+        val vars =
+            TemplateVariables
+                .from(
+                    state = stateWith(),
+                    workspace = context.workingDirectory,
+                    kitName = "trino",
+                    storageSize = "1Gi",
+                ).toMap()
 
         assertThat(vars).containsEntry("PYROSCOPE_URL", "http://10.0.1.1:${Constants.K8s.PYROSCOPE_PORT}")
     }
@@ -365,7 +427,14 @@ class TemplateVariablesTest : BaseKoinTest() {
         val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
         val state = stateWith().copy(initConfig = InitConfig(telemetryRedirect = redirect))
 
-        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "1Gi").toMap()
+        val vars =
+            TemplateVariables
+                .from(
+                    state = state,
+                    workspace = context.workingDirectory,
+                    kitName = "trino",
+                    storageSize = "1Gi",
+                ).toMap()
 
         assertThat(vars).containsEntry("PYROSCOPE_URL", redirect.profiles)
     }
@@ -374,7 +443,14 @@ class TemplateVariablesTest : BaseKoinTest() {
     fun `a kit gets the cluster's tenant`() {
         val state = stateWith().copy(initConfig = InitConfig(tenant = "acme"))
 
-        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "1Gi").toMap()
+        val vars =
+            TemplateVariables
+                .from(
+                    state = state,
+                    workspace = context.workingDirectory,
+                    kitName = "trino",
+                    storageSize = "1Gi",
+                ).toMap()
 
         assertThat(vars).containsEntry("TENANT", "acme")
     }
@@ -409,7 +485,15 @@ class TemplateVariablesTest : BaseKoinTest() {
 
     @Test
     fun `the reserved names are exactly the variables a kit receives from the cluster, plus BACKUP_NAME`() {
-        val defined = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap().keys
+        val defined =
+            TemplateVariables
+                .from(
+                    state = stateWith(),
+                    workspace = context.workingDirectory,
+                    kitName = "trino",
+                    storageSize = "1Gi",
+                ).toMap()
+                .keys
 
         assertThat(TemplateVariables.RESERVED_NAMES).isEqualTo(defined + "BACKUP_NAME")
     }

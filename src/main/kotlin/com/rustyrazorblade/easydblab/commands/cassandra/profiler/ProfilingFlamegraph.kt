@@ -56,8 +56,11 @@ class ProfilingFlamegraph : ProfilingHostCommand() {
     )
     var jfrconvArgs: List<String> = emptyList()
 
-    /** Local destination root, one sub-directory per host. See [ProfilingFetch.outputDir]. */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    /**
+     * The host's directory under the workspace's `profiles`. Neither it nor `profiles` may lead
+     * outside the workspace through a link ([com.rustyrazorblade.easydblab.Context.workspaceDir]).
+     */
+    private fun hostDir(alias: String): File = context.workspaceDir("${Constants.Profiling.LOCAL_DOWNLOAD_DIR}/$alias")
 
     override fun execute() {
         validator.validate(jfrconvArgs)?.let { offending ->
@@ -74,8 +77,8 @@ class ProfilingFlamegraph : ProfilingHostCommand() {
 
             // All chunks go into one conversion: a single rotation is rarely enough to read.
             val remotePath = profilingService.convertToFlamegraph(host, chunks, format, jfrconvArgs)
-            val destination = File(outputDir, host.alias).also { it.mkdirs() }
-            val local = File(destination, File(remotePath).name)
+            hostDir(host.alias).mkdirs()
+            val local = context.workspaceFileForWrite("${Constants.Profiling.LOCAL_DOWNLOAD_DIR}/${host.alias}/${File(remotePath).name}")
             profilingService.download(host, remotePath, local.toPath())
 
             eventBus.emit(

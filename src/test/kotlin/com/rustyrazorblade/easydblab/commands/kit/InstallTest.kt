@@ -79,6 +79,6 @@ class InstallTest : BaseKoinTest() {
                     size = "10Gi"
                 }.execute()
         }.isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("--kit")
+            .hasMessageContaining("Invalid kit name '$name'")
     }
 }

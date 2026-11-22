@@ -38,6 +38,26 @@ The CLI SHALL expose `kit uninstall` as a subcommand that removes an installed k
 - **WHEN** the user runs `easy-db-lab kit uninstall <kit>`
 - **THEN** the kit is uninstalled as before
 
+#### Scenario: The typed name must match an installed kit exactly
+- **GIVEN** an installed kit directory `kafka`
+- **WHEN** the user runs `easy-db-lab kit uninstall KAFKA`
+- **THEN** the command fails saying `KAFKA` is not installed, and nothing is deleted, also on a case-insensitive file system
+
+#### Scenario: A directory that is not an installed kit is refused
+- **GIVEN** a workspace directory, such as `profiles`, `logs` or `bin`, that holds no `kit.yaml`
+- **WHEN** the user runs `easy-db-lab kit uninstall <that directory>`
+- **THEN** the command fails saying it is not installed, and nothing is deleted
+
+#### Scenario: A kit directory that cannot be deleted fails the command
+- **GIVEN** an installed kit with a file that cannot be deleted
+- **WHEN** the user runs `easy-db-lab kit uninstall <kit>`
+- **THEN** the command exits non-zero with a message naming the kit directory
+
+#### Scenario: A linked kit directory is unlinked, not followed
+- **GIVEN** a kit directory that is a symbolic link to a directory outside the workspace, or that holds such a link
+- **WHEN** the user runs `easy-db-lab kit uninstall <kit>`
+- **THEN** the link is removed and every file the link points at is left in place
+
 ### Requirement: Uninstalled kit hint references `kit install`
 When the user types a top-level argument that matches an installable kit name, the hint message SHALL reference `kit install <name>`, not `install <name>`.
 

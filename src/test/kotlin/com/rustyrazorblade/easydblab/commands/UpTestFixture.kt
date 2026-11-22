@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Version
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -244,7 +245,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         module {
             single {
                 // The real manager on the test workspace; the spy only reports each saved state to [recordSaves].
-                spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                spy(ClusterStateManager(context.workspaceFile(CLUSTER_STATE))).also { manager ->
                     doAnswer { invocation -> (invocation.callRealMethod() as ClusterState).also { onSave(it) } }
                         .whenever(manager)
                         .update(any())
@@ -279,7 +280,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             // The real tuning step over the mocked manifests; the API server admits every pod tuned.
             single { PodNetworkTuning(get<K8sService>(), { ProbeResult.Admitted(PodNetworkSysctls.packaged()) }, get()) }
             single<RegistryService> { mock<RegistryService>().also { mockRegistryService = it } }
-            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles()) }
+            single { NodeSetupService(get(), DefaultCassandraProfilingService(get()), NodeTuningFiles(), get()) }
             single { K3sBringUpSteps(get(), get(), get(), get(), get(), ControlPlaneTools(get<K8sService>(), get(), { _ -> plane })) }
             single<Ec2BringUpPorts> {
                 val steps = get<K3sBringUpSteps>()
@@ -381,11 +382,6 @@ abstract class UpTestFixture : BaseKoinTest() {
                 host: Host,
                 localDir: File,
                 remoteDir: String,
-            ) = Unit
-
-            override fun uploadDirectory(
-                host: Host,
-                version: Version,
             ) = Unit
 
             override fun replaceDirectory(

@@ -29,7 +29,17 @@ class ProcessSocksProxyMessageTest {
     private val unusedProbe = TunnelReachabilityProbe { _, _, _ -> false }
 
     private fun service(connectFailureHint: String? = null) =
-        ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe, EventBus(), connectFailureHint = { connectFailureHint })
+        ProcessSocksProxyService(
+            Context(
+                easyDbLabUserDirectory = File(tempDir, "edl-user"),
+                workingDirectory = tempDir,
+            ),
+            unusedProbe,
+            EventBus(),
+            connectFailureHint = {
+                connectFailureHint
+            },
+        )
 
     private val directHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false)
 

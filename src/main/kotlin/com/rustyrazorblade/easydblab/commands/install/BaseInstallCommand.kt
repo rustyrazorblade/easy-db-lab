@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.deleteAfterFailure
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver.TemplateSource
@@ -21,15 +23,14 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         storageSize: String,
         extraVars: Map<String, String> = emptyMap(),
     ) {
-        val vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = storageSize)
-        val outputDir = File(context.workingDirectory, kitName)
-        val tempDir = File(context.workingDirectory, ".tmp-$kitName-${UUID.randomUUID()}")
+        val vars = TemplateVariables.from(clusterState, context.workingDirectory, kitName, storageSize)
+        val outputDir = context.workspaceFile(kitName)
+        val tempDir = context.workspaceFile(".tmp-$kitName-${UUID.randomUUID()}")
         tempDir.mkdirs()
 
         val allUnresolved = mutableListOf<String>()
         val writtenNames = mutableListOf<String>()
 
-        var swapped = false
         try {
             for (entry in resolver.listTemplateFiles(source)) {
                 val isTemplate = entry.name.endsWith(".template")
@@ -67,26 +68,19 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
             // A kit that declares no storage arg has no storage size, so it gets no entry at
             // all rather than an empty `STORAGE_SIZE=`.
             val storageArg = if (storageSize.isBlank()) emptyMap() else mapOf("STORAGE_SIZE" to storageSize)
-            val resolvedArgs = extraVars + storageArg
-            // resolved-args.env holds one KEY=VALUE per line; a value with a line break would
-            // corrupt it and inject a second entry.
-            resolvedArgs.entries.firstOrNull { (_, v) -> '\n' in v || '\r' in v }?.let { (k, _) ->
-                throw IllegalArgumentException("Install arg value for $k contains a line break")
-            }
-            File(tempDir, Constants.Kit.RESOLVED_ARGS_FILE).writeText(
-                resolvedArgs.entries.joinToString("\n") { (k, v) -> "$k=$v" } + "\n",
-            )
+            writeResolvedArgs(tempDir, extraVars + storageArg)
 
             // Atomic swap: delete any existing kit dir then rename the fully-rendered
             // temp dir into place. outputDir is never in a partial state.
-            outputDir.deleteRecursively()
+            outputDir.deleteWithoutFollowingLinks()
             check(tempDir.renameTo(outputDir)) {
                 "Failed to rename scaffold to ${outputDir.absolutePath}"
             }
-            swapped = true
-        } finally {
-            // A failed install must not leave its scaffold behind; the renamed directory is outputDir.
-            if (!swapped) tempDir.deleteRecursively()
+        } catch (e: Throwable) {
+            // A failed install must not leave its scaffold behind. A cleanup that fails too is
+            // attached to e, so the user still sees what stopped the install.
+            tempDir.deleteAfterFailure(e)
+            throw e
         }
 
         for (name in writtenNames) {
@@ -100,6 +94,22 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         }
 
         eventBus.emit(Event.Install.ScaffoldComplete(kit = kitName, outputDir = outputDir.path))
+    }
+
+    /**
+     * Writes [resolvedArgs] as `kit-resolved-args.env`, one `KEY=VALUE` per line. A value with a
+     * line break would corrupt the file and inject a second entry, so it is refused.
+     */
+    private fun writeResolvedArgs(
+        dir: File,
+        resolvedArgs: Map<String, String>,
+    ) {
+        resolvedArgs.entries.firstOrNull { (_, v) -> '\n' in v || '\r' in v }?.let { (k, _) ->
+            throw IllegalArgumentException("Install arg value for $k contains a line break")
+        }
+        File(dir, Constants.Kit.RESOLVED_ARGS_FILE).writeText(
+            resolvedArgs.entries.joinToString("\n") { (k, v) -> "$k=$v" } + "\n",
+        )
     }
 
     /**

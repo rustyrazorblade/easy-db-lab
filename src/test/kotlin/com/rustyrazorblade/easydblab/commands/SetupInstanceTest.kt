@@ -99,7 +99,7 @@ class SetupInstanceTest : BaseKoinTest() {
                     }
                 }
                 single { HostOperationsService(get()) }
-                single { NodeSetupService(get(), get(), NodeTuningFiles()) }
+                single { NodeSetupService(get(), get(), NodeTuningFiles(), get()) }
                 single<RemoteOperationsService> { remoteOps }
                 single<CassandraProfilingService> { mock<CassandraProfilingService>().also { profilingService = it } }
             },

@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.install.BaseInstallCommand
+import com.rustyrazorblade.easydblab.requireKitName
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Option
@@ -57,9 +57,7 @@ class Install : BaseInstallCommand() {
         }
         val kitName = kit ?: error("--kit is required with --from")
         val storageSize = size ?: error("--size is required with --from")
-        require(Constants.Kit.NAME_PATTERN.matches(kitName)) {
-            "Invalid --kit '$kitName': use letters, digits, hyphens or underscores, and start with a letter or digit"
-        }
+        requireKitName(kitName)
         renderAndWrite(resolver.resolveAdHoc(fromPath), kitName, storageSize)
     }
 }

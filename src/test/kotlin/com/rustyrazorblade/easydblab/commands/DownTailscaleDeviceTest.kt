@@ -26,7 +26,6 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * `down` removes this cluster's control node from the tailnet, by the device ID `tailscale start`
@@ -46,7 +45,6 @@ class DownTailscaleDeviceTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(tempDir, "state.json")) }
                 single { mock<AwsInfrastructureService>() }
                 single { mock<TailscaleService>() }
                 single { mock<AwsS3BucketService>() }

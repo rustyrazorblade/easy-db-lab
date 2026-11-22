@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.opensearch
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -22,7 +23,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * Test suite for OpenSearchStatus command.
@@ -33,7 +33,7 @@ import java.io.File
 class OpenSearchStatusTest : BaseKoinTest() {
     private lateinit var mockOpenSearchService: OpenSearchService
     private lateinit var stateManager: ClusterStateManager
-    private val stateFile by lazy { File(tempDir, "state.json") }
+    private val stateFile by lazy { context.workspaceFile(CLUSTER_STATE) }
 
     private val testControlHost =
         ClusterHost(
@@ -57,7 +57,6 @@ class OpenSearchStatusTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<OpenSearchService>().also { mockOpenSearchService = it } }
-                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 

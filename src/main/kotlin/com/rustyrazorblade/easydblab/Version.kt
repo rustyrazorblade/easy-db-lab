@@ -1,8 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import java.io.File
-import java.nio.file.Path
-
 /**
  * Represents a Cassandra version
  *
@@ -17,8 +14,6 @@ data class Version(
     val versionString: String = path.substringAfterLast("/")
     val conf: String = "$path/conf"
 
-    val file = File(versionString)
-
     companion object {
         /**
          * Create a Version from a version string (e.g. "5.0")
@@ -29,7 +24,9 @@ data class Version(
         fun fromString(version: String): Version = Version("/usr/local/cassandra/$version")
 
         fun fromRemotePath(path: String): Version = Version(path)
-    }
 
-    val localDir: Path get() = Path.of(versionString)
+        /** The one message for hosts whose `current` link names no version. */
+        fun noActiveVersionMessage(aliases: Collection<String>): String =
+            "${aliases.joinToString()} reports no active version (is /usr/local/cassandra/current set?)"
+    }
 }

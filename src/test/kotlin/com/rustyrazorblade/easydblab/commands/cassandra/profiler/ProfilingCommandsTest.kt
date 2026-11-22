@@ -23,6 +23,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -34,6 +35,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 
@@ -944,7 +946,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             .thenReturn(listOf("/p/a.jfr", "/p/b.jfr"))
 
         val command = ProfilingFetch()
-        command.outputDir = File(tempDir, "profiles")
         command.execute()
 
         val destination = argumentCaptor<File>()
@@ -952,8 +953,29 @@ class ProfilingCommandsTest : BaseKoinTest() {
         verify(profilingService, org.mockito.kotlin.times(2))
             .fetchChunks(any(), fetched.capture(), destination.capture())
         assertThat(destination.allValues.map { it.name }).containsExactly("db0", "db1")
+        assertThat(destination.allValues.map { it.parentFile })
+            .containsOnly(File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR))
         assertThat(fetched.firstValue).containsExactly("/p/a.jfr", "/p/b.jfr")
         assertThat(emitted.filterIsInstance<Event.Profiling.ChunksFetched>()).hasSize(2)
+    }
+
+    @Test
+    fun `fetch refuses a profiles link to a directory outside the workspace and downloads nothing`(
+        @TempDir outside: File,
+    ) {
+        context.workingDirectory.mkdirs()
+        Files.createSymbolicLink(
+            File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR).toPath(),
+            outside.toPath(),
+        )
+        whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(listOf("/p/a.jfr"))
+
+        assertThatThrownBy { ProfilingFetch().execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("inside the workspace")
+
+        verify(profilingService, never()).fetchChunks(any(), any(), any())
+        assertThat(outside.list()).isEmpty()
     }
 
     @Test
@@ -963,7 +985,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
         whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(listOf("/p/a.jfr"))
 
         val command = ProfilingFetch()
-        command.outputDir = File(tempDir, "profiles")
         command.last = 3
         command.execute()
 
@@ -979,7 +1000,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
         whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(emptyList())
 
         val command = ProfilingFetch()
-        command.outputDir = File(tempDir, "profiles")
         command.execute()
 
         verify(profilingService, never()).fetchChunks(any(), any(), any())
@@ -998,6 +1018,24 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `flamegraph refuses a host directory that links outside the workspace and downloads nothing`(
+        @TempDir outside: File,
+    ) {
+        val profiles = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR).apply { mkdirs() }
+        Files.createSymbolicLink(File(profiles, "db0").toPath(), outside.toPath())
+        whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(listOf("/p/a.jfr"))
+        whenever(profilingService.convertToFlamegraph(any(), any(), any(), any()))
+            .thenReturn("/mnt/db1/cassandra/artifacts/flame-db0-1.html")
+
+        assertThatThrownBy { ProfilingFlamegraph().execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("leads outside it through a link")
+
+        verify(profilingService, never()).download(any(), any(), any())
+        assertThat(outside.list()).isEmpty()
+    }
+
+    @Test
     fun `flamegraph converts all selected chunks on the node and downloads the result`() {
         whenever(profilingService.listCompletedChunks(any(), any()))
             .thenReturn(listOf("/p/a.jfr", "/p/b.jfr"))
@@ -1005,7 +1043,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             .thenReturn("/mnt/db1/cassandra/artifacts/flame-db0-1.html")
 
         val command = ProfilingFlamegraph()
-        command.outputDir = File(tempDir, "profiles")
         command.jfrconvArgs = listOf("--threads")
         command.execute()
 
@@ -1013,7 +1050,14 @@ class ProfilingCommandsTest : BaseKoinTest() {
         verify(profilingService, org.mockito.kotlin.times(2))
             .convertToFlamegraph(any(), chunks.capture(), any(), any())
         assertThat(chunks.firstValue).containsExactly("/p/a.jfr", "/p/b.jfr")
-        verify(profilingService, org.mockito.kotlin.times(2)).download(any(), any(), any())
+        val local = argumentCaptor<Path>()
+        verify(profilingService, org.mockito.kotlin.times(2)).download(any(), any(), local.capture())
+        val downloads = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+        assertThat(local.allValues.map { it.toFile() })
+            .containsExactly(
+                File(File(downloads, "db0"), "flame-db0-1.html"),
+                File(File(downloads, "db1"), "flame-db0-1.html"),
+            )
         assertThat(emitted.filterIsInstance<Event.Profiling.FlamegraphCreated>()).hasSize(2)
     }
 
@@ -1027,7 +1071,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
             .doAnswer { "/mnt/db1/cassandra/artifacts/flame-db0-1.${it.getArgument<String>(2)}" }
 
         val command = ProfilingFlamegraph()
-        command.outputDir = File(tempDir, "profiles")
         command.last = 3
         command.format = "collapsed"
         command.jfrconvArgs = listOf("--threads", "--include", "org.apache.cassandra")
@@ -1054,7 +1097,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
         whenever(profilingService.listCompletedChunks(any(), any())).thenReturn(emptyList())
 
         val command = ProfilingFlamegraph()
-        command.outputDir = File(tempDir, "profiles")
         command.execute()
 
         verify(profilingService, never()).convertToFlamegraph(any(), any(), any(), any())

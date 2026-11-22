@@ -40,7 +40,6 @@ import software.amazon.awssdk.services.emr.model.Step
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStatus
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -82,7 +81,6 @@ class SparkStatusTest : BaseKoinTest() {
             module {
                 single<EmrClient> { mockEmrClient }
                 single<ObjectStore> { mockObjectStore }
-                single { ClusterStateManager(File(tempDir, "state.json")).also { it.replace(clusterState) } }
                 single<LokiQueryService> { mock() }
                 single<SparkService> {
                     EMRSparkService(get(), get(), get(), get(), get(), finalLogPollInterval = Duration.ZERO, logsDir = tempDir.toPath())
@@ -97,6 +95,7 @@ class SparkStatusTest : BaseKoinTest() {
 
     @BeforeEach
     fun setup() {
+        getKoin().get<ClusterStateManager>().replace(clusterState)
         mockEmrClient = mock()
         mockObjectStore = mock()
         whenever(mockEmrClient.describeStep(any<DescribeStepRequest>())).thenReturn(failedStep())

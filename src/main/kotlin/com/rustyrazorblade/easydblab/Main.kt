@@ -14,7 +14,7 @@ fun main(arguments: Array<String>) {
     // Initialize Koin dependency injection
     val koin =
         startKoin {
-            modules(KoinModules.getAllModules())
+            modules(KoinModules.getAllModules(ContextFactory.processStartDirectory()))
         }.koin
 
     // Build the event bus first: with EASY_DB_LAB_REDIS_URL set it pings Redis, and a Redis that

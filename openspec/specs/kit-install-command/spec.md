@@ -261,7 +261,7 @@ All templates receive the following standard variables from cluster state and co
 | `__STORAGE_CLASS_WFC__` | `Constants.K8s.LOCAL_STORAGE_WFC_CLASS` (`local-storage-wfc`) |
 | `__KIT_NAME__` | Kit name (e.g., `clickhouse`) |
 | `__STORAGE_SIZE__` | `--size` flag value (e.g., `100Gi`) |
-| `__KUBECONFIG__` | Path to local kubeconfig |
+| `__KUBECONFIG__` | Absolute path of the workspace kubeconfig, for typed steps and manifests; a kit script uses the `KUBECONFIG` the CLI sets for its process instead |
 | `__RUNNING_KITS__` | Comma-separated names of currently running kits |
 
 Kit-specific variables are declared in `kit.yaml` args and passed as `__VARIABLE_NAME__`.
@@ -359,8 +359,14 @@ Kit script execution emits `Event.Kit.ScriptStarted(kit, script)` and `Event.Kit
 `kit install --kit` and `--size` apply only together with `--from <template-dir>`. Given without
 `--from`, the command MUST fail naming `--from` and `kit install <kit-name>`, and MUST NOT print the
 usage text and exit 0. `--kit` is the name of the output directory and MUST be a plain name
-(letters, digits, `-` and `_`, starting with a letter or digit); `kit install --kit`, `cleanup --kit`
-and `platform create-pvs --kit` MUST reject any other value before they act.
+(letters, digits, `-` and `_`, starting with a letter or digit); `kit install --kit`, `cleanup --kit`,
+`platform create-pvs --kit` and `kit uninstall <kit>` MUST reject any other value before they act,
+with one message: `Invalid kit name '<value>': ...`. A kit-ref value (such as `--target`) and an
+extension value become part of a workspace directory name, so `kit install` MUST reject them by the
+same rule before it reads the target or writes anything; `--target x/../clickhouse --force` MUST NOT
+replace the installed clickhouse kit. A phase that reads a recorded kit-ref target back from
+`kit-resolved-args.env` MUST apply the same rule, so `TARGET=../x` fails the phase and nothing
+outside the workspace is read.
 
 `init --name` MUST be rejected at parse time with a message naming the positional form
 `init <name>`.

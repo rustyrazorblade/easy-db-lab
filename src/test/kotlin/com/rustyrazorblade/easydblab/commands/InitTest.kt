@@ -25,7 +25,6 @@ import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -85,13 +84,6 @@ class InitTest : BaseKoinTest() {
         // Default: every instance type is x86_64 with instance store.
         whenever(mockEc2InstanceService.describeInstanceType(any()))
             .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
-    }
-
-    @AfterEach
-    fun cleanup() {
-        File("setup_instance.sh").delete()
-        File("cassandra").deleteRecursively()
-        File("k8s").deleteRecursively()
     }
 
     /**

@@ -29,10 +29,10 @@ class ProfilingFetch : ProfilingHostCommand() {
     var last: Int = Constants.Profiling.DEFAULT_LAST_CHUNKS
 
     /**
-     * Local destination root, one sub-directory per host. Not a CLI option: the workspace layout is
-     * fixed, and this exists so tests can point it somewhere temporary.
+     * The host's directory under the workspace's `profiles`. Neither it nor `profiles` may lead
+     * outside the workspace through a link ([com.rustyrazorblade.easydblab.Context.workspaceDir]).
      */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    private fun hostDir(alias: String): File = context.workspaceDir("${Constants.Profiling.LOCAL_DOWNLOAD_DIR}/$alias")
 
     override fun execute() {
         requireChunkCount(last)
@@ -42,7 +42,7 @@ class ProfilingFetch : ProfilingHostCommand() {
                 println("${host.alias}: no completed chunks yet")
                 return@forEachTarget
             }
-            val destination = File(outputDir, host.alias)
+            val destination = hostDir(host.alias)
             profilingService.fetchChunks(host, chunks, destination)
             eventBus.emit(
                 Event.Profiling.ChunksFetched(

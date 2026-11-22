@@ -103,7 +103,7 @@ All install templates SHALL receive these standard variables from cluster state:
 | `__STORAGE_CLASS_WFC__` | `Constants.K8s.LOCAL_STORAGE_WFC_CLASS` |
 | `__KIT_NAME__` | Kit name (e.g. `clickhouse`) |
 | `__STORAGE_SIZE__` | `--size` flag value (e.g. `100Gi`) |
-| `__KUBECONFIG__` | Path to local kubeconfig |
+| `__KUBECONFIG__` | Absolute path of the workspace kubeconfig, for typed steps and manifests; a kit script uses the `KUBECONFIG` the CLI sets for its process instead |
 
 Kit-specific subcommands add extra variables (e.g. `__REPLICAS__`, `__WORKERS__`). Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
 

@@ -7,6 +7,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
@@ -17,6 +18,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -123,6 +125,20 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             "an earlier tunnel's line",
             "2026-10-11T23:23:38Z easy-db-lab: launching the SOCKS5 tunnel on port 41234 to control0",
         )
+    }
+
+    @Test
+    fun `a logs link to a directory outside the workspace is refused and nothing is written there`(
+        @TempDir outside: File,
+    ) {
+        Files.createSymbolicLink(File(tempDir, "logs").toPath(), outside.toPath())
+
+        assertThatThrownBy {
+            service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }).ensureRunning(testHost)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("leads outside it through a link")
+
+        assertThat(outside.list()).isEmpty()
     }
 
     @Test

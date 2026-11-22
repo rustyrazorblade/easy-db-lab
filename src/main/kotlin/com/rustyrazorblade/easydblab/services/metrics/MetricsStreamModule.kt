@@ -1,15 +1,14 @@
 package com.rustyrazorblade.easydblab.services.metrics
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RecordedTunnelRoutes
 import com.rustyrazorblade.easydblab.proxy.TunnelProcessControl
-import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import io.fabric8.kubernetes.client.Config
 import org.koin.dsl.module
-import java.io.File
 
 /**
  * Koin module for `metrics stream`.
@@ -23,7 +22,7 @@ val metricsStreamModule =
         factory<ObservabilityRoutes> {
             RecordedTunnelRoutes(
                 envFile = get(),
-                sshConfig = File(get<Context>().workingDirectory, DefaultClusterConfigurationService.SSH_CONFIG_FILE).absolutePath,
+                sshConfig = get<Context>().workspaceFile(Constants.Workspace.SSH_CONFIG_FILE).absolutePath,
                 control = TunnelProcessControl(),
             )
         }

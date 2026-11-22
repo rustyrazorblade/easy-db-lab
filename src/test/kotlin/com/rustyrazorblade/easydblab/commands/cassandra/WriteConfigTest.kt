@@ -16,6 +16,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
 
 class WriteConfigTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -83,5 +84,32 @@ class WriteConfigTest : BaseKoinTest() {
         val content = configFile.readText()
         assertThat(content).contains("8")
         configFile.delete()
+    }
+
+    /** With no typed path, a workspace patch file that is a link is replaced, never written through. */
+    @Test
+    fun `the workspace patch file replaces a link with a regular file and keeps the link target`() {
+        val owner = File(tempDir, "outside/patch.yaml").apply { parentFile.mkdirs() }
+        owner.writeText("owner")
+        context.workingDirectory.mkdirs()
+        val link = File(context.workingDirectory, "cassandra.patch.yaml").toPath()
+        Files.createSymbolicLink(link, owner.toPath())
+
+        WriteConfig().execute()
+
+        assertThat(owner).hasContent("owner")
+        assertThat(Files.isSymbolicLink(link)).isFalse()
+        assertThat(link.toFile()).content().contains("test-cluster")
+    }
+
+    /** A path the user types is written as typed, not re-rooted under the workspace. */
+    @Test
+    fun `a typed absolute path is written as typed`() {
+        val typed = File(tempDir, "elsewhere/patch.yaml").apply { parentFile.mkdirs() }
+
+        WriteConfig().apply { file = typed.absolutePath }.execute()
+
+        assertThat(typed).content().contains("test-cluster")
+        assertThat(File(context.workingDirectory, "cassandra.patch.yaml")).doesNotExist()
     }
 }

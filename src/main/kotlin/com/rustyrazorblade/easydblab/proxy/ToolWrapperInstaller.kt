@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.PackagedExecutable
+import com.rustyrazorblade.easydblab.resolveDirInWorkspace
 import java.io.File
 
 /**
@@ -79,7 +80,8 @@ class ToolWrapperInstaller(
         if (bin.isDirectory && bin.list().orEmpty().isEmpty()) bin.delete()
     }
 
-    private fun binOf(workspace: File) = File(workspace, Constants.ToolWrappers.DIRECTORY)
+    /** `bin/` of [workspace]; a `bin` link to a directory outside the workspace is refused, never written through. */
+    private fun binOf(workspace: File) = resolveDirInWorkspace(workspace, Constants.ToolWrappers.DIRECTORY)
 
     /** Every file the installer writes into [bin] apart from the marker. */
     private fun ownedFiles(bin: File) = wrapperFiles(bin) + tunnelFile(bin) + kitLibraryFile(bin)

@@ -79,7 +79,7 @@ class DefaultKitHookExecutor(
 
                 val envVars =
                     TemplateVariables
-                        .from(state = clusterState, kitName = declaringKit, storageSize = "")
+                        .from(state = clusterState, workspace = context.workingDirectory, kitName = declaringKit, storageSize = "")
                         .toMap()
 
                 executeHookWithRetry(declaringKit, hook, kitDir, envVars)

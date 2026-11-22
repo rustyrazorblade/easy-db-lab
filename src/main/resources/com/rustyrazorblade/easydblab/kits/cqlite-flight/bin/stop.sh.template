@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+export KUBECONFIG="${KUBECONFIG:?run this through easy-db-lab, which sets KUBECONFIG}"
 
 # Every object the kit creates (DaemonSet, NodePort Service, detector ConfigMap) carries the one
 # role "flight", so one delete by kit and role removes them all.

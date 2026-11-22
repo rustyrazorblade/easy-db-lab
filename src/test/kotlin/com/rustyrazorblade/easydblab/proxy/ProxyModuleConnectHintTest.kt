@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -25,7 +26,7 @@ import java.time.Duration
  * `init --open` cluster admits every address, and an `ssm` tunnel never dials port 22 from here.
  */
 internal class ProxyModuleConnectHintTest : BaseKoinTest() {
-    private val stateFile by lazy { File(tempDir, "state.json") }
+    private val stateFile by lazy { context.workspaceFile(CLUSTER_STATE) }
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -33,7 +34,6 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
             sshModule,
             proxyModule,
             module {
-                single { ClusterStateManager(stateFile) }
                 single<AwsCredentialsProvider> {
                     StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIATEST", "test-secret"))
                 }

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.requireKitName
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
@@ -42,9 +43,7 @@ class Cleanup : PicoBaseCommand() {
     var nodeType: ServerType = ServerType.Cassandra
 
     override fun execute() {
-        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
-            "Kit name must contain only letters, digits, hyphens, or underscores: $kit"
-        }
+        requireKitName(kit)
 
         val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/$kit"
 

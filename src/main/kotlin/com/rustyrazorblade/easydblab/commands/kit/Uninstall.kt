@@ -3,11 +3,13 @@ package com.rustyrazorblade.easydblab.commands.kit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommand
+import com.rustyrazorblade.easydblab.listsExactly
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
-import java.io.File
 
 /**
  * Removes an installed kit and its local files.
@@ -27,6 +29,7 @@ class Uninstall : PicoBaseCommand() {
     lateinit var kit: String
 
     private val commandExecutor: CommandExecutor by inject()
+    private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     /** The uninstall phase's exit code, so a failed uninstall fails `kit uninstall`. */
     private var exitCode = 0
@@ -37,8 +40,16 @@ class Uninstall : PicoBaseCommand() {
     }
 
     override fun execute() {
-        val kitDir = File(context.workingDirectory, kit)
-        if (!kitDir.isDirectory) {
+        requireKitName(kit)
+        val kitDir = context.workspaceFile(kit)
+        // Only an installed kit, named exactly: `profiles`, `logs`, `bin` and a conf directory are
+        // the owner's data, and on a case-insensitive file system `KAFKA` would open `kafka`.
+        val listing =
+            context.workingDirectory
+                .list()
+                .orEmpty()
+                .toSet()
+        if (!listsExactly(listing, kit) || !workspaceKitScanner.isInstalledKit(kitDir)) {
             error("Kit '$kit' is not installed in ${context.workingDirectory}")
         }
         // Through the command executor, so the phase gets the SOCKS tunnel its @RequiresProxy

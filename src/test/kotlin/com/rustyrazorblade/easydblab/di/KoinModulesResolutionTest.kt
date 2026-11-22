@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.di
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.ContextFactory
 import com.rustyrazorblade.easydblab.Docker
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.containers.PackerImage
 import com.rustyrazorblade.easydblab.events.RedisConfiguration
@@ -44,7 +43,7 @@ import kotlin.reflect.KClass
  * actual `get()` does.
  *
  * Only external clients and ports are replaced: the AWS SDK clients, the SSH connection pool (which
- * loads a key file), the Docker client, Redis, and the profile, workspace and state file locations.
+ * loads a key file), the Docker client, Redis, and the profile and workspace locations.
  * Everything else is the production wiring.
  */
 class KoinModulesResolutionTest {
@@ -67,7 +66,6 @@ class KoinModulesResolutionTest {
                     awsSecret = "test-secret",
                 )
             }
-            single { ClusterStateManager(File(tempDir, "state.json")) }
             single<RedisConfiguration> { RedisConfiguration.NotConfigured }
             // The publisher pings Redis on construction; a mock stands in with the endpoint it reports.
             single<RedisPublisher> { mock { on { endpoint } doReturn RedisEndpoint.parse("redis://localhost:6379/events") } }
@@ -99,7 +97,7 @@ class KoinModulesResolutionTest {
     @OptIn(KoinInternalApi::class)
     private fun productionDefinitions(): List<BeanDefinition<*>> =
         KoinModules
-            .getAllModules()
+            .getAllModules(File(tempDir, "workspace"))
             .flatMap { module -> module.mappings.values }
             .map { factory -> factory.beanDefinition }
             .distinct()
@@ -107,7 +105,7 @@ class KoinModulesResolutionTest {
     @Test
     fun `every definition in the production modules resolves`() {
         val definitions = productionDefinitions()
-        val app = koinApplication { modules(KoinModules.getAllModules() + externalPortsModule()) }
+        val app = koinApplication { modules(KoinModules.getAllModules(File(tempDir, "workspace")) + externalPortsModule()) }
         try {
             val koin = app.koin
             val failures =

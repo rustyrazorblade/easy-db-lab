@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.deleteAfterFailure
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -48,7 +49,7 @@ class DownloadConfig : PicoBaseCommand() {
         targeted
             .map { it.toHost() }
             .map { host -> host to remoteOps.getRemoteVersion(host, version) }
-            .distinctBy { (_, resolved) -> resolved.localDir }
+            .distinctBy { (_, resolved) -> resolved.versionString }
             .forEach { (host, resolved) -> download(host, resolved) }
     }
 
@@ -56,23 +57,17 @@ class DownloadConfig : PicoBaseCommand() {
         host: Host,
         resolvedVersion: Version,
     ) {
-        require(resolvedVersion.versionString.isNotBlank()) {
-            "${host.alias} reports no active version (is /usr/local/cassandra/current set?)"
-        }
+        require(resolvedVersion.versionString.isNotBlank()) { Version.noActiveVersionMessage(listOf(host.alias)) }
         logger.info {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }
         // Resolved against the workspace, where every other command looks for it, not the JVM's cwd.
-        val localDir =
-            context.workingDirectory
-                .toPath()
-                .resolve(resolvedVersion.localDir)
-                .toFile()
+        val localDir = context.workspaceDir(resolvedVersion.versionString)
 
         // Never overwrite: the directory may hold the operator's own edits. Say so, because
         // otherwise the command finishes silently having changed nothing.
         if (localDir.exists()) {
-            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.localDir.toString()))
+            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.versionString))
         } else {
             localDir.mkdirs()
 
@@ -88,10 +83,11 @@ class DownloadConfig : PicoBaseCommand() {
                             "cassandra-rackdc.properties",
                         ),
                 )
-            }.onFailure {
+            }.onFailure { e ->
                 // An empty directory left behind would pass for a finished download on the next run,
-                // and update-config would then upload nothing.
-                localDir.deleteRecursively()
+                // and update-config would then upload nothing. A cleanup that fails too is attached
+                // to e, so the download error stays the one reported.
+                localDir.deleteAfterFailure(e)
             }.getOrThrow()
         }
     }

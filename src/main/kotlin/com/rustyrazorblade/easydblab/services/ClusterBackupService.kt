@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.resolveDirInWorkspace
+import com.rustyrazorblade.easydblab.resolveInWorkspaceForWrite
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Path
@@ -218,7 +220,15 @@ class DefaultClusterBackupService(
                     continue
                 }
 
-                val localPath = File(workingDirectory, target.localPath).toPath()
+                // Resolved through the workspace guard: a restored `k8s` (or a file) that is a link
+                // to outside the workspace is refused or replaced, never written through.
+                val workspace = File(workingDirectory)
+                val localPath =
+                    if (target.isDirectory) {
+                        resolveDirInWorkspace(workspace, target.localPath)
+                    } else {
+                        resolveInWorkspaceForWrite(workspace, target.localPath)
+                    }.toPath()
                 if (target.isDirectory) {
                     objectStore.downloadDirectory(s3Path, localPath, showProgress = true)
                     val localDir = localPath.toFile()

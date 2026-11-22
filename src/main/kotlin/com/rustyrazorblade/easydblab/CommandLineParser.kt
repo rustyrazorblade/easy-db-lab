@@ -291,7 +291,7 @@ class CommandLineParser : KoinComponent {
         val templateVars =
             try {
                 val state = get<ClusterStateManager>().load()
-                TemplateVariables.from(state = state, kitName = "", storageSize = "").toMap()
+                TemplateVariables.from(state = state, workspace = get<Context>().workingDirectory, kitName = "", storageSize = "").toMap()
             } catch (e: IOException) {
                 log.debug(e) { "Cluster state unavailable during install subcommand registration; using raw defaults" }
                 emptyMap()

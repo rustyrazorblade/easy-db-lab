@@ -7,7 +7,7 @@ import java.io.File
 class ContextFactoryTest : BaseKoinTest() {
     @Test
     fun `getContext caches contexts by key`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val context1 = factory.getContext("test1")
         val context2 = factory.getContext("test1")
@@ -17,7 +17,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `different keys return different contexts`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val context1 = factory.getContext("test1")
         val context2 = factory.getContext("test2")
@@ -27,7 +27,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `getDefault returns context with default key`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val defaultContext = factory.getDefault()
         val explicitDefault = factory.getContext("default")
@@ -37,7 +37,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `clearContext removes specific context from cache`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val context1 = factory.getContext("test")
         factory.clearContext("test")
@@ -48,7 +48,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `clearAll removes all contexts from cache`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val context1 = factory.getContext("test1")
         val context2 = factory.getContext("test2")
@@ -64,7 +64,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `default context uses base directory directly`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val defaultContext = factory.getDefault()
 
@@ -73,7 +73,7 @@ class ContextFactoryTest : BaseKoinTest() {
 
     @Test
     fun `non-default context uses subdirectory`() {
-        val factory = ContextFactory(tempDir)
+        val factory = ContextFactory(tempDir, File(tempDir, "workspace"))
 
         val testContext = factory.getContext("test-env")
         val expectedDir = File(tempDir, "test-env")

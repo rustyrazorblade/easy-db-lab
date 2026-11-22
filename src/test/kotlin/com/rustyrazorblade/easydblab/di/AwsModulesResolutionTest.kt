@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -54,6 +57,8 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
             awsClientsModule,
             awsServicesModule,
             dockerModule,
+            // The production state binding, over the test context's workspace.
+            configurationModule,
             module {
                 single { EventBus() }
                 single {
@@ -70,7 +75,6 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
                         awsSecret = "s",
                     )
                 }
-                single<ClusterStateManager> { mock() }
                 single<ObjectStore> { mock() }
                 single<LokiQueryService> { mock() }
                 single<com.rustyrazorblade.easydblab.services.ExternalIpService> { mock() }
@@ -97,6 +101,16 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
     fun `the AWS services resolve`() {
         assertThat(get<SparkService>()).isNotNull
         assertThat(get<CompactorLeaseReader>()).isNotNull
+    }
+
+    @Test
+    fun `EMR logs are saved under the workspace, not the current directory`() {
+        get<ClusterStateManager>().replace(ClusterState(name = "lab", s3Bucket = "bucket"))
+
+        val logs = get<SparkService>().downloadAllLogs("s-1").getOrThrow()
+
+        assertThat(logs).startsWith(get<Context>().workspaceFile(Constants.EMR.LOCAL_LOGS_DIR).toPath())
+        assertThat(logs.toFile()).isDirectory()
     }
 
     @Test

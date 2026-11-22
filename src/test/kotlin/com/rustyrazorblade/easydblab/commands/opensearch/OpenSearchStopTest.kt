@@ -16,7 +16,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
-import java.io.File
 
 /**
  * Test suite for OpenSearchStop command following TDD principles.
@@ -50,7 +49,6 @@ class OpenSearchStopTest : BaseKoinTest() {
         listOf(
             module {
                 single { mock<OpenSearchService>().also { mockOpenSearchService = it } }
-                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 

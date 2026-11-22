@@ -8,7 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
@@ -45,9 +45,6 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                // A real manager over a state.json that does not exist: any read of clusterState
-                // throws FileNotFoundException, which is precisely the regression being guarded.
-                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 // Rebuilt on resolution rather than at module construction, so a test can point the
                 // context at another profile first.
                 single { UserConfigProvider(get<Context>().profileDir) }
@@ -147,7 +144,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     fun `profile show reports without loading cluster state`() {
         // The working directory holds no state.json, so ClusterStateManager.load() throws. Reaching
         // the assertions proves the command never touched clusterState.
-        assertThat(File(context.workingDirectory, "state.json")).doesNotExist()
+        assertThat(context.workspaceFile(CLUSTER_STATE)).doesNotExist()
 
         ProfileShow().execute()
 

@@ -21,6 +21,8 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 
 /**
@@ -313,6 +315,43 @@ internal class ClusterBackupServiceTest {
             }
             assertThat(capturedEvents).anyMatch {
                 (it.event as? Event.Backup.ConfigRestored)?.displayName == target.displayName
+            }
+        }
+
+        /**
+         * A restore target that is a link to outside the workspace is never written through: a
+         * linked directory refuses the restore, and a linked file is unlinked so the download
+         * lands in the workspace.
+         */
+        @ParameterizedTest(name = "restoreAll never writes through a {0} link to outside the workspace")
+        @EnumSource(value = BackupTarget::class, names = ["KUBECONFIG", "K8S_MANIFESTS", "CASSANDRA_PATCH"])
+        fun `restoreAll never writes through a link to outside the workspace`(
+            target: BackupTarget,
+            @TempDir outside: File,
+        ) {
+            val clusterState = createClusterState()
+            val s3Path = target.s3PathProvider(ClusterS3Path.from(clusterState))
+            val local = File(tempDir, target.localPath).toPath()
+            val outsideTarget = if (target.isDirectory) outside else File(outside, "owner").apply { writeText("owner") }
+            Files.createSymbolicLink(local, outsideTarget.toPath())
+            whenever(mockObjectStore.directoryExists(s3Path)).thenReturn(target.isDirectory)
+            whenever(mockObjectStore.fileExists(s3Path)).thenReturn(!target.isDirectory)
+            whenever(mockObjectStore.downloadFile(any(), any(), any()))
+                .thenReturn(ObjectStore.DownloadResult(local, 100L))
+
+            val result = service.restoreAll(tempDir.absolutePath, clusterState)
+
+            verify(mockObjectStore, never()).downloadDirectory(any(), any(), any())
+            if (target.isDirectory) {
+                assertThat(result.exceptionOrNull())
+                    .isInstanceOf(IllegalArgumentException::class.java)
+                    .hasMessageContaining("leads outside it through a link")
+                assertThat(outside.list()).isEmpty()
+            } else {
+                assertThat(result.isSuccess).isTrue()
+                verify(mockObjectStore).downloadFile(eq(s3Path), eq(local), eq(true))
+                assertThat(Files.exists(local, LinkOption.NOFOLLOW_LINKS)).isFalse()
+                assertThat(outsideTarget).hasContent("owner")
             }
         }
 

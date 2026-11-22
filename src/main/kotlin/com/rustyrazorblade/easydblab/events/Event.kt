@@ -4627,6 +4627,15 @@ sealed interface Event {
             override fun toDisplayString(): String = "$localDir does not exist"
         }
 
+        /** `upload-keys` found its keys directory but no `.pub` file in it, so it changed no node. */
+        @Serializable
+        @SerialName("Command.UploadKeysEmpty")
+        data class UploadKeysEmpty(
+            val localDir: String,
+        ) : Command {
+            override fun toDisplayString(): String = "No .pub files in $localDir; no node was changed"
+        }
+
         @Serializable
         @SerialName("Command.IamPoliciesNotFound")
         data class IamPoliciesNotFound(

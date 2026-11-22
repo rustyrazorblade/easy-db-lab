@@ -36,7 +36,7 @@ setup() {
   mkdir -p "${WORK}/stubs" "${WORK}/kit/bin" "${WORK}/kit/catalogs"
   local script
   for script in start stop uninstall update-catalogs; do
-    sed -e 's#__KUBECONFIG__#kubeconfig#' -e 's#__WORKERS__#3#' "${KITS}/$1/bin/${script}.sh.template" > "${WORK}/kit/bin/${script}.sh"
+    sed -e 's#__WORKERS__#3#' "${KITS}/$1/bin/${script}.sh.template" > "${WORK}/kit/bin/${script}.sh"
     chmod +x "${WORK}/kit/bin/${script}.sh"
   done
   : > "${WORK}/kit/values.yaml"
@@ -70,7 +70,7 @@ run() {
   shift
   (
     cd "${WORK}" &&
-      env "$@" PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" CLUSTER_NAME=lab1 \
+      env "$@" PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" KUBECONFIG="${WORK}/kubeconfig" CLUSTER_NAME=lab1 \
         PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
         "${BASH}" "${WORK}/kit/bin/${script}.sh"
   ) > "${WORK}/out" 2>&1
@@ -226,6 +226,28 @@ check_stop_and_uninstall() {
   grep -qx "helm uninstall ${kit} --namespace default --ignore-not-found" "${WORK}/calls" || fail "uninstall did not remove the release: $(calls)"
 }
 
+# A script run outside easy-db-lab has no KUBECONFIG; it must stop before any cluster call
+# instead of falling back to a kubeconfig of its own choosing.
+check_requires_kubeconfig() {
+  local kit="$1" script
+  for script in start stop uninstall update-catalogs; do
+    current_test="${kit} ${script} refuses to run without KUBECONFIG"
+    tests_run=$((tests_run + 1))
+    setup "${kit}"
+    (
+      cd "${WORK}" &&
+        env -u KUBECONFIG PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" CLUSTER_NAME=lab1 \
+          PYROSCOPE_URL=http://10.0.0.5:4040 TENANT=default \
+          "${BASH}" "${WORK}/kit/bin/${script}.sh"
+    ) > "${WORK}/out" 2>&1
+    rc=$?
+    [ "${rc}" -ne 0 ] || fail "${script} succeeded without KUBECONFIG"
+    grep -qF "KUBECONFIG: run this through easy-db-lab, which sets KUBECONFIG" "${WORK}/out" ||
+      fail "${script} did not explain the missing KUBECONFIG: $(cat "${WORK}/out")"
+    [ -s "${WORK}/calls" ] && fail "${script} called a cluster tool without KUBECONFIG: $(calls)"
+  done
+}
+
 check_update_catalogs presto prestodb/presto catalog
 check_update_catalogs trino trinodb/trino additionalCatalogs
 for kit in presto trino; do
@@ -233,6 +255,7 @@ for kit in presto trino; do
   check_no_catalogs "${kit}"
   check_start_without_label "${kit}"
   check_stop_and_uninstall "${kit}"
+  check_requires_kubeconfig "${kit}"
 done
 check_opensearch trino added
 check_opensearch presto "not added"

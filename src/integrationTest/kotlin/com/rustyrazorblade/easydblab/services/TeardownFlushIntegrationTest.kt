@@ -35,7 +35,6 @@ import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
-import java.io.File
 import java.net.URI
 import java.net.http.HttpRequest
 import java.time.Duration
@@ -99,7 +98,6 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(tempDir, "state.json")) }
                 single { TemplateService(get(), get()) }
             },
         )

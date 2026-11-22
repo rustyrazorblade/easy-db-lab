@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.deleteWithoutFollowingLinks
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.requireKitName
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.ExtensionResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -76,13 +78,14 @@ class KitInstallCommand(
         }
 
         applyArgDefaults()
+        requireNamedKitValues()
 
         validateKitRefTarget()
 
         val instanceName = resolveInstanceName()
 
         if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
-            val outputDir = File(context.workingDirectory, instanceName)
+            val outputDir = context.workspaceFile(instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
                 eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
                 exitCode = Constants.ExitCodes.ERROR
@@ -100,10 +103,10 @@ class KitInstallCommand(
         )
 
         if (config.install.isNotEmpty()) {
-            val kitDir = File(context.workingDirectory, instanceName)
+            val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables
-                    .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
+                    .from(state = clusterState, workspace = context.workingDirectory, kitName = instanceName, storageSize = storageSize)
                     .toMap() + argValues
 
             // A failed step is reported by the step executor as a typed event; the install then
@@ -123,7 +126,7 @@ class KitInstallCommand(
                         ),
                 ).onFailure { e ->
                     log.debug(e) { "$instanceName install failed" }
-                    kitDir.deleteRecursively()
+                    kitDir.deleteWithoutFollowingLinks()
                     exitCode = Constants.ExitCodes.ERROR
                 }
         }
@@ -146,6 +149,17 @@ class KitInstallCommand(
     }
 
     /**
+     * Refuses a kit-ref or extension value that is not a kit name, before anything reads the
+     * target or writes the instance directory: both become `<kit>-<value>` and the target's own
+     * directory name, so `x/../clickhouse` would otherwise land on the installed clickhouse kit.
+     */
+    private fun requireNamedKitValues() {
+        listOfNotNull(config.kitRefArg, config.extensionArg)
+            .mapNotNull { argValues[it.variable]?.takeIf { v -> v.isNotBlank() } }
+            .forEach { requireKitName(it) }
+    }
+
+    /**
      * Validates that the target kit declared by a kit-ref arg exposes the required capability
      * and endpoint types. Fails fast with a clear error rather than letting the bench kit fail
      * at runtime.
@@ -157,7 +171,7 @@ class KitInstallCommand(
     }
 
     private fun lookUpInstalledKit(targetName: String): KitRefTargetValidator.TargetLookup {
-        val configFile = File(File(context.workingDirectory, targetName), Constants.Kit.CONFIG_FILE)
+        val configFile = File(context.workspaceFile(targetName), Constants.Kit.CONFIG_FILE)
         return when {
             configFile.isFile ->
                 KitRefTargetValidator.TargetLookup.Installed(

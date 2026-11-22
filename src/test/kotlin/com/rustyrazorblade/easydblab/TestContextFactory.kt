@@ -17,7 +17,7 @@ object TestContextFactory {
      * @param workingDirectory Optional working directory for lab operations.
      *                         Use JUnit @TempDir to provide an isolated directory for tests
      *                         that perform file operations (like Clean).
-     *                         If null, defaults to the test temp directory.
+     *                         If null, a `workspace` directory beside the user directory.
      */
     fun createTestContext(
         tempDir: File,
@@ -42,7 +42,9 @@ object TestContextFactory {
         val context =
             Context(
                 easyDbLabUserDirectory = testTempDirectory.toFile(),
-                workingDirectory = workingDirectory ?: testTempDirectory.toFile(),
+                // Its own directory, apart from the user directory, so a file resolved against the
+                // wrong root lands somewhere a test can tell apart.
+                workingDirectory = workingDirectory ?: testTempDirectory.resolve("workspace").toFile().also { it.mkdirs() },
                 appHome = testTempDirectory.resolve("app").toString(),
             )
 

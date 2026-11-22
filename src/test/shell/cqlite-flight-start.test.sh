@@ -28,7 +28,7 @@ export STUB_STATE="${WORK}/state"
 write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin" "${WORK}/kit/pod"
 # Renders the template the way the kit installer does, with fixed install-time values.
-sed -e 's|__KUBECONFIG__|kubeconfig|g' -e 's|__TAG__|v0.18.0|g' -e 's|__FLIGHT_PORT__|9915|g' \
+sed -e 's|__TAG__|v0.18.0|g' -e 's|__FLIGHT_PORT__|9915|g' \
   -e 's|__CASSANDRA_DATA_DIR__|/mnt/db1/cassandra/data|g' -e 's|__CASSANDRA_DATA_ROOT__|/mnt|g' \
   -e 's|__CASSANDRA_DATA_GID__|999|g' -e 's|__ROLLOUT_TIMEOUT_SECONDS__|420|g' \
   "${KIT_SRC}/bin/start.sh.template" > "${WORK}/kit/bin/start.sh"
@@ -47,7 +47,7 @@ start_test() {
 
 # Runs start.sh; its stdout and stderr go to out.txt, and it returns the script's exit status.
 run_script() {
-  env PATH="${WORK}/stubs:${PATH}" "${BASH}" "${WORK}/kit/bin/start.sh" > "${WORK}/out.txt" 2>&1
+  env PATH="${WORK}/stubs:${PATH}" KUBECONFIG="${WORK}/kubeconfig" "${BASH}" "${WORK}/kit/bin/start.sh" > "${WORK}/out.txt" 2>&1
 }
 
 test_a_healthy_rollout_prints_no_multi_disk_note() {

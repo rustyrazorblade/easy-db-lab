@@ -118,11 +118,6 @@ class FakeNodes : RemoteOperationsService {
         remoteDir: String,
     ) = error("unused")
 
-    override fun uploadDirectory(
-        host: Host,
-        version: Version,
-    ) = error("unused")
-
     override fun replaceDirectory(
         host: Host,
         localDir: File,

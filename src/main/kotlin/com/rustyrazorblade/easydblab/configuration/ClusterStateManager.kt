@@ -38,11 +38,11 @@ import kotlin.concurrent.withLock
  * on a file it has locked already, so the threads of one process also take turns on [localLock]
  * first. Readers ([load]) take no lock: the rename gives them a whole file.
  *
- * @param stateFile The file to read/write cluster state. Defaults to "state.json" in current directory.
+ * @param stateFile The workspace's `state.json`; `ConfigurationModule` binds it from [com.rustyrazorblade.easydblab.Context.workspaceFile].
  * @param lockTimeout how long a change waits for another process to release the lock file
  */
 class ClusterStateManager(
-    private val stateFile: File = File(CLUSTER_STATE),
+    private val stateFile: File,
     private val lockTimeout: Duration = Constants.ClusterStateFile.LOCK_TIMEOUT,
 ) {
     private val lockFile = File(stateFile.absoluteFile.parentFile, Constants.ClusterStateFile.LOCK_FILE)
@@ -71,9 +71,11 @@ class ClusterStateManager(
      * `networkMode` and no `tailscaleActive`, which the class no longer has.
      *
      * @throws IllegalStateException if `networkMode` is not a known mode, naming the value and the known ones
-     * @throws Exception if file doesn't exist or can't be parsed
+     * @throws IllegalStateException if the file does not exist, naming its absolute path
+     * @throws Exception if the file cannot be parsed
      */
     fun load(): ClusterState {
+        requireStateFile()
         val tree = mapper.readTree(stateFile)
         val initConfig = tree.get("initConfig")
         if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
@@ -118,7 +120,7 @@ class ClusterStateManager(
      */
     fun update(change: (ClusterState) -> Unit): ClusterState =
         locked {
-            check(stateFile.exists()) { "No cluster state at ${stateFile.absolutePath}: run 'easy-db-lab init' first" }
+            requireStateFile()
             val fresh = loadForUpdate()
             change(fresh)
             write(fresh)
@@ -155,6 +157,13 @@ class ClusterStateManager(
             it.lastAccessedAt = Instant.now()
         }
     }
+
+    /** Fails, naming the absolute path of the state file, when the workspace has no `state.json`. */
+    private fun requireStateFile() =
+        check(stateFile.exists()) {
+            "No cluster state at ${stateFile.absolutePath}. Run the command from the cluster's workspace, " +
+                "or run 'init' there first."
+        }
 
     private fun loadForUpdate(): ClusterState =
         try {

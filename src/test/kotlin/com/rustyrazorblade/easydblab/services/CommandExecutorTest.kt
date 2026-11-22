@@ -43,7 +43,6 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine.Command
-import java.io.File
 import java.rmi.RemoteException
 
 /**
@@ -848,16 +847,6 @@ class CommandExecutorTest : BaseKoinTest() {
         private val failure: Throwable,
     ) : PicoBaseCommand() {
         override fun execute(): Unit = throw failure
-    }
-
-    /** Test command that loads cluster state from a workspace that has none */
-    @Command(name = "missing-state-command")
-    inner class MissingStateCommand(
-        private val stateFile: File,
-    ) : PicoBaseCommand() {
-        override fun execute() {
-            ClusterStateManager(stateFile).load()
-        }
     }
 
     /** Test command that reports its own failure, then signals it through the exit code only */

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import com.rustyrazorblade.easydblab.services.metrics.metricsStreamModule
 import com.rustyrazorblade.easydblab.services.servicesModule
 import org.koin.core.module.Module
+import java.io.File
 
 /**
  * Central registry of all Koin modules for the application. Add new modules here as they are
@@ -16,11 +17,11 @@ import org.koin.core.module.Module
  */
 object KoinModules {
     /**
-     * Get all application modules for Koin initialization.
+     * Get all application modules for Koin initialization, with [startDirectory] as the workspace.
      */
-    fun getAllModules(): List<Module> =
+    fun getAllModules(startDirectory: File): List<Module> =
         listOf(
-            contextModule,
+            contextModule(startDirectory),
             outputModule,
             eventBusModule,
             dockerModule,

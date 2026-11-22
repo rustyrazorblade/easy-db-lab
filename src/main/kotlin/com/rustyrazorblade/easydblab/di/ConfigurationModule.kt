@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.di
 
+import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import org.koin.dsl.module
 
@@ -8,5 +10,5 @@ import org.koin.dsl.module
  */
 val configurationModule =
     module {
-        single { ClusterStateManager() }
+        single { ClusterStateManager(get<Context>().workspaceFile(CLUSTER_STATE)) }
     }

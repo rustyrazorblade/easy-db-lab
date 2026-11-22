@@ -2,7 +2,7 @@
 
 ## easy-db-lab
 
-The local-development CLI entrypoint. It does **not** launch the JVM itself — it delegates to the Gradle-generated start script (`build/install/easy-db-lab/bin/easy-db-lab`), which is the single source of truth for the classpath, the OTel java agent, and `easydblab.apphome`/`easydblab.version` (#727). Build it first with `./gradlew installDist`. This wrapper only layers on dev-only conveniences: `.env` loading (gitignored; shell env always wins), a log directory (`EASY_DB_LAB_LOG_DIR`, defaults to `./logs`), and passing extra JVM options through the generated script's `EASY_DB_LAB_OPTS` hook.
+The local-development CLI entrypoint. It does **not** launch the JVM itself — it delegates to the Gradle-generated start script (`build/install/easy-db-lab/bin/easy-db-lab`), which is the single source of truth for the classpath, the OTel java agent, and `easydblab.apphome`/`easydblab.version` (#727). Build it first with `./gradlew installDist`. This wrapper only layers on dev-only conveniences: `.env` loading (gitignored; shell env always wins), a log directory (`EASY_DB_LAB_LOG_DIR`, defaulting to `${EASY_DB_LAB_USER_DIR:-~/.easy-db-lab}/logs` like the packaged logback, never the current directory), and passing extra JVM options through the generated script's `EASY_DB_LAB_OPTS` hook.
 
 ## Other scripts
 

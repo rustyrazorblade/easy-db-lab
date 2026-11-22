@@ -23,17 +23,23 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowable
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 
 /**
  * Tests that KitInstallCommand creates the right directory name based on kit-ref args.
@@ -103,7 +109,7 @@ class KitInstallCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockResolver.listTemplateFiles(org.mockito.kotlin.any())).thenReturn(emptyList())
         whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(null)
-        val templateVars = TemplateVariables.from(state = clusterState, kitName = "", storageSize = "").toMap()
+        val templateVars = TemplateVariables.from(state = clusterState, workspace = workingDir, kitName = "", storageSize = "").toMap()
         factory = KitInstallCommandFactory(templateVars)
         source = InstallTemplateResolver.TemplateSource.Directory(templateDir)
     }
@@ -280,6 +286,50 @@ class KitInstallCommandTest : BaseKoinTest() {
         assertThat(resolvedArgs["IMAGE"]).isEqualTo("ghcr.io/cloudnative-pg/postgresql:17")
     }
 
+    /**
+     * A kit-ref or extension value becomes part of a workspace directory name, so a value that is
+     * not a kit name is refused before anything is read or written. `x/../clickhouse` would
+     * otherwise normalize onto the installed clickhouse kit, and `--force` would replace it.
+     */
+    @ParameterizedTest(name = "[{0}] {1}")
+    @CsvSource(
+        "TARGET, x/../clickhouse",
+        "TARGET, ../x",
+        "TARGET, a/b",
+        "TARGET, my kit",
+        "TARGET, -x",
+        "EXTENSION, x/../clickhouse",
+        "EXTENSION, my kit",
+    )
+    fun `a kit-ref or extension value that is not a kit name is refused and leaves every kit alone`(
+        variable: String,
+        value: String,
+    ) {
+        File(templateDir, "extensions.yaml").writeText(extensionsYaml)
+        val clickhouse = File(workingDir, "clickhouse").apply { mkdirs() }
+        File(clickhouse, Constants.Kit.CONFIG_FILE).writeText("name: clickhouse\n")
+        val config =
+            KitConfig(
+                name = "bench",
+                type = null,
+                args =
+                    listOf(
+                        KitArgSpec(flag = "--target", variable = "TARGET", type = KitArgSpec.ArgType.KIT_REF),
+                        KitArgSpec(flag = "--extension", variable = "EXTENSION", type = KitArgSpec.ArgType.EXTENSION, default = ""),
+                    ),
+            )
+        val cl = factory.build(config, source)
+        val cmd = cl.commandSpec.userObject() as KitInstallCommand
+        cmd.argValues[variable] = value
+        cmd.force = true
+
+        assertThatThrownBy { cmd.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid kit name '$value'")
+        assertThat(File(clickhouse, Constants.Kit.CONFIG_FILE)).hasContent("name: clickhouse")
+        assertThat(workingDir.list().orEmpty().filter { it.startsWith("bench") }).isEmpty()
+    }
+
     @Test
     fun `kit-ref fails when target kit is not installed`() {
         val benchConfig =
@@ -341,6 +391,29 @@ class KitInstallCommandTest : BaseKoinTest() {
                 assertThat(File(workingDir, "br")).doesNotExist()
             }
         }
+
+    /** A scaffold cleanup that fails as well is attached to the install error, which stays the reported cause. */
+    @Test
+    fun `a failed install whose scaffold cleanup also fails reports the install error`() {
+        // Root deletes a file in a read-only directory, so the cleanup would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
+        var locked: File? = null
+        whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenAnswer {
+            val scaffold = workingDir.listFiles().orEmpty().single { it.name.startsWith(".tmp-plain-") }
+            locked = File(scaffold, "locked").apply { mkdirs() }
+            File(scaffold, "locked/f").writeText("x")
+            File(scaffold, "locked").setWritable(false)
+            error("render failed")
+        }
+        try {
+            val thrown = catchThrowable { buildAndRun(KitConfig(name = "plain", type = null), emptyMap()) }
+
+            assertThat(thrown).isInstanceOf(IllegalStateException::class.java).hasMessage("render failed")
+            assertThat(thrown.suppressed.single()).isInstanceOf(IOException::class.java)
+        } finally {
+            locked?.setWritable(true)
+        }
+    }
 
     /** Parses [args] as the user would type them, then runs the install. */
     private fun parseAndRun(
@@ -489,6 +562,22 @@ class KitInstallCommandTest : BaseKoinTest() {
 
         assertThat(exitCode).isZero()
         assertThat(File(workingDir, "needs-kubectl")).isDirectory()
+    }
+
+    @Test
+    fun `a forced reinstall over a kit directory that is a link replaces the link and keeps its target`() {
+        val outside = File(tempDir, "kit-checkout").apply { mkdirs() }
+        val precious = File(outside, "precious.txt").apply { writeText("source") }
+        val link = File(workingDir, "mydb")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        val cmd = factory.build(KitConfig(name = "mydb", type = null), source).commandSpec.userObject() as KitInstallCommand
+        cmd.force = true
+
+        cmd.execute()
+
+        assertThat(precious).hasContent("source")
+        assertThat(Files.isSymbolicLink(link.toPath())).isFalse()
+        assertThat(File(link, Constants.Kit.RESOLVED_ARGS_FILE)).isFile()
     }
 
     private fun resolvedArgs(kitDir: String): Map<String, String> =

@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 
 /** [ToolWrapperInstaller] owns the wrappers in `<workspace>/bin/` and nothing else there. */
 internal class ToolWrapperInstallerTest {
@@ -36,6 +37,19 @@ internal class ToolWrapperInstallerTest {
         installer.install(workspace)
 
         assertThat(library).hasContent(packagedLibrary)
+    }
+
+    @Test
+    fun `a bin link to a directory outside the workspace is refused and nothing is written there`(
+        @TempDir outside: File,
+    ) {
+        Files.createSymbolicLink(bin.toPath(), outside.toPath())
+
+        assertThatThrownBy { installer.install(workspace) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("leads outside it through a link")
+
+        assertThat(outside.list()).isEmpty()
     }
 
     @Test

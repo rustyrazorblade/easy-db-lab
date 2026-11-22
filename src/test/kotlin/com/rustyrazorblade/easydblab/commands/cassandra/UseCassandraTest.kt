@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -34,7 +35,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.whenever
-import java.io.File
 import kotlin.random.Random
 
 /**
@@ -80,7 +80,7 @@ class UseCassandraTest : BaseKoinTest() {
         nodes = FakeNodes()
         // The real manager on the test workspace; the spy only counts the saves.
         stateManager =
-            spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+            spy(ClusterStateManager(context.workspaceFile(CLUSTER_STATE))).also { manager ->
                 doAnswer { invocation ->
                     saveCount++
                     invocation.callRealMethod()

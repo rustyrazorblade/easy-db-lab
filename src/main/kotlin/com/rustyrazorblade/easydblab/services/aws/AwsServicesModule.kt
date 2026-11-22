@@ -115,6 +115,7 @@ val awsServicesModule =
                 get<ClusterStateManager>(),
                 get<LokiQueryService>(),
                 get<EventBus>(),
+                logsDir = get<Context>().workspaceDir(Constants.EMR.LOCAL_LOGS_DIR).toPath(),
             )
         }
 

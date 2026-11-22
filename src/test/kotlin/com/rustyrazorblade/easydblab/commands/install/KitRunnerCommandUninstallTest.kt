@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.catchThrowable
+import org.assertj.core.api.Assumptions.assumeThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
@@ -13,6 +15,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 import java.time.Duration
 
 /**
@@ -114,6 +117,29 @@ class KitRunnerCommandUninstallTest : KitRunnerCommandTestBase() {
         verify(mockClusterStateManager).removeRunningWorkload("mydb")
         verify(mockMetricsRegistryService).deregister(any(), eq("mydb"))
         assertThat(File(workingDir, "mydb")).doesNotExist()
+    }
+
+    /** A subscriber that saw the directory removal start sees it finish, failed, before the error propagates. */
+    @Test
+    fun `a kit directory that cannot be removed ends its started script with a non-zero finish`() {
+        // Root deletes a file in a read-only directory, so the delete would not fail.
+        assumeThat(System.getProperty("user.name")).isNotEqualTo("root")
+        writeKitYaml("mydb", "name: mydb")
+        val locked = File(workingDir, "mydb/locked").apply { mkdirs() }
+        File(locked, "f").writeText("x")
+        assertThat(locked.setWritable(false)).isTrue()
+        try {
+            var thrown: Throwable? = null
+            val events = captureEvents { thrown = catchThrowable { command("mydb", "uninstall").call() } }
+
+            assertThat(thrown).isInstanceOf(IOException::class.java)
+            val phase = events.filter { it is Event.Kit.ScriptStarted || it is Event.Kit.ScriptFinished }
+            assertThat(phase).hasSize(2)
+            assertThat(phase[0]).isInstanceOf(Event.Kit.ScriptStarted::class.java)
+            assertThat((phase[1] as Event.Kit.ScriptFinished).exitCode).isNotEqualTo(0)
+        } finally {
+            locked.setWritable(true)
+        }
     }
 
     @Test

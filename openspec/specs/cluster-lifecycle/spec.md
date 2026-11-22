@@ -692,6 +692,90 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 - **WHEN** `up` starts K3s on every node
 - **THEN** it waits until every node is registered with the server, and fails naming the missing nodes when one does not register in time
 
+### Requirement: Workspace files resolve against the workspace
+
+Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, and so SHALL a name whose directory, with its links followed, is outside the workspace's real path. A recursive delete of a workspace path SHALL unlink a symbolic link, at the top or anywhere below, and SHALL NOT delete what the link points at; a delete that cannot remove a file SHALL fail the command with a message naming the path. A write to a workspace file whose name is a symbolic link SHALL replace the link with a regular file and leave the link's target unchanged. Together these mean no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path, and a kit script SHALL use the `KUBECONFIG` the CLI sets for its process rather than a path rendered into it. A command SHALL create no file in the process's current directory unless that directory is the workspace.
+
+#### Scenario: State is read and written in the workspace
+
+- **GIVEN** a workspace W and a process whose current directory is a different directory D
+- **WHEN** a command saves and then reloads cluster state
+- **THEN** it writes and reads `W/state.json`
+- **AND** nothing is created in D
+
+#### Scenario: Kubernetes client uses the workspace kubeconfig
+
+- **GIVEN** a workspace W holding `kubeconfig`, and a process whose current directory is D
+- **WHEN** a command builds a Kubernetes client
+- **THEN** the client is configured from `W/kubeconfig`
+
+#### Scenario: Other workspace files resolve against the workspace
+
+- **GIVEN** a workspace W and a process whose current directory is D
+- **WHEN** `setup-instances` (and the node setup `up` runs), `cassandra download-config`, `cassandra update-config`, `cassandra start`, the profiling fetch, or Spark log download opens or writes its workspace file
+- **THEN** each path is under W
+
+#### Scenario: A write through a linked workspace file stays in the workspace
+
+- **GIVEN** a workspace W whose `sshConfig` is a symbolic link to a file outside W
+- **WHEN** a command writes `sshConfig` (or `environment.sh`, `axonops-workbench.json`, `kubeconfig`)
+- **THEN** `W/sshConfig` is a regular file with the new content
+- **AND** the file outside W is unchanged
+
+#### Scenario: Today's normal case is unchanged
+
+- **GIVEN** the process's current directory is the workspace
+- **WHEN** any command runs
+- **THEN** it reads and writes the same files as today
+
+#### Scenario: Missing state names its absolute path
+
+- **GIVEN** a workspace W with no `state.json`
+- **WHEN** a command loads or updates cluster state
+- **THEN** the error names the absolute path of `W/state.json` and tells the user to run the command from the cluster's workspace or run `init` there
+
+#### Scenario: A workspace file name outside the workspace is refused
+
+- **GIVEN** a workspace W
+- **WHEN** a command resolves the workspace file `.`, `..`, `a/../..` or an absolute path, for example `kit uninstall ..`
+- **THEN** it fails naming the workspace and the name, and nothing inside or outside W is deleted
+
+#### Scenario: A workspace file name that leaves the workspace through a link is refused
+
+- **GIVEN** a workspace W holding `out`, a symbolic link to a directory outside W
+- **WHEN** a command resolves the workspace file `out/file`
+- **THEN** it fails naming the workspace and the name; resolving `out` itself returns the link, which a delete unlinks without touching its target
+
+#### Scenario: A directory the CLI writes into does not lead outside the workspace through a link
+
+- **GIVEN** a workspace W whose `logs` (or `profiles`, `profiles/<host>`, `bin`, the restored `k8s`, or a Cassandra version conf directory) is a symbolic link to a directory outside W
+- **WHEN** a command writes into that directory: the SOCKS tunnel log, the profiling fetch or flamegraph, the tool wrappers, a backup restore, or `cassandra download-config`
+- **THEN** it fails naming the workspace and the directory, and nothing is written outside W
+- **AND** a link to a directory inside W is followed as usual
+
+#### Scenario: A failed cleanup does not hide the failure that caused it
+
+- **GIVEN** a kit install or a `cassandra download-config` that fails and then cannot delete its partial directory
+- **WHEN** the command reports the failure
+- **THEN** the reported error is the one that stopped the command, and the failed delete is attached to it
+
+#### Scenario: Uploading authorized keys leaves no file behind
+
+- **WHEN** the user runs `upload-keys`
+- **THEN** no `authorized_keys_extra` file remains in the workspace or the current directory
+
+#### Scenario: upload-keys with no directory reads the workspace's keys
+
+- **GIVEN** a workspace W holding `authorized_keys/`, and a process whose current directory is D
+- **WHEN** the user runs `upload-keys` with no directory
+- **THEN** it reads the `.pub` files in `W/authorized_keys`
+
+#### Scenario: A typed path resolves where it was typed
+
+- **GIVEN** a process whose current directory is D
+- **WHEN** the user runs `upload-keys keys` with a relative directory
+- **THEN** it reads `D/keys`
+
 ## Success Criteria
 
 - Users can provision a 3-node cluster in under 10 minutes from command execution.

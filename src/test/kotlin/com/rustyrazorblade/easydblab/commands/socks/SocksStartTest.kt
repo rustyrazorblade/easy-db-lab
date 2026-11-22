@@ -45,7 +45,6 @@ class SocksStartTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 single { ProxyEnvFile(get<Context>().workingDirectory) }
                 single<SocksProxyService> {
                     ProcessSocksProxyService(

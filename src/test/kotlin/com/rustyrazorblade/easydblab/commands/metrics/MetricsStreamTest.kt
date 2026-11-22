@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.commands.metrics
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -35,7 +35,6 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.PrintStream
 import java.time.Duration
 
@@ -60,7 +59,6 @@ class MetricsStreamTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 factory { redis }
                 factory {
                     MetricsStreamService(
@@ -150,7 +148,7 @@ class MetricsStreamTest : BaseKoinTest() {
 
     @Test
     fun `a workspace with no state fails as no running cluster`() {
-        File(context.workingDirectory, "state.json").delete()
+        context.workspaceFile(CLUSTER_STATE).delete()
 
         assertThatThrownBy { stream().execute() }.isInstanceOf(CommandFailedException::class.java)
         assertThat(events.single()).isInstanceOf(Event.Metrics.NoRunningCluster::class.java)

@@ -317,6 +317,24 @@ object Constants {
         const val POD_ADDRESSES_PER_NODE = 16
     }
 
+    /** File names inside a cluster workspace; each resolves through `Context.workspaceFile`. */
+    object Workspace {
+        /** The generated OpenSSH config every ssh, scp and tunnel call reads. */
+        const val SSH_CONFIG_FILE = "sshConfig"
+
+        /** The stress environment written at provisioning and installed on every node. */
+        const val STRESS_ENV_FILE = "environment.sh"
+
+        /** The AxonOps Workbench connection file `cassandra start` reports. */
+        const val AXONOPS_CONFIG_FILE = "axonops-workbench.json"
+
+        /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
+        const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
+
+        /** The workspace directory `upload-keys` reads `.pub` files from when none is given. */
+        const val AUTHORIZED_KEYS_DIR = "authorized_keys"
+    }
+
     // Exit codes
     object ExitCodes {
         const val ERROR = 1

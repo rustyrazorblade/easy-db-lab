@@ -172,7 +172,7 @@ class PlatformCreatePvsTest : BaseKoinTest() {
 
         assertThatThrownBy { command.execute() }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("--kit")
+            .hasMessageContaining("Invalid kit name '$name'")
         verifyNoInteractions(mockK8sService)
     }
 }

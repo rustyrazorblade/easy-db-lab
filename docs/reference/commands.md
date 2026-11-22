@@ -12,6 +12,16 @@ Complete reference for all easy-db-lab commands.
 
 ---
 
+## Workspace Files
+
+Run every command from the cluster's workspace directory. Cluster files (`state.json`, `kubeconfig`,
+`environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, `authorized_keys/`,
+`profiles/`, `logs/`) are read and written in that directory,
+and nothing is created in any other place. A command run where no `state.json` exists fails with
+"No cluster state at <absolute path>. Run the command from the cluster's workspace, or run 'init' there first."
+A path you type as an argument (for example `upload-keys <dir>`) resolves against the directory you ran
+the command from.
+
 ## Profile Commands
 
 Profile inspection and setup. Not to be confused with `cassandra profile`, which controls runtime
@@ -257,7 +267,7 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 
 ### clean
 
-Clean up generated files from the current directory.
+Clean up generated files from the workspace.
 
 ```bash
 easy-db-lab clean
@@ -515,15 +525,22 @@ easy-db-lab cassandra write-config [filename] [options]
 |--------|-------------|---------|
 | `-t`, `--tokens` | Number of tokens | 4 |
 
+With no `filename`, the patch is written to `cassandra.patch.yaml` in the workspace. A `filename` you
+type is used as typed: a relative one resolves against the directory you run the command from.
+
 ### cassandra update-config
 
 Apply configuration patch to all nodes.
 
 ```bash
-easy-db-lab cassandra update-config [options]
+easy-db-lab cassandra update-config [file] [options]
 ```
 
 **Aliases:** `uc`
+
+With no `file`, the patch is read from `cassandra.patch.yaml` in the workspace. A `file` you type is
+used as typed, and is uploaded to each node as `cassandra.patch.yaml`. Each host's version conf
+directory (for example `5.0/`) is read from the workspace.
 
 | Option | Description |
 |--------|-------------|
@@ -714,7 +731,7 @@ easy-db-lab cassandra profile status
 
 ### cassandra profile fetch
 
-Download completed JFR chunks into `./profiles/<host>/`. The chunk currently being written is never
+Download completed JFR chunks into the workspace's `profiles/<host>/`. The chunk currently being written is never
 offered — it has no constant pool yet and no tool can read it.
 
 ```bash

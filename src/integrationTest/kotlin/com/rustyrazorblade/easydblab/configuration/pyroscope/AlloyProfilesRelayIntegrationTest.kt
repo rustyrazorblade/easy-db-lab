@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
 import com.rustyrazorblade.easydblab.services.TemplateService
 import jdk.jfr.Recording
+import jdk.jfr.consumer.RecordingFile
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -65,6 +66,9 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         const val ALLOY_UI_PORT = 12345
         const val CURL_IMAGE = "curlimages/curl:8.11.1"
         const val SPIN_MILLIS = 1_500L
+        const val EXECUTION_SAMPLE = "jdk.ExecutionSample"
+        const val MIN_CPU_SAMPLES = 10
+        const val JFR_ATTEMPTS = 5
         val ARRIVAL: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
         val SENDER_TIMEOUT: Duration = Duration.ofMinutes(1)
@@ -132,11 +136,25 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
         )
     }
 
-    /** A real JFR recording of this JVM spinning, so the chunk has CPU samples to parse. */
+    /**
+     * A real JFR recording of this JVM spinning, holding at least [MIN_CPU_SAMPLES] CPU samples.
+     * The sampler can miss a short spin on a busy runner, and a chunk with no samples is accepted
+     * by the relay (200) but gives Pyroscope nothing to store, so the test would fail on an empty
+     * series for a reason that has nothing to do with the relay. It records again until the chunk
+     * has samples, and fails here, naming the cause, if it never does.
+     */
     private fun recordJfr(): Path {
         val file = jfrDir.resolve("chunk.jfr")
+        repeat(JFR_ATTEMPTS) {
+            spinRecording(file)
+            if (cpuSamples(file) >= MIN_CPU_SAMPLES) return file
+        }
+        error("no JFR recording of ${SPIN_MILLIS}ms held $MIN_CPU_SAMPLES CPU samples in $JFR_ATTEMPTS attempts")
+    }
+
+    private fun spinRecording(file: Path) {
         Recording().use { recording ->
-            recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
+            recording.enable(EXECUTION_SAMPLE).withPeriod(Duration.ofMillis(10))
             recording.start()
             val end = System.currentTimeMillis() + SPIN_MILLIS
             var sink = 0.0
@@ -147,8 +165,9 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
             recording.dump(file)
             check(sink > 0)
         }
-        return file
     }
+
+    private fun cpuSamples(file: Path): Int = RecordingFile.readAllEvents(file).count { it.eventType.name == EXECUTION_SAMPLE }
 
     private fun startAlloy(pyroscope: GenericContainer<*>): GenericContainer<*> {
         val config = PyroscopeManifestBuilder(getKoin().get()).buildEbpfConfigMap().data.getValue("config.alloy")

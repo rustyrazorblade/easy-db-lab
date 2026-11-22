@@ -52,6 +52,9 @@ class PyroscopeManifestBuilder(
         const val SERVER_IMAGE = "grafana/pyroscope:2.3.1"
         const val SERVER_PORT = 4040
 
+        /** The ConfigMap key of the server's config file. */
+        const val SERVER_CONFIG_KEY = "config.yaml"
+
         /** The ConfigMap key of the ingest front's HAProxy config; the Service targets the front instead of [SERVER_PORT]. */
         const val FRONT_CONFIG_KEY = "ingest-front.cfg"
 
@@ -293,7 +296,7 @@ class PyroscopeManifestBuilder(
         ContainerBuilder()
             .withName(SERVER_APP_LABEL)
             .withImage(SERVER_IMAGE)
-            .withArgs("-config.file=${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/config.yaml")
+            .withArgs("-config.file=${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$SERVER_CONFIG_KEY")
             .addNewPort()
             .withContainerPort(SERVER_PORT)
             .withProtocol("TCP")

@@ -168,6 +168,7 @@ class PortableObservabilityPlacementIntegrationTest {
                         LokiManifestBuilder.IMAGE,
                         TempoManifestBuilder.IMAGE,
                         PyroscopeManifestBuilder.SERVER_IMAGE,
+                        Constants.PyroscopeServer.FRONT_IMAGE,
                         Constants.Grafana.Documents.SIGV4_PROXY_IMAGE,
                         Constants.Grafana.Documents.WEB_SERVER_IMAGE,
                         LOCAL_PATH_PROVISIONER_IMAGE,
@@ -253,23 +254,28 @@ class PortableObservabilityPlacementIntegrationTest {
             ).map(::toLocalStack)
     }
 
-    /** [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack. */
+    /**
+     * [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack.
+     * Only the backend's own config file is edited: the Pyroscope ConfigMap also carries the ingest
+     * front's HAProxy config, which names no S3 endpoint and runs as rendered.
+     */
     private fun toLocalStack(resource: HasMetadata): HasMetadata {
         if (resource !is ConfigMap) return resource
-        val edit: ((String) -> String)? =
+        val edit: Pair<String, (String) -> String>? =
             when (resource.metadata.name) {
-                "mimir-config" -> ObservabilityBackends::mimirConfig
-                "loki-config" -> ObservabilityBackends::lokiConfig
-                "tempo-config" -> ObservabilityBackends::tempoConfig
-                "pyroscope-config" -> ::pyroscopeConfig
+                "mimir-config" -> MimirManifestBuilder.CONFIG_FILE to ObservabilityBackends::mimirConfig
+                "loki-config" -> LokiManifestBuilder.CONFIG_FILE to ObservabilityBackends::lokiConfig
+                "tempo-config" -> TempoManifestBuilder.CONFIG_FILE to ObservabilityBackends::tempoConfig
+                "pyroscope-config" -> PyroscopeManifestBuilder.SERVER_CONFIG_KEY to ::pyroscopeConfig
                 else -> null
             }
         return when (edit) {
             null -> resource
-            else ->
-                ConfigMapBuilder(resource)
-                    .withData<String, String>(resource.data.mapValues { (_, content) -> inCluster(edit(content)) })
-                    .build()
+            else -> {
+                val (key, rewrite) = edit
+                val content = checkNotNull(resource.data[key]) { "${resource.metadata.name} has no $key" }
+                ConfigMapBuilder(resource).addToData(key, inCluster(rewrite(content))).build()
+            }
         }
     }
 

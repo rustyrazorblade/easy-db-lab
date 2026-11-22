@@ -139,11 +139,40 @@ run_upgrade STUB_RUNNING=
 case "${out}" in *"EDL_CASSANDRA_BUILD"*) ;; *) fail "message: ${out}" ;; esac
 changed_nothing
 
-begin "a rollout that does not finish fails the upgrade, so nothing is recorded"
+begin "a rollout that does not finish fails the upgrade, and does not wait for UN"
 run_upgrade STUB_ROLLOUT_RC=1
 [ "${rc}" -ne 0 ] || fail "exit 0"
 case "${out}" in *"did not finish"*) ;; *) fail "message: ${out}" ;; esac
 if grep -q '^exec' "${WORK}/kubectl.calls"; then fail "waited for UN after a failed rollout"; fi
+
+# The kit's recorded args, as kit install wrote them, before each upgrade.
+seed_args() {
+  printf '# kit install\nCASSANDRA_VERSION=5.0.4\nCASSANDRA_BUILD=5.0-HEAD\nCASSANDRA_JAVA=11\nSTORAGE_SIZE=2Gi\n' > "${WORK}/kit/kit-resolved-args.env"
+}
+recorded() { grep "^$1=" "${WORK}/kit/kit-resolved-args.env"; }
+
+begin "a rollout that times out after the apply still records what was applied"
+seed_args
+run_upgrade STUB_ROLLOUT_RC=1 CASSANDRA_JAVA=17
+[ "${rc}" -ne 0 ] || fail "exit 0"
+[ "$(recorded CASSANDRA_VERSION)" = "CASSANDRA_VERSION=5.0.6" ] || fail "version: $(cat "${WORK}/kit/kit-resolved-args.env")"
+[ "$(recorded CASSANDRA_BUILD)" = "CASSANDRA_BUILD=" ] || fail "build not cleared: $(cat "${WORK}/kit/kit-resolved-args.env")"
+[ "$(recorded CASSANDRA_JAVA)" = "CASSANDRA_JAVA=17" ] || fail "java: $(cat "${WORK}/kit/kit-resolved-args.env")"
+[ "$(recorded STORAGE_SIZE)" = "STORAGE_SIZE=2Gi" ] || fail "other args not kept"
+head -1 "${WORK}/kit/kit-resolved-args.env" | grep -qx '# kit install' || fail "comment not kept"
+case "${out}" in *"recorded"*"5.0.6"*) ;; *) fail "failure does not say 5.0.6 is recorded: ${out}" ;; esac
+
+begin "an upgrade refused before the apply records nothing"
+seed_args
+run_upgrade STUB_RUNNING=5.0.6 CASSANDRA_VERSION=4.1 EDL_CASSANDRA_BUILD=4.1.10
+[ "$(recorded CASSANDRA_VERSION)" = "CASSANDRA_VERSION=5.0.4" ] || fail "recorded: $(cat "${WORK}/kit/kit-resolved-args.env")"
+
+begin "a recorded arg the file lacks is appended"
+printf 'STORAGE_SIZE=2Gi\n' > "${WORK}/kit/kit-resolved-args.env"
+run_upgrade
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+[ "$(recorded CASSANDRA_VERSION)" = "CASSANDRA_VERSION=5.0.6" ] || fail "not appended: $(cat "${WORK}/kit/kit-resolved-args.env")"
+rm -f "${WORK}/kit/kit-resolved-args.env"
 
 begin "nodes that do not come back UN fail the upgrade"
 run_upgrade STUB_UN=2

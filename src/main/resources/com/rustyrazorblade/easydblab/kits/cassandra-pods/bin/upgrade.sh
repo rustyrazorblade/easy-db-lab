@@ -11,9 +11,10 @@
 #      no major to compare, so it is never refused;
 #   3. applies the ConfigMap and the StatefulSet; the new artifact changes the pod template, so the
 #      StatefulSet restarts the pods one at a time (RollingUpdate, OrderedReady, preStop drain);
-#   4. waits for the rollout, then for every node to be UN.
-# On success the kit runner records --version, --build and --java (kit.yaml `records`), so a later
-# start runs what was applied.
+#   4. records --version, --build and --java in the kit's recorded args, so a later start runs what
+#      the StatefulSet now names even if the wait below times out;
+#   5. waits for the rollout, then for every node to be UN.
+# On success the kit runner records the same values again (kit.yaml `records`).
 #
 # A command script runs from the workspace; the lib scripts and the resolved files are in the kit
 # directory, this script's parent, so it changes there first.
@@ -55,13 +56,40 @@ if [ -n "${from}" ] && [ -n "${to}" ] && [ "${to}" -lt "${from}" ]; then
   fail "ERROR: upgrade from ${running} to ${target} is a major-version downgrade, which Cassandra does not support; the pods were not changed."
 fi
 
+# record_args: sets CASSANDRA_VERSION, CASSANDRA_BUILD and CASSANDRA_JAVA in the kit's recorded args
+# to what this upgrade applied (an arg not given is recorded empty), keeping every other line, and
+# replaces the file by a rename. Values pass through the environment, never through awk's program.
+record_args() {
+  local file=kit-resolved-args.env
+  [ -f "${file}" ] || : > "${file}"
+  R_VERSION="${version}" R_BUILD="${build}" R_JAVA="${CASSANDRA_JAVA:-}" awk '
+    BEGIN {
+      want["CASSANDRA_VERSION"] = ENVIRON["R_VERSION"]
+      want["CASSANDRA_BUILD"] = ENVIRON["R_BUILD"]
+      want["CASSANDRA_JAVA"] = ENVIRON["R_JAVA"]
+    }
+    /^[A-Za-z_][A-Za-z0-9_]*=/ {
+      key = substr($0, 1, index($0, "=") - 1)
+      if (key in want) { print key "=" want[key]; seen[key] = 1; next }
+    }
+    $0 != "" { print }
+    END {
+      split("CASSANDRA_VERSION CASSANDRA_BUILD CASSANDRA_JAVA", order, " ")
+      for (i = 1; i <= 3; i++) if (!(order[i] in seen)) print order[i] "=" want[order[i]]
+    }
+  ' "${file}" > "${file}.tmp" && mv "${file}.tmp" "${file}"
+}
+
 echo "Upgrading ${KIT_NAME} from ${running} to ${target}, one pod at a time."
 bash lib/apply-config.sh
 bash lib/apply-statefulset.sh
+# Recorded as soon as the StatefulSet names the new build, before any wait: a rollout that then
+# times out still converges on it, and a later stop then start must run it, not the old version.
+record_args
 
 # The same bound as wait-un.sh: each pod restarts in turn and must pass its readiness probe.
 timeout="${CASSANDRA_UN_WAIT_SECONDS:-$((300 + CASSANDRA_NODES * 720))}"
 kubectl rollout status "statefulset/${KIT_NAME}" --namespace default --timeout="${timeout}s" ||
-  fail "ERROR: the ${KIT_NAME} rollout to ${target} did not finish within ${timeout}s; 'kubectl get pods -l easydblab/kit=${KIT_NAME}' shows which pod is not Ready."
+  fail "ERROR: the ${KIT_NAME} rollout to ${target} did not finish within ${timeout}s; 'kubectl get pods -l easydblab/kit=${KIT_NAME}' shows which pod is not Ready. The StatefulSet already runs ${target} and ${target} is recorded, so the rollout goes on, and a later stop then start runs ${target}."
 bash lib/wait-un.sh
 echo "${KIT_NAME} runs ${target}."

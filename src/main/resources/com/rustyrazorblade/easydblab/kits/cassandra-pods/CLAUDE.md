@@ -38,8 +38,9 @@ Two paths, chosen by `--image`:
 - `upgrade --version|--build [--java]` is `bin/upgrade.sh`: it refuses a major-version downgrade (the
   running StatefulSet's `EDL_CASSANDRA_BUILD` against the new one) and an `--image` kit, applies the
   ConfigMap and the StatefulSet (`RollingUpdate`, `OrderedReady`, preStop drain), and waits for the
-  rollout and UN. The runner records `CASSANDRA_VERSION`, `CASSANDRA_BUILD` and `CASSANDRA_JAVA`
-  (`records:`) only on success.
+  rollout and UN. `upgrade.sh` records `CASSANDRA_VERSION`, `CASSANDRA_BUILD` and `CASSANDRA_JAVA` in
+  `kit-resolved-args.env` right after the apply, before the wait, so a timed-out rollout still leaves
+  them naming what the StatefulSet runs; the runner records them again on success (`records:`).
 - Clients dial the node: each pod sets `broadcast_rpc_address` to `status.hostIP` and its native
   port to the NodePort value 30942, and the NodePort Service uses `externalTrafficPolicy: Local`.
   Every address a driver reads from `system.peers_v2` therefore reaches the pod on that node.

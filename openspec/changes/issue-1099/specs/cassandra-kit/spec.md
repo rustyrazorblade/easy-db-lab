@@ -184,6 +184,10 @@ Pods SHALL restart one at a time (`RollingUpdate` with `OrderedReady`). Each pod
 - **WHEN** `upgrade --version 5.0.4` succeeds and the kit is later stopped and started
 - **THEN** the kit starts version 5.0.4
 
+#### Scenario: Timed-out rollout still records the applied version
+- **WHEN** `upgrade --version 5.0.4` applies the StatefulSet and its rollout wait then times out
+- **THEN** the command fails saying 5.0.4 is recorded, and a later stop then start runs 5.0.4, not the previous version
+
 #### Scenario: Major downgrade refused
 - **WHEN** `upgrade --version 4.1` runs on a kit running 5.0
 - **THEN** `upgrade` exits non-zero, naming both versions, and the StatefulSet is unchanged

@@ -143,13 +143,13 @@ start:
 # Never the claims: a restarted StatefulSet reattaches them by name, so data survives.
 stop:
   - type: delete
-    kinds: [statefulset, service, configmap]
+    kinds: [statefulset, service, configmap, secret]
     selector: easydblab/kit=cassandra-pods
     namespace: default
 
 uninstall:
   - type: delete
-    kinds: [statefulset, service, configmap, pvc]
+    kinds: [statefulset, service, configmap, secret, pvc]
     selector: easydblab/kit=cassandra-pods
     namespace: default
   - type: kit-storage-delete

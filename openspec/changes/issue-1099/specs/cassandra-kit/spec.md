@@ -93,7 +93,7 @@ A `cassandra-fetch` init container SHALL look for `/var/lib/cassandra/.edl/artif
 3. extract it;
 4. move the tree into `sha256-<hex>/` and write `.complete` with an atomic rename.
 
-A sha256 mismatch SHALL fail the container with a message naming the expected and the actual hash, and SHALL leave no `sha256-<hex>/` directory. A tree with no `.complete` SHALL never be used. Nothing SHALL change a cached tree after `.complete` is written. Older cached versions SHALL be kept. An expired presigned URL SHALL fail with a message naming the expiry and saying to run `upgrade` or `start` again.
+A sha256 mismatch SHALL fail the container with a message naming the expected and the actual hash, and SHALL leave no `sha256-<hex>/` directory. A tree with no `.complete` SHALL never be used. Nothing SHALL change a cached tree after `.complete` is written. Older cached versions SHALL be kept. An expired presigned URL SHALL fail with a message naming the expiry and saying to run `upgrade` again (or `stop` then `start`) to sign a new one.
 
 #### Scenario: Cache hit makes no download
 - **WHEN** a pod starts and `sha256-<hex>/.complete` for its `EDL_TARBALL_SHA256` is already on its claim
@@ -118,7 +118,7 @@ A sha256 mismatch SHALL fail the container with a message naming the expected an
 
 #### Scenario: Expired presigned URL
 - **WHEN** a pod with a cold cache starts after its presigned URL has expired
-- **THEN** `cassandra-fetch` exits non-zero with a message naming the expiry and saying to run `upgrade` or `start` again
+- **THEN** `cassandra-fetch` exits non-zero with a message naming the expiry and saying to run `upgrade` again, or `stop` then `start`
 
 ### Requirement: Config parity with the VM path
 A `cassandra-render` init container SHALL build `cassandra.yaml` into an `emptyDir` used as `CASSANDRA_CONF`, with `edl_merge_cassandra_yaml` from `edl-cassandra-config.sh`. It SHALL merge these layers in order:
@@ -174,6 +174,7 @@ Pods SHALL restart one at a time (`RollingUpdate` with `OrderedReady`). Each pod
 #### Scenario: Upgrade changes the pod template
 - **WHEN** `upgrade` resolves a tarball with a different sha256
 - **THEN** the StatefulSet's pod template has the new `EDL_TARBALL_SHA256`, and the pods' `cassandra_build` label is the new build
+- **AND** each node comes back with the rows written before the upgrade and the same host ID
 
 #### Scenario: Recorded arg updated
 - **WHEN** `upgrade --version 5.0.4` succeeds and the kit is later stopped and started
@@ -199,14 +200,18 @@ The kit SHALL take `--cpus`. Its default SHALL be `DB_NODE_ALLOCATABLE_CPU` minu
 - **THEN** the cassandra container has a CPU request and no CPU limit
 
 ### Requirement: Restarts by config hash and restricted Pod Security
-The pod template SHALL carry an `easydblab/config-hash` annotation: a hash of the `cassandra-pods-config` ConfigMap's content and of the artifact env. So a change to `cassandra.patch.yaml` or to the artifact rolls the pods, and a `start` with nothing changed does not. Every container of the tarball path SHALL meet the Pod Security "restricted" profile, and the pod SHALL set `fsGroup: 999`.
+The pod template SHALL carry an `easydblab/config-hash` annotation: a hash of the `cassandra-pods-config` ConfigMap's content and of the artifact env other than its URLs. The URLs SHALL reach `cassandra-fetch` from the `cassandra-pods-artifact` Secret, never from the pod template, so a newly signed URL alone changes nothing in it. So a change to `cassandra.patch.yaml` or to the artifact rolls the pods when `upgrade` applies it, and an `upgrade` with nothing changed does not. `start` refuses a running kit (`collision-check`), so a patch edit reaches running pods through `upgrade` with the running `--version` or `--build`, or through `stop` then `start`. Every container of the tarball path SHALL meet the Pod Security "restricted" profile, and the pod SHALL set `fsGroup: 999`.
 
 #### Scenario: Patch edit rolls the pods
-- **WHEN** `cassandra.patch.yaml` is edited and `start` runs again on a running kit
-- **THEN** the config-hash annotation changes and the pods restart one at a time
+- **WHEN** `cassandra.patch.yaml` is edited and `upgrade` runs on a running kit with the version it already runs
+- **THEN** the config-hash annotation changes, the pods restart one at a time with the edited setting, and each keeps its data and host ID
+
+#### Scenario: Start on a running kit is refused
+- **WHEN** `start` runs while the kit's pods are in the cluster
+- **THEN** it exits non-zero with `Kit.CollisionDetected` before any step, and nothing is applied
 
 #### Scenario: Nothing changed, nothing rolls
-- **WHEN** `start` runs again on a running kit with no change to the patch or the artifact
+- **WHEN** `upgrade` runs on a running kit with the version it already runs and no change to the patch, including a catalog build whose URL is signed again
 - **THEN** the pod template is unchanged and no pod restarts
 
 #### Scenario: Restricted namespace admits the pods

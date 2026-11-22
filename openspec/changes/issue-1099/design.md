@@ -13,7 +13,7 @@ In short, the kit stops depending on a Cassandra image:
 
 ## Decision record
 
-The architect proposed D1 to D9, each with alternatives. The owner approved every recommendation on 2026-11-20. D3 departs from the issue's wording "packaged in the image", and D9 amends acceptance criterion 3.
+The architect proposed D1 to D9, each with alternatives. The owner approved every recommendation on 2026-11-20. D3 departs from the issue's wording "packaged in the image", and D9 amends acceptance criterion 3. D10 is the owner's decision of 2026-11-22.
 
 ## Goals / Non-Goals
 
@@ -117,7 +117,7 @@ At `start` (or `upgrade`, D7), in this order:
   - Data stays at `/var/lib/cassandra/{data,commitlog,hints,saved_caches}`.
   - The cache is at `/var/lib/cassandra/.edl/artifacts/sha256-<hex>/`, with a `.complete` marker.
   - Older versions are kept, so a rollback is a cache hit. There is no pruning.
-- **Pod env:** `EDL_TARBALL_URL`, `EDL_TARBALL_FALLBACK_URL`, `EDL_TARBALL_SHA256` and `EDL_CASSANDRA_BUILD`, plus the annotation `easydblab/config-hash`. The annotation follows the repo's "restarts by config hash" rule, so a patch edit rolls the pods too.
+- **Pod env:** `EDL_TARBALL_SHA256` and `EDL_CASSANDRA_BUILD`, and `EDL_TARBALL_URL` and `EDL_TARBALL_FALLBACK_URL` read from the `cassandra-pods-artifact` Secret (a catalog build is signed again on every `upgrade`, and a URL in the pod template would roll every pod each time), plus the annotation `easydblab/config-hash`. The annotation follows the repo's "restarts by config hash" rule, so a patch edit rolls the pods too.
 - **Pod security:** `securityContext.fsGroup: 999`. Every container meets Pod Security "restricted" (#1095).
 
 ## Key interfaces
@@ -265,6 +265,16 @@ It refuses a major-version downgrade, matching the docs.
 
 - Keep the wording as written. No design can meet it under #1101.
 
+### D10. How a patch edit reaches running pods (decided by the owner, 2026-11-22)
+
+**Chosen:** amend the spec so that `upgrade` applies a `cassandra.patch.yaml` edit to running pods. The kit keeps `collision-check: true`. A patch edit reaches running pods through `upgrade` with the running `--version` or `--build`, which rolls them one at a time on the new config hash, or through `stop` then `start`. The scenario "Start on a running kit is refused" stays. "Nothing changed, nothing rolls" is now an `upgrade` with the running version and no edit.
+
+**Why:** `start` is collision-checked, so it never reaches a running kit, and D7 kept what `start` means: it starts a kit that is not running. Letting `start` re-apply on a running kit is the alternative D7 rejected.
+
+**Rejected:**
+
+- Turn off the collision check so `start` re-applies. It undoes D7, and a second `start` would race the running pods' claims.
+
 ## Known differences outside `cassandra.yaml`
 
 - **Heap.** The kit keeps setting the heap from the container limit, as it does today. The VM uses `cassandra-env.sh`'s default, which is based on host memory.
@@ -322,7 +332,7 @@ It refuses a major-version downgrade, matching the docs.
 ## Risks / Trade-offs
 
 - **[`cassandra.in.sh` is sourced by `/bin/sh` (dash)]** Any bashism added with the new overrides stops Cassandra from starting on VMs. Mitigation: extend the real-`/bin/sh` coverage in `edl-cassandra-agents.test.sh` to the overrides.
-- **[A presigned URL expires]** A pod rescheduled later with a cold cache fails `cassandra-fetch`. Mitigation: the error names the expiry and says to run `upgrade` or `start` again. The TTL is in `Constants`.
+- **[A presigned URL expires]** A pod rescheduled later with a cold cache fails `cassandra-fetch`. Mitigation: the error names the expiry and says to run `upgrade` again, or `stop` then `start`. The TTL is in `Constants`.
 - **[Downloads during a roll]** Each pod downloads its tarball while it is down, which lengthens its outage. QUORUM still holds with RF=3, because only one pod is down at a time. Pre-fetching is YAGNI.
 - **[3.x tarballs ship a Python 2 cqlsh]** In-pod `cqlsh` fails on 3.0 and 3.11. CQL from the operator's machine is unaffected. Mitigation: document it.
 - **[Half-extracted cache]** An extract killed partway through is never used: only `.complete` is checked, and the rename into place is atomic.

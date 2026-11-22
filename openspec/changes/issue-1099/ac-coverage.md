@@ -14,7 +14,7 @@
 | Scope | Memory per environment | `cassandra-kit: Default memory off owned nodes`; `Default memory on owned nodes`; `platform-substrate: Placement variables follow the db nodes`; `Not Guaranteed off owned nodes` | D8 |
 | Scope | CPU request equals the limit where Guaranteed | `cassandra-kit: Guaranteed on owned nodes`; `No CPU limit elsewhere` | D8 |
 | Scope | Resolution in the CLI reaches the kit | `kit-variable-contributors: Contributed variable reaches the steps`; `Contributed file written before the first step`; `Contributor failure stops the start`; `Unknown contributor name`; `Cluster state not shadowed` | D2 |
-| Owner | Config-hash annotation rolls pods on a patch edit | `cassandra-kit: Patch edit rolls the pods`; `Nothing changed, nothing rolls` | |
+| Owner | Config-hash annotation rolls pods on a patch edit | `cassandra-kit: Patch edit rolls the pods`; `Start on a running kit is refused`; `Nothing changed, nothing rolls` | Applied by `upgrade` (or `stop`/`start`): `start` is collision-checked. `CassandraPodsTarballIntegrationTest` covers both on K3s |
 | Owner | Pod Security restricted, `fsGroup: 999` | `cassandra-kit: Restricted namespace admits the pods` | |
 | Risk | `cassandra.in.sh` bashism breaks VMs under dash | `cassandra: Overrides applied under dash`; `VM defaults unchanged`; `Runs under dash` | |
 | Risk | Presigned URL expires before a cold-cache reschedule | `cassandra-kit: Expired presigned URL` | |

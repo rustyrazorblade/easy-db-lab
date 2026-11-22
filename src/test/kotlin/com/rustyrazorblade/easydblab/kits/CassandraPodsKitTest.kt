@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.Container
+import io.fabric8.kubernetes.api.model.Secret
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import org.assertj.core.api.Assertions.assertThat
@@ -74,6 +75,9 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val manifest: String?,
     ) {
         fun statefulSet(): StatefulSet = parseManifests(checkNotNull(manifest) { output }).filterIsInstance<StatefulSet>().single()
+
+        /** The tarball path's artifact Secret, which holds the URLs the fetch reads. */
+        fun artifactSecret(): Secret = parseManifests(checkNotNull(manifest) { output }).filterIsInstance<Secret>().single()
     }
 
     private fun apply(
@@ -163,6 +167,17 @@ class CassandraPodsKitTest : BaseKoinTest() {
         ).isEqualTo("cassandra")
     }
 
+    /**
+     * The docs send a patch edit on a running kit through `upgrade` because `start` refuses one; a
+     * kit whose `start` re-applied instead would make that guidance wrong (and a second `start`
+     * would race the running pods' claims).
+     */
+    @Test
+    fun `start refuses a running kit, so a patch edit is applied by upgrade`() {
+        assertThat(kit.config.collisionCheck.guards(Constants.Kit.PHASE_START)).isTrue()
+        assertThat(kit.config.runtime?.selector).isEqualTo("easydblab/kit=cassandra-pods")
+    }
+
     /** An upgrade records what it applied, and clears what it was not given, so the next start runs the same thing. */
     @Test
     fun `upgrade takes --version, --build and --java and records all three`() {
@@ -225,12 +240,37 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
     @Test
     fun `the artifact is substituted literally, whatever a presigned URL holds`() {
-        val fetch = tarball(artifactEnv("EDL_TARBALL_FALLBACK_URL" to "https://archive/x.tgz?a=1&b=\\2")).container("cassandra-fetch")
+        val applied = apply(artifactEnv("EDL_TARBALL_FALLBACK_URL" to "https://archive/x.tgz?a=1&b=\\2"))
+        val fetch = applied.statefulSet().container("cassandra-fetch")
+        val secret = applied.artifactSecret()
 
-        assertThat(fetch.envValue("EDL_TARBALL_URL")).isEqualTo(presigned)
-        assertThat(fetch.envValue("EDL_TARBALL_FALLBACK_URL")).isEqualTo("https://archive/x.tgz?a=1&b=\\2")
+        assertThat(secret.stringData).containsEntry("EDL_TARBALL_URL", presigned)
+        assertThat(secret.stringData).containsEntry("EDL_TARBALL_FALLBACK_URL", "https://archive/x.tgz?a=1&b=\\2")
+        listOf("EDL_TARBALL_URL", "EDL_TARBALL_FALLBACK_URL").forEach { name ->
+            assertThat(
+                fetch.env
+                    .single { it.name == name }
+                    .valueFrom.secretKeyRef.name,
+            ).describedAs(name).isEqualTo(secret.metadata.name)
+        }
         assertThat(fetch.envValue("EDL_TARBALL_SHA256")).isEqualTo(sha)
         assertThat(fetch.envValue("EDL_ARTIFACT_CACHE")).isEqualTo("/var/lib/cassandra/${Constants.Kit.CassandraPods.ARTIFACT_CACHE_ROOT}")
+    }
+
+    /**
+     * The catalog resolver signs a new URL on every `upgrade`; were the URL in the pod template,
+     * every upgrade of a catalog build would roll every pod even with nothing changed.
+     */
+    @Test
+    fun `a re-signed URL leaves the pod template unchanged and reaches the fetch through the artifact Secret`() {
+        val resigned = "https://bucket.s3.amazonaws.com/c.tar.gz?X-Amz-Expires=604800&X-Amz-Signature=other"
+        val first = apply(artifactEnv())
+        val second = apply(artifactEnv("EDL_TARBALL_URL" to resigned))
+
+        assertThat(second.statefulSet().spec.template).isEqualTo(first.statefulSet().spec.template)
+        assertThat(first.artifactSecret().stringData).containsEntry("EDL_TARBALL_URL", presigned)
+        assertThat(second.artifactSecret().stringData).containsEntry("EDL_TARBALL_URL", resigned)
+        assertThat(second.artifactSecret().metadata.labels).containsEntry("easydblab/kit", "cassandra-pods")
     }
 
     @Test
@@ -493,7 +533,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
                 .single { it.bySelector }
 
         assertThat(stop.selector).isEqualTo("easydblab/kit=cassandra-pods")
-        assertThat(stop.kinds).contains("statefulset", "service", "configmap").doesNotContain("pvc", "persistentvolumeclaim")
+        assertThat(stop.kinds).contains("statefulset", "service", "configmap", "secret").doesNotContain("pvc", "persistentvolumeclaim")
         assertThat(kit.config.uninstall.filterIsInstance<InstallStep.KitStorageDelete>()).hasSize(1)
         assertThat(kit.config.runtime?.selector).isEqualTo("easydblab/kit=cassandra-pods")
     }

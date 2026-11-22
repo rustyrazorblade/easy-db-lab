@@ -1,3 +1,19 @@
+# The tarball URLs, apart from the pod template: the catalog resolver signs a new URL on every
+# start and upgrade, and a URL in the template would roll every pod each time. A pod reads the
+# current URLs when it starts, so one rescheduled after an upgrade gets the newly signed one.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cassandra-pods-artifact
+  namespace: default
+  labels:
+    app: cassandra-pods
+    easydblab/kit: cassandra-pods
+type: Opaque
+stringData:
+  EDL_TARBALL_URL: "@EDL_TARBALL_URL@"
+  EDL_TARBALL_FALLBACK_URL: "@EDL_TARBALL_FALLBACK_URL@"
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -26,8 +42,8 @@ spec:
         easydblab/kit: cassandra-pods
       annotations:
         # The ConfigMap's content and the artifact (lib/apply-statefulset.sh fills it from the
-        # cassandra-artifact contributor), so a patch edit or a new tarball rolls the pods and a
-        # start with nothing changed rolls nothing.
+        # cassandra-artifact contributor), so an upgrade with a patch edit or a new tarball rolls
+        # the pods and one with nothing changed rolls nothing. start refuses a running kit.
         easydblab/config-hash: "@EDL_CONFIG_HASH@"
     spec:
       terminationGracePeriodSeconds: 120
@@ -71,10 +87,17 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["sh", "/edl/config/fetch-tarball.sh"]
           env:
+            # From the artifact Secret above, so a re-signed URL changes nothing in this template.
             - name: EDL_TARBALL_URL
-              value: "@EDL_TARBALL_URL@"
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-pods-artifact
+                  key: EDL_TARBALL_URL
             - name: EDL_TARBALL_FALLBACK_URL
-              value: "@EDL_TARBALL_FALLBACK_URL@"
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-pods-artifact
+                  key: EDL_TARBALL_FALLBACK_URL
             - name: EDL_TARBALL_SHA256
               value: "@EDL_TARBALL_SHA256@"
             - name: EDL_CASSANDRA_BUILD

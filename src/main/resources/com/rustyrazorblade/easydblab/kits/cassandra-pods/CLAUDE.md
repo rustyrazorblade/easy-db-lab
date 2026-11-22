@@ -32,8 +32,9 @@ Two paths, chosen by `--image`:
 - Sizing (design D8): `--memory` defaults to 75% of the smallest db node where pods are Guaranteed
   (`GUARANTEED_PODS`), else `3Gi`; `--cpus` to its CPUs minus 1. On Guaranteed nodes every container,
   init containers included (`INIT_CONTAINER_CPU`/`INIT_CONTAINER_MEMORY`), has requests equal to limits.
+- The tarball URLs live in the `cassandra-pods-artifact` Secret (the first document of `statefulset.yaml.template`), which `cassandra-fetch` reads through `secretKeyRef`: a catalog build is signed again on every start and upgrade, and a URL in the pod template would roll every pod. `stop` deletes the Secret with the rest.
 - The pod template's `easydblab/config-hash` is the contributor's hash of the artifact (not its URLs),
-  the config inputs and the `config/` scripts, so only a changed input rolls the pods.
+  the config inputs and the `config/` scripts, so only a changed input rolls the pods. `start` is collision-checked and refuses a running kit, so `upgrade` (with the running version) is what applies a patch edit to running pods.
 - `upgrade --version|--build [--java]` is `bin/upgrade.sh`: it refuses a major-version downgrade (the
   running StatefulSet's `EDL_CASSANDRA_BUILD` against the new one) and an `--image` kit, applies the
   ConfigMap and the StatefulSet (`RollingUpdate`, `OrderedReady`, preStop drain), and waits for the

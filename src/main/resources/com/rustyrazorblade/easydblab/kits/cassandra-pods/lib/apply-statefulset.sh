@@ -2,7 +2,8 @@
 # Applies the kit's StatefulSet, filled in from what this start (or upgrade) resolved:
 #   - with --image: statefulset-image.yaml, from resolved-image.env (written by check-start.sh);
 #   - otherwise: statefulset.yaml, the tarball path, from the cassandra-artifact contributor's
-#     EDL_* variables (the artifact, the runtime image and the config hash).
+#     EDL_* variables (the artifact, the runtime image and the config hash). It also holds the
+#     cassandra-pods-artifact Secret with the URLs, so a re-signed URL leaves the pod template alone.
 # Both take their CPU and memory from the contributor's EDL_CASSANDRA_RESOURCES and
 # EDL_INIT_RESOURCES (JSON, which is YAML flow syntax).
 #

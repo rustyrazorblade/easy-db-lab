@@ -75,6 +75,7 @@ import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.Instant
+import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -88,7 +89,12 @@ import java.util.concurrent.TimeUnit
  * The tests share one kit and run in order:
  * 1. start reaches UN and answers CQL on the NodePort;
  * 2. a restart with the same sha256 and an unreachable URL still reaches UN (the cache);
- * 3. `upgrade --version` to another release rolls the pod onto its tarball and build label.
+ * 3. `upgrade` with the running version applies a `cassandra.patch.yaml` edit (the config hash
+ *    rolls the pod) and, run again with nothing changed, rolls nothing;
+ * 4. `upgrade --version` to another release rolls the pod onto its tarball and build label.
+ *
+ * A row written and flushed at the first start, and the node's host ID, must survive every restart
+ * and every upgrade: the data lives on the claim, never in the per-sha256 cached tree.
  *
  * Only the cassandra-builds nightly list and the build catalog are left out of [VersionSources]:
  * `--version` of an ASF release never reads them. It needs Docker, kubectl, and the Apache CDN.
@@ -103,6 +109,9 @@ class CassandraPodsTarballIntegrationTest {
     private lateinit var stateManager: ClusterStateManager
     private lateinit var processEnvironment: KitProcessEnvironment
     private lateinit var config: KitConfig
+
+    /** The node's host ID from the first start; every later test expects the same node back. */
+    private lateinit var hostId: String
 
     @BeforeAll
     fun setup(
@@ -175,6 +184,16 @@ class CassandraPodsTarballIntegrationTest {
             .contains("-javaagent:/edl/agents/opentelemetry-javaagent.jar")
             .contains("cassandra_build=$FIRST_RELEASE")
             .contains("host.name=")
+
+        cql(
+            "CREATE KEYSPACE $KEYSPACE WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}; " +
+                "CREATE TABLE $KEYSPACE.kept (id int PRIMARY KEY, value text); " +
+                "INSERT INTO $KEYSPACE.kept (id, value) VALUES (1, '$KEPT_VALUE');",
+        )
+        // Flushed, so the row is read back from an sstable in data_file_directories, not only replayed.
+        exec("sh", "-c", "\"\$EDL_CASSANDRA_HOME/bin/nodetool\" flush $KEYSPACE")
+        hostId = hostId()
+        assertThat(keptRow()).contains(KEPT_VALUE)
     }
 
     @Test
@@ -188,13 +207,50 @@ class CassandraPodsTarballIntegrationTest {
             override = mapOf("EDL_TARBALL_URL" to UNREACHABLE, "EDL_TARBALL_FALLBACK_URL" to UNREACHABLE),
         )
 
-        assertThat(statefulSet().fetchEnv()["EDL_TARBALL_URL"]).isEqualTo(UNREACHABLE)
+        assertThat(artifactUrls()["EDL_TARBALL_URL"]).isEqualTo(UNREACHABLE)
         assertThat(log("cassandra-fetch")).contains("is cached at")
         assertThat(cql("SELECT release_version FROM system.local")).contains(FIRST_RELEASE)
+        assertThat(keptRow()).describedAs("the row written before the stop").contains(KEPT_VALUE)
+        assertThat(hostId()).describedAs("the node's identity on its claim").isEqualTo(hostId)
+    }
+
+    /** `start` refuses a running kit, so `upgrade` with the running version is what applies a patch edit. */
+    @Test
+    @Order(3)
+    fun `upgrade with the running version and an edited patch rolls the pod onto the edit, and with no edit rolls nothing`() {
+        val sameVersion = mapOf("CASSANDRA_VERSION" to FIRST_RELEASE, "CASSANDRA_BUILD" to "", "CASSANDRA_JAVA" to "")
+        val before =
+            statefulSet()
+                .spec.template.metadata.annotations[CONFIG_HASH]
+        val podBefore = pod().metadata.uid
+
+        File(workspace, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).writeText(
+            "cluster_name: \"$CLUSTER_NAME\"\nnum_tokens: 4\nconcurrent_reads: $EDITED_CONCURRENT_READS\n",
+        )
+        upgrade(sameVersion)
+
+        val edited =
+            statefulSet()
+                .spec.template.metadata.annotations[CONFIG_HASH]
+        assertThat(edited).isNotEqualTo(before)
+        assertThat(pod().metadata.uid).describedAs("the pod restarted").isNotEqualTo(podBefore)
+        assertThat(exec("sh", "-c", "grep '^concurrent_reads:' /edl/conf/cassandra.yaml"))
+            .contains("$EDITED_CONCURRENT_READS")
+        assertThat(keptRow()).contains(KEPT_VALUE)
+        assertThat(hostId()).isEqualTo(hostId)
+
+        val podAfterEdit = pod().metadata.uid
+        upgrade(sameVersion)
+
+        assertThat(
+            statefulSet()
+                .spec.template.metadata.annotations[CONFIG_HASH],
+        ).isEqualTo(edited)
+        assertThat(pod().metadata.uid).describedAs("nothing changed, so the pod did not restart").isEqualTo(podAfterEdit)
     }
 
     @Test
-    @Order(3)
+    @Order(4)
     fun `upgrade --version rolls the pod onto the new release's tarball and build label`() {
         val before = statefulSet()
 
@@ -205,11 +261,21 @@ class CassandraPodsTarballIntegrationTest {
             .isEqualTo(variables.getValue("EDL_TARBALL_SHA256"))
             .isNotEqualTo(before.cassandraEnv()["EDL_TARBALL_SHA256"])
         assertThat(after.cassandraEnv()["EDL_CASSANDRA_BUILD"]).isEqualTo(SECOND_RELEASE)
-        assertThat(after.spec.template.metadata.annotations["easydblab/config-hash"])
-            .isNotEqualTo(before.spec.template.metadata.annotations["easydblab/config-hash"])
+        assertThat(after.spec.template.metadata.annotations[CONFIG_HASH])
+            .isNotEqualTo(before.spec.template.metadata.annotations[CONFIG_HASH])
         assertThat(exec("sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' '")).contains("cassandra_build=$SECOND_RELEASE")
         assertThat(cql("SELECT release_version FROM system.local")).contains(SECOND_RELEASE)
+        assertThat(keptRow()).describedAs("the row written on $FIRST_RELEASE").contains(KEPT_VALUE)
+        assertThat(hostId()).describedAs("the same node, on its own claim").isEqualTo(hostId)
     }
+
+    private fun keptRow(): String = cql("SELECT value FROM $KEYSPACE.kept WHERE id = 1")
+
+    /** The node's host ID, from `system.local`: a node that came back on an empty data directory gets a new one. */
+    private fun hostId(): String =
+        checkNotNull(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").find(cql("SELECT host_id FROM system.local"))) {
+            "no host_id in system.local"
+        }.value
 
     /** Renders the kit into the workspace as `kit install cassandra-pods` does, with `--nodes 1`. */
     private fun install(): File {
@@ -289,8 +355,9 @@ class CassandraPodsTarballIntegrationTest {
     private fun contributor(): CassandraArtifactContributor {
         val sources = AsfOnlySources(File(workspace, "profile-builds"))
         return CassandraArtifactContributor(
-            CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(PublicHttp())),
+            CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(PublicHttp(), EventBus())),
             RoleNodes(k8sService()),
+            EventBus(),
         )
     }
 
@@ -360,11 +427,15 @@ class CassandraPodsTarballIntegrationTest {
             .env
             .associate { it.name to it.value }
 
-    private fun StatefulSet.fetchEnv(): Map<String, String?> =
-        spec.template.spec.initContainers
-            .single { it.name == "cassandra-fetch" }
-            .env
-            .associate { it.name to it.value }
+    /** The tarball URLs the fetch reads, from the artifact Secret (base64 in `data` once applied). */
+    private fun artifactUrls(): Map<String, String> =
+        client
+            .secrets()
+            .inNamespace(NAMESPACE)
+            .withName(ARTIFACT_SECRET)
+            .get()
+            .data
+            .mapValues { String(Base64.getDecoder().decode(it.value)) }
 
     private fun pod(): Pod =
         client
@@ -512,6 +583,11 @@ class CassandraPodsTarballIntegrationTest {
         /** Two 5.0 releases the Apache CDN serves; the first is upgraded to the second. */
         const val FIRST_RELEASE = "5.0.8"
         const val SECOND_RELEASE = "5.0.9"
+        const val KEYSPACE = "edl_kept"
+        const val KEPT_VALUE = "written-before-restart"
+        const val CONFIG_HASH = "easydblab/config-hash"
+        const val ARTIFACT_SECRET = "cassandra-pods-artifact"
+        const val EDITED_CONCURRENT_READS = 96
         const val UNREACHABLE = "https://unreachable.invalid/apache-cassandra.tar.gz"
         const val STORAGE_SIZE = "2Gi"
         const val TEMPLATE_SUFFIX = ".template"

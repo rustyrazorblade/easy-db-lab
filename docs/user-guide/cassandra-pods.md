@@ -51,11 +51,13 @@ kept too, so switching back is fast.
 `cassandra.yaml` is built as on the AMI path: the tarball's own file, then your workspace's
 `cassandra.patch.yaml` (edit it to change any setting), then the pod's placement (seeds, directories,
 snitch and port) and addresses. The pods' configuration therefore matches the AMI path's except for
-those last keys. A change to `cassandra.patch.yaml` reaches the pods at the next `start` or `upgrade`,
-which restarts them one at a time; a start with nothing changed restarts nothing.
+those last keys. `start` refuses a kit that is already running, so a change to `cassandra.patch.yaml`
+reaches running pods through `upgrade` with the version they already run (for example
+`upgrade --version 5.0.6`). That restarts them one at a time and keeps their data; an `upgrade` with
+nothing changed restarts nothing. `stop` then `start` applies it too, with every pod down at once.
 
 A catalog build's download link is valid for 7 days. A pod scheduled later onto a node with no kept
-copy fails its download with a message naming the expiry; run `upgrade` or `start` again for a new link.
+copy fails its download with a message naming the expiry; run `upgrade` again, or `stop` then `start`, for a new link.
 
 Inside a tarball pod, `nodetool` and `cqlsh` are not on `PATH`; run them from the cached tree:
 

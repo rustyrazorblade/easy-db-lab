@@ -211,6 +211,21 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(Constants.PyroscopeServer.FRONT_IMAGE).matches("haproxy:[0-9.]+-alpine@sha256:[0-9a-f]{64}")
     }
 
+    /**
+     * HAProxy runs `http-response` rules in order, and `res.body` holds only what has been buffered
+     * so far, so a `set-status` rule ahead of the `wait-for-body` would match against a partial
+     * body and could let the shutdown 422 through.
+     */
+    @Test
+    fun `the front buffers a 422's body before it matches the refusal against it`() {
+        val lines = builder.buildFrontConfig().lines().map { it.trim() }
+        val waitForBody = lines.indexOfFirst { it.startsWith("http-response wait-for-body") }
+        val setStatus = lines.indexOfFirst { it.startsWith("http-response set-status") }
+
+        assertThat(waitForBody).describedAs("the wait-for-body rule").isNotNegative()
+        assertThat(setStatus).describedAs("the set-status rule").isGreaterThan(waitForBody)
+    }
+
     @Test
     fun `the front's refusal pattern matches only Pyroscope's shutdown body, not the phrase elsewhere in a 422`() {
         val rule =

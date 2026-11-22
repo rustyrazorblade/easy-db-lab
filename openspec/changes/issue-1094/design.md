@@ -57,8 +57,8 @@ ClusterContract.of(state) ──► namespace = recorded ?: environment default
   (param)            (backends,   (no default      NAMESPACE           EDL_NAMESPACE
                       collector)   namespace args)  → ${..} __..__ $..  → env.sh
                               │
-                 OwnedManifestOperations (decorator on applyResource):
-                 adds managed-by + cluster labels to every applied object
+                 DefaultK8sService.owned (decorators on applyResource, createJob, createConfigMap):
+                 adds managed-by + cluster labels to every created object
 ```
 
 - **Kotlin applies.** An object is created in `scope.namespace`, and the decorator labels it on the way out. Cluster-scoped objects are named with `ClusterScopedName.of(base, clusterId)`.
@@ -165,7 +165,7 @@ Rejected: hard-code `default` in the AWS-only `env.sh` helpers and exempt them f
 Approved by the owner, 2026-11-20.
 
 - Every object Kotlin applies, namespaced or cluster-scoped, gets `app.kubernetes.io/managed-by=easy-db-lab` and `easydblab/cluster=<clusterId>` on its top-level `metadata.labels`, and only there.
-- The labels are added by one decorator, `OwnedManifestOperations`. It implements `K8sManifestOperations`, wraps the default one, gets `InstallScope` per call from a `ClusterContractSource`-backed provider, and is registered in Koin. One seam covers the stack deploy, the Grafana deploy, the collector resync, the sidecar, stress jobs and `cluster-config`. `ObservabilityStackService.kt:312` drops its literal label.
+- The labels are added at one seam, `DefaultK8sService.owned`, which wraps each typed create path in a decorator: `OwnedManifestOperations` (`applyResource`), `OwnedJobOperations` (`createJob(namespace, Job)`) and `OwnedStorageOperations` (`createConfigMap`, merging the labels over the caller's). Each gets `InstallScope` per call from a `ClusterContractSource`-backed provider; Koin binds `K8sService` to `owned`. The seam covers the stack deploy, the Grafana deploy, the collector resync, the sidecar, stress jobs and `cluster-config`. `ObservabilityStackService.kt:312` drops its literal label.
 - Labels never go into `spec.selector`, which is immutable and would force a delete and recreate.
 - Labels never go into the pod template. `ConfigHashAnnotator` hashes the pod template, so a label there would roll every workload.
 - Kit PVs (`DefaultK8sStorageOperations.kt:186`) and the namespace easy-db-lab creates are created outside `applyResource`, so they are labelled explicitly.
@@ -240,7 +240,7 @@ Each item has one responsibility.
 2. `configuration/tenancy/InstallScope`: `namespace` and `clusterId`, built by `InstallScope.of(state, contract)`. Pure.
 3. `configuration/tenancy/OwnershipLabels`: `of(clusterId): Map<String,String>`, `selector(clusterId)`, and `ClusterScopedName.of(base, clusterId)`. Replaces the literal at `ObservabilityStackService.kt:312` and is reused by `KitLocalStorageClass`.
 4. `configuration/ServiceDns(namespace)`: replaces the `BackendEndpoints` and `OtelEndpoints` objects.
-5. `services/OwnedManifestOperations`: a decorator implementing `K8sManifestOperations`; the only place labels are added to applied objects. Depends on the interface, not on Fabric8.
+5. `services/OwnedManifestOperations`, `OwnedJobOperations`, `OwnedStorageOperations`: decorators over `K8sManifestOperations`, `K8sJobOperations` and `K8sStorageOperations`, composed by `DefaultK8sService.owned`; the only place labels are added to created objects. Each depends on its interface, not on a client.
 6. `services/tenancy/NamespaceEnsurer`: creates or adopts and labels the namespace (D11).
 7. `services/tenancy/OwnedObjectSweep`: list and delete by label, with the never-delete kinds (D9).
 8. `services/tenancy/CrdBaseline`: lists CRD names at `init --kubeconfig` and writes them to state.

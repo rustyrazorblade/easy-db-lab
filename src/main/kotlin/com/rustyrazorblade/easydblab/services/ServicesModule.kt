@@ -158,10 +158,8 @@ val servicesModule =
         single { K8sClientProvider(get(), get()) }
         factory<InstallNamespace> { K8sInstallNamespace(get(), get(), get()) }
         factory { PodNetworkTuning(get(), Fabric8PodSysctlProbe(get()) { get<InstallScopeSource>().current().namespace }, get()) }
-        // Every typed apply goes through OwnedManifestOperations, which adds the ownership labels.
-        factory {
-            DefaultK8sService(get(), get(), OwnedManifestOperations(DefaultK8sManifestOperations(get(), get()), get()))
-        }.binds(
+        // Every create path (typed apply, Job create, ConfigMap create) adds the ownership labels.
+        factory { DefaultK8sService.owned(get(), get(), get()) }.binds(
             arrayOf(
                 K8sService::class,
                 K8sManifestOperations::class,

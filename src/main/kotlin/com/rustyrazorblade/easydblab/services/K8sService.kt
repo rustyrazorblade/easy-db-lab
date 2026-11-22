@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -250,26 +251,43 @@ interface K8sService :
  *
  * @property clientProvider Shared provider for creating Kubernetes clients
  * @property eventBus Event bus for emitting domain events
- * @property manifests The apply path; Koin wraps it in [OwnedManifestOperations] so every applied
- *   object carries the cluster's ownership labels
+ * @property manifests The apply path; [owned] wraps it in [OwnedManifestOperations]
+ * @property jobs The Job create path; [owned] wraps it in [OwnedJobOperations]
+ * @property storage The ConfigMap create path; [owned] wraps it in [OwnedStorageOperations]
  */
 class DefaultK8sService(
     clientProvider: K8sClientProvider,
     eventBus: EventBus,
     manifests: K8sManifestOperations = DefaultK8sManifestOperations(clientProvider, eventBus),
+    jobs: K8sJobOperations = DefaultK8sJobOperations(clientProvider, eventBus),
+    storage: K8sStorageOperations = DefaultK8sStorageOperations(clientProvider, eventBus),
 ) : K8sService,
     K8sManifestOperations by manifests,
-    K8sJobOperations by DefaultK8sJobOperations(
-        clientProvider,
-        eventBus,
-    ),
+    K8sJobOperations by jobs,
     K8sNamespaceOperations by DefaultK8sNamespaceOperations(
         clientProvider,
         eventBus,
     ),
-    K8sStorageOperations by DefaultK8sStorageOperations(
-        clientProvider,
-        eventBus,
-    ),
+    K8sStorageOperations by storage,
     K8sPodOperations by DefaultK8sPodOperations(clientProvider),
-    K8sReadOperations by DefaultK8sReadOperations(clientProvider)
+    K8sReadOperations by DefaultK8sReadOperations(clientProvider) {
+    companion object {
+        /**
+         * The service the CLI runs with: every create path (typed apply, Job create, ConfigMap
+         * create) adds the ownership labels of [scopeSource]'s cluster, so a sweep by the cluster
+         * label finds every object it made (design D6).
+         */
+        fun owned(
+            clientProvider: K8sClientProvider,
+            eventBus: EventBus,
+            scopeSource: InstallScopeSource,
+        ): DefaultK8sService =
+            DefaultK8sService(
+                clientProvider,
+                eventBus,
+                manifests = OwnedManifestOperations(DefaultK8sManifestOperations(clientProvider, eventBus), scopeSource),
+                jobs = OwnedJobOperations(DefaultK8sJobOperations(clientProvider, eventBus), scopeSource),
+                storage = OwnedStorageOperations(DefaultK8sStorageOperations(clientProvider, eventBus), scopeSource),
+            )
+    }
+}

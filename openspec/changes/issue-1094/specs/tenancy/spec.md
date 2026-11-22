@@ -36,7 +36,7 @@ Every cluster has one Kubernetes namespace, the cluster namespace. The cluster c
 
 ### Requirement: Everything easy-db-lab installs goes into the cluster namespace
 
-Every namespaced object the CLI applies (the observability stack, Grafana, the collectors, the sidecar, stress jobs, the metrics registry ConfigMaps, `cluster-config`) SHALL be created in the cluster namespace. Every reference to the namespace inside an object (a RoleBinding or ClusterRoleBinding subject, a scrape job's namespace list, a Service DNS name in ConfigMap data) SHALL name the cluster namespace. No K8s read or write SHALL fall back to a namespace that was not resolved from the cluster contract. The `cluster-config` ConfigMap SHALL hold the cluster namespace as `NAMESPACE`, next to `TENANT`.
+Every namespaced object the CLI applies (the observability stack, Grafana, the collectors, the sidecar, stress jobs, the metrics registry ConfigMaps, `cluster-config`) SHALL be created in the cluster namespace. Every reference to the namespace inside an object (a RoleBinding or ClusterRoleBinding subject, a scrape job's namespace list, a Service DNS name in ConfigMap data) SHALL name the cluster namespace. No K8s read or write SHALL fall back to a namespace that was not resolved from the cluster contract. The `cluster-config` ConfigMap SHALL hold the cluster namespace under the key `namespace`, next to the `tenant` key.
 
 #### Scenario: Stack rendered for a non-default namespace
 
@@ -50,7 +50,7 @@ Every namespaced object the CLI applies (the observability stack, Grafana, the c
 
 - **GIVEN** a cluster whose namespace is `edl-ns`
 - **WHEN** `up` deploys the stack
-- **THEN** the `cluster-config` ConfigMap in `edl-ns` holds `NAMESPACE=edl-ns`
+- **THEN** the `cluster-config` ConfigMap in `edl-ns` holds `namespace: edl-ns`
 
 ### Requirement: In-cluster callers use Service DNS names in the cluster namespace
 

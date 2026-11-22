@@ -90,7 +90,7 @@ ClusterContract.of(state) ──► namespace = recorded ?: environment default
 
 Approved by the owner, 2026-11-20.
 
-- PR 1, the Kotlin foundation: `K8sNamespace`, `InstallScope`, `OwnershipLabels`, `ClusterScopedName`; `init --namespace` and the contract resolution; `ServiceDns`; every builder and K8s service taking the scope, with the constants and defaults removed; `OwnedManifestOperations`, labelled PVs, `NamespaceEnsurer`, `NAMESPACE` in `cluster-config`; the guard test over `src/main/kotlin`. The Kubeconfig default stays at Child A's `default`. AWS behaviour is unchanged.
+- PR 1, the Kotlin foundation: `K8sNamespace`, `InstallScope`, `OwnershipLabels`, `ClusterScopedName`; `init --namespace` and the contract resolution; `ServiceDns`; every builder and K8s service taking the scope, with the constants and defaults removed; `OwnedManifestOperations`, labelled PVs, `NamespaceEnsurer`, the `namespace` key in `cluster-config`; the guard test over `src/main/kotlin`. The Kubeconfig default stays at Child A's `default`. AWS behaviour is unchanged.
 - PR 2, kits and shell: `NAMESPACE` in `TemplateVariables`; nullable runtime and step namespaces; every kit file, `edl-kit-lib.sh`, `env.sh` with `EDL_NAMESPACE`, the ClickHouse XML (or its removal if dead); the ClickHouse operator out of `kube-system`; the guard extended to `src/main/resources`; the D10 flip; the kit integration test.
 - PR 3, brought-cluster ownership: `CrdBaseline` at `init --kubeconfig`; `OwnedObjectSweep` with its K3s integration test; the spec and doc updates for removal. Child B consumes the sweep.
 - Implementation starts only after #1231 (round-4 main merge) and #1227 (#1102 error handler) merge.
@@ -251,7 +251,7 @@ Each item has one responsibility.
 - CLI: `init --namespace NAME`. Help text: "Kubernetes namespace easy-db-lab installs into (default: `default` on AWS and local, `easy-db-lab` on your cluster)".
 - Kit contract: reserved variable `NAMESPACE`; `runtime.namespace` and step `namespace:` optional, meaning the cluster namespace when absent; `edl-kit-lib.sh` requires `NAMESPACE`.
 - Signatures: `ObservabilityStageManifests.resourcesOf(stage, state, hosting, scope: InstallScope)`; each builder's `buildAllResources(..., scope: InstallScope)`; `K8sService` read and write methods take `namespace: String` with no default.
-- `cluster-config` ConfigMap: add `NAMESPACE`, next to `TENANT`, so in-cluster scripts can read it.
+- `cluster-config` ConfigMap: add the `namespace` key, next to `tenant`, so in-cluster scripts can read it.
 - Docs: `docs/` kit development (`NAMESPACE`), `docs/reference/commands.md`, `help/observability.md:14`, `configuration/CLAUDE.md:184,198,203,321` (they name `<backend>.default.svc` and `namespaces/default`), `kits/CLAUDE.md`.
 
 ### Test strategy

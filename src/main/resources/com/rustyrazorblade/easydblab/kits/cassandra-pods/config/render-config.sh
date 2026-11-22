@@ -13,6 +13,10 @@
 # cassandra.yaml leaves unset may default into the cached tree), then the packer snippet; the cassandra container
 # points CASSANDRA_INCLUDE at it. cassandra-rackdc.properties is copied from the ConfigMap.
 #
+# Every other conf file is the tarball's own, copied whole, so the layout of each release line holds:
+# 3.x's cassandra-env.sh and single jvm.options as well as 4.0+'s jvm-server.options and
+# jvm<N>-server.options (checked against the 3.11.19 release tarball).
+#
 # POSIX sh: the runtime image runs it under /bin/sh. Tested by
 # src/test/shell/cassandra-pods-render.test.sh (./gradlew testCassandraPodsRender).
 set -eu

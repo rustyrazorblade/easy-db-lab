@@ -115,6 +115,15 @@ storagedir="$(env -i PATH="${WORK}/java-stub:/usr/bin:/bin" CASSANDRA_HOME="${WO
 check "the storage dir every unset directory defaults under is the claim, never the cached tree" \
   "[ '${storagedir}' = /var/lib/cassandra ]"
 
+# A 3.x tarball's conf: cassandra-env.sh and one jvm.options, no jvm-server.options. bin/cassandra
+# sources $CASSANDRA_CONF/cassandra-env.sh, which reads $CASSANDRA_CONF/jvm.options.
+rm -rf "${WORK}/conf"/* "${WORK}/tree/conf/jvm-server.options"
+echo 'JVM_OPTS_FILE=$CASSANDRA_CONF/jvm.options' > "${WORK}/tree/conf/cassandra-env.sh"
+echo '-ea' > "${WORK}/tree/conf/jvm.options"
+run_render
+check "a 3.x tree renders with its cassandra-env.sh and jvm.options in the rendered conf" \
+  '[ "$status" -eq 0 ] && cmp -s "${WORK}/conf/cassandra-env.sh" "${WORK}/tree/conf/cassandra-env.sh" && cmp -s "${WORK}/conf/jvm.options" "${WORK}/tree/conf/jvm.options"'
+
 rm -rf "${WORK}/conf"/*
 run_render POD_IP=""
 check "no pod IP fails, naming it" '[ "$status" -ne 0 ] && [[ "$output" == *POD_IP* ]]'

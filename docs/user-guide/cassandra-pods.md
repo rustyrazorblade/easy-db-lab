@@ -68,7 +68,8 @@ Inside a tarball pod, `nodetool` and `cqlsh` are not on `PATH`; run them from th
 kubectl exec cassandra-pods-0 -c cassandra -- sh -c '"$EDL_CASSANDRA_HOME/bin/nodetool" status'
 ```
 
-Cassandra 3.x tarballs ship a `cqlsh` that needs Python 2, which the runtime image does not have; use a
+A 3.x tarball's own `conf/` (its `cassandra-env.sh` and single `jvm.options`) is used as it is, as for every
+release. Cassandra 3.x tarballs ship a `cqlsh` that needs Python 2, which the runtime image does not have; use a
 `cqlsh` on your machine (see [CQL access](#cql-access)).
 
 ## Upgrading a running kit

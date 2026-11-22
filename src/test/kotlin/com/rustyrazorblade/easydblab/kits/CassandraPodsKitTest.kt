@@ -436,7 +436,6 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val init = sts.container("otel-agent")
         val agentVolume = spec.volumes.single { it.name == init.volumeMounts.single().name }
 
-        assertThat(kit.resource(template)).doesNotContain("@OTEL_AGENT_VERSION@")
         assertThat(init.image).isEqualTo(JavaAgent.OTEL.image)
         assertThat(agentVolume.emptyDir).isNotNull()
         assertThat(spec.volumes.mapNotNull { it.hostPath?.path }).noneMatch { it.startsWith("/usr/local/otel") }

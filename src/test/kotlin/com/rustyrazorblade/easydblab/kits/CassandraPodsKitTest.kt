@@ -292,6 +292,14 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(kit.resource("cassandra-jmx-rules.yaml").toByteArray()).isEqualTo(source)
     }
 
+    /** The pods merge and start Cassandra with the VM path's own scripts, so the two cannot drift. */
+    @ParameterizedTest
+    @ValueSource(strings = ["lib/edl-cassandra-config.sh", "lib/edl-cassandra-agents.sh", "cassandra.in.sh"])
+    fun `the shared Cassandra scripts are packaged from packer, byte for byte`(source: String) {
+        assertThat(kit.resource("config/${source.substringAfterLast('/')}").toByteArray())
+            .isEqualTo(File("packer/cassandra/$source").readBytes())
+    }
+
     @Test
     fun `every NodePort-range number in the kit's packaged files is the CQL port constant`() {
         val dir =

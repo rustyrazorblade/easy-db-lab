@@ -53,6 +53,9 @@ class KitRunnerCommandContributorTest : KitRunnerCommandTestBase() {
               - flag: --version
                 variable: CASSANDRA_VERSION
                 default: "5.0"
+              - flag: --build
+                variable: CASSANDRA_BUILD
+                default: ""
             """.trimIndent() + "\n" + extra,
         )
     }
@@ -176,6 +179,33 @@ class KitRunnerCommandContributorTest : KitRunnerCommandTestBase() {
 
         assertThat(succeeding.call()).isZero()
         assertThat(resolvedArgs()).containsExactlyInAnyOrderEntriesOf(mapOf("CASSANDRA_VERSION" to "5.0.4", "STORAGE_SIZE" to "10Gi"))
+    }
+
+    /** An upgrade from a `--build` to a `--version` must not leave the build recorded, or the next start runs it again. */
+    @Test
+    fun `a command that gives one recorded arg clears the recorded args it left out`() {
+        contributingKit(
+            """
+            commands:
+              upgrade:
+                records: [CASSANDRA_VERSION, CASSANDRA_BUILD]
+                args:
+                  - flag: --version
+                    variable: CASSANDRA_VERSION
+                  - flag: --build
+                    variable: CASSANDRA_BUILD
+            """.trimIndent(),
+        )
+        writeResolvedArgs("pods", mapOf("CASSANDRA_VERSION" to "5.0", "CASSANDRA_BUILD" to "5.0-HEAD"))
+        writeScript("pods", "upgrade", "exit 0")
+        val upgrade =
+            command("pods", "upgrade").also {
+                it.runtimeArgValues["CASSANDRA_VERSION"] = "5.0.4"
+                it.runtimeArgValues["CASSANDRA_BUILD"] = ""
+            }
+
+        assertThat(upgrade.call()).isZero()
+        assertThat(resolvedArgs()).containsEntry("CASSANDRA_VERSION", "5.0.4").containsEntry("CASSANDRA_BUILD", "")
     }
 
     private fun resolvedArgs(): Map<String, String> =

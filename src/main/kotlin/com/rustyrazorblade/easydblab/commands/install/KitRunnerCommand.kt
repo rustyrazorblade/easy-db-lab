@@ -196,11 +196,14 @@ class KitRunnerCommand(
 
     private fun runsContributors(config: KitConfig): Boolean = phaseName == Constants.Kit.PHASE_START || phaseName in config.commands
 
-    /** After a declared command succeeded, rewrites each install arg it [KitCommandSpec.records] and was given a value for. */
+    /**
+     * After a declared command succeeded and was given a value for any install arg it
+     * [KitCommandSpec.records], rewrites every recorded arg it parsed, empty ones included: an
+     * `upgrade --version` clears a recorded `--build`, so the next start runs what was applied.
+     */
     private fun recordCommandArgs(config: KitConfig) {
-        val recorded = config.commands[phaseName]?.records.orEmpty()
-        val given = runtimeArgValues.filterKeys { it in recorded }.filterValues { it.isNotEmpty() }
-        if (given.isNotEmpty()) ResolvedArgsFile(kitDir).rewrite(given)
+        val recorded = runtimeArgValues.filterKeys { it in config.commands[phaseName]?.records.orEmpty() }
+        if (recorded.values.any { it.isNotEmpty() }) ResolvedArgsFile(kitDir).rewrite(recorded)
     }
 
     private fun buildAugmentedEnv(

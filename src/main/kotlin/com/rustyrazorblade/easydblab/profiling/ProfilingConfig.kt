@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import kotlinx.serialization.Serializable
@@ -60,13 +60,17 @@ fun parseProfilingConfig(
 /**
  * The Pyroscope ingest base URL for an in-cluster profile producer (a pod's Pyroscope agent).
  *
- * Local mode is the Pyroscope Service ([BackendEndpoints.pyroscope]): every in-cluster producer
+ * Local mode is the Pyroscope Service ([ServiceDns.pyroscope]): every in-cluster producer
  * resolves cluster DNS, so no node IP is involved. A redirect cluster ships profiles to the
  * external stack instead, so [TelemetryRedirect.profiles] wins.
  *
  * @param telemetryRedirect when non-null, the external Pyroscope ingest URL is returned instead.
+ * @param serviceDns the cluster namespace's Service addresses.
  */
-fun pyroscopeIngestBaseUrl(telemetryRedirect: TelemetryRedirect?): String = telemetryRedirect?.profiles ?: BackendEndpoints.pyroscope()
+fun pyroscopeIngestBaseUrl(
+    telemetryRedirect: TelemetryRedirect?,
+    serviceDns: ServiceDns,
+): String = telemetryRedirect?.profiles ?: serviceDns.pyroscope()
 
 /**
  * The Pyroscope URL a host process on a cluster node sends profiles to: the node-local relay in the
@@ -90,13 +94,14 @@ fun pyroscopeNodePortUrl(nodeIp: String): String = "http://$nodeIp:${Constants.K
  *
  * Under [ServicePublishing.NodePorts] it is the control node's private IP at the Pyroscope NodePort:
  * a browser going through the SOCKS tunnel resolves names on the control node, which does not know
- * `.svc` names. Otherwise it is the Pyroscope Service ([BackendEndpoints.pyroscope]).
+ * `.svc` names. Otherwise it is the Pyroscope Service ([ServiceDns.pyroscope]).
  *
  * @throws IllegalStateException under [ServicePublishing.NodePorts] when [controlHost] is null
  */
 fun pyroscopeBrowserUrl(
     publishing: ServicePublishing,
     controlHost: ClusterHost?,
+    serviceDns: ServiceDns,
 ): String =
     when (publishing) {
         ServicePublishing.NodePorts ->
@@ -106,5 +111,5 @@ fun pyroscopeBrowserUrl(
                         "but the cluster state has no control node."
                 }.privateIp,
             )
-        ServicePublishing.ClusterIp -> BackendEndpoints.pyroscope()
+        ServicePublishing.ClusterIp -> serviceDns.pyroscope()
     }

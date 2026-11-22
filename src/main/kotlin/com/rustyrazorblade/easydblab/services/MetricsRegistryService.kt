@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -28,6 +29,7 @@ class DefaultMetricsRegistryService(
     private val k8sService: K8sStorageOperations,
     private val otelSyncService: OtelSyncService,
     private val eventBus: EventBus,
+    private val scopeSource: InstallScopeSource,
 ) : MetricsRegistryService {
     private val log = KotlinLogging.logger {}
 
@@ -56,7 +58,7 @@ class DefaultMetricsRegistryService(
                 val configMapName = "$CONFIG_MAP_PREFIX$kitName-$jobName"
                 k8sService
                     .createConfigMap(
-                        namespace = Constants.K8s.NAMESPACE,
+                        namespace = scopeSource.current().namespace.value,
                         name = configMapName,
                         data =
                             buildMap {
@@ -86,7 +88,7 @@ class DefaultMetricsRegistryService(
         runCatching {
             k8sService
                 .deleteConfigMapsByLabels(
-                    namespace = Constants.K8s.NAMESPACE,
+                    namespace = scopeSource.current().namespace.value,
                     labels =
                         mapOf(
                             Constants.K8s.WORKLOAD_METRICS_LABEL to "true",

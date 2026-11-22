@@ -41,6 +41,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -59,9 +60,9 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
-import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
 import io.fabric8.kubernetes.client.dsl.MixedOperation
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -155,13 +156,13 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         mockK8sClient = mock()
         val mockConfigMapOps = mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockAnyNsOps = mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val mockNamespacedOps = mock<NonNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
         val mockFiltered = mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
         val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
 
         whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
-        whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
-        whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
+        whenever(mockConfigMapOps.inNamespace(any<String>())).thenReturn(mockNamespacedOps)
+        whenever(mockNamespacedOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
         whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
 
@@ -181,10 +182,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.prepare(any(), any(), any(), any())).thenReturn(Result.success(EMPTY_GRAFANA_RELEASE))
+        whenever(mockDashboardService.prepare(any(), any(), any(), any(), any())).thenReturn(Result.success(EMPTY_GRAFANA_RELEASE))
         whenever(mockDashboardService.apply(any())).thenReturn(Result.success(Unit))
 
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
@@ -234,6 +235,33 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             },
         )
         return emitted
+    }
+
+    /**
+     * The namespace comes from the one `init --namespace` recorded, through the real contract, not
+     * from the owned default: cluster-config is created there with the ownership labels and holds
+     * its `namespace` key, and the rollout and readiness waits look there.
+     */
+    @Test
+    fun `a recorded namespace is where cluster-config is created and where the deploy waits`() {
+        val recorded =
+            mockClusterStateManager.load().copy(
+                clusterId = "lab-a-id",
+                initConfig = InitConfig(region = "us-west-2", namespace = "lab-a"),
+            )
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(recorded)
+
+        serviceWith(StateClusterContractSource(mockClusterStateManager)).deploy().getOrThrow()
+
+        val data = argumentCaptor<Map<String, String>>()
+        val labels = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(eq("lab-a"), eq("cluster-config"), data.capture(), labels.capture())
+        assertThat(data.firstValue).containsEntry("namespace", "lab-a")
+        assertThat(labels.firstValue).containsAllEntriesOf(OwnershipLabels.of("lab-a-id"))
+        verify(mockK8sService, atLeastOnce()).waitForRollouts(any(), eq("lab-a"), any())
+        verify(mockK8sService, never()).waitForRollouts(any(), eq("default"), any())
+        verify(mockK8sService).waitForPodsReady(any(), eq("lab-a"))
     }
 
     @Test
@@ -493,7 +521,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val applied = appliedKindNames()
         assertThat(applied).contains("DaemonSet/otel-collector")
         assertThat(applied).doesNotContain("DaemonSet/otel-collector-host", "Deployment/kube-state-metrics")
-        verify(mockK8sService, never()).waitForPodsReady(any<Int>())
+        verify(mockK8sService, never()).waitForPodsReady(any<Int>(), any())
     }
 
     private val bucketRegionAsked = mutableListOf<String>()
@@ -532,7 +560,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any<HasMetadata>())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.waitForPodsReady(any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("control0")))
         whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
@@ -585,7 +613,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
         // The documents front and its proxy read the account bucket, never the data bucket.
-        verify(mockDashboardService).prepare(context.capture(), eq("easy-db-lab-test"), any(), any())
+        verify(mockDashboardService).prepare(context.capture(), eq("easy-db-lab-test"), any(), any(), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
@@ -607,6 +635,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
             any(),
             any(),
             eq("http://${controlNode.privateIp}:${Constants.K8s.PYROSCOPE_NODE_PORT}"),
+            any(),
         )
     }
 
@@ -616,7 +645,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         service.deploy().getOrThrow()
 
-        verify(mockDashboardService).prepare(any(), any(), any(), eq("http://pyroscope.default.svc:4040"))
+        verify(mockDashboardService).prepare(any(), any(), any(), eq("http://pyroscope.default.svc:4040"), any())
     }
 
     @Test
@@ -760,7 +789,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).prepare(any(), any(), any(), any())
+        verify(mockDashboardService, never()).prepare(any(), any(), any(), any(), any())
         verify(mockDashboardService, never()).apply(any())
 
         // No backend or Grafana directory is prepared: they do not exist here. The only SSH work
@@ -768,7 +797,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(remoteCommands()).allMatch { it.contains("/mnt/db1/compactor") || it.startsWith("test -f /mnt/db1/compactor") }
 
         // Readiness is still gated on the applied collectors coming up.
-        verify(mockK8sService).waitForPodsReady(any())
+        verify(mockK8sService).waitForPodsReady(any(), any())
     }
 
     @Test
@@ -807,7 +836,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         placed.forEach { assertThat(it.spec.template.spec.nodeSelector).describedAs(it.metadata.name).containsAllEntriesOf(labels) }
 
         val hosting = argumentCaptor<ObservabilityHosting>()
-        verify(mockDashboardService).prepare(any(), any(), hosting.capture(), any())
+        verify(mockDashboardService).prepare(any(), any(), hosting.capture(), any(), any())
         assertThat(hosting.firstValue.placement.nodeSelector).containsAllEntriesOf(labels)
     }
 
@@ -970,7 +999,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         // The host add-on first waits for the core collector on the fixed deadline; the stack-wide
         // wait, last, is the one that grows with the cluster.
         verify(mockK8sService, atLeastOnce()).waitForRollouts(any(), any(), rolloutTimeout.capture())
-        verify(mockK8sService).waitForPodsReady(readyTimeout.capture())
+        verify(mockK8sService).waitForPodsReady(readyTimeout.capture(), eq("default"))
         assertThat(rolloutTimeout.lastValue).isEqualTo(expected)
         assertThat(readyTimeout.firstValue).isEqualTo(expected)
     }
@@ -985,7 +1014,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockK8sService)
         order.verify(mockK8sService, times(2)).waitForRollouts(workloads.capture(), eq("default"), any())
-        order.verify(mockK8sService).waitForPodsReady(any<Int>())
+        order.verify(mockK8sService).waitForPodsReady(any<Int>(), any())
 
         // Grafana is applied by the dashboard service rather than a stage, so it is not among these.
         val expected = applied.filter { it.startsWith("Deployment/") || it.startsWith("DaemonSet/") }.distinct() + "Deployment/grafana"
@@ -1138,7 +1167,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         val result = service.deploy()
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("Deployment/tempo: 0 of 1 updated replicas are available")
-        verify(mockK8sService, never()).waitForPodsReady(any())
+        verify(mockK8sService, never()).waitForPodsReady(any(), any())
     }
 
     @Test
@@ -1296,7 +1325,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Arguments.of(
                     "pods ready",
                     { k8s: K8sService, _: GrafanaDeployService, e: KubernetesClientException ->
-                        whenever(k8s.waitForPodsReady(any())).thenReturn(Result.failure(e))
+                        whenever(k8s.waitForPodsReady(any(), any())).thenReturn(Result.failure(e))
                     },
                 ),
                 Arguments.of(
@@ -1320,7 +1349,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 Arguments.of(
                     "grafana prepare",
                     { _: K8sService, grafana: GrafanaDeployService, e: KubernetesClientException ->
-                        whenever(grafana.prepare(any(), any(), any(), any())).thenReturn(Result.failure(e))
+                        whenever(grafana.prepare(any(), any(), any(), any(), any())).thenReturn(Result.failure(e))
                     },
                 ),
                 Arguments.of(

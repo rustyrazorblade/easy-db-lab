@@ -27,12 +27,12 @@ interface BackendWorkloads {
 /**
  * [BackendWorkloads] over the Kubernetes API.
  *
- * @property namespace where the backends' Deployments run.
+ * @property namespace where the backends' Deployments run, read on each call so the current workspace decides.
  * @property pollInterval how often a wait lists the backend's pods.
  */
 class K8sBackendWorkloads(
     private val clientProvider: K8sClientProvider,
-    private val namespace: String = Constants.K8s.NAMESPACE,
+    private val namespace: () -> String,
     private val pollInterval: Duration = Duration.ofSeconds(Constants.TeardownFlush.POLL_INTERVAL_SECONDS),
 ) : BackendWorkloads {
     private companion object {
@@ -53,7 +53,7 @@ class K8sBackendWorkloads(
     ) = client
         .apps()
         .deployments()
-        .inNamespace(namespace)
+        .inNamespace(namespace())
         .withName(workload)
 
     private fun pods(
@@ -62,7 +62,7 @@ class K8sBackendWorkloads(
     ): List<Pod> =
         client
             .pods()
-            .inNamespace(namespace)
+            .inNamespace(namespace())
             .withLabel(NAME_LABEL, workload)
             .list()
             .items

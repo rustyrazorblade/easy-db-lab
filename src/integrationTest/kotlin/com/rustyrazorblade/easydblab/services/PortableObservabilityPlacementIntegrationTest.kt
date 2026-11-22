@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -18,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.Placement
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
@@ -31,8 +31,10 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
+import com.rustyrazorblade.easydblab.configuration.pyroscope.CpuSampleJfr
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
@@ -50,7 +52,6 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import jdk.jfr.Recording
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -78,7 +79,6 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -138,7 +138,6 @@ class PortableObservabilityPlacementIntegrationTest {
         /** A process on a node's own network, as the db-node reconciler and a stress pod run. */
         private const val CURL_IMAGE = "curlimages/curl:8.11.1"
         private const val PROFILED_SERVICE = "portable-hostnet"
-        private const val PROFILE_SPIN_MILLIS = 1_500L
         private const val PROFILE_ARRIVAL_SECONDS = 180L
         private const val POLL_MILLIS = 2_000L
 
@@ -168,6 +167,7 @@ class PortableObservabilityPlacementIntegrationTest {
                         LokiManifestBuilder.IMAGE,
                         TempoManifestBuilder.IMAGE,
                         PyroscopeManifestBuilder.SERVER_IMAGE,
+                        Constants.PyroscopeServer.FRONT_IMAGE,
                         Constants.Grafana.Documents.SIGV4_PROXY_IMAGE,
                         Constants.Grafana.Documents.WEB_SERVER_IMAGE,
                         LOCAL_PATH_PROVISIONER_IMAGE,
@@ -238,38 +238,47 @@ class PortableObservabilityPlacementIntegrationTest {
                 .withName("grafana-datasources")
                 .withNamespace(NAMESPACE)
                 .endMetadata()
-                .addToData("datasources.yaml", GrafanaDatasourceSet.build(TenantSet.of(TENANT), BackendUrls.IN_CLUSTER).toYaml())
-                .build()
+                .addToData(
+                    "datasources.yaml",
+                    GrafanaDatasourceSet.build(TenantSet.of(TENANT), BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace))).toYaml(),
+                ).build()
         return listOf(clusterConfig, datasources) +
             (
-                MimirManifestBuilder(templates).buildAllResources(hosting) +
-                    LokiManifestBuilder(templates).buildAllResources(hosting) +
-                    TempoManifestBuilder(templates).buildAllResources(hosting) +
-                    PyroscopeManifestBuilder(templates).buildServerResources(hosting) +
+                MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting) +
+                    LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting) +
+                    TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting) +
+                    PyroscopeManifestBuilder(templates).buildServerResources(TestScopes.EC2, hosting) +
                     GrafanaDashboardConfigMaps.mountInto(
-                        GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket(bucket, SharedLocalStack.region()), hosting),
+                        GrafanaManifestBuilder(
+                            templates,
+                        ).buildAllResources(TestScopes.EC2, DocumentsBucket(bucket, SharedLocalStack.region()), hosting),
                         DASHBOARD_TREE,
                     )
             ).map(::toLocalStack)
     }
 
-    /** [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack. */
+    /**
+     * [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack.
+     * Only the backend's own config file is edited: the Pyroscope ConfigMap also carries the ingest
+     * front's HAProxy config, which names no S3 endpoint and runs as rendered.
+     */
     private fun toLocalStack(resource: HasMetadata): HasMetadata {
         if (resource !is ConfigMap) return resource
-        val edit: ((String) -> String)? =
+        val edit: Pair<String, (String) -> String>? =
             when (resource.metadata.name) {
-                "mimir-config" -> ObservabilityBackends::mimirConfig
-                "loki-config" -> ObservabilityBackends::lokiConfig
-                "tempo-config" -> ObservabilityBackends::tempoConfig
-                "pyroscope-config" -> ::pyroscopeConfig
+                "mimir-config" -> MimirManifestBuilder.CONFIG_FILE to ObservabilityBackends::mimirConfig
+                "loki-config" -> LokiManifestBuilder.CONFIG_FILE to ObservabilityBackends::lokiConfig
+                "tempo-config" -> TempoManifestBuilder.CONFIG_FILE to ObservabilityBackends::tempoConfig
+                "pyroscope-config" -> PyroscopeManifestBuilder.SERVER_CONFIG_KEY to ::pyroscopeConfig
                 else -> null
             }
         return when (edit) {
             null -> resource
-            else ->
-                ConfigMapBuilder(resource)
-                    .withData<String, String>(resource.data.mapValues { (_, content) -> inCluster(edit(content)) })
-                    .build()
+            else -> {
+                val (key, rewrite) = edit
+                val content = checkNotNull(resource.data[key]) { "${resource.metadata.name} has no $key" }
+                ConfigMapBuilder(resource).addToData(key, inCluster(rewrite(content))).build()
+            }
         }
     }
 
@@ -362,16 +371,24 @@ class PortableObservabilityPlacementIntegrationTest {
     @Test
     @Order(2)
     fun `Grafana reaches every backend by the Service DNS name its datasources use`() {
-        val urls = GrafanaDatasourceSet.build(TenantSet.of(TENANT), BackendUrls.IN_CLUSTER).datasources.mapNotNull { it.url }
+        val urls =
+            GrafanaDatasourceSet
+                .build(
+                    TenantSet.of(TENANT),
+                    BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)),
+                ).datasources
+                .mapNotNull {
+                    it.url
+                }
         assertThat(urls).allSatisfy { assertThat(it).doesNotContain("localhost") }
         WORKLOADS.forEach { ready(it) }
 
         val backends =
             mapOf(
-                "${BackendUrls.IN_CLUSTER.metrics.removeSuffix("/prometheus")}/ready" to "mimir",
-                "${BackendUrls.IN_CLUSTER.logs}/ready" to "loki",
-                "${BackendUrls.IN_CLUSTER.traces}/ready" to "tempo",
-                "${BackendUrls.IN_CLUSTER.profiles}/ready" to "pyroscope",
+                "${BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)).metrics.removeSuffix("/prometheus")}/ready" to "mimir",
+                "${BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)).logs}/ready" to "loki",
+                "${BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)).traces}/ready" to "tempo",
+                "${BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)).profiles}/ready" to "pyroscope",
             )
         backends.forEach { (url, app) ->
             val status = inGrafana("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url)
@@ -393,7 +410,7 @@ class PortableObservabilityPlacementIntegrationTest {
         assertThat(after.metadata.uid).isNotEqualTo(before.metadata.uid)
         assertThat(after.status.podIP).isNotNull()
 
-        val url = "${BackendUrls.IN_CLUSTER.logs}/ready"
+        val url = "${BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)).logs}/ready"
         val status = inGrafana("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url)
         assertThat(status).describedAs("loki at $url after its pod was replaced").isEqualTo("200")
     }
@@ -408,7 +425,9 @@ class PortableObservabilityPlacementIntegrationTest {
     @Order(5)
     fun `on a claim Grafana loads the dashboards it mounts from ConfigMaps into their folders`() {
         val grafana = ClusterServices.GRAFANA
-        val searchUrl = "http://${BackendEndpoints.host(grafana.service)}:${grafana.servicePort}/api/search?type=dash-db"
+        val searchUrl = "http://${ServiceDns(
+            TestScopes.EC2.namespace,
+        ).host(grafana.service)}:${grafana.servicePort}/api/search?type=dash-db"
         val search = inGrafana("curl", "-s", "-u", "admin:admin", searchUrl)
 
         assertThat(search).contains("\"uid\":\"portable-one\"", "\"uid\":\"portable-two\"")
@@ -456,7 +475,13 @@ class PortableObservabilityPlacementIntegrationTest {
         assertThat(
             config.replace("0.0.0.0:", ""),
         ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
-        assertThat(config).contains(BackendEndpoints.mimirPush(), BackendEndpoints.lokiOtlp(), BackendEndpoints.tempoOtlpGrpc())
+        assertThat(
+            config,
+        ).contains(
+            ServiceDns(TestScopes.EC2.namespace).mimirPush(),
+            ServiceDns(TestScopes.EC2.namespace).lokiOtlp(),
+            ServiceDns(TestScopes.EC2.namespace).tempoOtlpGrpc(),
+        )
         assertThat(
             client
                 .apps()
@@ -503,7 +528,7 @@ class PortableObservabilityPlacementIntegrationTest {
     @Order(7)
     fun `a host-network pod posts a JFR to the Pyroscope Service and the profile is read back under the tenant`() {
         ready("pyroscope")
-        client.resource(jfrConfigMap(recordJfr())).serverSideApply()
+        client.resource(jfrConfigMap(CpuSampleJfr.bytes())).serverSideApply()
         val job = client.resource(hostNetworkSender()).create()
 
         val done =
@@ -622,8 +647,8 @@ class PortableObservabilityPlacementIntegrationTest {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val atNodePort = ServiceAccess { target -> ServiceEndpoint.Plain(k3s.host, k3s.getMappedPort(target.nodePort)) }
-        val http = DefaultObservabilityHttp(atNodePort, { TENANT }, ProxiedHttpClientFactory())
-        val workloads = K8sBackendWorkloads(clientProvider, NAMESPACE, pollInterval = Duration.ofSeconds(1))
+        val http = DefaultObservabilityHttp(atNodePort, { TENANT }, { TestScopes.EC2.namespace }, ProxiedHttpClientFactory())
+        val workloads = K8sBackendWorkloads(clientProvider, { NAMESPACE }, pollInterval = Duration.ofSeconds(1))
         val timeouts =
             FlushTimeouts(
                 shutdown = Duration.ofMinutes(2),
@@ -637,7 +662,7 @@ class PortableObservabilityPlacementIntegrationTest {
                 .lokiFlush(LokiTailFlush(http, workloads, timeouts))
                 .mimirFlush(MimirTailFlush(http, workloads, timeouts))
                 .tempoDrain(TempoTailFlush(http, tempoNode(), timeouts))
-                .telemetrySenders(K8sTelemetrySenders(clientProvider, NAMESPACE, pollInterval = Duration.ofSeconds(1)))
+                .telemetrySenders(K8sTelemetrySenders(clientProvider, { NAMESPACE }, pollInterval = Duration.ofSeconds(1)))
                 .annotationMirror(RecordingAnnotationMirror())
                 .annotationBackupService(mock<GrafanaAnnotationBackupService>())
                 .eventBus(EventBus())
@@ -705,7 +730,7 @@ class PortableObservabilityPlacementIntegrationTest {
     private fun startRedirectedCollector(redirect: TelemetryRedirect): GenericContainer<*> {
         val config =
             OtelManifestBuilder(templates)
-                .buildConfigMap(NodeCapabilities.AWS, telemetryRedirect = redirect)
+                .buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, telemetryRedirect = redirect)
                 .data
                 .values
                 .single()
@@ -793,28 +818,6 @@ class PortableObservabilityPlacementIntegrationTest {
 
     private val nodeHttp: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(EXEC_TIMEOUT_SECONDS)).build()
 
-    /** A real JFR recording of this JVM spinning, so the chunk has CPU samples to parse. */
-    private fun recordJfr(): ByteArray {
-        val file = Files.createTempFile("portable", ".jfr")
-        try {
-            Recording().use { recording ->
-                recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
-                recording.start()
-                val end = System.currentTimeMillis() + PROFILE_SPIN_MILLIS
-                var sink = 0.0
-                while (System.currentTimeMillis() < end) {
-                    sink += Math.sqrt(sink + 1)
-                }
-                recording.stop()
-                recording.dump(file)
-                check(sink > 0)
-            }
-            return Files.readAllBytes(file)
-        } finally {
-            Files.deleteIfExists(file)
-        }
-    }
-
     private fun jfrConfigMap(jfr: ByteArray): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
@@ -828,7 +831,7 @@ class PortableObservabilityPlacementIntegrationTest {
     private fun hostNetworkSender(): Job {
         val until = Instant.now().epochSecond
         val name = URLEncoder.encode("$PROFILED_SERVICE{cluster=${state.name}}", Charsets.UTF_8)
-        val url = "${BackendEndpoints.pyroscope()}/ingest?name=$name&format=jfr&from=${until - 60}&until=$until"
+        val url = "${ServiceDns(TestScopes.EC2.namespace).pyroscope()}/ingest?name=$name&format=jfr&from=${until - 60}&until=$until"
         return JobBuilder()
             .withNewMetadata()
             .withName("portable-jfr-sender-${System.currentTimeMillis() / 1000}")

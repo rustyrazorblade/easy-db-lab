@@ -5,8 +5,10 @@ import com.rustyrazorblade.easydblab.configuration.ClientNetworks
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
-import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
@@ -49,6 +51,7 @@ data class TemplateVariables(
     val opensearchEndpoint: String,
     val pyroscopeUrl: String,
     val tenant: String,
+    val serviceDns: ServiceDns,
 ) {
     fun toMap(): Map<String, String> =
         mapOf(
@@ -74,9 +77,9 @@ data class TemplateVariables(
             "TENANT" to tenant,
             // The core OTel collector's in-cluster Service addresses (`.svc` form), so a kit's pods
             // and scripts push telemetry to their own node's core pod instead of a node IP.
-            "OTEL_COLLECTOR_HOST" to OtelEndpoints.serviceHost(),
-            "OTEL_OTLP_HTTP_ENDPOINT" to OtelEndpoints.otlpHttpEndpoint(),
-            "OTEL_OTLP_GRPC_ENDPOINT" to OtelEndpoints.otlpGrpcEndpoint(),
+            "OTEL_COLLECTOR_HOST" to serviceDns.collectorHost(),
+            "OTEL_OTLP_HTTP_ENDPOINT" to serviceDns.otlpHttpEndpoint(),
+            "OTEL_OTLP_GRPC_ENDPOINT" to serviceDns.otlpGrpcEndpoint(),
             // The Java agent images init containers copy agents from: one source for kit templates
             // and Kotlin (JavaAgent), pinned to the versions the AMI ships.
             "OTEL_AGENT_IMAGE" to JavaAgent.OTEL.image,
@@ -161,6 +164,7 @@ data class TemplateVariables(
             val appNodes = state.hosts[ServerType.Stress] ?: emptyList()
             val region = state.initConfig?.region.orEmpty()
             val kitStorage = KitStorage.from(state)
+            val serviceDns = ServiceDns(InstallScope.of(state, ClusterContract.of(state)).namespace)
             return TemplateVariables(
                 clusterName = state.name,
                 bucketName = state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
@@ -185,8 +189,9 @@ data class TemplateVariables(
                 opensearchEndpoint = state.openSearchDomain?.endpoint.orEmpty(),
                 // Where a kit's Pyroscope agent ships profiles: the Pyroscope Service, or the external
                 // stack on a redirect cluster. Every write carries the cluster's tenant.
-                pyroscopeUrl = pyroscopeIngestBaseUrl(state.initConfig?.telemetryRedirect),
+                pyroscopeUrl = pyroscopeIngestBaseUrl(state.initConfig?.telemetryRedirect, serviceDns),
                 tenant = state.tenant(),
+                serviceDns = serviceDns,
             )
         }
     }

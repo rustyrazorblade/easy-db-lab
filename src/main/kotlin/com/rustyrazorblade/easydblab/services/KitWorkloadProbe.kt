@@ -78,7 +78,7 @@ class KitWorkloadProbe(
     ): WorkloadPresence =
         when (runtime?.type) {
             KitRuntime.RuntimeType.HELM -> findHelmRelease(kitName, runtime)
-            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
+            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE)
         }
 
     /** The pods that show [kitName]'s workload is running, whatever keeps them there. */
@@ -88,7 +88,7 @@ class KitWorkloadProbe(
     ): WorkloadPresence =
         when (runtime?.type) {
             KitRuntime.RuntimeType.HELM -> findPods(helmReleasePods(kitName, runtime), runtime.namespace)
-            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: DEFAULT_NAMESPACE)
+            else -> findPods(podSelector(kitName, runtime), runtime?.namespace ?: Constants.ContractDefaults.OWNED_NAMESPACE)
         }
 
     /**
@@ -139,8 +139,6 @@ class KitWorkloadProbe(
     }
 
     private companion object {
-        const val DEFAULT_NAMESPACE = "default"
-
         /** The standard label helm charts put on every object of a release, valued with the release name. */
         const val HELM_INSTANCE_LABEL = "app.kubernetes.io/instance"
 

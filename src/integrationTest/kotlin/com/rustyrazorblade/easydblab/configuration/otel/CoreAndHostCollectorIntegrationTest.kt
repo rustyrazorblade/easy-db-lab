@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -102,7 +103,7 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
     private fun apply(
         client: KubernetesClient,
         resources: List<HasMetadata>,
-    ) = resources.forEach { client.resource(it).inNamespace(Constants.K8s.NAMESPACE).create() }
+    ) = resources.forEach { client.resource(it).inNamespace(TestScopes.NAMESPACE).create() }
 
     private fun awaitReady(
         client: KubernetesClient,
@@ -111,7 +112,7 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(READY_SECONDS)
         while (readyPods(client, daemonSet) != 1) {
             check(System.nanoTime() < deadline) {
-                "$daemonSet never became ready\n${clusterDiagnostics(client, Constants.K8s.NAMESPACE)}"
+                "$daemonSet never became ready\n${clusterDiagnostics(client, TestScopes.NAMESPACE)}"
             }
             Thread.sleep(POLL_MILLIS)
         }
@@ -124,7 +125,7 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
         client
             .apps()
             .daemonSets()
-            .inNamespace(Constants.K8s.NAMESPACE)
+            .inNamespace(TestScopes.NAMESPACE)
             .withName(daemonSet)
             .get()
             ?.status
@@ -140,14 +141,14 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
         val core =
             client
                 .pods()
-                .inNamespace(Constants.K8s.NAMESPACE)
+                .inNamespace(TestScopes.NAMESPACE)
                 .withLabel(NAME_LABEL, Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
                 .list()
                 .items
                 .single()
         return client
             .pods()
-            .inNamespace(Constants.K8s.NAMESPACE)
+            .inNamespace(TestScopes.NAMESPACE)
             .withName(core.metadata.name)
             .portForward(SELF_TELEMETRY_PORT)
             .use { forward ->
@@ -176,16 +177,16 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
     @Test
     fun `the restricted core reaches Ready and receives what the host add-on forwards through its Service`() {
         startK3s().use { client ->
-            client.resource(clusterConfig()).inNamespace(Constants.K8s.NAMESPACE).create()
+            client.resource(clusterConfig()).inNamespace(TestScopes.NAMESPACE).create()
             val core = OtelManifestBuilder(getKoin().get())
-            apply(client, core.buildAllResources(NodeCapabilities.LOCAL_DOCKER, podLogSource = PodLogSource.None))
+            apply(client, core.buildAllResources(TestScopes.EC2, NodeCapabilities.LOCAL_DOCKER, podLogSource = PodLogSource.None))
             awaitReady(client, Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
 
             val running =
                 client
                     .apps()
                     .daemonSets()
-                    .inNamespace(Constants.K8s.NAMESPACE)
+                    .inNamespace(TestScopes.NAMESPACE)
                     .withName(Constants.K8s.OTEL_COLLECTOR_APP_LABEL)
                     .get()
             assertRestricted(running)
@@ -196,7 +197,7 @@ class CoreAndHostCollectorIntegrationTest : BaseKoinTest() {
                 .describedAs("kubelet_stats verified the kubelet's cert and read its stats")
                 .isPositive()
 
-            apply(client, OtelHostCollectorManifestBuilder(getKoin().get()).buildAllResources(CniMode.Flannel))
+            apply(client, OtelHostCollectorManifestBuilder(getKoin().get()).buildAllResources(TestScopes.EC2, CniMode.Flannel))
             awaitReady(client, Constants.OtelCollector.HOST_COLLECTOR_NAME)
 
             assertThat(awaitAcceptedOtlpPoints(client))

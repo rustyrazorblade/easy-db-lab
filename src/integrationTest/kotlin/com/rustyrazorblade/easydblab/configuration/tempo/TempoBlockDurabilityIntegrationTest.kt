@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -109,7 +110,7 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
 
     /** The cluster's rendered tempo.yaml, pointed at LocalStack. */
     private fun testConfig(): String {
-        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("tempo.yaml")
+        val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
         val endpointLine = "      endpoint: \${STORE_ENDPOINT}"
         check(rendered.contains(endpointLine)) { "rendered config no longer names the store endpoint" }
         return rendered

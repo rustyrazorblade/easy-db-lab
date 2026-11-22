@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
@@ -55,14 +56,17 @@ class GrafanaClientEndpointTest {
             endpoints.removeFirst()
         }
 
-    private val grafana = DefaultGrafanaClient(EventBus(), access, factory)
+    private val grafana = DefaultGrafanaClient(EventBus(), access, factory) { TestScopes.EC2 }
 
     @Test
     fun `each call reaches Grafana at the endpoint the seam opens for it now`() {
         grafana.createAnnotation(GrafanaAnnotationRequest(text = "first", time = 1L))
         grafana.createAnnotation(GrafanaAnnotationRequest(text = "second", time = 1L))
 
-        assertThat(opened).containsExactly(ClusterServices.GRAFANA, ClusterServices.GRAFANA)
+        assertThat(opened).containsExactly(
+            ClusterServices.GRAFANA.inNamespace(TestScopes.EC2.namespace),
+            ClusterServices.GRAFANA.inNamespace(TestScopes.EC2.namespace),
+        )
         assertThat(requests.map { it.url.toString() })
             .containsExactly("http://10.0.1.5:3000/api/annotations", "http://127.0.0.1:25001/api/annotations")
     }

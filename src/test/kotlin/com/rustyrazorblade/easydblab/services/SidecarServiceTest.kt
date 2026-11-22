@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
@@ -15,6 +16,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -172,5 +174,25 @@ class SidecarServiceTest : BaseKoinTest() {
                 .spec.template.spec
         assertThat(podSpec.containers.map { it.image }).contains(ecrImage)
         assertThat(podSpec.imagePullSecrets).isNullOrEmpty()
+    }
+
+    /**
+     * The sidecar's DaemonSet is applied in, removed from and restarted in the namespace the state
+     * recorded, not the owned default.
+     */
+    @Test
+    fun `deploy, undeploy and restart use the recorded namespace`() {
+        whenever(mockClusterStateManager.load())
+            .thenReturn(testClusterState.copy(initConfig = InitConfig(region = "us-west-2", namespace = "lab-a")))
+        val resources = argumentCaptor<HasMetadata>()
+
+        sidecarService.deploy("ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
+        sidecarService.undeploy().getOrThrow()
+        sidecarService.restart().getOrThrow()
+
+        verify(mockK8sService, times(2)).applyResource(resources.capture())
+        assertThat(resources.allValues.map { it.metadata.namespace }).containsOnly("lab-a")
+        verify(mockK8sService).deleteResourcesByLabel(eq("lab-a"), any(), any())
+        verify(mockK8sService).rolloutRestartDaemonSet(any(), eq("lab-a"))
     }
 }

@@ -5,13 +5,14 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.LokiIngester
 import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.JsonObject
@@ -88,7 +89,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         val mimir =
             ObservabilityBackends.startMimir(
                 ObservabilityBackends.mimirConfig(
-                    MimirManifestBuilder(templates).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE),
+                    MimirManifestBuilder(templates).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE),
                 ),
                 volumes[0],
                 bucket,
@@ -98,7 +99,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         val loki =
             ObservabilityBackends.startLoki(
                 ObservabilityBackends.lokiConfig(
-                    LokiManifestBuilder(templates).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE),
+                    LokiManifestBuilder(templates).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE),
                 ),
                 volumes[1],
                 bucket,
@@ -126,11 +127,11 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         val config =
             OtelManifestBuilder(
                 getKoin().get(),
-            ).buildConfigMap(NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
+            ).buildConfigMap(TestScopes.EC2, NodeCapabilities.AWS, emptyList()).data.getValue("otel-collector-config.yaml")
         return ClusterCollector
             .container(config, CONTROL_HOST, CLUSTER, TENANT)
-            .withExtraHost(BackendEndpoints.mimirHost(), bridgeAddress(mimir))
-            .withExtraHost(BackendEndpoints.host(Constants.K8s.LOKI_APP_LABEL), bridgeAddress(loki))
+            .withExtraHost(ServiceDns(TestScopes.EC2.namespace).mimirHost(), bridgeAddress(mimir))
+            .withExtraHost(ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.LOKI_APP_LABEL), bridgeAddress(loki))
             .also {
                 it.start()
                 containers.add(it)

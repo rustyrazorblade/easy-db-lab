@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.access
 
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -52,15 +53,19 @@ class ExposureServiceAccessTest {
     fun `the recorded exposure selects its implementation`(exposure: Exposure) {
         val expected = mapOf(Exposure.Socks to "socks", Exposure.Direct to "direct", Exposure.PortForward to "port-forward")
 
-        assertThat(accessFor { exposure }.open(ClusterServices.LOKI).host).isEqualTo(expected.getValue(exposure))
+        assertThat(
+            accessFor {
+                exposure
+            }.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)).host,
+        ).isEqualTo(expected.getValue(exposure))
     }
 
     @Test
     fun `an unchanged exposure keeps one implementation, closed with the access`() {
         val access = accessFor { Exposure.PortForward }
 
-        access.open(ClusterServices.LOKI)
-        access.open(ClusterServices.MIMIR)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
+        access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace))
         access.close()
 
         assertThat(built.single().closed).isTrue()
@@ -72,9 +77,9 @@ class ExposureServiceAccessTest {
         var recorded = Exposure.Socks
         val access = accessFor { recorded }
 
-        access.open(ClusterServices.LOKI)
+        access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
         recorded = Exposure.PortForward
-        val endpoint = access.open(ClusterServices.LOKI)
+        val endpoint = access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace))
 
         assertThat(endpoint.host).isEqualTo("port-forward")
         assertThat(built.map { it.name }).containsExactly("socks", "port-forward")
@@ -89,7 +94,7 @@ class ExposureServiceAccessTest {
         val slow =
             object : ServiceAccess {
                 override fun open(target: ServiceTarget): ServiceEndpoint {
-                    if (target == ClusterServices.LOKI) {
+                    if (target == ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) {
                         firstEntered.countDown()
                         releaseFirst.await(HOLD_SECONDS, TimeUnit.SECONDS)
                     }
@@ -101,11 +106,11 @@ class ExposureServiceAccessTest {
         val access = ExposureServiceAccess({ Exposure.PortForward }, mapOf(Exposure.PortForward to { slow }))
         val executor = Executors.newSingleThreadExecutor()
         try {
-            val first = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI) }
+            val first = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             assertThat(firstEntered.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
 
             // The first open is still inside the implementation; a second one must not wait for it.
-            val second = CompletableFuture.supplyAsync { access.open(ClusterServices.MIMIR) }
+            val second = CompletableFuture.supplyAsync { access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace)) }
 
             assertThat(second.get(SECOND_WAIT_SECONDS, TimeUnit.SECONDS).port).isEqualTo(ClusterServices.MIMIR.servicePort)
             releaseFirst.countDown()
@@ -139,11 +144,11 @@ class ExposureServiceAccessTest {
             )
         val executor = Executors.newSingleThreadExecutor()
         try {
-            val a = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI) }
+            val a = executor.submit<ServiceEndpoint> { access.open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
             assertThat(selectedForA.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
 
             recorded = Exposure.Direct
-            assertThat(access.open(ClusterServices.MIMIR).host).isEqualTo("direct")
+            assertThat(access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace)).host).isEqualTo("direct")
             resumeA.countDown()
 
             assertThat(a.get(WAIT_SECONDS, TimeUnit.SECONDS).host).isEqualTo("direct")

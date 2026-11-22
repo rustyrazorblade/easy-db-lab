@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -122,7 +123,7 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     /** The cluster's rendered config.yaml, with the S3 client pointed at LocalStack. */
     private fun testConfig(): String =
         ObservabilityBackends.pyroscopeConfig(
-            PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml"),
+            PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml"),
         )
 
     /** Starts a Pyroscope server with [config] on the data volume ([ObservabilityBackends.startPyroscope]). */

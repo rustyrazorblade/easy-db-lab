@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -22,8 +24,6 @@ import org.testcontainers.containers.Network
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.utility.MountableFile
-import java.io.File
-import java.net.URLEncoder
 import java.time.Duration
 import java.util.UUID
 
@@ -41,14 +41,17 @@ import java.util.UUID
  * Empty windows alone cannot show one lost snapshot, so the test also reads the agent's log and
  * fails on any upload it dropped, apart from at most one push refused in the restarted server's
  * start race.
+ *
+ * The agent reaches the server through the pod's ingest front (`ingest-front.cfg`), run in the
+ * server's network namespace as in the pod. The shutdown refusal the front turns into a 503 is
+ * proven by `PyroscopeShutdownRefusalIntegrationTest`, not here: on LocalStack the stopping server
+ * holds a push past the agent's 10-second timeout instead of refusing it, so this test sees only
+ * timeouts, which the agent retries.
  */
 class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private companion object {
         const val TENANT = "acme"
         const val SERVICE = "agent-replay"
-        const val JDK_IMAGE = "eclipse-temurin:21-jdk"
-        const val APP_DIR = "/app"
-        const val AGENT_STARTED = ".*Profiling started.*"
 
         /** The agent takes and uploads one snapshot every 10 seconds; each is checked on its own. */
         val SNAPSHOT: Duration = Duration.ofSeconds(10)
@@ -56,23 +59,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
 
-        val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
-
-        /** A JVM that keeps one CPU busy, so every snapshot holds CPU samples. */
-        val BUSY_SOURCE =
-            """
-            public class Busy {
-                public static void main(String[] args) {
-                    long x = 0;
-                    while (true) {
-                        for (int i = 0; i < 1_000_000; i++) {
-                            x += i * 31L ^ (x >>> 3);
-                        }
-                        if (x == 42) System.out.println(x);
-                    }
-                }
-            }
-            """.trimIndent()
+        val PYROSCOPE_HOST = "${ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.PYROSCOPE_APP_LABEL)}.cluster.local"
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -81,6 +68,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private val volume = "pyroscope-replay-${UUID.randomUUID().toString().take(8)}"
     private val network: Network = Network.newNetwork()
     private val containers = mutableListOf<GenericContainer<*>>()
+    private val fronts = mutableListOf<String>()
     private val state =
         ClusterState(
             name = "pyroscope-agent-replay",
@@ -98,31 +86,21 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanUp() {
+        fronts.forEach { runCatching { docker.removeContainerCmd(it).withForce(true).exec() } }
         containers.forEach { it.stop() }
         runCatching { docker.removeVolumeCmd(volume).exec() }
         network.close()
     }
 
+    /** Starts the server and the ingest front in its network namespace, then gives them the Service name. */
     private fun startPyroscope(): GenericContainer<*> {
-        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml")
+        val configMap = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap(TestScopes.EC2).data
+        val rendered = configMap.getValue("config.yaml")
         val pyroscope = ObservabilityBackends.startPyroscope(ObservabilityBackends.pyroscopeConfig(rendered), volume)
         containers.add(pyroscope)
+        fronts.add(ObservabilityBackends.startPyroscopeFront(pyroscope, configMap.getValue(PyroscopeManifestBuilder.FRONT_CONFIG_KEY)))
         ObservabilityBackends.attachAsService(pyroscope, network.id, PYROSCOPE_HOST)
         return pyroscope
-    }
-
-    /**
-     * The pinned agent jar (`io.pyroscope:agent`, the same jar as the release the AMI and EMR
-     * install), which Gradle resolves from Maven Central into its cache and passes as a system
-     * property. Its version must be the one the cluster installs.
-     */
-    private fun agentJar(): File {
-        assertThat(System.getProperty("easydblab.test.pyroscopeAgentVersion"))
-            .describedAs("the agent version in libs.versions.toml")
-            .isEqualTo(Constants.PyroscopeJavaAgent.VERSION)
-        val jar = File(checkNotNull(System.getProperty("easydblab.test.pyroscopeAgentJar")) { "run through Gradle" })
-        check(jar.isFile) { "no agent jar at $jar" }
-        return jar
     }
 
     /**
@@ -136,48 +114,29 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
                 "java",
                 "-javaagent:$APP_DIR/pyroscope.jar",
                 "-Dpyroscope.application.name=$SERVICE",
-                "-Dpyroscope.server.address=http://$PYROSCOPE_HOST:${PyroscopeManifestBuilder.SERVER_PORT}",
+                // The Service's port 4040 targets the front's port; Docker has no such mapping.
+                "-Dpyroscope.server.address=http://$PYROSCOPE_HOST:${Constants.PyroscopeServer.FRONT_PORT}",
                 "-Dpyroscope.format=jfr",
                 "-Dpyroscope.profiler.event=itimer",
                 "-Dpyroscope.tenant.id=$TENANT",
             ) + Constants.PyroscopeJavaAgent.OUTAGE_FLAGS + "$APP_DIR/Busy.java"
-        return GenericContainer(JDK_IMAGE)
+        return GenericContainer(PyroscopeAgentSupport.JDK_IMAGE)
             .withNetwork(network)
-            .withCopyToContainer(MountableFile.forHostPath(agentJar().toPath()), "$APP_DIR/pyroscope.jar")
-            .withCopyToContainer(Transferable.of(BUSY_SOURCE), "$APP_DIR/Busy.java")
+            .withCopyToContainer(MountableFile.forHostPath(PyroscopeAgentSupport.agentJar().toPath()), "$APP_DIR/pyroscope.jar")
+            .withCopyToContainer(Transferable.of(PyroscopeAgentSupport.BUSY_SOURCE), "$APP_DIR/Busy.java")
             .withCommand(*command.toTypedArray())
-            .waitingFor(Wait.forLogMessage(AGENT_STARTED, 1).withStartupTimeout(WAIT))
+            .waitingFor(Wait.forLogMessage(PyroscopeAgentSupport.AGENT_STARTED, 1).withStartupTimeout(WAIT))
             .also {
                 it.start()
                 containers.add(it)
             }
     }
 
-    /** CPU samples the tenant sees for the busy JVM between [fromSecond] and [untilSecond]. */
-    private fun cpuTicks(
-        pyroscope: GenericContainer<*>,
-        fromSecond: Long,
-        untilSecond: Long,
-    ): Long {
-        val query =
-            URLEncoder.encode("process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=\"$SERVICE\"}", Charsets.UTF_8)
-        val url =
-            "${ObservabilityBackends.baseUrl(pyroscope, PyroscopeManifestBuilder.SERVER_PORT)}/pyroscope/render" +
-                "?query=$query&from=$fromSecond&until=$untilSecond&format=json"
-        val response = runCatching { ObservabilityBackends.get(url, TENANT) }.getOrNull()
-        if (response?.statusCode() != HTTP_OK) return 0
-        return Regex("\"numTicks\":(\\d+)")
-            .find(response.body())
-            ?.groupValues
-            ?.get(1)
-            ?.toLong() ?: 0
-    }
-
     /** The start of each snapshot window in [windows] that holds no CPU samples. */
     private fun emptyWindows(
         pyroscope: GenericContainer<*>,
         windows: List<Long>,
-    ): List<Long> = windows.filter { cpuTicks(pyroscope, it, it + SNAPSHOT.seconds) == 0L }
+    ): List<Long> = windows.filter { PyroscopeAgentSupport.cpuTicks(pyroscope, TENANT, SERVICE, it, it + SNAPSHOT.seconds) == 0L }
 
     @Test
     fun `a Pyroscope restart loses no Java-agent profile`() {
@@ -186,7 +145,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         docker.createVolumeCmd().withName(volume).exec()
         val first = startPyroscope()
         val jvm = startProfiledJvm()
-        awaitUntil { cpuTicks(first, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
+        awaitUntil { PyroscopeAgentSupport.cpuTicks(first, TENANT, SERVICE, nowSecond() - WAIT.seconds, nowSecond()) > 0 }
 
         val down = nowSecond()
         ObservabilityBackends.stopGracefully(first)
@@ -218,27 +177,11 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         assertThat(jvm.logs.lines().count { UPLOAD_ERROR in it })
             .describedAs("upload errors the agent logged in the outage; JVM log:\n${jvm.logs}")
             .isPositive()
-        val dropped = droppedUploads(jvm.logs)
+        val dropped = PyroscopeAgentSupport.droppedUploads(jvm.logs)
         val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
         assertThat(other).describedAs("uploads the agent dropped; JVM log:\n${jvm.logs}").isEmpty()
         assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
     }
-
-    /**
-     * The agent's log lines for each snapshot it dropped. Agent 2.3.0 logs `Error uploading
-     * snapshot: <status> <body>` for every refused upload and retries only a 429 or a 5xx, so any
-     * other status is a dropped snapshot; `Gave up uploading` is one that ran out of tries.
-     */
-    private fun droppedUploads(log: String): List<String> =
-        log.lines().filter { line ->
-            val status =
-                REFUSED_UPLOAD
-                    .find(line)
-                    ?.groupValues
-                    ?.get(1)
-                    ?.toInt()
-            (status != null && status != HTTP_TOO_MANY_REQUESTS && status < HTTP_SERVER_ERROR) || GAVE_UP in line
-        }
 
     private fun nowSecond(): Long = System.currentTimeMillis() / MILLIS_PER_SECOND
 
@@ -251,11 +194,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     }
 }
 
-private const val HTTP_OK = 200
-private const val HTTP_TOO_MANY_REQUESTS = 429
-private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1000L
-private const val GAVE_UP = "Gave up uploading"
-private const val EMPTY_RING = "empty ring"
-private const val UPLOAD_ERROR = "Error uploading snapshot: "
-private val REFUSED_UPLOAD = Regex("$UPLOAD_ERROR(\\d{3}) ")
+private const val EMPTY_RING = PyroscopeAgentSupport.EMPTY_RING
+private const val UPLOAD_ERROR = PyroscopeAgentSupport.UPLOAD_ERROR
+private const val APP_DIR = PyroscopeAgentSupport.APP_DIR

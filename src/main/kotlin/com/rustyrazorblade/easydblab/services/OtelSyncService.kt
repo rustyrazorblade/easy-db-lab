@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.region
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
@@ -49,9 +49,10 @@ class DefaultOtelSyncService(
             log.debug { "Syncing OTel collector configuration" }
             val clusterState = clusterStateManager.load()
             val contract = contractSource.current()
+            val scope = InstallScope.of(clusterState, contract)
             val scrapeConfigs =
                 k8sClientProvider.createClient().use { client ->
-                    otelManifestBuilder.listWorkloadScrapeConfigs(client)
+                    otelManifestBuilder.listWorkloadScrapeConfigs(client, scope)
                 }
             // The cluster's export destinations, CNI and region come from its recorded init config,
             // so a regenerated ConfigMap keeps a redirect cluster's external endpoints and a Cilium
@@ -59,12 +60,10 @@ class DefaultOtelSyncService(
             val resources =
                 CollectorResources.build(
                     otelManifestBuilder,
-                    clusterState,
-                    clusterState.region(profileRegion),
+                    CollectorInputs(clusterState, clusterState.region(profileRegion), contract.nodeCapabilities, scope),
                     scrapeConfigs,
-                    contract.nodeCapabilities,
                 )
-            configChangeReport.report(resources, Constants.K8s.NAMESPACE)
+            configChangeReport.report(resources, scope.namespace.value)
             for (resource in resources) {
                 k8sService.applyResource(resource = resource).getOrThrow()
             }

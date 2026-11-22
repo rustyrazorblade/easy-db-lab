@@ -10,7 +10,7 @@ There are **two capture mechanisms** in the fleet, and which one applies depends
 
 ## Architecture
 
-Profiling data is collected from these sources and sent to the Pyroscope server. In-cluster agents reach it by its Service, `pyroscope.default.svc:4040`; the Cassandra node reconciler posts to the Alloy relay on its node's loopback (`127.0.0.1:4041`), which forwards to that Service; EMR reaches it on the control node's NodePort 31040:
+Profiling data is collected from these sources and sent to the Pyroscope server. In-cluster agents reach it by its Service, `pyroscope.<namespace>.svc:4040` (the cluster's install namespace, `default` unless `init --namespace` named another); the Cassandra node reconciler posts to the Alloy relay on its node's loopback (`127.0.0.1:4041`), which forwards to that Service; EMR reaches it on the control node's NodePort 31040:
 
 - **async-profiler, attached at runtime (Cassandra)** — A systemd timer on every Cassandra node runs `edl-profiling-reconcile`, which attaches async-profiler to the live Cassandra JVM, writes rotating JFR chunks to `/mnt/db1/cassandra/profiles`, uploads completed chunks to Pyroscope's `/ingest`, and prunes the directory. What is being profiled changes without restarting Cassandra.
 - **Pyroscope Java agent (Stress jobs)** — Runs as a `-javaagent` inside cassandra-easy-stress K8s Jobs. Collects CPU, allocation, and lock profiles. The agent JAR is copied into the pod from the Pyroscope agent image by an init container, so stress runs on any node.
@@ -281,7 +281,43 @@ Thread identity is **not** available through this path; use `flamegraph -- --thr
 | `alloc` | Memory allocation by method |
 | `lock` | Lock contention |
 
-When Pyroscope is down or restarting, the Java agent keeps its snapshots and retries the upload without a limit. It holds up to 360 snapshots, about an hour; past that it drops the oldest. The queue is in the profiled JVM's heap. Measured on a real cluster with cassandra-easy-stress under load, each queued snapshot holds about 0.17 MB of live heap, so a full queue is about 62 MB. That is one workload: a synthetic load built for many distinct stacks and heavy allocation measured 5 to 15 MB a snapshot, so a JVM like that with a small heap can run short of memory if Pyroscope stays down for most of an hour. The agent drops a snapshot that Pyroscope answers with a 4xx other than 429, and Pyroscope answers 422 to every push while it shuts down, so the server's configuration turns off the fixed waits that kept it in that state for 30 seconds after SIGTERM (the metastore's and segment writer's `min_ready_duration`, and usage reporting). It now exits within seconds, and the agent retries the refused connection. A restarted server also reads its segment writer's ring tokens from its data directory. Without them it rejoins its ring with no tokens and refuses every push (422) for about 5.5 seconds after it starts, and the agent drops each refused push. With the tokens kept, a push in the first few milliseconds after the port opens can still be refused, because Pyroscope opens its port just before it reads them; at most that one snapshot is lost. The database nodes' JFR shipper (`edl-profiling-reconcile`) keeps a chunk that Pyroscope answers with 429, or with a 422 saying it is shutting down or starting, and sends it on a later pass, so a Pyroscope restart loses none of its chunks.
+When Pyroscope is down or restarting, the Java agent keeps its snapshots and retries the upload without a limit. Each case below lists what you see, why, what the cluster does about it, and what can still be lost.
+
+**Pyroscope stays down**
+
+- Symptom: no new profiles while Pyroscope is down; they appear once it is back.
+- Cause: the agent cannot upload, so it queues snapshots in the profiled JVM's heap.
+- Mitigation: the agent holds up to 360 snapshots (about an hour) and retries without a limit.
+- Residual risk:
+  - Past 360 snapshots the agent drops the oldest.
+  - The queue costs heap. With cassandra-easy-stress under load on a real cluster, each queued snapshot held about 0.17 MB of live heap, so a full queue is about 62 MB.
+  - That figure holds for that workload only. A synthetic load built for many distinct stacks and heavy allocation measured 5 to 15 MB a snapshot, so a JVM like that with a small heap can run short of memory if Pyroscope stays down for most of an hour.
+
+**Pyroscope shuts down**
+
+- Symptom: without a fix, profiles from the seconds around a Pyroscope stop are missing.
+- Cause:
+  - From SIGTERM until it exits, Pyroscope answers every push 422 "service is unavailable" (Pyroscope 2.4.4 does the same).
+  - The agent drops a snapshot that Pyroscope answers with a 4xx other than 429.
+- Mitigation:
+  - The server's configuration turns off the fixed waits that kept it in that state for 30 seconds after SIGTERM (the metastore's and segment writer's `min_ready_duration`, and usage reporting), so it exits within seconds.
+  - The Pyroscope pod runs a small HAProxy front (`ingest-front.cfg`) on the Service port. It passes every request through unchanged, except that it answers that one shutdown refusal with 503. The agent retries every 5xx, so it keeps those snapshots.
+  - While the server container is down but its pod is still up (for example while the server restarts on its own), the front also answers 503, and the agent retries that too.
+- Residual risk: none known for the agent; that it retries a 503 is the agent's own behaviour.
+
+**Pyroscope starts again**
+
+- Symptom: without a fix, profiles from the first seconds after a restart are missing.
+- Cause: a restarted segment writer with no ring tokens rejoins its ring with none and refuses every push (422) for about 5.5 seconds, and the agent drops each refused push.
+- Mitigation: the server keeps its segment writer's ring tokens in its data directory and reads them on start.
+- Residual risk: Pyroscope opens its port just before it reads the tokens, so a push in the first few milliseconds can still be refused; at most that one snapshot is lost.
+
+**JFR shipper on the database nodes**
+
+- Symptom: none; a Pyroscope restart loses none of its chunks.
+- Cause: the shipper (`edl-profiling-reconcile`) pushes to the same server and sees the same 429 and 422 answers.
+- Mitigation: it keeps a chunk that Pyroscope answers with 429, or with a 422 saying it is shutting down or starting, and sends it on a later pass.
+- Residual risk: none known.
 
 ### eBPF agent (all processes)
 

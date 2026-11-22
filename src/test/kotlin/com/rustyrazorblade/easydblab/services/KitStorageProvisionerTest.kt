@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -225,6 +226,22 @@ class KitStorageProvisionerTest {
             whenever(k8sService.reopenReleasedVolumes("retain-x", "default")).thenReturn(Result.success(listOf("pvc-1")))
 
             provisioner.provision(volumes().copy(rebindReleased = true), provisioned, state)
+
+            verify(k8sService).reopenReleasedVolumes("retain-x", "default")
+        }
+
+        /**
+         * `init --namespace` moves the stack, but the kits still create their claims in `default`
+         * until issue 1094 PR 2 moves them; the reopen filters on the claims' namespace, so it must
+         * follow the kits, or it would find none of their volumes.
+         */
+        @Test
+        fun `on a cluster recorded in another namespace, the reopen looks where the kits still make their claims`() {
+            val labA = state.copy(initConfig = InitConfig(region = "us-west-2", namespace = "lab-a"))
+            whenever(k8sService.storageClassReclaimPolicy("retain-x")).thenReturn(Result.success("Retain"))
+            whenever(k8sService.reopenReleasedVolumes(any(), any())).thenReturn(Result.success(emptyList()))
+
+            provisioner.provision(volumes().copy(rebindReleased = true), provisioned, labA)
 
             verify(k8sService).reopenReleasedVolumes("retain-x", "default")
         }

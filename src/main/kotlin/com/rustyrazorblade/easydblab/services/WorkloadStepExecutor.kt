@@ -178,13 +178,13 @@ class WorkloadStepExecutor(
                         kind = interp(step.kind),
                         name = interp(step.name),
                         condition = interp(step.condition),
-                        namespace = step.namespace?.let { interp(it) } ?: "default",
+                        namespace = step.namespace?.let { interp(it) } ?: Constants.ContractDefaults.OWNED_NAMESPACE,
                         timeout = interp(step.timeout),
                     )
                 }
 
                 is InstallStep.Delete -> {
-                    val namespace = step.namespace?.let { interp(it) } ?: "default"
+                    val namespace = step.namespace?.let { interp(it) } ?: Constants.ContractDefaults.OWNED_NAMESPACE
                     if (step.bySelector) {
                         kubectlService.deleteBySelector(
                             kinds = step.kinds.map { interp(it) },

@@ -7,6 +7,7 @@ import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
@@ -37,7 +38,7 @@ class YaceManifestBuilderTest : BaseKoinTest() {
 
     /** Each job's type and its search tags, from the rendered config. */
     private fun searchTagsByJob(): Map<String, Map<String, String>> {
-        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap().data["yace-config.yaml"])
+        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data["yace-config.yaml"])
         val discovery = checkNotNull((Yaml.default.parseToYamlNode(yaml) as YamlMap).get<YamlMap>("discovery"))
         return checkNotNull(discovery.get<YamlList>("jobs")).items.map { it as YamlMap }.associate { job ->
             val tags =
@@ -59,7 +60,7 @@ class YaceManifestBuilderTest : BaseKoinTest() {
      * metric name split at each lower-to-upper case change and every other character made `_`.
      */
     private fun gathered(type: String): Set<String> {
-        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap().data["yace-config.yaml"])
+        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data["yace-config.yaml"])
         val discovery = checkNotNull((Yaml.default.parseToYamlNode(yaml) as YamlMap).get<YamlMap>("discovery"))
         val job = checkNotNull(discovery.get<YamlList>("jobs")).items.map { it as YamlMap }.single { scalar(it, "type") == type }
         val prefix = "aws_" + type.substringAfter("/").lowercase()
@@ -110,7 +111,7 @@ class YaceManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `the rendered config leaves no placeholder unfilled`() {
-        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap().data["yace-config.yaml"])
+        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data["yace-config.yaml"])
 
         assertThat(yaml).doesNotContainPattern("__[A-Z_]+__")
     }

@@ -13,7 +13,7 @@ kind: "ClusterRole"
 metadata:
   labels:
     app.kubernetes.io/name: "otel-collector"
-  name: "otel-collector"
+  name: "otel-collector-test-cluster-id"
 rules:
 - apiGroups:
   - ""
@@ -37,11 +37,11 @@ kind: "ClusterRoleBinding"
 metadata:
   labels:
     app.kubernetes.io/name: "otel-collector"
-  name: "otel-collector"
+  name: "otel-collector-test-cluster-id"
 roleRef:
   kind: "ClusterRole"
   apiGroup: "rbac.authorization.k8s.io"
-  name: "otel-collector"
+  name: "otel-collector-test-cluster-id"
 subjects:
 - kind: "ServiceAccount"
   name: "otel-collector"

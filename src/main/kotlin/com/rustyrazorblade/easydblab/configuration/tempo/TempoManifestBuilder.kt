@@ -1,12 +1,13 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -35,7 +36,6 @@ class TempoManifestBuilder(
     private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = Constants.K8s.TEMPO_APP_LABEL
         private const val CONFIGMAP_NAME = "tempo-config"
         const val IMAGE = "grafana/tempo:3.0.3"
@@ -71,21 +71,27 @@ class TempoManifestBuilder(
      * @param hosting where the Deployment is placed and keeps its state.
      * @return List of: ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildConfigMap(), buildService(hosting.publishing)) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
+    fun buildAllResources(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> =
+        listOf(buildConfigMap(scope), buildService(scope, hosting.publishing)) +
+            hosting.host(buildPodTemplate(scope), STATE, isBackend = true)
 
     /** The Tempo Deployment as [hosting] runs it. */
-    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
+    fun buildDeployment(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): Deployment = hosting.host(buildPodTemplate(scope), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Tempo ConfigMap containing tempo.yaml.
      */
-    fun buildConfigMap() =
+    fun buildConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -94,7 +100,7 @@ class TempoManifestBuilder(
                     .fromString(storeBlocks.renderResource(TempoManifestBuilder::class.java, CONFIG_FILE))
                     .substitute(
                         mapOf(
-                            "MIMIR_HOST" to BackendEndpoints.mimirHost(),
+                            "MIMIR_HOST" to ServiceDns(scope.namespace).mimirHost(),
                             "MIMIR_HTTP_PORT" to Constants.K8s.MIMIR_HTTP_PORT.toString(),
                         ),
                     ),
@@ -104,20 +110,23 @@ class TempoManifestBuilder(
      * Tempo's Service over HTTP, OTLP gRPC and OTLP HTTP; [publishing] puts the query port on
      * [Constants.K8s.TEMPO_NODE_PORT] and OTLP gRPC on [Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT].
      */
-    fun buildService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+    fun buildService(
+        scope: InstallScope,
+        publishing: ServicePublishing = ServicePublishing.ClusterIp,
+    ): Service =
         publishing.publish(
-            clusterIpService(),
+            clusterIpService(scope),
             mapOf(
                 "http" to Constants.K8s.TEMPO_NODE_PORT,
                 "otlp-grpc" to Constants.K8s.TEMPO_OTLP_GRPC_NODE_PORT,
             ),
         )
 
-    private fun clusterIpService(): Service =
+    private fun clusterIpService(scope: InstallScope): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -152,11 +161,11 @@ class TempoManifestBuilder(
      * enable Tempo's runtime env expansion in the config file.
      */
     @Suppress("LongMethod")
-    private fun buildPodTemplate(): Deployment =
+    private fun buildPodTemplate(scope: InstallScope): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()

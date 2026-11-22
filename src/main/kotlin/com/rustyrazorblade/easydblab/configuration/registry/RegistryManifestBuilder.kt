@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.registry
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
@@ -17,7 +18,6 @@ import io.fabric8.kubernetes.api.model.apps.Deployment
  */
 class RegistryManifestBuilder {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "registry"
         private const val IMAGE = "registry:2"
 
@@ -32,9 +32,9 @@ class RegistryManifestBuilder {
      *
      * @return List of: Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildDeployment(),
+            buildDeployment(scope),
         )
 
     /**
@@ -44,8 +44,8 @@ class RegistryManifestBuilder {
      * a hostPath volume and HTTPS health probes.
      */
     @Suppress("LongMethod")
-    fun buildDeployment(): Deployment =
-        controlPlaneDeployment(APP_LABEL, NAMESPACE) {
+    fun buildDeployment(scope: InstallScope): Deployment =
+        controlPlaneDeployment(APP_LABEL, scope.namespace.value) {
             hostNetworked()
                 .addNewContainer()
                 .withName(APP_LABEL)

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.access.ClusterServices
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -73,7 +74,7 @@ class GrafanaFrontIntegrationTest {
         val documents = DocumentsBucket(BUCKET, "eu-west-1")
 
         val frontConfig =
-            ConfigMapBuilder(front.configMap(documents))
+            ConfigMapBuilder(front.configMap(TestScopes.EC2, documents))
                 .editMetadata()
                 .withNamespace(NAMESPACE)
                 .endMetadata()
@@ -131,7 +132,7 @@ class GrafanaFrontIntegrationTest {
      * namespace: the pod carries its selector, so the requests take the port the Service targets.
      */
     private fun service(templateService: TemplateService) =
-        ServiceBuilder(GrafanaManifestBuilder(templateService).buildService())
+        ServiceBuilder(GrafanaManifestBuilder(templateService).buildService(TestScopes.EC2))
             .editMetadata()
             .withNamespace(NAMESPACE)
             .endMetadata()

@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.client.Config
@@ -118,7 +119,7 @@ class StressJobAnywhereIntegrationTest {
         assertThat(node.metadata.labels).doesNotContainKey(Constants.NODE_TYPE_LABEL)
 
         val started =
-            withClusterDiagnostics(client, Constants.Stress.NAMESPACE) {
+            withClusterDiagnostics(client, TestScopes.NAMESPACE) {
                 service
                     .startJob(
                         StressJobConfig(
@@ -142,7 +143,7 @@ class StressJobAnywhereIntegrationTest {
     private fun podName(): String =
         client
             .pods()
-            .inNamespace(Constants.Stress.NAMESPACE)
+            .inNamespace(TestScopes.NAMESPACE)
             .withLabel("job-name", JOB_NAME)
             .list()
             .items
@@ -159,7 +160,7 @@ class StressJobAnywhereIntegrationTest {
         val done = CompletableFuture<Int>()
         client
             .pods()
-            .inNamespace(Constants.Stress.NAMESPACE)
+            .inNamespace(TestScopes.NAMESPACE)
             .withName(pod)
             .inContainer(STRESS_CONTAINER)
             .writingOutput(out)

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.metrics
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -39,7 +40,7 @@ class Fabric8StressJobListerIntegrationTest {
             JobBuilder()
                 .withNewMetadata()
                 .withName(name)
-                .withNamespace(Constants.Stress.NAMESPACE)
+                .withNamespace(TestScopes.NAMESPACE)
                 .withLabels<String, String>(labels + ("job-name" to name))
                 .endMetadata()
                 .withNewStatus()
@@ -64,7 +65,7 @@ class Fabric8StressJobListerIntegrationTest {
                 .batch()
                 .v1()
                 .jobs()
-                .inNamespace(Constants.Stress.NAMESPACE)
+                .inNamespace(TestScopes.NAMESPACE)
                 .resource(job)
                 .create()
         }
@@ -78,7 +79,7 @@ class Fabric8StressJobListerIntegrationTest {
             PodBuilder()
                 .withNewMetadata()
                 .withName("$job-abc")
-                .withNamespace(Constants.Stress.NAMESPACE)
+                .withNamespace(TestScopes.NAMESPACE)
                 .withLabels<String, String>(stressLabels + ("job-name" to job))
                 .endMetadata()
                 .withNewSpec()
@@ -88,7 +89,7 @@ class Fabric8StressJobListerIntegrationTest {
         server.createClient().use {
             it
                 .pods()
-                .inNamespace(Constants.Stress.NAMESPACE)
+                .inNamespace(TestScopes.NAMESPACE)
                 .resource(pod)
                 .create()
         }
@@ -122,7 +123,7 @@ class Fabric8StressJobListerIntegrationTest {
                 .batch()
                 .v1()
                 .jobs()
-                .inNamespace(Constants.Stress.NAMESPACE)
+                .inNamespace(TestScopes.NAMESPACE)
                 .withName("cmd-1")
                 .delete()
         }

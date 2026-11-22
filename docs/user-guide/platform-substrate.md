@@ -176,7 +176,7 @@ All templates receive these standard variables from cluster state:
 | `__EASY_DB_LAB_EXEC__` | Path to the easy-db-lab executable |
 | `__RUNNING_KITS__` | Names of currently running kits |
 | `__OPENSEARCH_ENDPOINT__` | OpenSearch domain endpoint, if provisioned |
-| `__PYROSCOPE_URL__` | Where a kit's Pyroscope agent ships profiles: the Pyroscope Service (`http://pyroscope.default.svc:4040`), or the external stack on a telemetry-redirect cluster |
+| `__PYROSCOPE_URL__` | Where a kit's Pyroscope agent ships profiles: the Pyroscope Service (`http://pyroscope.<namespace>.svc:4040`, in the cluster's install namespace), or the external stack on a telemetry-redirect cluster |
 | `__TENANT__` | The cluster's observability tenant; send it as `-Dpyroscope.tenant.id` (it becomes `X-Scope-OrgID`) |
 
 Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
@@ -272,7 +272,7 @@ Three modes are supported:
 
 When a kit with `type: scrape` targets starts successfully, easy-db-lab:
 
-1. Creates one ConfigMap `easydblab-metrics-<kit>-<job>` per scrape target in the `default` namespace, labeled `easydblab.com/workload-metrics=true` and `easydblab.com/kit=<kit>`, containing the job name, port, and path.
+1. Creates one ConfigMap `easydblab-metrics-<kit>-<job>` per scrape target in the cluster's install namespace (`default` unless `init --namespace` named another), labeled `easydblab.com/workload-metrics=true` and `easydblab.com/kit=<kit>`, containing the job name, port, and path.
 2. Regenerates the OTel collector ConfigMap to include a Prometheus scrape job per target.
 3. Applies the updated OTel ConfigMap so the running collector picks it up.
 

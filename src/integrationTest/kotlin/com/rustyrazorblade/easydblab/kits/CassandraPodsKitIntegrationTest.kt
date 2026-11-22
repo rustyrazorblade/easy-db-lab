@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.agents.JavaAgent
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.DefaultK8sStorageOperations
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
@@ -378,6 +379,8 @@ class CassandraPodsKitIntegrationTest {
                     // local-volumes kit storage size), or the claim never binds and the pod stays Pending.
                     storageSize = Constants.K8s.LOCAL_KIT_STORAGE_SIZE,
                     storageClass = KIT_CLASS,
+                    namespace = TestScopes.NAMESPACE,
+                    clusterId = TestScopes.CLUSTER_ID,
                 ),
             ).getOrThrow()
     }

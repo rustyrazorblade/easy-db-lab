@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -35,7 +36,7 @@ class BeylaManifestBuilderTest : BaseKoinTest() {
 
     private fun renderedConfig(): String {
         val templates: TemplateService = getKoin().get()
-        return BeylaManifestBuilder(templates).buildConfigMap().data.getValue("beyla-config.yaml")
+        return BeylaManifestBuilder(templates).buildConfigMap(TestScopes.EC2).data.getValue("beyla-config.yaml")
     }
 
     @Test

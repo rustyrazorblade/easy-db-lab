@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBu
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -103,21 +104,23 @@ class ControlNodePortsTest : BaseKoinTest() {
     @Test
     fun `no two workloads on the control node's network share a port`() {
         val templates: TemplateService = getKoin().get()
-        val mimir = MimirManifestBuilder(templates).buildAllResources()
-        val loki = LokiManifestBuilder(templates).buildAllResources()
-        val tempo = TempoManifestBuilder(templates).buildAllResources()
+        val mimir = MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2)
+        val loki = LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2)
+        val tempo = TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2)
         val resources =
             mimir + loki + tempo +
-                OtelManifestBuilder(templates).buildAllResources(NodeCapabilities.AWS) +
-                OtelHostCollectorManifestBuilder(templates).buildAllResources(CniMode.Cilium) +
-                JournaldOtelManifestBuilder(templates).buildAllResources() +
-                EbpfExporterManifestBuilder().buildAllResources() +
-                BeylaManifestBuilder(templates).buildAllResources() +
-                PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
-                RegistryManifestBuilder().buildAllResources() +
-                S3ManagerManifestBuilder(templates).buildAllResources() +
-                YaceManifestBuilder(templates).buildAllResources()
+                OtelManifestBuilder(templates).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS) +
+                OtelHostCollectorManifestBuilder(templates).buildAllResources(TestScopes.EC2, CniMode.Cilium) +
+                JournaldOtelManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2) +
+                BeylaManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                PyroscopeManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                GrafanaManifestBuilder(
+                    templates,
+                ).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS) +
+                RegistryManifestBuilder().buildAllResources(TestScopes.EC2) +
+                S3ManagerManifestBuilder(templates).buildAllResources(TestScopes.EC2) +
+                YaceManifestBuilder(templates).buildAllResources(TestScopes.EC2)
 
         val configured =
             mapOf(

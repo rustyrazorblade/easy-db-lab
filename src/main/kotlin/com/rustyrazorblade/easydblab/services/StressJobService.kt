@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.stress.StressCluster
 import com.rustyrazorblade.easydblab.configuration.stress.StressJobManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.stress.StressSidecarConfig
@@ -150,13 +149,13 @@ class DefaultStressJobService(
         runCatching {
             log.info { "Starting stress job: ${config.jobName}" }
 
-            sidecarConfig.ensureConfigMap()
+            sidecarConfig.ensureConfigMap(StressCluster.from(clusterStateManager.load()))
 
             val job = buildJob(config)
 
             eventBus.emit(Event.Stress.JobStarting(config.jobName))
             k8sService
-                .createJob(Constants.Stress.NAMESPACE, job)
+                .createJob(namespace(), job)
                 .getOrThrow()
 
             waitForPodRunning(config.jobName)
@@ -216,7 +215,7 @@ class DefaultStressJobService(
 
             // Delete the job
             k8sService
-                .deleteJob(Constants.Stress.NAMESPACE, jobName)
+                .deleteJob(namespace(), jobName)
                 .getOrThrow()
 
             log.info { "Stopped stress job: $jobName" }
@@ -224,17 +223,17 @@ class DefaultStressJobService(
 
     override fun listJobs(): Result<List<KubernetesJob>> =
         k8sService.getJobsByLabel(
-            Constants.Stress.NAMESPACE,
+            namespace(),
             Constants.Stress.LABEL_KEY,
             Constants.Stress.LABEL_VALUE,
         )
 
-    override fun getPodsForJob(jobName: String): Result<List<KubernetesPod>> = k8sService.getPodsForJob(Constants.Stress.NAMESPACE, jobName)
+    override fun getPodsForJob(jobName: String): Result<List<KubernetesPod>> = k8sService.getPodsForJob(namespace(), jobName)
 
     override fun getPodLogs(
         podName: String,
         tailLines: Int?,
-    ): Result<String> = k8sService.getPodLogs(Constants.Stress.NAMESPACE, podName, tailLines)
+    ): Result<String> = k8sService.getPodLogs(namespace(), podName, tailLines)
 
     override fun runCommand(
         image: String,
@@ -249,14 +248,14 @@ class DefaultStressJobService(
             val job = buildCommandJob(jobName, image, args)
 
             k8sService
-                .createJob(Constants.Stress.NAMESPACE, job)
+                .createJob(namespace(), job)
                 .getOrThrow()
 
             try {
                 waitForJobAndGetLogs(jobName)
             } finally {
                 k8sService
-                    .deleteJob(Constants.Stress.NAMESPACE, jobName)
+                    .deleteJob(namespace(), jobName)
                     .onFailure { log.warn { "Failed to clean up command job: $jobName" } }
             }
         }
@@ -272,19 +271,19 @@ class DefaultStressJobService(
             done = { job -> job != null && (job.status == "Completed" || job.status == "Failed") },
         ) {
             k8sService
-                .getJobsByLabel(Constants.Stress.NAMESPACE, "job-name", jobName)
+                .getJobsByLabel(namespace(), "job-name", jobName)
                 .getOrElse { emptyList() }
                 .firstOrNull()
         }
 
         val pod =
             k8sService
-                .getPodsForJob(Constants.Stress.NAMESPACE, jobName)
+                .getPodsForJob(namespace(), jobName)
                 .getOrElse { emptyList() }
                 .firstOrNull()
                 ?: return ""
         return k8sService
-            .getPodLogs(Constants.Stress.NAMESPACE, pod.name, null)
+            .getPodLogs(namespace(), pod.name, null)
             .getOrElse { "" }
     }
 
@@ -300,5 +299,14 @@ class DefaultStressJobService(
         jobName: String,
         image: String,
         args: List<String>,
-    ): Job = StressJobManifestBuilder.buildCommandJob(jobName, image, args, RoleSelectors.from(clusterStateManager.load()).app)
+    ): Job {
+        val cluster = StressCluster.from(clusterStateManager.load())
+        return StressJobManifestBuilder.buildCommandJob(jobName, image, args, cluster.appSelector, cluster.namespace)
+    }
+
+    /**
+     * The cluster namespace stress Jobs run in, read from the state on each call so an `init
+     * --namespace` in the REPL applies to the next command.
+     */
+    private fun namespace(): String = StressCluster.from(clusterStateManager.load()).namespace.value
 }

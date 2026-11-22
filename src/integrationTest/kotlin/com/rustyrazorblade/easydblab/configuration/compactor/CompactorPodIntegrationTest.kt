@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.PodSpec
 import kotlinx.serialization.json.Json
@@ -157,14 +158,14 @@ class CompactorPodIntegrationTest {
 
     private fun podSpec(): PodSpec =
         builder()
-            .buildDeployment(remoteJar, S3Backend(bucket = bucket, region = SharedLocalStack.region()))
+            .buildDeployment(TestScopes.EC2, remoteJar, S3Backend(bucket = bucket, region = SharedLocalStack.region()))
             .spec.template.spec
 
     /** The pod's configuration files, pointed at LocalStack on its Docker network. */
     private fun configFiles(): Map<String, String> {
         val local = "host.testcontainers.internal:${SharedLocalStack.hostPort()}"
         val onNetwork = SharedLocalStack.networkAddress()
-        return builder().buildConfigMap().data.mapValues { (file, content) ->
+        return builder().buildConfigMap(TestScopes.EC2).data.mapValues { (file, content) ->
             when (file) {
                 MimirManifestBuilder.CONFIG_FILE -> ObservabilityBackends.mimirConfig(content)
                 LokiManifestBuilder.CONFIG_FILE -> ObservabilityBackends.lokiConfig(content)
@@ -321,7 +322,7 @@ class CompactorPodIntegrationTest {
 
     @Test
     fun `Mimir blocks compacted by the account compactor keep every sample, and a new Mimir reads them from the store`() {
-        val rendered = MimirManifestBuilder(templateService).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+        val rendered = MimirManifestBuilder(templateService).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
         val clusterConfig = ObservabilityBackends.mimirConfig(rendered)
         val mimirA =
             ObservabilityBackends.startMimir(clusterConfig, volume(), bucket, Constants.Observability.METRICS_ROOT).also {
@@ -365,11 +366,11 @@ class CompactorPodIntegrationTest {
     fun `log lines and traces compacted by the account compactor are all answered by a new Loki and Tempo from the store`() {
         val lokiConfig =
             ObservabilityBackends.lokiConfig(
-                LokiManifestBuilder(templateService).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE),
+                LokiManifestBuilder(templateService).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE),
             )
         val tempoConfig =
             ObservabilityBackends.tempoConfig(
-                TempoManifestBuilder(templateService).buildConfigMap().data.getValue("tempo.yaml"),
+                TempoManifestBuilder(templateService).buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml"),
             )
 
         // Two Lokis, as two clusters, each ship an index file for today's table, and two Tempos each

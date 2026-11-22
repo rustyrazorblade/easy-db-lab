@@ -33,6 +33,7 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -224,12 +225,11 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(10)
     fun `should apply OTel Collector resources`() {
-        val resources = OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS)
+        val resources = OtelManifestBuilder(templateService).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS)
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector")
-        assertClusterRoleExists("otel-collector")
-        assertClusterRoleBindingExists("otel-collector")
+        assertClusterRbacExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
         assertServiceExists("otel-collector")
@@ -238,12 +238,11 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(22)
     fun `should apply OTel host add-on resources`() {
-        val resources = OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium)
+        val resources = OtelHostCollectorManifestBuilder(templateService).buildAllResources(TestScopes.EC2, CniMode.Cilium)
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector-host")
-        assertClusterRoleExists("otel-collector-host")
-        assertClusterRoleBindingExists("otel-collector-host")
+        assertClusterRbacExists("otel-collector-host")
         assertConfigMapExists("otel-collector-host-config", "otel-host-collector-config.yaml")
         assertDaemonSetExists("otel-collector-host")
     }
@@ -251,7 +250,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(14)
     fun `should apply OTel Journald resources`() {
-        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources()
+        val resources = JournaldOtelManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertConfigMapExists("fluent-bit-journald-config", "fluent-bit-journald.yaml")
@@ -261,7 +260,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(11)
     fun `should apply ebpf_exporter resources`() {
-        val resources = EbpfExporterManifestBuilder().buildAllResources()
+        val resources = EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertDaemonSetExists("ebpf-exporter")
@@ -270,8 +269,8 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(12)
     fun `should apply Mimir and Loki resources`() {
-        applyAndVerify(MimirManifestBuilder(templateService).buildAllResources())
-        applyAndVerify(LokiManifestBuilder(templateService).buildAllResources())
+        applyAndVerify(MimirManifestBuilder(templateService).buildAllResources(TestScopes.EC2))
+        applyAndVerify(LokiManifestBuilder(templateService).buildAllResources(TestScopes.EC2))
 
         assertConfigMapExists("mimir-config", MimirManifestBuilder.CONFIG_FILE)
         assertServiceExists("mimir")
@@ -284,7 +283,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(13)
     fun `should apply Tempo resources`() {
-        val resources = TempoManifestBuilder(templateService).buildAllResources()
+        val resources = TempoManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertConfigMapExists("tempo-config", "tempo.yaml")
@@ -295,7 +294,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(15)
     fun `should apply Registry resources`() {
-        val resources = RegistryManifestBuilder().buildAllResources()
+        val resources = RegistryManifestBuilder().buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertDeploymentExists("registry")
@@ -304,7 +303,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(16)
     fun `should apply S3 Manager resources`() {
-        val resources = S3ManagerManifestBuilder(templateService).buildAllResources()
+        val resources = S3ManagerManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertDeploymentExists("s3manager")
@@ -313,7 +312,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(17)
     fun `should apply Beyla resources`() {
-        val resources = BeylaManifestBuilder(templateService).buildAllResources()
+        val resources = BeylaManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertConfigMapExists("beyla-config", "beyla-config.yaml")
@@ -323,15 +322,14 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(18)
     fun `should apply Pyroscope resources`() {
-        val resources = PyroscopeManifestBuilder(templateService).buildAllResources()
+        val resources = PyroscopeManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertConfigMapExists("pyroscope-config", "config.yaml")
         assertServiceExists("pyroscope")
         assertDeploymentExists("pyroscope")
         assertServiceAccountExists("pyroscope-ebpf")
-        assertClusterRoleExists("pyroscope-ebpf")
-        assertClusterRoleBindingExists("pyroscope-ebpf")
+        assertClusterRbacExists("pyroscope-ebpf")
         assertConfigMapExists("pyroscope-ebpf-config", "config.alloy")
         assertDaemonSetExists("pyroscope-ebpf")
     }
@@ -339,7 +337,7 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(19)
     fun `should apply YACE resources`() {
-        val resources = YaceManifestBuilder(templateService).buildAllResources()
+        val resources = YaceManifestBuilder(templateService).buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertConfigMapExists("yace-config", "yace-config.yaml")
@@ -349,12 +347,11 @@ class K8sServiceIntegrationTest {
     @Test
     @Order(20)
     fun `should apply kube-state-metrics resources`() {
-        val resources = KubeStateMetricsManifestBuilder().buildAllResources()
+        val resources = KubeStateMetricsManifestBuilder().buildAllResources(TestScopes.EC2)
         applyAndVerify(resources)
 
         assertServiceAccountExists("kube-state-metrics")
-        assertClusterRoleExists("kube-state-metrics")
-        assertClusterRoleBindingExists("kube-state-metrics")
+        assertClusterRbacExists("kube-state-metrics")
         assertServiceExists("kube-state-metrics")
         assertDeploymentExists("kube-state-metrics")
     }
@@ -365,12 +362,12 @@ class K8sServiceIntegrationTest {
         val builder = GrafanaManifestBuilder(templateService)
 
         // Apply provisioning ConfigMap
-        applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
+        applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap(TestScopes.EC2)))
         assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
         // Apply all resources including Deployment. Dashboards are files on the hostPath, not
         // K8s objects, so nothing per dashboard is expected here.
-        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS))
+        applyAndVerify(builder.buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS))
         assertDeploymentExists("grafana")
         assertServiceExists("grafana")
     }
@@ -383,7 +380,11 @@ class K8sServiceIntegrationTest {
         Scratch.entries.forEach { k3s.execInContainer("mkdir", "-p", it.hostPath) }
         k3s.execInContainer("sh", "-c", "mkdir -p ${CompactorAgentJar.AGENT_DIR} && touch ${CompactorAgentJar(jar).hostPath}")
 
-        applyAndVerify(CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar(jar), templateService.storeBackend()))
+        applyAndVerify(
+            CompactorManifestBuilder(
+                templateService,
+            ).buildAllResources(TestScopes.EC2, CompactorAgentJar(jar), templateService.storeBackend()),
+        )
 
         assertConfigMapExists(CompactorManifestBuilder.CONFIGMAP_NAME, CompactorManifestBuilder.GATE_SCRIPT)
         assertDeploymentExists(CompactorManifestBuilder.NAME)
@@ -400,11 +401,34 @@ class K8sServiceIntegrationTest {
     fun `every account compactor image can be pulled`() {
         val pod =
             CompactorManifestBuilder(templateService)
-                .buildDeployment(CompactorAgentJar("0".repeat(64)), S3Backend(bucket = "easy-db-lab-test", region = "us-west-2"))
-                .spec.template.spec
+                .buildDeployment(
+                    TestScopes.EC2,
+                    CompactorAgentJar("0".repeat(64)),
+                    S3Backend(bucket = "easy-db-lab-test", region = "us-west-2"),
+                ).spec.template.spec
         val images = (pod.initContainers + pod.containers).map { it.image }.distinct()
 
         assertThat(images).contains(Constants.Compactor.AGENT_IMAGE, Constants.Compactor.GATE_IMAGE)
+        assertThat(images).allSatisfy { image ->
+            val result = k3s.execInContainer("crictl", "pull", image)
+            assertThat(result.exitCode).describedAs("crictl pull $image: ${result.stderr}").isZero()
+        }
+    }
+
+    /**
+     * Both images of the Pyroscope server's pod, the server and its digest-pinned ingest front, can
+     * be pulled by K3s's containerd, as the control node pulls them.
+     */
+    @Test
+    @Order(22)
+    fun `every Pyroscope server pod image can be pulled`() {
+        val images =
+            PyroscopeManifestBuilder(templateService)
+                .buildServerDeployment(TestScopes.EC2)
+                .spec.template.spec.containers
+                .map { it.image }
+
+        assertThat(images).containsExactlyInAnyOrder(PyroscopeManifestBuilder.SERVER_IMAGE, Constants.PyroscopeServer.FRONT_IMAGE)
         assertThat(images).allSatisfy { image ->
             val result = k3s.execInContainer("crictl", "pull", image)
             assertThat(result.exitCode).describedAs("crictl pull $image: ${result.stderr}").isZero()
@@ -527,6 +551,7 @@ class K8sServiceIntegrationTest {
                 storageSize = "1Gi",
                 storageClass = LIFECYCLE_CLASS,
                 namespace = DEFAULT_NAMESPACE,
+                clusterId = TestScopes.CLUSTER_ID,
                 volumeClaimTemplateName = "data",
             )
         k3s.execInContainer("mkdir", "-p", "/tmp/recycletest")
@@ -620,6 +645,7 @@ class K8sServiceIntegrationTest {
                         storageSize = "1Gi",
                         storageClass = AFFINITY_CLASS,
                         namespace = DEFAULT_NAMESPACE,
+                        clusterId = TestScopes.CLUSTER_ID,
                         nodeType = "db",
                     ),
                 ).getOrThrow()
@@ -663,6 +689,7 @@ class K8sServiceIntegrationTest {
                         storageSize = "1Gi",
                         storageClass = "edl-local-$kit",
                         namespace = DEFAULT_NAMESPACE,
+                        clusterId = TestScopes.CLUSTER_ID,
                     ),
                 ).getOrThrow()
         }
@@ -927,42 +954,53 @@ class K8sServiceIntegrationTest {
         assertThat(sa).withFailMessage("ServiceAccount '$name' not found").isNotNull
     }
 
-    private fun assertClusterRoleExists(name: String) {
-        val cr =
+    /**
+     * The ClusterRole and ClusterRoleBinding of [base] exist under the scope's cluster-scoped name,
+     * the name the builders take from the same [TestScopes.EC2], and the binding grants that role
+     * to the [base] ServiceAccount in the scope's namespace.
+     */
+    private fun assertClusterRbacExists(base: String) {
+        val name = TestScopes.EC2.clusterScoped(base)
+        val role =
             client
                 .rbac()
                 .clusterRoles()
                 .withName(name)
                 .get()
-        assertThat(cr).withFailMessage("ClusterRole '$name' not found").isNotNull
-    }
-
-    private fun assertClusterRoleBindingExists(name: String) {
-        val crb =
+        assertThat(role).withFailMessage("ClusterRole '$name' not found").isNotNull
+        val binding =
             client
                 .rbac()
                 .clusterRoleBindings()
                 .withName(name)
                 .get()
-        assertThat(crb).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
+        assertThat(binding).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
+        assertThat(binding.roleRef.kind).isEqualTo("ClusterRole")
+        assertThat(binding.roleRef.name).isEqualTo(name)
+        assertThat(binding.subjects.map { Triple(it.kind, it.name, it.namespace) })
+            .containsExactly(Triple("ServiceAccount", base, TestScopes.NAMESPACE))
     }
 
     private fun collectAllResources(): List<HasMetadata> =
-        JournaldOtelManifestBuilder(templateService).buildAllResources() +
-            OtelManifestBuilder(templateService).buildAllResources(NodeCapabilities.AWS) +
-            OtelHostCollectorManifestBuilder(templateService).buildAllResources(CniMode.Cilium) +
-            EbpfExporterManifestBuilder().buildAllResources() +
-            MimirManifestBuilder(templateService).buildAllResources() +
-            LokiManifestBuilder(templateService).buildAllResources() +
-            TempoManifestBuilder(templateService).buildAllResources() +
-            RegistryManifestBuilder().buildAllResources() +
-            S3ManagerManifestBuilder(templateService).buildAllResources() +
-            BeylaManifestBuilder(templateService).buildAllResources() +
-            PyroscopeManifestBuilder(templateService).buildAllResources() +
-            YaceManifestBuilder(templateService).buildAllResources() +
-            KubeStateMetricsManifestBuilder().buildAllResources() +
-            CompactorManifestBuilder(templateService).buildAllResources(CompactorAgentJar("0".repeat(64)), templateService.storeBackend()) +
-            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS)
+        JournaldOtelManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            OtelManifestBuilder(templateService).buildAllResources(TestScopes.EC2, NodeCapabilities.AWS) +
+            OtelHostCollectorManifestBuilder(templateService).buildAllResources(TestScopes.EC2, CniMode.Cilium) +
+            EbpfExporterManifestBuilder().buildAllResources(TestScopes.EC2) +
+            MimirManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            LokiManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            TempoManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            RegistryManifestBuilder().buildAllResources(TestScopes.EC2) +
+            S3ManagerManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            BeylaManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            PyroscopeManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            YaceManifestBuilder(templateService).buildAllResources(TestScopes.EC2) +
+            KubeStateMetricsManifestBuilder().buildAllResources(TestScopes.EC2) +
+            CompactorManifestBuilder(
+                templateService,
+            ).buildAllResources(TestScopes.EC2, CompactorAgentJar("0".repeat(64)), templateService.storeBackend()) +
+            GrafanaManifestBuilder(
+                templateService,
+            ).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), ObservabilityHosting.AWS)
 
     private fun waitForPvcBound(
         pvcName: String,

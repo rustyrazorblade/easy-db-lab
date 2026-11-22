@@ -5,8 +5,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolume
-import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
-import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
 
@@ -172,49 +170,14 @@ class DefaultK8sStorageOperations(
 
             clientProvider.createClient().use { client ->
                 for (ordinal in 0 until config.count) {
-                    val pvName = "${config.volumeClaimTemplateName}-${config.dbName}-$ordinal"
+                    val pv = KitLocalVolume.build(config, ordinal)
+                    val pvName = pv.metadata.name
 
                     val existing = client.persistentVolumes().withName(pvName).get()
                     if (existing != null) {
                         clearStaleClaimRefUid(client, existing, pvName)
                         continue
                     }
-
-                    val pv =
-                        PersistentVolumeBuilder()
-                            .withNewMetadata()
-                            .withName(pvName)
-                            .addToLabels(Constants.PV_KIT_LABEL, config.dbName)
-                            .addToLabels("app.kubernetes.io/component", "data")
-                            .endMetadata()
-                            .withNewSpec()
-                            .addToCapacity("storage", Quantity(config.storageSize))
-                            .withAccessModes(Constants.K8s.READ_WRITE_ONCE)
-                            .withPersistentVolumeReclaimPolicy("Retain")
-                            .withStorageClassName(config.storageClass)
-                            .withNewLocal()
-                            .withPath(config.localPath)
-                            .endLocal()
-                            // db and app nodes both carry ordinals, so the ordinal alone would let
-                            // a db PV bind on the app node with the same ordinal.
-                            .withNewNodeAffinity()
-                            .withNewRequired()
-                            .addNewNodeSelectorTerm()
-                            .addNewMatchExpression()
-                            .withKey(Constants.NODE_TYPE_LABEL)
-                            .withOperator("In")
-                            .withValues(config.nodeType)
-                            .endMatchExpression()
-                            .addNewMatchExpression()
-                            .withKey(Constants.NODE_ORDINAL_LABEL)
-                            .withOperator("In")
-                            .withValues(ordinal.toString())
-                            .endMatchExpression()
-                            .endNodeSelectorTerm()
-                            .endRequired()
-                            .endNodeAffinity()
-                            .endSpec()
-                            .build()
 
                     client.persistentVolumes().resource(pv).create()
                     log.info { "Created PV $pvName on node ordinal $ordinal" }

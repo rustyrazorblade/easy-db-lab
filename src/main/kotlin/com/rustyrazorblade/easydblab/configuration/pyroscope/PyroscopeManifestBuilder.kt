@@ -2,11 +2,13 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -44,13 +46,17 @@ class PyroscopeManifestBuilder(
     private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
-        private const val NAMESPACE = "default"
-
         // Pyroscope server constants
         private const val SERVER_APP_LABEL = Constants.K8s.PYROSCOPE_APP_LABEL
         private const val SERVER_CONFIGMAP_NAME = "pyroscope-config"
         const val SERVER_IMAGE = "grafana/pyroscope:2.3.1"
         const val SERVER_PORT = 4040
+
+        /** The ConfigMap key of the server's config file. */
+        const val SERVER_CONFIG_KEY = "config.yaml"
+
+        /** The ConfigMap key of the ingest front's HAProxy config; the Service targets the front instead of [SERVER_PORT]. */
+        const val FRONT_CONFIG_KEY = "ingest-front.cfg"
 
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
@@ -85,9 +91,10 @@ class PyroscopeManifestBuilder(
      *   eBPF ConfigMap, eBPF DaemonSet
      */
     fun buildAllResources(
+        scope: InstallScope,
         telemetryRedirect: TelemetryRedirect? = null,
         hosting: ObservabilityHosting = ObservabilityHosting.AWS,
-    ): List<HasMetadata> = buildServerResources(hosting) + buildAgentResources(telemetryRedirect)
+    ): List<HasMetadata> = buildServerResources(scope, hosting) + buildAgentResources(scope, telemetryRedirect)
 
     /**
      * Builds the Pyroscope server resources (ConfigMap, Service, Deployment).
@@ -95,13 +102,18 @@ class PyroscopeManifestBuilder(
      * A redirect cluster ships profiles to an external Pyroscope and never stands up this server,
      * so the observability stack deploys these only in local mode.
      */
-    fun buildServerResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildServerConfigMap(), buildServerService(hosting.publishing)) +
-            hosting.host(buildServerPodTemplate(), STATE, isBackend = true)
+    fun buildServerResources(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> =
+        listOf(buildServerConfigMap(scope), buildServerService(scope, hosting.publishing)) +
+            hosting.host(buildServerPodTemplate(scope), STATE, isBackend = true)
 
     /** The Pyroscope server Deployment as [hosting] runs it. */
-    fun buildServerDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildServerPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
+    fun buildServerDeployment(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): Deployment = hosting.host(buildServerPodTemplate(scope), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /**
      * Builds the Grafana Alloy eBPF agent resources (RBAC, ConfigMap, DaemonSet).
@@ -110,13 +122,16 @@ class PyroscopeManifestBuilder(
      * under redirect, injected as the DaemonSet's `PYROSCOPE_WRITE_URL` env var by
      * [buildEbpfDaemonSet].
      */
-    fun buildAgentResources(telemetryRedirect: TelemetryRedirect? = null): List<HasMetadata> =
+    fun buildAgentResources(
+        scope: InstallScope,
+        telemetryRedirect: TelemetryRedirect? = null,
+    ): List<HasMetadata> =
         listOf(
-            buildEbpfServiceAccount(),
-            buildEbpfClusterRole(),
-            buildEbpfClusterRoleBinding(),
-            buildEbpfConfigMap(),
-            buildEbpfDaemonSet(telemetryRedirect),
+            buildEbpfServiceAccount(scope),
+            buildEbpfClusterRole(scope),
+            buildEbpfClusterRoleBinding(scope),
+            buildEbpfConfigMap(scope),
+            buildEbpfDaemonSet(scope, telemetryRedirect),
         )
 
     /**
@@ -125,11 +140,11 @@ class PyroscopeManifestBuilder(
      * Required so the `discovery.kubernetes` component in config.alloy can list pods
      * to attribute eBPF samples to the owning pod/container/service_name.
      */
-    fun buildEbpfServiceAccount() =
+    fun buildEbpfServiceAccount(scope: InstallScope) =
         ServiceAccountBuilder()
             .withNewMetadata()
             .withName(EBPF_SERVICE_ACCOUNT_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .build()
@@ -140,10 +155,10 @@ class PyroscopeManifestBuilder(
      * `discovery.kubernetes` with `role = "pod"` needs list/watch on pods cluster-wide
      * (scoped per-node at query time via a field selector) to resolve container id → pod.
      */
-    fun buildEbpfClusterRole() =
+    fun buildEbpfClusterRole(scope: InstallScope) =
         ClusterRoleBuilder()
             .withNewMetadata()
-            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(EBPF_CLUSTER_ROLE_NAME))
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .addNewRule()
@@ -156,32 +171,33 @@ class PyroscopeManifestBuilder(
     /**
      * Builds the ClusterRoleBinding linking the eBPF ServiceAccount to its ClusterRole.
      */
-    fun buildEbpfClusterRoleBinding() =
+    fun buildEbpfClusterRoleBinding(scope: InstallScope) =
         ClusterRoleBindingBuilder()
             .withNewMetadata()
-            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(EBPF_CLUSTER_ROLE_NAME))
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .withNewRoleRef()
             .withApiGroup("rbac.authorization.k8s.io")
             .withKind("ClusterRole")
-            .withName(EBPF_CLUSTER_ROLE_NAME)
+            .withName(scope.clusterScoped(EBPF_CLUSTER_ROLE_NAME))
             .endRoleRef()
             .addNewSubject()
             .withKind("ServiceAccount")
             .withName(EBPF_SERVICE_ACCOUNT_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .endSubject()
             .build()
 
     /**
-     * Builds the Pyroscope server ConfigMap containing config.yaml.
+     * Builds the Pyroscope server ConfigMap: the server's config.yaml and the ingest front's
+     * HAProxy configuration ([FRONT_CONFIG_KEY]).
      */
-    fun buildServerConfigMap() =
+    fun buildServerConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(SERVER_CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .addToData(
@@ -189,22 +205,44 @@ class PyroscopeManifestBuilder(
                 templateService
                     .fromString(storeBlocks.renderResource(PyroscopeManifestBuilder::class.java, "config.yaml"))
                     .substitute(),
-            ).build()
+            ).addToData(FRONT_CONFIG_KEY, buildFrontConfig())
+            .build()
 
-    /** The Pyroscope server Service on 4040; [publishing] puts it on [Constants.K8s.PYROSCOPE_NODE_PORT]. */
-    fun buildServerService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+    /**
+     * The ingest front's HAProxy configuration: it listens on [Constants.PyroscopeServer.FRONT_PORT]
+     * and forwards to the server on the pod's loopback, answering 503 for the 422 "service is
+     * unavailable" the server sends while it shuts down.
+     */
+    fun buildFrontConfig(): String =
+        templateService
+            .fromResource(PyroscopeManifestBuilder::class.java, FRONT_CONFIG_KEY)
+            .substitute(
+                mapOf(
+                    "FRONT_PORT" to Constants.PyroscopeServer.FRONT_PORT.toString(),
+                    "SERVER_PORT" to SERVER_PORT.toString(),
+                ),
+            )
+
+    /**
+     * The Pyroscope Service on 4040, sent to the ingest front; [publishing] puts it on
+     * [Constants.K8s.PYROSCOPE_NODE_PORT].
+     */
+    fun buildServerService(
+        scope: InstallScope,
+        publishing: ServicePublishing = ServicePublishing.ClusterIp,
+    ): Service =
         publishing.publish(
-            clusterIpService(),
+            clusterIpService(scope),
             mapOf(
                 "http" to Constants.K8s.PYROSCOPE_NODE_PORT,
             ),
         )
 
-    private fun clusterIpService(): Service =
+    private fun clusterIpService(scope: InstallScope): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(SERVER_APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -212,7 +250,7 @@ class PyroscopeManifestBuilder(
             .addNewPort()
             .withName("http")
             .withPort(SERVER_PORT)
-            .withNewTargetPort(SERVER_PORT)
+            .withNewTargetPort(Constants.PyroscopeServer.FRONT_PORT)
             .withProtocol("TCP")
             .endPort()
             .addToSelector("app.kubernetes.io/name", SERVER_APP_LABEL)
@@ -229,11 +267,11 @@ class PyroscopeManifestBuilder(
      * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 takes
      * tens of seconds to start; see [Constants.PyroscopeProbes].
      */
-    private fun buildServerPodTemplate(): Deployment =
+    private fun buildServerPodTemplate(scope: InstallScope): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(SERVER_APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -250,7 +288,7 @@ class PyroscopeManifestBuilder(
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withContainers(buildServerContainer())
+            .withContainers(buildServerContainer(), buildFrontContainer())
             .addNewVolume()
             .withName("config")
             .withConfigMap(
@@ -270,14 +308,14 @@ class PyroscopeManifestBuilder(
         ContainerBuilder()
             .withName(SERVER_APP_LABEL)
             .withImage(SERVER_IMAGE)
-            .withArgs("-config.file=/etc/pyroscope/config.yaml")
+            .withArgs("-config.file=${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$SERVER_CONFIG_KEY")
             .addNewPort()
             .withContainerPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()
             .withName("config")
-            .withMountPath("/etc/pyroscope")
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
             .endVolumeMount()
             .addNewVolumeMount()
             .withName("data")
@@ -308,6 +346,45 @@ class PyroscopeManifestBuilder(
             .build()
 
     /**
+     * The ingest front: HAProxy on [Constants.PyroscopeServer.FRONT_PORT], reading [FRONT_CONFIG_KEY]
+     * from the server's ConfigMap. While the server container is down and the pod is up, the
+     * front's connection to it is refused and it answers 503, which every client retries too.
+     *
+     * Its readiness probe asks the front for `/ready`, which it passes through to the server, so a
+     * front that crashed or never bound its port takes the pod out of the Service instead of
+     * leaving pushes to a dead port. Its liveness probe is a TCP connect, so the kubelet restarts
+     * a front that stopped listening but never one whose server is only starting or stopping.
+     */
+    private fun buildFrontContainer(): Container =
+        ContainerBuilder()
+            .withName(Constants.PyroscopeServer.FRONT_NAME)
+            .withImage(Constants.PyroscopeServer.FRONT_IMAGE)
+            .withArgs("-f", "${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$FRONT_CONFIG_KEY")
+            .addNewPort()
+            .withContainerPort(Constants.PyroscopeServer.FRONT_PORT)
+            .withProtocol("TCP")
+            .endPort()
+            .addNewVolumeMount()
+            .withName("config")
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
+            .withReadOnly(true)
+            .endVolumeMount()
+            .withNewReadinessProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_READINESS_PERIOD_SECONDS)
+            .endReadinessProbe()
+            .withNewLivenessProbe()
+            .withNewTcpSocket()
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endTcpSocket()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_LIVENESS_PERIOD_SECONDS)
+            .endLivenessProbe()
+            .build()
+
+    /**
      * Builds the eBPF agent ConfigMap containing config.alloy.
      *
      * config.alloy carries no `__KEY__` placeholders: the cluster name and the Pyroscope write URL
@@ -317,11 +394,11 @@ class PyroscopeManifestBuilder(
      * two values silently left them unresolved. `substitute()` runs with no resolvable variables
      * and leaves the Alloy meta labels untouched.
      */
-    fun buildEbpfConfigMap() =
+    fun buildEbpfConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(EBPF_CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .addToData(
@@ -365,11 +442,14 @@ class PyroscopeManifestBuilder(
      *
      * @param telemetryRedirect when non-null, profiles are written to [TelemetryRedirect.profiles].
      */
-    fun buildEbpfDaemonSet(telemetryRedirect: TelemetryRedirect? = null): DaemonSet =
+    fun buildEbpfDaemonSet(
+        scope: InstallScope,
+        telemetryRedirect: TelemetryRedirect? = null,
+    ): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(EBPF_APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", EBPF_APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -387,7 +467,7 @@ class PyroscopeManifestBuilder(
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()
-            .addToContainers(buildAlloyContainer(telemetryRedirect))
+            .addToContainers(buildAlloyContainer(scope, telemetryRedirect))
             .addAllToVolumes(buildAlloyVolumes())
             .endSpec()
             .endTemplate()
@@ -395,7 +475,10 @@ class PyroscopeManifestBuilder(
             .build()
 
     /** The privileged Alloy container: eBPF profiling plus the loopback profiles relay. */
-    private fun buildAlloyContainer(telemetryRedirect: TelemetryRedirect?): Container =
+    private fun buildAlloyContainer(
+        scope: InstallScope,
+        telemetryRedirect: TelemetryRedirect?,
+    ): Container =
         ContainerBuilder()
             .withName("alloy")
             .withImage(ALLOY_IMAGE)
@@ -403,7 +486,7 @@ class PyroscopeManifestBuilder(
                 "run",
                 "--server.http.listen-addr=0.0.0.0:$ALLOY_PORT",
                 "/etc/alloy/config.alloy",
-            ).withEnv(buildAlloyEnv(telemetryRedirect))
+            ).withEnv(buildAlloyEnv(scope, telemetryRedirect))
             .withSecurityContext(
                 SecurityContextBuilder()
                     .withPrivileged(true)
@@ -423,7 +506,10 @@ class PyroscopeManifestBuilder(
             ).build()
 
     /** The env vars config.alloy reads with `sys.env(...)`, plus the node name Alloy reports as. */
-    private fun buildAlloyEnv(telemetryRedirect: TelemetryRedirect?): List<EnvVar> =
+    private fun buildAlloyEnv(
+        scope: InstallScope,
+        telemetryRedirect: TelemetryRedirect?,
+    ): List<EnvVar> =
         listOf(
             EnvVarBuilder()
                 .withName("HOSTNAME")
@@ -434,7 +520,11 @@ class PyroscopeManifestBuilder(
                 .endValueFrom()
                 .build(),
             EnvVarBuilder().withName("CLUSTER_NAME").withValue(resolveClusterName()).build(),
-            EnvVarBuilder().withName("PYROSCOPE_WRITE_URL").withValue(pyroscopeIngestBaseUrl(telemetryRedirect)).build(),
+            EnvVarBuilder()
+                .withName(
+                    "PYROSCOPE_WRITE_URL",
+                ).withValue(pyroscopeIngestBaseUrl(telemetryRedirect, ServiceDns(scope.namespace)))
+                .build(),
             EnvVarBuilder()
                 .withName("TENANT")
                 .withNewValueFrom()

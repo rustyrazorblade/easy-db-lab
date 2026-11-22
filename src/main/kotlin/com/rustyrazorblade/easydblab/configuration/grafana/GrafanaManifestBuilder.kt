@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -45,7 +46,6 @@ class GrafanaManifestBuilder(
     companion object {
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
         const val DEPLOYMENT_NAME = "grafana"
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = Constants.K8s.GRAFANA_APP_LABEL
 
         /** The Grafana image the cluster deploys; tests run the same one. */
@@ -90,13 +90,13 @@ class GrafanaManifestBuilder(
      *
      * One file provider over the copied tree; see [GrafanaDashboardProvisioningConfig].
      */
-    fun buildDashboardProvisioningConfigMap(): ConfigMap {
+    fun buildDashboardProvisioningConfigMap(scope: InstallScope): ConfigMap {
         val dashboardsYaml = GrafanaDashboardProvisioningConfig.forDashboardTree().toYaml()
 
         return ConfigMapBuilder()
             .withNewMetadata()
             .withName(PROVISIONING_CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData("dashboards.yaml", dashboardsYaml)
@@ -113,22 +113,27 @@ class GrafanaManifestBuilder(
      * @return Fabric8 Deployment object
      */
     fun buildDeployment(
+        scope: InstallScope,
         documents: DocumentsBucket,
         hosting: ObservabilityHosting,
-    ): Deployment = hostedResources(documents, hosting).filterIsInstance<Deployment>().single()
+    ): Deployment = hostedResources(scope, documents, hosting).filterIsInstance<Deployment>().single()
 
     private fun hostedResources(
+        scope: InstallScope,
         documents: DocumentsBucket,
         hosting: ObservabilityHosting,
-    ): List<HasMetadata> = hosting.host(buildPodTemplate(documents), STATE, isBackend = false)
+    ): List<HasMetadata> = hosting.host(buildPodTemplate(scope, documents), STATE, isBackend = false)
 
-    private fun buildPodTemplate(documents: DocumentsBucket): Deployment {
+    private fun buildPodTemplate(
+        scope: InstallScope,
+        documents: DocumentsBucket,
+    ): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
         return DeploymentBuilder()
             .withNewMetadata()
             .withName(DEPLOYMENT_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -164,19 +169,22 @@ class GrafanaManifestBuilder(
      * does Mimir, Loki, Tempo and Pyroscope, rather than through a pod; [publishing] puts it on
      * [Constants.K8s.GRAFANA_NODE_PORT].
      */
-    fun buildService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+    fun buildService(
+        scope: InstallScope,
+        publishing: ServicePublishing = ServicePublishing.ClusterIp,
+    ): Service =
         publishing.publish(
-            clusterIpService(),
+            clusterIpService(scope),
             mapOf(
                 "http" to Constants.K8s.GRAFANA_NODE_PORT,
             ),
         )
 
-    private fun clusterIpService(): Service =
+    private fun clusterIpService(scope: InstallScope): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -200,12 +208,13 @@ class GrafanaManifestBuilder(
      * @return List of all Grafana K8s resources in apply order
      */
     fun buildAllResources(
+        scope: InstallScope,
         documents: DocumentsBucket,
         hosting: ObservabilityHosting,
     ): List<HasMetadata> =
-        listOf(buildDashboardProvisioningConfigMap(), front.configMap(documents)) +
-            hostedResources(documents, hosting) +
-            buildService(hosting.publishing)
+        listOf(buildDashboardProvisioningConfigMap(scope), front.configMap(scope, documents)) +
+            hostedResources(scope, documents, hosting) +
+            buildService(scope, hosting.publishing)
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()

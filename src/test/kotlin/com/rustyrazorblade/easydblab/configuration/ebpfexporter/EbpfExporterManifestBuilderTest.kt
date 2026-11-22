@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterMani
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.OVERRIDDEN_PROGRAMS
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.objectFile
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder.Companion.overrideVolumeName
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -22,7 +23,7 @@ class EbpfExporterManifestBuilderTest {
         val builder = EbpfExporterManifestBuilder()
         val args =
             builder
-                .buildDaemonSet()
+                .buildDaemonSet(TestScopes.EC2)
                 .spec.template.spec.containers
                 .first()
                 .args
@@ -106,7 +107,7 @@ class EbpfExporterManifestBuilderTest {
 
     @Test
     fun `each overridden object is mounted from the AMI over the image copy`() {
-        val daemonSet = EbpfExporterManifestBuilder().buildDaemonSet()
+        val daemonSet = EbpfExporterManifestBuilder().buildDaemonSet(TestScopes.EC2)
         val spec = daemonSet.spec.template.spec
         val mounts = spec.containers.first().volumeMounts
 

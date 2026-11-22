@@ -6,10 +6,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
+import com.rustyrazorblade.easydblab.services.access.ClusterService
 import com.rustyrazorblade.easydblab.services.access.RouteServiceAccess
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -137,10 +138,11 @@ class ObservabilityHttpRouteIntegrationTest : BaseKoinTest() {
     }
 
     /** The merged [ObservabilityHttp] over a looked-up [route], as a `metrics stream` cycle builds it. */
-    private fun routed(route: ObservabilityRoute) = DefaultObservabilityHttp(RouteServiceAccess(state, route), state::tenant, factory)
+    private fun routed(route: ObservabilityRoute) =
+        DefaultObservabilityHttp(RouteServiceAccess(state, route), state::tenant, { TestScopes.EC2.namespace }, factory)
 
     /** A Service on the control node whose port is the mock server's. */
-    private fun target(port: Int) = ServiceTarget(Constants.K8s.NAMESPACE, "mock", port, ServerType.Control, port)
+    private fun target(port: Int) = ClusterService("mock", port, ServerType.Control, port)
 
     private object DeadSocksSelector : ProxySelector() {
         override fun select(uri: URI): List<Proxy> = listOf(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 1)))

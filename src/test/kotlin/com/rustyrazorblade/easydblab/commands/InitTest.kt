@@ -1270,6 +1270,66 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class Namespace {
+        @Test
+        fun `--namespace is recorded in the init configuration`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--namespace", "lab-a")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).replace(argThat { initConfig?.namespace == "lab-a" })
+        }
+
+        /** With no flag nothing is recorded, so the contract supplies the environment default. */
+        @Test
+        fun `no --namespace records no namespace`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).replace(argThat { initConfig != null && initConfig?.namespace == null })
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = ["Lab_A", "lab-", "-lab"])
+        fun `an invalid namespace fails before anything is saved, naming it and the rule`(namespace: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--namespace", namespace)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'$namespace'")
+                .hasMessageContaining("DNS-1123")
+            verify(mockClusterStateManager, never()).replace(any())
+        }
+
+        @Test
+        fun `a 64-character namespace fails before anything is saved`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--namespace", "a".repeat(64))
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(IllegalArgumentException::class.java)
+            verify(mockClusterStateManager, never()).replace(any())
+        }
+
+        @Test
+        fun `kube-system fails before anything is saved, naming it as reserved`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--namespace", "kube-system")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'kube-system' is reserved")
+            verify(mockClusterStateManager, never()).replace(any())
+        }
+    }
+
+    @Nested
     inner class ClusterName {
         /** 40 characters is the longest name the rule allows. */
         @ParameterizedTest

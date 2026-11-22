@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.access
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
@@ -70,15 +72,19 @@ class StatusAddresses(
     private val log = KotlinLogging.logger {}
     private val forwarded = state.exposure == Exposure.PortForward
 
-    /** The address of one cluster [target] Service, as an HTTP URL. */
-    fun service(target: ServiceTarget): StatusAddress =
-        if (forwarded) {
+    private val namespace = InstallScope.of(state, ClusterContract.of(state)).namespace
+
+    /** The address of one cluster [service] in the cluster's namespace, as an HTTP URL. */
+    fun service(service: ClusterService): StatusAddress {
+        val target = service.inNamespace(namespace)
+        return if (forwarded) {
             forwardedAddress(target.namespace, target.service, target.servicePort, target.servicePort) { host, port ->
                 "http://$host:$port"
             }
         } else {
             StatusAddress("http://${state.nodeAddressFor(target)}:${target.nodePort}")
         }
+    }
 
     /** The observability backends, Mimir under the path its Prometheus API is served on. */
     fun observability(): ObservabilityAddresses =

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -25,7 +26,6 @@ class JournaldOtelManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "fluent-bit-journald"
         private const val CONFIGMAP_NAME = "fluent-bit-journald-config"
         const val CONFIG_DATA_KEY = "fluent-bit-journald.yaml"
@@ -43,17 +43,17 @@ class JournaldOtelManifestBuilder(
      *
      * @return List of: ConfigMap, DaemonSet
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildConfigMap(),
-            buildDaemonSet(),
+            buildConfigMap(scope),
+            buildDaemonSet(scope),
         )
 
-    fun buildConfigMap() =
+    fun buildConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -73,11 +73,11 @@ class JournaldOtelManifestBuilder(
             ).build()
 
     @Suppress("LongMethod")
-    fun buildDaemonSet() =
+    fun buildDaemonSet(scope: InstallScope) =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()

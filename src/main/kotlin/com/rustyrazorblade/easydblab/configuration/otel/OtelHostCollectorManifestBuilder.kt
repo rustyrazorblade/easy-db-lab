@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.Container
@@ -44,7 +46,6 @@ class OtelHostCollectorManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
-        private val NAMESPACE = Constants.K8s.NAMESPACE
         private const val NAME = Constants.OtelCollector.HOST_COLLECTOR_NAME
         private const val NAME_LABEL = "app.kubernetes.io/name"
         private const val CONFIGMAP_NAME = "otel-collector-host-config"
@@ -75,21 +76,24 @@ class OtelHostCollectorManifestBuilder(
      * @param cni The cluster's CNI; Cilium adds the agent, Hubble and operator scrape jobs.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet
      */
-    fun buildAllResources(cni: CniMode): List<HasMetadata> =
+    fun buildAllResources(
+        scope: InstallScope,
+        cni: CniMode,
+    ): List<HasMetadata> =
         listOf(
-            buildServiceAccount(),
-            buildClusterRole(),
-            buildClusterRoleBinding(),
-            buildConfigMap(cni),
-            buildDaemonSet(),
+            buildServiceAccount(scope),
+            buildClusterRole(scope),
+            buildClusterRoleBinding(scope),
+            buildConfigMap(scope, cni),
+            buildDaemonSet(scope),
         )
 
     /** The add-on's own ServiceAccount, so its API access is its own, not the core's. */
-    fun buildServiceAccount() =
+    fun buildServiceAccount(scope: InstallScope) =
         ServiceAccountBuilder()
             .withNewMetadata()
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(NAME_LABEL, NAME)
             .endMetadata()
             .build()
@@ -98,10 +102,10 @@ class OtelHostCollectorManifestBuilder(
      * Read access to pods, for the pod-discovery scrape of the Cilium operator, and to nodes, for the
      * node-discovery scrape of etcd.
      */
-    fun buildClusterRole() =
+    fun buildClusterRole(scope: InstallScope) =
         ClusterRoleBuilder()
             .withNewMetadata()
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .addToLabels(NAME_LABEL, NAME)
             .endMetadata()
             .addNewRule()
@@ -112,38 +116,40 @@ class OtelHostCollectorManifestBuilder(
             .build()
 
     /** Binds [buildClusterRole] to the add-on's ServiceAccount. */
-    fun buildClusterRoleBinding() =
+    fun buildClusterRoleBinding(scope: InstallScope) =
         ClusterRoleBindingBuilder()
             .withNewMetadata()
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .addToLabels(NAME_LABEL, NAME)
             .endMetadata()
             .withNewRoleRef()
             .withApiGroup("rbac.authorization.k8s.io")
             .withKind("ClusterRole")
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .endRoleRef()
             .addNewSubject()
             .withKind("ServiceAccount")
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .endSubject()
             .build()
 
     /** The add-on's config, with the CNI scrape jobs rendered in. */
-    fun buildConfigMap(cni: CniMode) =
-        ConfigMapBuilder()
-            .withNewMetadata()
-            .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels(NAME_LABEL, NAME)
-            .endMetadata()
-            .addToData(
-                CONFIG_DATA_KEY,
-                templateService
-                    .fromResource(OtelHostCollectorManifestBuilder::class.java, CONFIG_DATA_KEY)
-                    .substitute(mapOf("HOST_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildHostScrapeJobs(cni)))),
-            ).build()
+    fun buildConfigMap(
+        scope: InstallScope,
+        cni: CniMode,
+    ) = ConfigMapBuilder()
+        .withNewMetadata()
+        .withName(CONFIGMAP_NAME)
+        .withNamespace(scope.namespace.value)
+        .addToLabels(NAME_LABEL, NAME)
+        .endMetadata()
+        .addToData(
+            CONFIG_DATA_KEY,
+            templateService
+                .fromResource(OtelHostCollectorManifestBuilder::class.java, CONFIG_DATA_KEY)
+                .substitute(mapOf("HOST_SCRAPE_JOBS" to PrometheusScrapeJob.render(buildHostScrapeJobs(cni)))),
+        ).build()
 
     /**
      * The add-on's scrape jobs built in Kotlin (their relabel rules name Prometheus meta labels,
@@ -213,11 +219,11 @@ class OtelHostCollectorManifestBuilder(
      * The add-on DaemonSet: host network, privileged root, the host root and log directories
      * mounted read-only, on every node (it tolerates every taint).
      */
-    fun buildDaemonSet() =
+    fun buildDaemonSet(scope: InstallScope) =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(NAME_LABEL, NAME)
             .endMetadata()
             .withNewSpec()
@@ -228,12 +234,12 @@ class OtelHostCollectorManifestBuilder(
             .withNewMetadata()
             .addToLabels(NAME_LABEL, NAME)
             .endMetadata()
-            .withSpec(buildPodSpec())
+            .withSpec(buildPodSpec(scope))
             .endTemplate()
             .endSpec()
             .build()
 
-    private fun buildPodSpec(): PodSpec =
+    private fun buildPodSpec(scope: InstallScope): PodSpec =
         PodSpecBuilder()
             .withServiceAccountName(NAME)
             .withHostNetwork(true)
@@ -241,11 +247,11 @@ class OtelHostCollectorManifestBuilder(
             .addNewToleration()
             .withOperator("Exists")
             .endToleration()
-            .withContainers(buildContainer())
+            .withContainers(buildContainer(scope))
             .withVolumes(buildVolumes())
             .build()
 
-    private fun buildContainer(): Container =
+    private fun buildContainer(scope: InstallScope): Container =
         ContainerBuilder()
             .withName(NAME)
             .withImage(OtelManifestBuilder.IMAGE)
@@ -257,7 +263,7 @@ class OtelHostCollectorManifestBuilder(
                     .build(),
             ).withArgs("--config=$CONFIG_PATH")
             .withPorts(containerPorts())
-            .withEnv(env())
+            .withEnv(env(scope))
             .withVolumeMounts(volumeMounts())
             .withLivenessProbe(healthProbe(LIVENESS_INITIAL_DELAY, LIVENESS_PERIOD))
             .withReadinessProbe(healthProbe(READINESS_INITIAL_DELAY, READINESS_PERIOD))
@@ -281,13 +287,13 @@ class OtelHostCollectorManifestBuilder(
         .withName(name)
         .build()
 
-    private fun env(): List<EnvVar> =
+    private fun env(scope: InstallScope): List<EnvVar> =
         listOf(
             fieldEnv("K8S_NODE_NAME", "spec.nodeName"),
             clusterConfigEnv("CLUSTER_NAME", "cluster_name"),
             EnvVarBuilder()
                 .withName("OTEL_CORE_ENDPOINT")
-                .withValue("${OtelEndpoints.serviceHost(NAMESPACE)}:${Constants.K8s.OTEL_GRPC_PORT}")
+                .withValue(ServiceDns(scope.namespace).collectorGrpcHostPort())
                 .build(),
         )
 

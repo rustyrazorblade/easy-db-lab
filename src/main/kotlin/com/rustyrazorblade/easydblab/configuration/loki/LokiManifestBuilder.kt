@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.StateVolume
 import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -40,7 +41,6 @@ class LokiManifestBuilder(
     private val storeBlocks: StoreBlockRenderer = StoreBlockRenderer.of(templateService::storeBackend),
 ) {
     companion object {
-        private const val NAMESPACE = Constants.K8s.NAMESPACE
         private const val APP_LABEL = Constants.K8s.LOKI_APP_LABEL
         private const val CONFIGMAP_NAME = "loki-config"
         private const val CONFIG_MOUNT_PATH = "/etc/loki"
@@ -75,19 +75,25 @@ class LokiManifestBuilder(
      * @param hosting where the Deployment is placed and keeps its state.
      * @return ConfigMap, Service, the state claim when [hosting] uses one, Deployment
      */
-    fun buildAllResources(hosting: ObservabilityHosting = ObservabilityHosting.AWS): List<HasMetadata> =
-        listOf(buildConfigMap(), buildService(hosting.publishing)) + hosting.host(buildPodTemplate(), STATE, isBackend = true)
+    fun buildAllResources(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): List<HasMetadata> =
+        listOf(buildConfigMap(scope), buildService(scope, hosting.publishing)) +
+            hosting.host(buildPodTemplate(scope), STATE, isBackend = true)
 
     /** The Loki Deployment as [hosting] runs it. */
-    fun buildDeployment(hosting: ObservabilityHosting = ObservabilityHosting.AWS): Deployment =
-        hosting.host(buildPodTemplate(), STATE, isBackend = true).filterIsInstance<Deployment>().single()
+    fun buildDeployment(
+        scope: InstallScope,
+        hosting: ObservabilityHosting = ObservabilityHosting.AWS,
+    ): Deployment = hosting.host(buildPodTemplate(scope), STATE, isBackend = true).filterIsInstance<Deployment>().single()
 
     /** The ConfigMap holding `loki.yaml`. */
-    fun buildConfigMap(): ConfigMap =
+    fun buildConfigMap(scope: InstallScope): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -96,19 +102,22 @@ class LokiManifestBuilder(
             ).build()
 
     /** Loki's Service over HTTP and gRPC; [publishing] puts the HTTP port on [Constants.K8s.LOKI_NODE_PORT]. */
-    fun buildService(publishing: ServicePublishing = ServicePublishing.ClusterIp): Service =
+    fun buildService(
+        scope: InstallScope,
+        publishing: ServicePublishing = ServicePublishing.ClusterIp,
+    ): Service =
         publishing.publish(
-            clusterIpService(),
+            clusterIpService(scope),
             mapOf(
                 "http" to Constants.K8s.LOKI_NODE_PORT,
             ),
         )
 
-    private fun clusterIpService(): Service =
+    private fun clusterIpService(scope: InstallScope): Service =
         ServiceBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()
@@ -139,11 +148,11 @@ class LokiManifestBuilder(
      * can outlast any liveness budget after a restart.
      */
     @Suppress("LongMethod")
-    private fun buildPodTemplate(): Deployment =
+    private fun buildPodTemplate(scope: InstallScope): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()

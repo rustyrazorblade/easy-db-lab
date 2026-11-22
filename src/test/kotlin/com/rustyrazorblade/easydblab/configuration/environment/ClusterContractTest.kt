@@ -223,6 +223,39 @@ class ClusterContractTest {
         assertThat(source.current().networkMode).isEqualTo(NetworkMode.Direct)
     }
 
+    /**
+     * Until the kits take the cluster namespace (#1094 PR 2), a brought cluster keeps the EKS slice's
+     * `default`, so the stack and the kits never split across two namespaces (design D10).
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environments")
+    fun `with no recorded namespace every environment resolves default`(environment: Environment) {
+        assertThat(ClusterContract.of(stateFor(environment)).namespace).isEqualTo("default")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environments")
+    fun `a recorded namespace wins in every environment`(environment: Environment) {
+        val state = stateFor(environment).copy(initConfig = InitConfig(region = "us-east-1", namespace = "lab-a"))
+
+        assertThat(ClusterContract.of(state).namespace).isEqualTo("lab-a")
+    }
+
+    /** The REPL and the server resolve the contract per command, so an `init --namespace` applies to the next one. */
+    @Test
+    fun `a namespace recorded after the source was built is seen on the next call`(
+        @TempDir tempDir: File,
+    ) {
+        val manager = ClusterStateManager(File(tempDir, "state.json"))
+        val source = StateClusterContractSource(manager)
+        manager.replace(stateFor(Environment.Ec2K3s))
+        assertThat(source.current().namespace).isEqualTo("default")
+
+        manager.replace(stateFor(Environment.Ec2K3s).copy(initConfig = InitConfig(namespace = "lab-a")))
+
+        assertThat(source.current().namespace).isEqualTo("lab-a")
+    }
+
     companion object {
         @JvmStatic
         fun environments(): List<Environment> = listOf(Environment.Ec2K3s, Environment.K3sDocker("/d"), Environment.Kubeconfig("/k"))
@@ -298,7 +331,7 @@ class ClusterContractTest {
                             StoreCredentials.NotProvided,
                             ServicePublishing.ClusterIp,
                         ),
-                    namespace = "easy-db-lab",
+                    namespace = "default",
                     recordedDatacenter = "dc1",
                     clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     guaranteedPods = false,

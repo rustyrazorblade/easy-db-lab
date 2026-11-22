@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -87,7 +88,7 @@ class KitStatusCommand(
     }
 
     private fun checkFallbackState(kubeService: K8sService): KitRunningState =
-        stateOfPods(kubeService, podSelector(kitName, runtime = null), "default", ::runningOrStopped)
+        stateOfPods(kubeService, podSelector(kitName, runtime = null), Constants.ContractDefaults.OWNED_NAMESPACE, ::runningOrStopped)
 
     /**
      * Lists the kit's pods and derives its state from them. A failed query is

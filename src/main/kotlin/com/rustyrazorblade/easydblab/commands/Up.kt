@@ -40,6 +40,7 @@ import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.services.InstallNamespace
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.NodeSetupService
@@ -126,6 +127,7 @@ class Up(
     private val ciliumInstallAnnotator: CiliumInstallAnnotator by inject()
     private val kitStorageResolver: KitStorageResolver by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
+    private val installNamespace: InstallNamespace by inject()
     private val podNetworkTuning: PodNetworkTuning by inject()
     private val nodeSetupService: NodeSetupService by inject()
     private val hostOperationsService: HostOperationsService by inject()
@@ -316,7 +318,7 @@ class Up(
             }
         if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
         val initConfig = writer.read { it.initConfig }
-        UpPostSteps(podNetworkTuning, kitStorageResolver, observabilityStackService, ciliumInstallAnnotator, eventBus)
+        UpPostSteps(installNamespace, podNetworkTuning, kitStorageResolver, observabilityStackService, ciliumInstallAnnotator, eventBus)
             .run(localTelemetry = initConfig?.telemetryRedirect == null, kitStorageClass = initConfig?.kitStorageClass)
         if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
     }

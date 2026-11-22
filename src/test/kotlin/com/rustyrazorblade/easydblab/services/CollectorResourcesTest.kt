@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
@@ -43,10 +44,8 @@ class CollectorResourcesTest : BaseKoinTest() {
         val resources: List<HasMetadata> =
             CollectorResources.build(
                 OtelManifestBuilder(getKoin().get()),
-                state,
-                "us-west-2",
+                CollectorInputs(state, "us-west-2", capabilities, TestScopes.EC2),
                 emptyList(),
-                capabilities,
             )
         return checkNotNull(resources.filterIsInstance<ConfigMap>().single().data["otel-collector-config.yaml"])
     }
@@ -72,7 +71,7 @@ class CollectorResourcesTest : BaseKoinTest() {
 
     private fun daemonSet(capabilities: NodeCapabilities): DaemonSet =
         CollectorResources
-            .build(OtelManifestBuilder(getKoin().get()), state, "us-west-2", emptyList(), capabilities)
+            .build(OtelManifestBuilder(getKoin().get()), CollectorInputs(state, "us-west-2", capabilities, TestScopes.EC2), emptyList())
             .filterIsInstance<DaemonSet>()
             .single()
 }

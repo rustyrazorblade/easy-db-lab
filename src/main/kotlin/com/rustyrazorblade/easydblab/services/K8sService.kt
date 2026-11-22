@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
@@ -19,6 +20,7 @@ import java.nio.file.Path
  * @property storageSize Storage capacity (e.g., "100Gi")
  * @property storageClass StorageClass name
  * @property namespace Namespace for PVC binding
+ * @property clusterId The cluster whose ownership labels the PVs carry
  * @property volumeClaimTemplateName Name of the volume claim template
  * @property nodeType The node pool (`db`, `app`) the PVs are on; each PV requires that pool as well
  *   as its ordinal, since db and app nodes both carry ordinals
@@ -29,7 +31,8 @@ data class PersistentVolumeConfig(
     val count: Int,
     val storageSize: String,
     val storageClass: String,
-    val namespace: String = "default",
+    val namespace: String,
+    val clusterId: String,
     val volumeClaimTemplateName: String = "data",
     val nodeType: String = ServerType.Cassandra.serverType,
 )
@@ -99,12 +102,6 @@ interface K8sJobOperations {
  * Operations for managing Kubernetes namespaces, pods, and resource lifecycle.
  */
 interface K8sNamespaceOperations {
-    fun getObservabilityStatus(): Result<String>
-
-    fun deleteObservability(): Result<Unit>
-
-    fun waitForPodsReady(timeoutSeconds: Int): Result<Unit>
-
     fun waitForPodsReady(
         timeoutSeconds: Int,
         namespace: String,
@@ -122,12 +119,12 @@ interface K8sNamespaceOperations {
 
     fun rolloutRestartDeployment(
         name: String,
-        namespace: String = Constants.K8s.NAMESPACE,
+        namespace: String,
     ): Result<Unit>
 
     fun rolloutRestartDaemonSet(
         name: String,
-        namespace: String = Constants.K8s.NAMESPACE,
+        namespace: String,
     ): Result<Unit>
 
     /**
@@ -257,26 +254,43 @@ interface K8sService :
  *
  * @property clientProvider Shared provider for creating Kubernetes clients
  * @property eventBus Event bus for emitting domain events
+ * @property manifests The apply path; [owned] wraps it in [OwnedManifestOperations]
+ * @property jobs The Job create path; [owned] wraps it in [OwnedJobOperations]
+ * @property storage The ConfigMap create path; [owned] wraps it in [OwnedStorageOperations]
  */
 class DefaultK8sService(
     clientProvider: K8sClientProvider,
     eventBus: EventBus,
+    manifests: K8sManifestOperations = DefaultK8sManifestOperations(clientProvider, eventBus),
+    jobs: K8sJobOperations = DefaultK8sJobOperations(clientProvider, eventBus),
+    storage: K8sStorageOperations = DefaultK8sStorageOperations(clientProvider, eventBus),
 ) : K8sService,
-    K8sManifestOperations by DefaultK8sManifestOperations(
-        clientProvider,
-        eventBus,
-    ),
-    K8sJobOperations by DefaultK8sJobOperations(
-        clientProvider,
-        eventBus,
-    ),
+    K8sManifestOperations by manifests,
+    K8sJobOperations by jobs,
     K8sNamespaceOperations by DefaultK8sNamespaceOperations(
         clientProvider,
         eventBus,
     ),
-    K8sStorageOperations by DefaultK8sStorageOperations(
-        clientProvider,
-        eventBus,
-    ),
+    K8sStorageOperations by storage,
     K8sPodOperations by DefaultK8sPodOperations(clientProvider),
-    K8sReadOperations by DefaultK8sReadOperations(clientProvider)
+    K8sReadOperations by DefaultK8sReadOperations(clientProvider) {
+    companion object {
+        /**
+         * The service the CLI runs with: every create path (typed apply, Job create, ConfigMap
+         * create) adds the ownership labels of [scopeSource]'s cluster, so a sweep by the cluster
+         * label finds every object it made (design D6).
+         */
+        fun owned(
+            clientProvider: K8sClientProvider,
+            eventBus: EventBus,
+            scopeSource: InstallScopeSource,
+        ): DefaultK8sService =
+            DefaultK8sService(
+                clientProvider,
+                eventBus,
+                manifests = OwnedManifestOperations(DefaultK8sManifestOperations(clientProvider, eventBus), scopeSource),
+                jobs = OwnedJobOperations(DefaultK8sJobOperations(clientProvider, eventBus), scopeSource),
+                storage = OwnedStorageOperations(DefaultK8sStorageOperations(clientProvider, eventBus), scopeSource),
+            )
+    }
+}

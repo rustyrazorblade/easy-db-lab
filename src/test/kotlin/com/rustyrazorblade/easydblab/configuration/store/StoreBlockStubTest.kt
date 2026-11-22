@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -71,10 +72,14 @@ class StoreBlockStubTest : BaseKoinTest() {
 
     private fun render(name: String): String =
         when (name) {
-            "mimir" -> MimirManifestBuilder(templates(), stub).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
-            "loki" -> LokiManifestBuilder(templates(), stub).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
-            "tempo" -> TempoManifestBuilder(templates(), stub).buildConfigMap().data.getValue("tempo.yaml")
-            "pyroscope" -> PyroscopeManifestBuilder(templates(), stub).buildServerConfigMap().data.getValue("config.yaml")
+            "mimir" ->
+                MimirManifestBuilder(
+                    templates(),
+                    stub,
+                ).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
+            "loki" -> LokiManifestBuilder(templates(), stub).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE)
+            "tempo" -> TempoManifestBuilder(templates(), stub).buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
+            "pyroscope" -> PyroscopeManifestBuilder(templates(), stub).buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml")
             "compactor tempo-backend" -> compactorConfigs().getValue(CompactorManifestBuilder.TEMPO_BACKEND_FILE)
             else -> error("unknown config $name")
         }
@@ -105,7 +110,7 @@ class StoreBlockStubTest : BaseKoinTest() {
     }
 
     /** The compactor ConfigMap's files, rendered with the stub. */
-    private fun compactorConfigs(): Map<String, String> = CompactorManifestBuilder(templates(), stub).buildConfigMap().data
+    private fun compactorConfigs(): Map<String, String> = CompactorManifestBuilder(templates(), stub).buildConfigMap(TestScopes.EC2).data
 
     @Test
     fun `the compactor reads the cluster's mimir and loki configs with the store block placed`() {

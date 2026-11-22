@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelHostCollectorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.ServiceAccount
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
@@ -89,7 +90,7 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         client = SharedK3s.client()
         // Each stop closes the client it is handed, so every call gets a fresh one.
         val clientProvider = WorkspaceK8s.provider(SharedK3s.kubeConfigYaml())
-        senders = K8sTelemetrySenders(clientProvider, namespace, pollInterval = Duration.ofMillis(POLL_MILLIS))
+        senders = K8sTelemetrySenders(clientProvider, { namespace }, pollInterval = Duration.ofMillis(POLL_MILLIS))
     }
 
     @AfterEach
@@ -132,13 +133,17 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     /** Applies the cluster's core collector DaemonSet and ServiceAccount to [namespace] and waits for its pod. */
     private fun deployCollector() {
         val builder = OtelManifestBuilder(getKoin().get())
-        deploy(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, builder.buildServiceAccount(), builder.buildDaemonSet())
+        deploy(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, builder.buildServiceAccount(TestScopes.EC2), builder.buildDaemonSet(TestScopes.EC2))
     }
 
     /** Applies the host add-on's DaemonSet and ServiceAccount to [namespace] and waits for its pod. */
     private fun deployHostCollector() {
         val builder = OtelHostCollectorManifestBuilder(getKoin().get())
-        deploy(Constants.OtelCollector.HOST_COLLECTOR_NAME, builder.buildServiceAccount(), builder.buildDaemonSet())
+        deploy(
+            Constants.OtelCollector.HOST_COLLECTOR_NAME,
+            builder.buildServiceAccount(TestScopes.EC2),
+            builder.buildDaemonSet(TestScopes.EC2),
+        )
     }
 
     private fun deploy(

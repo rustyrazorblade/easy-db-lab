@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.services.LogQl
 import java.security.MessageDigest
 
@@ -44,12 +44,12 @@ data class BackendUrls(
          * The backends as Grafana reaches them inside the cluster: by each backend's ClusterIP
          * Service name, so neither Grafana nor a backend has to share a node or its network.
          */
-        val IN_CLUSTER =
+        fun inCluster(serviceDns: ServiceDns): BackendUrls =
             BackendUrls(
-                metrics = "${BackendEndpoints.mimir()}/prometheus",
-                logs = BackendEndpoints.loki(),
-                traces = BackendEndpoints.tempo(),
-                profiles = BackendEndpoints.pyroscope(),
+                metrics = "${serviceDns.mimir()}/prometheus",
+                logs = serviceDns.loki(),
+                traces = serviceDns.tempo(),
+                profiles = serviceDns.pyroscope(),
             )
     }
 }

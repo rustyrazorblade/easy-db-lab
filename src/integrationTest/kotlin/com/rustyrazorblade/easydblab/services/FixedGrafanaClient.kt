@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.services.access.ServiceAccess
@@ -23,4 +24,5 @@ fun fixedGrafanaClient(
 
             override fun close() = Unit
         },
+        { TestScopes.EC2 },
     )

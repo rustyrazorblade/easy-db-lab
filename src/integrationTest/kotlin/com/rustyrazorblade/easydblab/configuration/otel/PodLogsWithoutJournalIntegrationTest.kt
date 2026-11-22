@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -252,7 +253,7 @@ class PodLogsWithoutJournalIntegrationTest : BaseKoinTest() {
 
     /** The real collector DaemonSet, rendered for an environment with no capabilities. */
     private fun deployCollector(client: KubernetesClient) {
-        OtelManifestBuilder(getKoin().get()).buildAllResources(NodeCapabilities.LOCAL_DOCKER).forEach {
+        OtelManifestBuilder(getKoin().get()).buildAllResources(TestScopes.EC2, NodeCapabilities.LOCAL_DOCKER).forEach {
             client.resource(it).inNamespace("default").create()
         }
         awaitReady(client, "the collector") {

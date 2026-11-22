@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.kubestatemetrics
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.ServiceAccount
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -20,14 +21,14 @@ class KubeStateMetricsManifestBuilderTest {
 
     @Test
     fun `buildAllResources yields the five resources in apply order`() {
-        val kinds = builder.buildAllResources().map { it.kind }
+        val kinds = builder.buildAllResources(TestScopes.EC2).map { it.kind }
 
         assertThat(kinds).containsExactly("ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Service", "Deployment")
     }
 
     @Test
     fun `every ClusterRole rule grants list and watch and nothing else`() {
-        val role = builder.buildClusterRole()
+        val role = builder.buildClusterRole(TestScopes.EC2)
 
         assertThat(role.rules).isNotEmpty
         assertThat(role.rules).allSatisfy { rule ->
@@ -38,7 +39,7 @@ class KubeStateMetricsManifestBuilderTest {
 
     @Test
     fun `ClusterRole covers the objects the default collectors read`() {
-        val byGroup = builder.buildClusterRole().rules.associate { it.apiGroups.single() to it.resources }
+        val byGroup = builder.buildClusterRole(TestScopes.EC2).rules.associate { it.apiGroups.single() to it.resources }
 
         assertThat(byGroup[""]).contains("pods", "nodes", "persistentvolumeclaims", "persistentvolumes")
         assertThat(byGroup["apps"]).contains("deployments", "daemonsets", "statefulsets")
@@ -48,7 +49,7 @@ class KubeStateMetricsManifestBuilderTest {
 
     @Test
     fun `ClusterRoleBinding binds the ServiceAccount the Deployment runs as to the ClusterRole`() {
-        val resources = builder.buildAllResources()
+        val resources = builder.buildAllResources(TestScopes.EC2)
         val serviceAccount = resources.filterIsInstance<ServiceAccount>().single()
         val role = resources.filterIsInstance<ClusterRole>().single()
         val binding = resources.filterIsInstance<ClusterRoleBinding>().single()
@@ -65,7 +66,7 @@ class KubeStateMetricsManifestBuilderTest {
 
     @Test
     fun `Deployment is one replica on the control node in the pod network`() {
-        val spec = builder.buildDeployment().spec
+        val spec = builder.buildDeployment(TestScopes.EC2).spec
         val pod = spec.template.spec
 
         assertThat(spec.replicas).isEqualTo(1)
@@ -78,7 +79,7 @@ class KubeStateMetricsManifestBuilderTest {
 
     @Test
     fun `the collector's scrape job and the Service both target the container's metrics port`() {
-        val resources = builder.buildAllResources()
+        val resources = builder.buildAllResources(TestScopes.EC2)
         val container =
             resources
                 .filterIsInstance<Deployment>()

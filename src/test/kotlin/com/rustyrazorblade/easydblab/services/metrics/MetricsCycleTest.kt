@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
@@ -170,7 +171,7 @@ class MetricsCycleTest : BaseKoinTest() {
                 routes = { route },
                 httpClientFactory = clientFactory,
                 mimirFor = { routed ->
-                    routes += (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR)
+                    routes += (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace))
                     DefaultMimirQueryService(http)
                 },
             )
@@ -198,7 +199,7 @@ class MetricsCycleTest : BaseKoinTest() {
                 routes = { error("the recorded tunnel is looked up only on a Socks cluster") },
                 httpClientFactory = clientFactory,
                 mimirFor = { routed ->
-                    endpoint = (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR)
+                    endpoint = (routed as DefaultObservabilityHttp).access.open(ClusterServices.MIMIR.inNamespace(TestScopes.EC2.namespace))
                     DefaultMimirQueryService(http)
                 },
                 stressJobs =

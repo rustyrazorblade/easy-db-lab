@@ -15,6 +15,9 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeW
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaFront
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -106,7 +109,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
         hosting: ObservabilityHosting = ObservabilityHosting.AWS,
         tenant: String = "acme",
         pyroscopeUrl: String = PYROSCOPE_URL,
-    ) = service().deploy(context(tenant), "acct-bucket", hosting, pyroscopeUrl)
+    ) = service().deploy(context(tenant), "acct-bucket", hosting, pyroscopeUrl, TestScopes.EC2)
 
     private fun applied(): List<HasMetadata> {
         val captor = argumentCaptor<HasMetadata>()
@@ -121,7 +124,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
     @Test
     fun `Grafana reaches each backend by its Service DNS name, never localhost`() {
-        service().createDatasourcesConfigMap(TenantSet.of("acme"))
+        service().createDatasourcesConfigMap(TenantSet.of("acme"), TestScopes.EC2)
 
         val data = argumentCaptor<Map<String, String>>()
         verify(mockK8sService).createConfigMap(any(), any(), data.capture(), any())
@@ -136,8 +139,20 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `in another namespace the datasources are written there and reach that namespace's Services`() {
+        service().createDatasourcesConfigMap(TenantSet.of("acme"), InstallScope(K8sNamespace("lab-a"), "id-1"))
+
+        val data = argumentCaptor<Map<String, String>>()
+        verify(mockK8sService).createConfigMap(eq("lab-a"), any(), data.capture(), any())
+        val yaml = checkNotNull(data.firstValue["datasources.yaml"])
+        assertThat(yaml)
+            .contains("http://mimir.lab-a.svc:9009/prometheus", "http://loki.lab-a.svc:3100")
+            .doesNotContain(".default.svc")
+    }
+
+    @Test
     fun `createDatasourcesConfigMap calls k8sService with correct params`() {
-        val result = service().createDatasourcesConfigMap(TenantSet.of("acme"))
+        val result = service().createDatasourcesConfigMap(TenantSet.of("acme"), TestScopes.EC2)
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
@@ -167,7 +182,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     fun `a catalog with two paths for one ConfigMap name fails the deploy before anything is written`() {
         val clashing = clashingService()
 
-        val result = clashing.deploy(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL)
+        val result = clashing.deploy(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL, TestScopes.EC2)
 
         assertThat(result.exceptionOrNull()).hasMessageContaining("a-b/c.json").hasMessageContaining("a/b-c.json")
         verify(mockK8sService, never()).createConfigMap(any(), any(), any(), any())
@@ -178,7 +193,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
     fun `a dashboard tree that fails validation is never reported as rendered`() {
         val emitted = recordEvents()
 
-        val result = clashingService().prepare(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL)
+        val result = clashingService().prepare(context("acme"), "acct-bucket", ObservabilityHosting.AWS, PYROSCOPE_URL, TestScopes.EC2)
 
         assertThat(result.isFailure).isTrue()
         assertThat(emitted.filterIsInstance<Event.Grafana.DashboardsRendered>()).isEmpty()

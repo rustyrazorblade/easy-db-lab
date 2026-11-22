@@ -2,10 +2,14 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesErrorHandler
+import com.rustyrazorblade.easydblab.services.tenancy.NamespaceEnsurer
+import com.rustyrazorblade.easydblab.services.tenancy.NamespacePlan
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.Status
 import io.fabric8.kubernetes.api.model.StatusBuilder
@@ -34,6 +38,8 @@ import java.nio.file.Path
 class CapabilityProbeFailureIntegrationTest {
     private companion object {
         const val NAMESPACE = "probe-mock"
+        val SCOPE = InstallScope(K8sNamespace(NAMESPACE), "probe-cluster")
+        const val NAMESPACES_PATH = "/api/v1/namespaces"
         const val PODS_PATH = "/api/v1/namespaces/$NAMESPACE/pods?dryRun=All"
         const val WEBHOOK = "kyverno-resource-validating-webhook-cfg"
     }
@@ -140,7 +146,7 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("get", "namespaces", "namespaces \"$NAMESPACE\"")),
             ).always()
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -153,7 +159,7 @@ class CapabilityProbeFailureIntegrationTest {
     fun `a created namespace that no ServiceAccount controller serves gets its default ServiceAccount from the probe and is probed`() {
         answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
 
-        val result = probe().probe(api, NAMESPACE)
+        val result = probe().probe(api, SCOPE)
 
         assertThat(result.capabilities.present())
             .containsExactly(NodeCapability.PRIVILEGED, NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
@@ -173,7 +179,7 @@ class CapabilityProbeFailureIntegrationTest {
         createNamespace()
         answerPods("no-such-pod", status(Constants.HttpStatus.FORBIDDEN, "Forbidden", "unused"))
 
-        probe().probe(api, NAMESPACE)
+        probe().probe(api, SCOPE)
 
         server.createClient().use { client ->
             assertThat(
@@ -197,7 +203,7 @@ class CapabilityProbeFailureIntegrationTest {
                 status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("create", "serviceaccounts", "serviceaccounts")),
             ).always()
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -205,6 +211,63 @@ class CapabilityProbeFailureIntegrationTest {
             .hasMessageContaining("creating the default ServiceAccount")
             .hasMessageContaining("User \"alice\" cannot create resource \"serviceaccounts\"")
         assertForbiddenCauseNeedsClusterAdmin(thrown)
+    }
+
+    @Test
+    fun `a namespace create that loses a race is planned again from the namespace that won, which is adopted`() {
+        // The winner is already stored, but the first read reports it absent and the create conflicts,
+        // as when another `up` or probe created it between this one's read and its create.
+        createNamespace()
+        server
+            .expect()
+            .get()
+            .withPath("/api/v1/namespaces/$NAMESPACE")
+            .andReturn(Constants.HttpStatus.NOT_FOUND, status(Constants.HttpStatus.NOT_FOUND, "NotFound", "not found"))
+            .once()
+        server
+            .expect()
+            .post()
+            .withPath(NAMESPACES_PATH)
+            .andReturn(
+                Constants.HttpStatus.CONFLICT,
+                status(Constants.HttpStatus.CONFLICT, "AlreadyExists", "namespaces \"$NAMESPACE\" already exists"),
+            ).once()
+
+        val plan = server.createClient().use { NamespaceEnsurer.ensure(it, SCOPE) }
+
+        assertThat(plan).isInstanceOf(NamespacePlan.Adopt::class.java)
+        server.createClient().use { client ->
+            assertThat(
+                client
+                    .namespaces()
+                    .withName(NAMESPACE)
+                    .get()
+                    .metadata.labels,
+            ).containsAllEntriesOf(SCOPE.labels)
+        }
+    }
+
+    @Test
+    fun `a forbidden namespace create fails the probe naming the namespace, keeps the 403, and is not retried`() {
+        server
+            .expect()
+            .post()
+            .withPath(NAMESPACES_PATH)
+            .andReturn(
+                Constants.HttpStatus.FORBIDDEN,
+                status(Constants.HttpStatus.FORBIDDEN, "Forbidden", rbacDenial("create", "namespaces", "namespaces")),
+            ).always()
+
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
+
+        assertThat(thrown)
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'$NAMESPACE'")
+            .hasMessageContaining("ensuring the namespace")
+            .hasMessageContaining("User \"alice\" cannot create resource \"namespaces\"")
+        assertForbiddenCauseNeedsClusterAdmin(thrown)
+        val creates = List(server.requestCount) { server.takeRequest() }.count { it.method == "POST" && it.path == NAMESPACES_PATH }
+        assertThat(creates).isEqualTo(1)
     }
 
     /** The probe leaves the cluster-admin explanation to the Kubernetes handler, which reads the kept 403. */
@@ -229,7 +292,7 @@ class CapabilityProbeFailureIntegrationTest {
             ),
         )
 
-        val thrown = catchThrowable { probe().probe(api, NAMESPACE) }
+        val thrown = catchThrowable { probe().probe(api, SCOPE) }
 
         assertThat(thrown)
             .isInstanceOf(IllegalStateException::class.java)
@@ -256,7 +319,7 @@ class CapabilityProbeFailureIntegrationTest {
             ),
         )
 
-        val result = probe().probe(api, NAMESPACE)
+        val result = probe().probe(api, SCOPE)
 
         assertThat(result.capabilities.present()).containsExactly(NodeCapability.HOST_NETWORK, NodeCapability.HOST_PATH)
         assertThat(result.notes.keys).containsExactly(NodeCapability.PRIVILEGED)
@@ -271,7 +334,7 @@ class CapabilityProbeFailureIntegrationTest {
             status(Constants.HttpStatus.SERVER_ERROR_MIN, "InternalError", "etcdserver: request timed out"),
         )
 
-        assertThatThrownBy { probe().probe(api, NAMESPACE) }
+        assertThatThrownBy { probe().probe(api, SCOPE) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("'$NAMESPACE'")
             .hasMessageContaining("probing ${NodeCapability.HOST_PATH.serialName}")

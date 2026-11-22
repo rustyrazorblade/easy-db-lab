@@ -95,8 +95,37 @@ class KitNamespaceTest : BaseKoinTest() {
         assertThat(operators.single { it.first == "clickhouse" }.second).isEqualTo("clickhouse-operator")
     }
 
+    /** Presto and Trino reach the database kits they inject catalogs for through their Services in the cluster namespace. */
+    @Test
+    fun `injected catalogs point at the database Services in the cluster namespace`() {
+        val catalogs =
+            CATALOG_URLS.map { (kitAndFile, key) ->
+                val (kit, file) = kitAndFile
+                val properties = fixture(kit).renderText("catalogs/$file")
+                assertThat(properties).doesNotContain(".default.svc")
+                "$kit/$file" to properties.lineSequence().single { it.startsWith("$key=") }.substringAfter("=")
+            }
+
+        assertThat(catalogs).containsExactly(
+            "presto/postgres.properties.template" to "jdbc:postgresql://postgres-rw.$LAB_A.svc:5432/postgres",
+            "presto/clickhouse.properties.template" to "jdbc:clickhouse://clickhouse-clickhouse.$LAB_A.svc:8123/default",
+            "trino/clickhouse.properties.template" to "jdbc:clickhouse://clickhouse-clickhouse.$LAB_A.svc:8123/default",
+            "trino/tidb.properties.template" to
+                "jdbc:mysql://tidb-nodeport.$LAB_A.svc:4000/?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
+        )
+    }
+
     private companion object {
         const val LAB_A = "lab-a"
+
+        /** Each injected catalog template, keyed by kit and file, with the property that names its database. */
+        val CATALOG_URLS =
+            listOf(
+                ("presto" to "postgres.properties.template") to "connection-url",
+                ("presto" to "clickhouse.properties.template") to "clickhouse.connection-url",
+                ("trino" to "clickhouse.properties.template") to "connection-url",
+                ("trino" to "tidb.properties.template") to "connection-url",
+            )
         val MANIFEST_KIND = Regex("""(?m)^kind:""")
 
         /** The install-time args some templates need and no kit default supplies (see KitClaimStorageTest). */

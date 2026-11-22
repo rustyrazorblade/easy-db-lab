@@ -16,7 +16,8 @@ easy-db-lab kit install cassandra-pods --version 5.0
 easy-db-lab cassandra-pods start
 ```
 
-`start` returns when `nodetool status` lists every requested node as UN. If that does not happen
+`start` returns when `nodetool status` lists every requested node as UN and every pod is Ready
+(serving CQL). If that does not happen
 within 15 minutes, it prints the pods' recent events and exits non-zero.
 
 ## Configuration Options
@@ -55,6 +56,12 @@ which restarts them one at a time; a start with nothing changed restarts nothing
 
 A catalog build's download link is valid for 7 days. A pod scheduled later onto a node with no kept
 copy fails its download with a message naming the expiry; run `upgrade` or `start` again for a new link.
+
+Inside a tarball pod, `nodetool` and `cqlsh` are not on `PATH`; run them from the cached tree:
+
+```bash
+kubectl exec cassandra-pods-0 -c cassandra -- sh -c '"$EDL_CASSANDRA_HOME/bin/nodetool" status'
+```
 
 Cassandra 3.x tarballs ship a `cqlsh` that needs Python 2, which the runtime image does not have; use a
 `cqlsh` on your machine (see [CQL access](#cql-access)).

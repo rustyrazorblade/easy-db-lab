@@ -54,8 +54,8 @@
 
 ## 9. Integration tests
 
-- [ ] 9.1 Config parity test: the real `cassandra-runtime` image and a real tarball's `cassandra.yaml`, rendered with the VM layers and with the pod layers; the keys that differ are a subset of {addresses, ports, paths, `endpoint_snitch`, `seed_provider`}
-- [ ] 9.2 Extend `CassandraPodsAnywhereIntegrationTest`: the tarball path reaches UN and answers CQL on the NodePort; the cache proof (restart with the same sha256 and an unreachable URL still reaches UN); `upgrade` with a new digest changes the pod template and the `cassandra_build` label; a restricted Pod Security namespace admits the pods; the `--image` path still passes
+- [x] 9.1 Config parity test: the real `cassandra-runtime` image and a real tarball's `cassandra.yaml`, rendered with the VM layers and with the pod layers; the keys that differ are a subset of {addresses, ports, paths, `endpoint_snitch`, `seed_provider`}
+- [x] 9.2 (In its own class, `CassandraPodsTarballIntegrationTest`, next to `CassandraPodsAnywhereIntegrationTest`, which keeps the `--image` path.) the tarball path reaches UN and answers CQL on the NodePort; the cache proof (restart with the same sha256 and an unreachable URL still reaches UN); `upgrade` with a new digest changes the pod template and the `cassandra_build` label; a restricted Pod Security namespace admits the pods; the `--image` path still passes
 - [ ] 9.3 `./gradlew check` passes (run in a subagent, on JDK 21)
 
 ## 10. Docs

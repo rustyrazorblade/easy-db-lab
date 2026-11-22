@@ -47,9 +47,17 @@ Two paths, chosen by `--image`:
 - `cassandra-jmx-rules.yaml` is copied into this kit's resources by `processResources` from
   `configuration/cassandra/`; it is not checked in here.
 - `lib/check-start.sh` checks for the AMI Cassandra over ssh only when `EDL_NODE_SSH=true` (set by
-  `KitProcessEnvironment` from the recorded `NODE_SSH` capability); on `false` it prints one skip line. It also validates `--nodes` (whole number >= 1), `--heap` (whole number of G or M), `--memory` (whole number of Gi or Mi, with `--heap` smaller than it) and `--cpus` (whole number >= 1); a private image (HTTP 401/403) only warns, a 404 fails. `lib/wait-un.sh` bounds the wait at 300s + 720s per node (`CASSANDRA_UN_WAIT_SECONDS` overrides it for tests).
+  `KitProcessEnvironment` from the recorded `NODE_SSH` capability); on `false` it prints one skip line. It also validates `--nodes` (whole number >= 1), `--heap` (whole number of G or M), `--memory` (whole number of Gi or Mi, with `--heap` smaller than it) and `--cpus` (whole number >= 1); a private image (HTTP 401/403) only warns, a 404 fails. `lib/wait-un.sh` waits for `--nodes` UN *and* that many Ready replicas (a restarted node is UN in gossip before its native transport listens; the probe is `statusbinary`), and bounds the wait at 300s + 720s per node (`CASSANDRA_UN_WAIT_SECONDS` overrides it for tests).
+- On the tarball path `nodetool` and `cqlsh` are not on `PATH`: call them as `"$EDL_CASSANDRA_HOME/bin/..."`
+  (`lib/wait-un.sh` falls back to the bare name only when `EDL_CASSANDRA_HOME` is unset, the `--image` path).
+- The runtime image is pinned to Ubuntu jammy (`-jre-jammy`, python3 3.10): newer Ubuntus' python3 (3.12
+  on noble, 3.14 on 26.04) is outside older `cqlsh` ranges (5.0.8 takes 3.8-3.11) (`CassandraRuntimeImageTest`,
+  and `CassandraPodsTarballIntegrationTest` runs cqlsh in a pod).
 - Tests: `CassandraPodsKitTest` (both templates through the real `lib/apply-statefulset.sh`),
-  `./gradlew testCassandraPodsStart testCassandraPodsUpgrade testCassandraPodsFetch testCassandraPodsRender`.
+  `./gradlew testCassandraPodsStart testCassandraPodsUpgrade testCassandraPodsFetch testCassandraPodsRender`;
+  integration: `CassandraPodsConfigParityIntegrationTest` (VM and pod renders of a real tarball's
+  `cassandra.yaml` differ only in placement keys) and `CassandraPodsTarballIntegrationTest` (start, the
+  cache, `upgrade`, under restricted Pod Security, on K3s with the runtime image built from its Dockerfile).
 - The pods run as uid 999 with `fsGroup: 999` and meet Pod Security "restricted" on the tarball path.
 - `stop` never deletes claims; only `uninstall` does.
 - `metrics-catalog.json` is empty until exported from a live cluster (`bin/export-workload-metrics`).

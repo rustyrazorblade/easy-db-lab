@@ -229,8 +229,7 @@ class K8sServiceIntegrationTest {
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector")
-        assertClusterRoleExists("otel-collector")
-        assertClusterRoleBindingExists("otel-collector")
+        assertClusterRbacExists("otel-collector")
         assertConfigMapExists("otel-collector-config", "otel-collector-config.yaml")
         assertDaemonSetExists("otel-collector")
         assertServiceExists("otel-collector")
@@ -243,8 +242,7 @@ class K8sServiceIntegrationTest {
         applyAndVerify(resources)
 
         assertServiceAccountExists("otel-collector-host")
-        assertClusterRoleExists("otel-collector-host")
-        assertClusterRoleBindingExists("otel-collector-host")
+        assertClusterRbacExists("otel-collector-host")
         assertConfigMapExists("otel-collector-host-config", "otel-host-collector-config.yaml")
         assertDaemonSetExists("otel-collector-host")
     }
@@ -331,8 +329,7 @@ class K8sServiceIntegrationTest {
         assertServiceExists("pyroscope")
         assertDeploymentExists("pyroscope")
         assertServiceAccountExists("pyroscope-ebpf")
-        assertClusterRoleExists("pyroscope-ebpf")
-        assertClusterRoleBindingExists("pyroscope-ebpf")
+        assertClusterRbacExists("pyroscope-ebpf")
         assertConfigMapExists("pyroscope-ebpf-config", "config.alloy")
         assertDaemonSetExists("pyroscope-ebpf")
     }
@@ -354,8 +351,7 @@ class K8sServiceIntegrationTest {
         applyAndVerify(resources)
 
         assertServiceAccountExists("kube-state-metrics")
-        assertClusterRoleExists("kube-state-metrics")
-        assertClusterRoleBindingExists("kube-state-metrics")
+        assertClusterRbacExists("kube-state-metrics")
         assertServiceExists("kube-state-metrics")
         assertDeploymentExists("kube-state-metrics")
     }
@@ -938,24 +934,31 @@ class K8sServiceIntegrationTest {
         assertThat(sa).withFailMessage("ServiceAccount '$name' not found").isNotNull
     }
 
-    private fun assertClusterRoleExists(name: String) {
-        val cr =
+    /**
+     * The ClusterRole and ClusterRoleBinding of [base] exist under the scope's cluster-scoped name,
+     * the name the builders take from the same [TestScopes.EC2], and the binding grants that role
+     * to the [base] ServiceAccount in the scope's namespace.
+     */
+    private fun assertClusterRbacExists(base: String) {
+        val name = TestScopes.EC2.clusterScoped(base)
+        val role =
             client
                 .rbac()
                 .clusterRoles()
                 .withName(name)
                 .get()
-        assertThat(cr).withFailMessage("ClusterRole '$name' not found").isNotNull
-    }
-
-    private fun assertClusterRoleBindingExists(name: String) {
-        val crb =
+        assertThat(role).withFailMessage("ClusterRole '$name' not found").isNotNull
+        val binding =
             client
                 .rbac()
                 .clusterRoleBindings()
                 .withName(name)
                 .get()
-        assertThat(crb).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
+        assertThat(binding).withFailMessage("ClusterRoleBinding '$name' not found").isNotNull
+        assertThat(binding.roleRef.kind).isEqualTo("ClusterRole")
+        assertThat(binding.roleRef.name).isEqualTo(name)
+        assertThat(binding.subjects.map { Triple(it.kind, it.name, it.namespace) })
+            .containsExactly(Triple("ServiceAccount", base, TestScopes.NAMESPACE))
     }
 
     private fun collectAllResources(): List<HasMetadata> =

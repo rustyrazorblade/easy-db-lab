@@ -34,7 +34,7 @@ Start only after #1231 (round-4 main merge) and #1227 (#1102 error handler) merg
 - [x] 2.9 `help/observability.md` and kit `METRICS.md`/README text use the cluster namespace
 - [x] 2.10 Extend `NoDefaultNamespaceLiteralTest` to `src/main/resources`, dashboards included
 - [x] 2.11 D10: the Kubeconfig contract default returns to `BROUGHT_NAMESPACE` (`easy-db-lab`). `ClusterContractTest`: Kubeconfig with none resolves to `easy-db-lab`
-- [ ] 2.12 Run `PostgresSysbenchAnywhereIntegrationTest` with namespace `easy-db-lab`
+- [x] 2.12 Run `PostgresSysbenchAnywhereIntegrationTest` with namespace `easy-db-lab`
 - [ ] 2.13 AC1 integration test (own K3s, not `SharedK3s`): snapshot every API-discoverable object, run the stack deploy and the `cassandra-pods` kit `start` with namespace `easy-db-lab`, diff; every new object is in `easy-db-lab`, or carries both labels, or belongs to an easy-db-lab-installed Helm release
 - [x] 2.14 Docs: `docs/` kit development (`NAMESPACE`, optional step and runtime namespaces), `kits/CLAUDE.md`, the user guide pages for kafka, postgres, presto, trino
 - [ ] 2.15 `./gradlew check` on JDK 21 (in a subagent); one AWS lab run of `up` and a kit `start` confirming everything lands in `default`

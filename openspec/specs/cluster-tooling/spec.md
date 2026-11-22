@@ -38,10 +38,19 @@ A command with input (a manifest or helm values) SHALL mark the position of that
 - **THEN** the failure carries exit status 4 and the command's stderr
 
 ### Requirement: A per-node kit step runs on every node and names each failure
-A kit step that acts on every node of a type (deleting or creating the kit's data directory, labelling the nodes) SHALL run on those nodes concurrently, with a bounded number at once, and SHALL run on every node even when some fail.  When any node fails, the step SHALL fail with one error that names each failed node and its error.
+A kit step that runs a command on every node of a type (deleting or creating the kit's data directory) SHALL run on those nodes concurrently, with a bounded number at once.  The `label` step SHALL label every node of the type through one cluster client.  Every per-node step SHALL act on every node even when some fail.  When any node fails, the step SHALL fail with one error that gives the count of failed nodes and names the first `Constants.Scale.MAX_NAMED_IN_ERROR` of them with their errors, then counts the rest ("and N more").
 
 #### Scenario: One node of three fails
 - **WHEN** a per-node step runs on three nodes and the second fails
 - **THEN** the step ran on all three
 - **AND** the step fails naming the second node and its error
+
+#### Scenario: The nodes run at the same time
+- **WHEN** a step that runs a command on every node runs on three nodes
+- **THEN** all three commands are running at once before any of them finishes
+
+#### Scenario: More nodes fail than the error names
+- **WHEN** a per-node step fails on five more nodes than `MAX_NAMED_IN_ERROR`
+- **THEN** the error names the first `MAX_NAMED_IN_ERROR` nodes with their errors and ends "and 5 more"
+- **AND** the exception still holds every failed node
 

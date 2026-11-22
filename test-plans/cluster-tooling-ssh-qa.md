@@ -98,7 +98,9 @@ for n in db0 db1 db2; do "$(dirname "$EDB")/bin/ssh" "$n" 'test -d /mnt/db1/tool
 
 Expect: install runs helm-repo, namespace (one `kubectl apply -f -`, the manifest on stdin) and
 manifest-url (`hpa/podinfo`), then labels all three db nodes and creates `/mnt/db1/tooling-qa` on
-each (the per-node fan-out). `start` installs podinfo with the values file on stdin (`--values -`, replicaCount 2) and
+each (the per-node fan-out). The per-node steps name their pool as `${POOL}` (the kit arg, default
+`db`) and the label key as `easydblab/${KIT_NAME}`, so the node query finding `easydblab/tooling-qa`
+on the db nodes shows the step fields were interpolated on the real run. `start` installs podinfo with the values file on stdin (`--values -`, replicaCount 2) and
 `ui.message=tooling qa`, applies the kustomization, applies the three ConfigMaps, and both waits
 pass. `status` (the kit status command: `helm status` of the runtime release, then its pods) reports
 `Running (2/2 pods ready)`. The node query lists all three db nodes, and each db node has the data

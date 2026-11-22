@@ -111,7 +111,7 @@ The `helm-repo`, `helm`, `helm-uninstall`, `namespace`, `manifest`, `manifest-ur
 `wait` and `delete` steps (and the kit status check that asks helm whether a release exists) run
 `helm` and `kubectl` on the control node over SSH, with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`.
 The tools are baked into the AMI; nothing is needed on your machine for these steps. A manifest or
-a values file is copied to a temporary file on the control node for the call and removed after it.
+a values file is sent as the command's stdin over the same SSH call; nothing is written to disk.
 
 A failed step reports the command, the control node it ran on, the tool's exit status, and the last
 lines of its stderr and stdout.

@@ -44,12 +44,12 @@ The `CiliumService` SHALL install Cilium CNI using `cilium install` executed on 
 - **WHEN** `HelmService.upgradeInstall()` is called with a chart and a values file
 - **THEN** the helm command is executed on the control node via SSH
 - **AND** the KUBECONFIG on the control node is used (not a locally-passed env var)
-- **AND** the values reach helm through `--values` and the uploaded input file
+- **AND** the values reach helm on stdin through `--values -`, over the same SSH call, and no file is written on either machine
 
 ### Requirement: KubectlService executes kubectl on the control node via SSH
 `KubectlService` SHALL run `kubectl` commands through `ClusterTooling`, not by calling `RemoteOperationsService` or `ProcessBuilder` directly.  The SSH form runs kubectl on the control node with the control-node KUBECONFIG.
 
 #### Scenario: kubectl apply runs remotely
 - **WHEN** `KubectlService.applyContent()` is called with a manifest
-- **THEN** the manifest is uploaded to the control node and `kubectl apply -f` is executed via SSH
+- **THEN** `kubectl apply -f -` is executed on the control node via SSH with the manifest as its stdin, and no file is written on either machine
 

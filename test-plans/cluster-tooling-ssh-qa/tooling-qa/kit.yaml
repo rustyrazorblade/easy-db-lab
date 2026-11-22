@@ -14,6 +14,15 @@ runtime:
   # podinfo labels its pods with app.kubernetes.io/name, not the default app.kubernetes.io/instance.
   selector: app.kubernetes.io/name=tooling-qa-podinfo
 
+# The per-node steps name their pool through ${POOL}, and the label key through ${KIT_NAME}, so
+# the QA run exercises step-field interpolation on a real cluster, not only in unit tests.
+args:
+  - flag: --pool
+    variable: POOL
+    description: Node pool the per-node steps act on
+    type: string
+    default: db
+
 install:
   - type: helm-repo
     name: podinfo
@@ -26,11 +35,11 @@ install:
     url: https://raw.githubusercontent.com/stefanprodan/podinfo/6.7.1/kustomize/hpa.yaml
   # Per-node steps: each runs on all three db nodes at once, through the bounded fan-out.
   - type: label
-    node-type: db
+    node-type: ${POOL}
     labels:
-      easydblab/tooling-qa: labelled
+      easydblab/${KIT_NAME}: labelled
   - type: platform-pvs
-    node-type: db
+    node-type: ${POOL}
     count: 1
     volume-claim-template-name: data
     storage-size: 1Gi
@@ -98,7 +107,7 @@ backup:
 
 uninstall:
   - type: platform-pvs-delete
-    node-type: db
+    node-type: ${POOL}
   - type: delete
     kind: namespace
     name: tooling-qa

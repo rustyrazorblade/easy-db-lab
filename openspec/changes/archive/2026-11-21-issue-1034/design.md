@@ -1,3 +1,7 @@
+## Superseded during review
+
+The temporary-file staging this design describes (the stdin bullet under Interface, R2, and the upload text in `proposal.md`, `tasks.md` and `specs/cluster-tooling/spec.md` here) was replaced before merge.  Input now goes as the command's stdin over the same SSH exec channel (`ChannelRemoteExec` sets it on the channel), its position is the sealed `ToolArg.Input` passed to `runWithInput` rather than a `-` string, and nothing is written on either machine.  The `helm list` release probe also gained `--all`, so a release left pending is found.  The change ports PR #1078.  `openspec/specs/cluster-tooling/spec.md` is the current statement; where this archive and that spec differ, the spec holds.
+
 ## Context
 
 `KubectlService` and `HelmService` ran every command through `RemoteOperationsService.executeRemotely` on the control node, after uploading any manifest to a temporary file there, and each caller passed the control host.  `WorkloadStepExecutor` calls them for every typed kit step except configmap, label, exec and the platform-pvs PV objects, which go through Fabric8.  `KitWorkloadProbe` and `KitStatusCommand` call `HelmService.releaseExists`.

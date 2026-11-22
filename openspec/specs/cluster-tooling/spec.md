@@ -38,7 +38,7 @@ A command with input (a manifest or helm values) SHALL mark the position of that
 - **THEN** the failure carries exit status 4 and the command's stderr
 
 ### Requirement: A per-node kit step runs on every node and names each failure
-A kit step that runs a command on every node of a type (deleting or creating the kit's data directory) SHALL run on those nodes concurrently, with a bounded number at once.  The `label` step SHALL label every node of the type through one cluster client.  Every per-node step SHALL act on every node even when some fail.  When any node fails, the step SHALL fail with one error that gives the count of failed nodes and names the first `Constants.Scale.MAX_NAMED_IN_ERROR` of them with their errors, then counts the rest ("and N more").
+A kit step that runs a command on every node of a type (deleting or creating the kit's data directory) SHALL run on those nodes concurrently, with a bounded number at once.  The `label` step SHALL label every node of the type through one cluster client.  Every per-node step SHALL act on every node even when some fail, with one exception: when the `label` step gets no answer from the API server at all (a transport failure) or is interrupted, it SHALL stop and report every node it did not reach as not tried, with that cause, so an unreachable API costs one request timeout and not one per node.  When any node fails, the step SHALL fail with one error that gives the count of failed nodes and names the first `Constants.Scale.MAX_NAMED_IN_ERROR` of them with their errors, then counts the rest ("and N more").
 
 #### Scenario: One node of three fails
 - **WHEN** a per-node step runs on three nodes and the second fails
@@ -53,4 +53,9 @@ A kit step that runs a command on every node of a type (deleting or creating the
 - **WHEN** a per-node step fails on five more nodes than `MAX_NAMED_IN_ERROR`
 - **THEN** the error names the first `MAX_NAMED_IN_ERROR` nodes with their errors and ends "and 5 more"
 - **AND** the exception still holds every failed node
+
+#### Scenario: The API server cannot be reached while labelling
+- **WHEN** a `label` step's first node fails with no answer from the API server
+- **THEN** the later nodes are not tried
+- **AND** each of them is reported as not tried, with the first node's failure as the cause
 

@@ -2,9 +2,11 @@
 
 ### Requirement: down changes only the confirmed plan
 
-`down` MUST discover the resources to remove once, before the preview and the confirmation prompt.  After the operator confirms (or passes `--auto-approve`), `down` MUST remove or change only resources in that plan.  While it removes a planned resource, it MAY read the state of that resource and of the network that holds it.  It MUST NOT remove, detach or disassociate anything the plan does not list.  A route is removed only when it points at a planned gateway.
+`down` MUST discover the resources to remove once, before the preview and the confirmation prompt.  After the operator confirms (or passes `--auto-approve`), `down` MUST remove or change only resources in that plan.  While it removes a planned resource, it MAY read the state of that resource and of the network that holds it.  It MUST NOT remove, detach or disassociate anything the plan does not list.  A route MUST be removed only when the plan lists it as a route to a planned gateway, and the preview MUST show how many such routes it will remove.
 
 A resource that appears after the preview MUST NOT be removed by that `down`.  When such a resource blocks the removal of a planned resource (a subnet, a security group, the gateway or the network itself), `down` MUST report the failure and exit non-zero.  Unless the workspace's own network was removed, it MUST also leave the cluster state as it was, so that a later `down` previews the new resource before removing it.
+
+Before it discovers anything, `down` MUST fail, exit non-zero and change nothing when the region recorded in the cluster state differs from the region the tool is configured to use.
 
 A preview that lists no network MUST NOT prompt and MUST NOT remove anything.  A preview that lists at least one network MUST be confirmed before anything is removed, even when every resource group in it is empty.
 
@@ -37,6 +39,19 @@ A preview that lists no network MUST NOT prompt and MUST NOT remove anything.  A
 - **WHEN** a third tagged network is created before the operator confirms
 - **THEN** only the two previewed networks are torn down
 
+#### Scenario: A late gateway route in a kept network survives
+
+- **GIVEN** a confirmed teardown of a cluster in a network supplied with `init --vpc`
+- **WHEN** a route to the planned gateway is added after the preview
+- **THEN** `down` removes only the routes the preview counted, and the new route is still there
+
+#### Scenario: A region mismatch changes nothing
+
+- **GIVEN** a cluster state that records one region, and a profile configured for another
+- **WHEN** the operator runs `down`
+- **THEN** `down` reports both regions and exits non-zero
+- **AND** nothing is removed and the cluster state is unchanged
+
 #### Scenario: A network with nothing left in it still asks first
 
 - **GIVEN** a preview that lists one network whose resource groups are all empty
@@ -54,13 +69,13 @@ A preview that lists no network MUST NOT prompt and MUST NOT remove anything.  A
 
 `down` MUST treat a teardown as including the workspace's own cluster in three cases: the current-cluster teardown, a `down <vpc-id>` that names the workspace's network, and a `down --all` whose preview lists the workspace's network.  It MUST NOT treat `down --packer` as including it.
 
-When a confirmed teardown includes the workspace's own cluster and its preview lists a network, `down` MUST run the pre-teardown save before any infrastructure is removed, under the rules of "Cluster Teardown" (`--force` and a telemetry redirect skip it).  After the removals, `down` MUST stop the SOCKS tunnel whatever the result.  When the workspace's own network was removed (or was already gone), it MUST then:
+When a confirmed teardown includes the workspace's own cluster and its preview lists a network, `down` MUST run the pre-teardown save before any infrastructure is removed, under the rules of "Cluster Teardown" (`--force` and a telemetry redirect skip it).  After the removals, `down` MUST stop the SOCKS tunnel whatever the result.  The preview MUST state that the workspace will be reset.  When the workspace's own network was removed, or was confirmed as gone, it MUST then:
 - remove the control node's Tailscale device;
 - delete the Tailscale auth key;
 - stop the data bucket's request metrics;
 - mark the cluster state down.
 
-`down` MUST do this even when another network in the same `down --all` failed; it still exits non-zero.  When the removal of the workspace's own network fails, `down` MUST NOT change the cluster state.  Under `--all`, these steps MUST run before the empty data buckets are deleted.
+`down` MUST do this even when another network in the same `down --all` failed; it still exits non-zero.  A network supplied with `init --vpc` or not created by easy-db-lab is never removed, so for it these steps MUST run only when its removal reported no error.  When the removal of the workspace's own network fails, or is not attempted because an earlier network failed, `down` MUST NOT change the cluster state.  These steps MUST run before the empty data buckets are deleted.
 
 When a teardown does not include the workspace's own cluster, finds nothing recorded to tear down, or is declined at the prompt, `down` MUST NOT do any of these:
 - run the save;
@@ -69,7 +84,7 @@ When a teardown does not include the workspace's own cluster, finds nothing reco
 - stop the bucket metrics;
 - change the cluster state.
 
-A cluster state that records a network AWS no longer has MUST be planned as an empty teardown that includes the workspace, so that `down` finishes these steps instead of failing.
+When AWS reports that the workspace's own recorded network does not exist (the error code `InvalidVpcID.NotFound`), `down` MUST list that network in the preview as gone and MUST ask for confirmation as for any other network.  A dry run MUST show the same preview.  After confirmation, `down` MUST remove nothing in that network and MUST run the steps above.  Any other lookup failure, and a not-found network that is not the workspace's, MUST fail `down` with a non-zero exit and change nothing.
 
 #### Scenario: down of another VPC leaves the workspace alone
 
@@ -99,11 +114,30 @@ A cluster state that records a network AWS no longer has MUST be planned as an e
 - **THEN** the cluster state is marked down
 - **AND** `down` reports the other network's error and exits non-zero
 
-#### Scenario: A recorded network that no longer exists does not block down
+#### Scenario: A recorded network that no longer exists is confirmed, then reset
 
 - **GIVEN** a cluster state that records a VPC id AWS no longer has
 - **WHEN** the operator runs `down`
-- **THEN** the preview lists no network, nothing is removed, and the cluster state is marked down
+- **THEN** the preview lists the network as gone and states that the workspace will be reset
+- **AND** only after the operator confirms is the cluster state marked down, and nothing is removed
+
+#### Scenario: A supplied network whose removal fails keeps the state
+
+- **GIVEN** a running cluster in a network supplied with `init --vpc`
+- **WHEN** the removal of one of the cluster's resources fails
+- **THEN** `down` exits non-zero, and the cluster state is still up with its VPC id
+
+#### Scenario: A failure before the workspace's network keeps the state
+
+- **GIVEN** `down --all` whose preview lists another network before the workspace's network
+- **WHEN** the removal of the other network stops with an error before the workspace's network is reached
+- **THEN** the cluster state is unchanged and `down` exits non-zero
+
+#### Scenario: A mistyped VPC id fails
+
+- **GIVEN** a workspace with a running cluster
+- **WHEN** the operator runs `down <vpc-id>` with an id AWS does not have
+- **THEN** `down` exits non-zero and changes nothing
 
 #### Scenario: A declined prompt keeps the tunnel
 

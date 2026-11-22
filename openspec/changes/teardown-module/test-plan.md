@@ -9,19 +9,25 @@ CI runs unit and integration.
 
 A control is a break in the code.  Make it, see the test fail, then revert it.  Every control below can fail its test; the PR records each control's failing run.
 
-Exit codes are always read through `CommandExecutor`, never from `Down().call()` and never through `assertThatThrownBy`.  Paths are under `src/test/kotlin/com/rustyrazorblade/easydblab/` unless they start with `src/integrationTest/`.
+Paths are under `src/test/kotlin/com/rustyrazorblade/easydblab/` unless they start with `src/integrationTest/`.
 
-## Fakes
+## Fixtures
 
-- **`services/teardown/FakeInfrastructureTeardown`.**  An in-memory map of network id to `(ownership, kind -> ids)`.
-  - `add(networkId, kind, id)` works at any time, even during the save hook.
-  - `discover(scope)` reads the map and records the scope it was given.
-  - `remove(network)` reads ids **only from its argument**, never from the map.  It deletes those ids from the map and records them in `removed`.
-  - The dependency rule: when the network is `OWNED` and the map still holds ids in it that the argument did not list, it returns `NetworkRemoval(errors = ["network <id> still holds <ids>"], networkGone = false)`.  Otherwise it deletes the network and returns `networkGone = true`.
-  - A scripted error, a scripted throw, and an `onRemove` hook can be set per network.
-- **`services/teardown/FakeBucketTeardown`.**  It records `stopMetrics` and `deleteEmptyBuckets` calls.
+- **`commands/DownExecutorFixture`.**  Every exit-code check and every "no `Command.ExecutionError`" check runs `Down` through a real `DefaultCommandExecutor`, never through `Down().call()`, `assertThatThrownBy` or `testCommandExecutorModule` (which returns `command.call()`, `TestModules.kt:342-350`).  It is built as `StatusTest.kt:584` builds it:
+  - `DefaultCommandExecutor(context, clusterStateManager, requirementCheckDeps = RequirementCheckDeps(userConfigProvider, dockerClientProvider), resourceManager, eventBus, proxyPreflight = ProxyPreflight(clusterStateManager, socksProxyService, WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))), workingDirectory))`;
+  - `userConfigProvider.isSetup()` returns true, because `Down` has `@RequireProfileSetup`;
+  - `socksProxyService` is `FakeSocksProxyService`.
+- **`commands/DownSaveFixture`.**  A state that reaches the tail save: `UP`, one control host, no telemetry redirect, `networkMode = NetworkMode.Direct` (so `needsTunnel` is false and no Tailscale step runs), and `FakeSocksProxyService`.  Without it `saveTailBeforeTeardown` (`Down.kt:217-282`) returns before the save, and an `onSave` hook never runs.
+- **`services/teardown/FakeInfrastructureTeardown`.**  An in-memory map of network id to `(ownership, clusterId, kind -> ids)`.
+  - `add(networkId, kind, id)` works at any time, even during the save hook or the prompt.
+  - `region()` returns a settable value, `us-west-2` by default.
+  - `discover(scope, workspaceNetworkId)` reads the map and records the scope.  A network marked `gone` is returned with `ownership = GONE` only when its id is `workspaceNetworkId`; otherwise `discover` throws, as the adapter does.
+  - `remove(network)` reads ids **only from its argument**, never from the map, deletes them from the map and records them in `removed`.  Calling it on a `GONE` network fails the test.
+  - The dependency rule: when the map still holds ids in the network that the argument did not list, it returns errors `["network <id> still holds <ids>"]` in every ownership.  `networkDeleted` is true only when the network is `OWNED` and the map then holds nothing in it.  A kept network is never deleted.
+  - A scripted error, a scripted throw and an `onRemove` hook can be set per network.
+- **`services/teardown/FakeBucketTeardown`.**  It records `stopMetrics` and the names given to `deleteEmptyBuckets`.
 - **`services/FakeTeardownBackupService`.**  It returns a scripted `Result` (Mockito cannot stub a Kotlin `Result`) and a scripted `unsavedSignals`, and it runs an `onSave` hook.
-- **Shared log.**  All three fakes and a `FakeSocksProxyService` write to one `TeardownLog`, so the order of calls can be asserted from one list.
+- **Shared log.**  All the fakes and `FakeSocksProxyService` write to one `TeardownLog`, so the order of calls can be asserted from one list.
 
 No test of the fakes themselves.
 
@@ -34,37 +40,42 @@ Each test below is written on `main`'s code with its mocks, before any refactor,
 | `DownTest.down of another VPC leaves the workspace state, device and tunnel` (A) | `removeTailscaleDevice` and `updateClusterState` run (`Down.kt:191-194`) |
 | `DownTest.a declined prompt does not stop the tunnel` (B) | `cleanupSocks5Proxy` runs (`Down.kt:188`) |
 | `DownTest.down with no cluster state does not stop the tunnel` (B) | same line |
-| `DownTest.down of the workspace VPC by id saves the tail before removing anything` (C) | `saveTail = false` (`Down.kt:350`) |
-| `DownTest.a removal that deletes the VPC with an ENI wait error marks the state down` (dead VPC id) | the result fails, so `updateClusterState` is skipped |
+| `DownTest.down of the workspace VPC by id saves the tail before removing anything` (C), on the `DownSaveFixture` state with a mocked backup service that records the call | `saveTail = false` (`Down.kt:350`), so the save is never called |
+| `DownTest.a recorded VPC that AWS no longer has can be torn down` (dead VPC id): a real `AwsInfrastructureService` whose mocked `VpcService.getVpcName` throws an `Ec2Exception` with error code `InvalidVpcID.NotFound`; asserts exit 0 through `DownExecutorFixture` and the state marked down | the exception propagates out of discovery and `down` exits non-zero |
+
+On the branch, the dead-VPC-id test asserts that the preview shows the network as gone, the prompt is asked, and only a "yes" marks the state down.
 
 ## R1. down changes only the confirmed plan
 
 | Test | Tier | Control |
 |---|---|---|
-| `ClusterTeardownTest.a late resource in a kept network survives and the removal succeeds` (`KEPT_SUPPLIED`) | unit | `execute` calls `plan(plan.target)` again and removes that |
+| `ClusterTeardownTest.a late resource in a kept network that touches nothing planned survives and the removal succeeds` (`KEPT_SUPPLIED`) | unit | `execute` calls `plan(plan.target)` again and removes that |
 | `ClusterTeardownTest.a late resource in an owned network fails the removal` | unit | same break: the late id is removed and the removal succeeds |
-| `DownTest.a subnet created during the tail save fails down, keeps the state, and the next plan lists it` (owned) | unit | let the workspace step run on a failed workspace removal |
-| `DownTest.a resource created during the tail save in a supplied VPC survives` | unit | rediscover in `execute` |
-| `DownTest.--all leaves a network that appears after the preview` | unit | rediscover in `execute` |
+| `DownTest.a subnet created during the tail save fails down, keeps the state, and the next plan lists it` (owned, `DownSaveFixture`) | unit | let the workspace step run on a `Removed` with errors and `networkDeleted = false` |
+| `DownTest.a supplied VPC whose removal fails keeps the state UP and its vpcId` (`DownSaveFixture`, a scripted subnet error) | unit | set `networkDeleted = true` for kept networks in the fake and the adapter |
+| `DownTest.a resource created during the tail save in a supplied VPC survives` (`DownSaveFixture`) | unit | rediscover in `execute` |
+| `DownTest.--all leaves a network that appears after the preview` (the `readAnswer` lambda of `TeardownConfirmation` adds the network to the fake and returns "yes") | unit | rediscover in `execute` |
 | `AwsInfrastructureTeardownTest.remove deletes only the planned ids when discovery would now return more` | unit | call `discoverResources` in `remove` |
 | `AwsInfrastructureTeardownTest.discover then remove emits ResourceDiscovering once` | unit | rediscover in `remove` |
+| `AwsInfrastructureTeardownTest` `networkDeleted` cases, with mocked `VpcService` and the `inOrder` fixture: the ENI wait times out and `deleteVpc` succeeds (errors, `networkDeleted = true`); `deleteVpc` fails (`false`); a kept network with a failed subnet delete (`false`) | unit | return `errors.isEmpty()`; return true for a kept network |
 | `AwsNetworkInventoryTest.toPlanned and fromPlanned round-trip every field` | unit | drop `natGatewayIds` from `fromPlanned` |
 | `AwsInfrastructureTeardownIntegrationTest.a subnet created after discover survives remove` (supplied VPC) | integration | rediscover in `remove` |
 | `AwsInfrastructureTeardownIntegrationTest.a late subnet's association with a planned route table survives` | integration | disassociate every non-main association again |
+| `AwsInfrastructureTeardownIntegrationTest.a late gateway route in a kept VPC survives remove` | integration | delete every non-local route to the gateway, as `deleteRoutesToInternetGateway` does today |
 | `AwsInfrastructureTeardownIntegrationTest.an owned network with a late subnet fails its VPC delete` | integration | rediscover in `remove` |
 | `DownLateResourceIntegrationTest.down --auto-approve on a supplied VPC leaves a subnet made during the save` | integration | rediscover in `remove` |
 
 What the R1 tests assert:
 - Each one asserts that `fake.removed` `containsExactlyInAnyOrderElementsOf` the planned ids, and that the late id is still in the fake's map.
-- The `DownTest` owned case also asserts:
+- The `DownTest` owned and supplied failure cases also assert, through `DownExecutorFixture`:
   - the exit is non-zero;
-  - the state is still UP with its VPC id;
+  - `state.json` is still `UP` with its `vpcId`;
   - the tunnel was stopped;
-  - a second `plan(CurrentCluster)` lists the late id.
+  - a second `plan(CurrentCluster)` lists the late id (owned case).
 
 The integration tests run on `SharedLocalStack`, with EMR and OpenSearch mocked, as `AwsInfrastructureServiceIntegrationTest` does today.  Every assertion is scoped to the test's own VPC.  The owned case uses a `VpcTeardownRetryPolicy(2, 10ms)`, so it takes well under a second.  Before that case is written, the implementer checks that LocalStack's `DeleteVpc` refuses a VPC that still holds a subnet; if it does not, the owned case stays in L1 only, and the PR says so.
 
-`DownLateResourceIntegrationTest` runs `Down` through Koin with the real `AwsInfrastructureTeardown` on LocalStack.  `FakeTeardownBackupService.onSave` creates a subnet tagged with the cluster's `ClusterId`.  The test asserts that the planned subnet is gone and the late subnet exists.
+`DownLateResourceIntegrationTest` runs `Down` through `DownExecutorFixture`, with the real `AwsInfrastructureTeardown` on LocalStack, on the `DownSaveFixture` state.  `FakeTeardownBackupService.onSave` creates a subnet tagged with the cluster's `ClusterId`.  The test first asserts that `onSave` ran, so a missing save fails it for the right reason.  It then asserts that the planned subnet is gone and the late subnet exists.
 
 ## R2. The scope rule is in one place
 
@@ -72,9 +83,11 @@ The integration tests run on `SharedLocalStack`, with EMR and OpenSearch mocked,
 |---|---|---|
 | `TeardownScopesTest`, one case per row of D2, plus a device id `""` | unit | swap the `vpcSupplied` branch; drop the `vpcId == id` check; use `isNull` for the device |
 | `TeardownTargetTest`: a VPC id beats `--all`, `--all` beats `--packer` (moved from `TeardownPlannerTest:52,59`) | unit | swap the first two branches |
-| `ClusterTeardownTest.includesWorkspace` for each target (own and other VPC id, `--all` with and without the workspace VPC, `--packer`) | unit | compute it from the target only |
+| `ClusterTeardownTest.workspace is set for each target` (own and other VPC id, `--all` with and without the workspace VPC, `--packer`) | unit | compute it from the target only |
+| `ClusterTeardownTest.plan fails when the recorded region differs from the client region` (state `us-east-1`, fake `us-west-2`; `discover` is never called) | unit | skip the region check |
+| `DownTest.a region mismatch exits non-zero and leaves state.json unchanged` (`DownExecutorFixture`) | unit | skip the region check |
 | `DownInitScopeTest.init --clean and down --dry-run get the same scope` (both through `CommandExecutor` on one supplied-VPC state; the fake records `ClusterInSuppliedNetwork(vpc, clusterId)` for both) | unit | have `Init` resolve its own `WholeNetwork` scope |
-| `InitTest` clean cases on the fake: refused with live resources; proceeds when empty, gone, `NothingRecorded` or `DeviceOnly`; a discovery failure propagates and deletes nothing | unit | treat a thrown `discover` as "nothing live" |
+| `InitTest` clean cases on the fake: refused with live resources; refused when the workspace network is `GONE` (`CleanRefusedNetworkNotFound`); refused on a region mismatch; proceeds when the network is empty, `NothingRecorded` or `DeviceOnly`; a discovery failure propagates and deletes nothing | unit | treat `GONE` as empty; treat a thrown `discover` as "nothing live" |
 | `InitTest.init --clean in a fresh workspace emits no teardown event` | unit | emit `NoClusterState` in `plan` |
 | `PackageBoundaryTest.only services.teardown calls discover` (fixture `CallsDiscover`) | unit | the fixture's own test fails without the rule |
 
@@ -84,37 +97,42 @@ The integration tests run on `SharedLocalStack`, with EMR and OpenSearch mocked,
 |---|---|---|
 | `PackageBoundaryTest.neutral teardown code names no AWS type` | unit | the rule run on the fixture `services.teardown.fixtures.NamesAwsInventory` fails |
 | `PackageBoundaryTest.only TeardownConfirmation builds a ConfirmedPlan` | unit | the rule run on the fixture `commands.fixtures.BuildsConfirmedPlan` fails |
-| `PlannedNetworkTest.summary` equals a literal of today's text, for an owned, a kept-untagged and a supplied network | unit | print `kindLabel` without the name |
+| `PlannedNetworkTest.summary` equals a literal of today's text, for an owned, a kept-untagged and a supplied network, and the gone line for `GONE` | unit | print `kindLabel` without the name |
 | `PlannedNetworkTest.holdsResources is false for a network with only non-live groups` | unit | ignore `live` |
 
 ## R4. The workspace step runs only for the workspace's cluster
 
 | Test | Tier | Control |
 |---|---|---|
-| Ported task 0 tests (A, B, C, dead VPC id) | unit | set `includesWorkspace = true` for `Network`; run `after` on `Declined` and on `NothingToDo`; save the tail only for `CurrentCluster`; key `after` on `report.success` |
-| `DownTest.down --packer leaves the workspace alone` | unit | `includesWorkspace = true` for `Packer` |
-| `DownTest.down --all that finds the workspace VPC saves the tail, marks the state down and removes the device` | unit | `includesWorkspace` true only for `CurrentCluster` and `Network` |
-| `DownTest.down --all that does not find the workspace VPC leaves the workspace alone` (and its supplied-VPC variant) | unit | `AllTagged` always includes the workspace |
+| Ported task 0 tests (A, B, C, dead VPC id) | unit | set `workspace` for `Network(other)`; run `after` on `Declined` and on `NothingToDo`; save the tail only for `CurrentCluster`; key `after` on `report.success` |
+| `DownTest.down --packer leaves the workspace alone` | unit | set `workspace` for `Packer` |
+| `DownTest.down --all that finds the workspace VPC saves the tail, marks the state down and removes the device` (`DownSaveFixture`) | unit | set `workspace` only for `CurrentCluster` and `Network` |
+| `DownTest.down --all that does not find the workspace VPC leaves the workspace alone` (and its supplied-VPC variant) | unit | `AllTagged` always sets `workspace` |
 | `ClusterTeardownTest.--all: the workspace network succeeds, another fails: state marked down, exit non-zero` | unit | key `after` on the whole report |
+| `ClusterTeardownTest.--all: a throw on an earlier network leaves state.json byte-for-byte unchanged` (the workspace network is second; its outcome is `NotAttempted`) | unit | treat `NotAttempted` like `Removed` with no errors |
+| `ClusterTeardownTest.a GONE workspace network gets no remove call and the workspace step runs` | unit | call `remove` on a `GONE` network |
 | `ClusterTeardownTest.the workspace step runs before the bucket sweep` (order in `TeardownLog`) | unit | sweep before `after` |
+| `ClusterTeardownTest.the sweep gets only the planned bucket names` (`--all` with two planned networks; a third cluster's empty bucket is not passed) | unit | pass the account-wide `findDataBuckets()` list |
 | `ClusterTeardownTest.a failed --all removal sweeps no bucket` | unit | always sweep |
 | `ClusterTeardownTest.a thrown remove still stops the tunnel` | unit | drop the `finally` |
 | `ClusterTeardownTest.the proxy port is unpublished before the first remove` (the fake records `System.getProperty(PORT_PROPERTY)` in `onRemove`; `socksProxyHost` and `socksProxyPort` are unchanged) | unit | unpublish after the loop |
-| `ClusterTeardownTest.an empty plan for the workspace runs only the workspace step` | unit | skip `after` when the plan is empty |
-| `AwsInfrastructureTeardownTest.discover of a VPC that does not exist returns no network` | unit | let NotFound propagate |
-| `WorkspaceTeardownTest` over a real `ClusterStateManager` on `@TempDir`: `after(success)` marks DOWN and clears hosts, EMR, OpenSearch, infrastructure and the auth key id, and keeps `clusterId`, `createdAt` and `nodes`; `after(failure)` leaves the file byte-for-byte unchanged and stops the tunnel; a field written between `plan` and `after` survives | unit | replace `update` with `replace(loadedEarlier)`; run the cleanup on failure |
+| `AwsInfrastructureTeardownTest.discover maps InvalidVpcID.NotFound to GONE for the workspace network only`, covering both `getVpcName` and `getVpcTags` throwing that code; `UnauthorizedOperation`, an empty `vpcs()` list and NotFound for another id all throw | unit | match on the message instead of the code; map every `Ec2Exception` to `GONE` |
+| `AwsInfrastructureTeardownIntegrationTest.discover of a VPC that does not exist`: `WholeNetwork("vpc-0000000000000000f")` with that id as the workspace network returns one `GONE` network; `ByTags` of it throws | integration | map NotFound to `GONE` for every id |
+| `WorkspaceTeardownTest` over a real `ClusterStateManager` on `@TempDir`: `after(Removed, no errors)` and `after(Gone)` mark DOWN and clear hosts, EMR, OpenSearch, infrastructure and the auth key id, and keep `clusterId`, `createdAt` and `nodes`; `after(Removed with errors, networkDeleted = false)`, `after(NotAttempted)` and `after(NotPlanned)` leave the file byte-for-byte unchanged and stop the tunnel; a field written between `plan` and `after` survives | unit | replace `update` with `replace(loadedEarlier)`; run the cleanup on failure |
 | `DownTailscaleDeviceTest` (six cases, on the fake) | unit | skip `removeDevice` on success |
-| `DownCommandTest.a failed teardown keeps the state and stops the tunnel` | unit | mark down on failure; skip the tunnel stop on failure |
 
 `WorkspaceTeardownTest` replaces the six `DownTest` cases at lines 158-314.  Those cases change a `ClusterState` by hand and never run `Down`, so they are deleted rather than moved.
 
 ## R5. The down rules stay
 
-- **`TeardownConfirmationTest`, one case per cell of the D6 table.**  It covers all four plans with dry-run, auto-approve, yes and no.  Every dry-run case asserts that nothing else was called on any fake.  There is also a case for a `Networks` plan whose only network has all-empty groups: it still prompts.  Controls:
-  - define empty as "no `holdsResources`";
-  - let `DryRun` on `Networks([])` fall through to `Proceed`.
+- **`TeardownConfirmationTest`, one case per cell of the D6 table.**  It covers all four plans with dry-run, auto-approve, yes and no, and dry-run with auto-approve (the dry run wins).  Every dry-run case asserts that nothing else was called on any fake.  Extra cases:
+  - a `Networks` plan whose only network has all-empty groups still prompts;
+  - a `GONE` network prompts, and its dry run prints the gone line and the workspace line, which is what a real run would do;
+  - the summary of a plan with `workspace` ends with the workspace line, and a kept network with gateway routes shows "Routes to the gateway: N".
+
+  Controls: define empty as "no `holdsResources`"; let `DryRun` on `Networks([])` fall through to `Proceed`; let `--auto-approve` beat `--dry-run`; skip the prompt for `GONE`; drop the workspace line.
 - **`TeardownConfirmationTest.ForceSkipsTail comes after the summary and before the dry-run stop and the prompt`.**  Control: emit it after the prompt.
-- **`DownBackupTest`, every case moved to `FakeTeardownBackupService`.**
+- **`DownBackupTest`, every case moved to `FakeTeardownBackupService` and `DownSaveFixture`.**
   - A failed save removes nothing: `fake.removed` is empty.
   - `--force` skips the save.
   - A failed removal after a save restores nothing.
@@ -126,15 +144,16 @@ The integration tests run on `SharedLocalStack`, with EMR and OpenSearch mocked,
 
 ## R6. One exit path
 
-`DownCommandTest`, every case through `CommandExecutor`:
+`DownCommandTest`, every case through `DownExecutorFixture`:
 - a teardown that completes with errors exits non-zero;
 - a declined prompt exits non-zero;
-- no cluster state exits non-zero;
+- no cluster state exits non-zero, and emits `CompletedWithErrors` once;
+- `down <typo-id>` (NotFound for an id that is not the workspace's) exits non-zero and changes nothing;
 - a successful teardown exits zero.
 
-The error case also asserts that the output holds `CompletedWithErrors` once and no `Command.ExecutionError`.
+The error cases also assert that the output holds `CompletedWithErrors` at most once and no `Command.ExecutionError`.
 
-Control: return instead of throwing after `CompletedWithErrors`.
+Control: return instead of throwing after `CompletedWithErrors`; map NotFound to an empty plan for every id.
 
 ## R7. The delete order and the resources removed are unchanged
 
@@ -143,40 +162,10 @@ Control: return instead of throwing after `CompletedWithErrors`.
 | `AwsInfrastructureTeardownTest.should delete resources in correct order` (moved, `inOrder`) | unit | swap subnets and route tables |
 | The moved `AwsInfrastructureServiceTest` teardown cases (supplied VPC, ByTags, `--all`, packer, error collection) | unit | each keeps its assertion; the moved test fails when its moved code is deleted |
 | `AwsInfrastructureTeardownTest.VpcKept is emitted for KEPT_UNTAGGED only` (one case per ownership) | unit | emit it for every kept network |
-| `AwsInfrastructureTeardownTest.--all fetches the EMR and OpenSearch maps once` and `skips the packer VPC before its inventory` | unit | fetch them per VPC; read the inventory first |
+| `AwsInfrastructureTeardownTest.--all fetches the EMR and OpenSearch maps once` and `skips the packer VPC by the tag search's name, before its inventory` | unit | fetch them per VPC; call `getVpcName` per VPC |
+| The moved `EMRService` and `OpenSearchService` finder tests, now on the map methods | unit | each keeps its assertion |
 | The moved `AwsInfrastructureServiceIntegrationTest` discovery cases (lines 235-305) | integration | each keeps its assertion |
 
 ## Real AWS
 
-Both runs use `AWS_PROFILE=easy-db-lab` and `--tag embark_offhours=off`, each in its own workspace under `clusters/`.  Names below are placeholders; the PR records the real output without account numbers.
-
-**L1, a late subnet (R1).**  It runs once on `main`, as the control, and once on the branch.
-1. `easy-db-lab init l1 --up --tag embark_offhours=off`.
-2. `mkfifo answer`, then `easy-db-lab down < answer > down.log 2>&1 &`.
-3. Wait until `down.log` shows the confirmation prompt.
-4. Read the network: `VPC=$(jq -r .vpcId state.json)`, and its block with `aws ec2 describe-vpcs --vpc-ids "$VPC" --query 'Vpcs[0].CidrBlock'`.
-5. Pick an address range the cluster does not use.  The eight /19 subnets fill a /16, so first add a secondary block: `aws ec2 associate-vpc-cidr-block --vpc-id "$VPC" --cidr-block 100.64.0.0/24`.
-6. Create the late subnet: `aws ec2 create-subnet --vpc-id "$VPC" --cidr-block 100.64.0.0/24`.  Record its id.
-7. Answer the prompt: `echo yes > answer`, and wait for `down` to exit.
-
-| | on main (control) | on the branch |
-|---|---|---|
-| exit code | 0 | non-zero |
-| `aws ec2 describe-subnets --subnet-ids <late>` | NotFound (deleted, never shown) | the subnet exists |
-| `jq .infrastructureStatus state.json` | `"DOWN"` | `"UP"`, `vpcId` kept |
-| a second `down --auto-approve` | (not needed) | lists the late subnet, removes it and the VPC, exits 0 |
-
-**L2, same resources removed (R7).**  It runs on `main` and on the branch, for an own VPC and for a supplied VPC.
-- **Supplied VPC setup:**
-  - `aws ec2 create-vpc --cidr-block 10.77.0.0/16 --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=l2-supplied}]'`;
-  - `aws ec2 create-subnet --vpc-id <id> --cidr-block 10.77.255.0/24`, a pre-existing user resource;
-  - then `easy-db-lab init l2s --vpc <id> --up --tag embark_offhours=off`.  `up` splits the VPC's own block into eight /19 subnets and uses the first one per zone (three by default), so the user's subnet in the eighth /19 does not collide.
-- **Before `down --auto-approve`**, record the network with `describe-instances`, `describe-subnets`, `describe-security-groups`, `describe-route-tables` and `describe-internet-gateways`, each with `--filters Name=vpc-id,Values=<vpc>`.  Save the output to `before.json`.
-- **After `down`:**
-  - The own-VPC run: every recorded resource and the VPC are gone.
-  - The supplied-VPC run: every resource tagged with the cluster's `ClusterId` is gone, and the VPC, the `10.77.255.0/24` subnet and the main route table remain.
-- **Compare main and branch** by kind and count of resources removed.  Compare the console lines from the first `Tearing down VPC:` to the end; they must match.  The discovery lines print once on the branch and twice on main; that is the expected difference.
-- **Cleanup:**
-  - `aws ec2 delete-subnet` for the `10.77.255.0/24` subnet;
-  - `aws ec2 delete-vpc` for the supplied VPC;
-  - `describe-vpcs` with the `Name` filter returns nothing.
+See [`test-plan-aws.md`](test-plan-aws.md) for L1 (a late subnet) and L2 (same resources removed).

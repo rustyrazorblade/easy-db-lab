@@ -78,7 +78,8 @@ Rules for both phases:
 - **GIVEN** multiple clusters
 - **WHEN** the user tears down all clusters
 - **THEN** every tagged cluster VPC and its resources are removed
-- **AND** each per-cluster data bucket that is empty is deleted, and each data bucket that still holds objects is kept with no expiry rule
+- **AND** the data bucket of each cluster whose network was previewed and removed is deleted when it is empty, and kept with no expiry rule when it still holds objects
+- **AND** no other cluster's data bucket is deleted
 
 #### Scenario: Teardown of all clusters finds a VPC with only the legacy marker
 
@@ -236,3 +237,60 @@ Rules for both phases:
 - **WHEN** `down` runs
 - **THEN** it flushes every backend, waits for each flush, and refuses to tear down if a flush did not finish
 - **AND** it does not count other clusters, does not stop or start any compactor, and does not touch any lease
+
+### Requirement: Cluster Initialization
+
+The system MUST allow users to initialize a cluster configuration specifying a name and node counts.
+
+The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool wrappers there. `init` MUST fail with a clear message, and write nothing, when the directory already has a `bin/` (a file or a directory). The message says that the directory already has a `bin/`, that easy-db-lab needs `bin/` for its tool wrappers, and to use a new, empty directory as the workspace (for example under `clusters/`). This also keeps a source checkout or a project directory from being used as a workspace. With `--clean`, the check runs after the cleanup.
+
+#### Scenario: Initialize a new cluster
+
+- **GIVEN** a configured AWS profile
+- **WHEN** a user initializes a cluster with a name and node count
+- **THEN** cluster configuration is created and persisted locally.
+
+#### Scenario: Re-initialize with different parameters
+
+- **GIVEN** an initialized cluster
+- **WHEN** the user re-initializes with different parameters
+- **THEN** the configuration is updated.
+
+#### Scenario: init refuses a directory that already has bin/
+
+- **GIVEN** a directory that already has a `bin/` file or directory
+- **WHEN** the user runs `init`
+- **THEN** `init` fails with a message that names `bin/` and asks for a new, empty directory
+- **AND** no file is written
+
+#### Scenario: init refuses the source checkout
+
+- **WHEN** the user runs `init` at the root of a source checkout
+- **THEN** `init` fails because the checkout has a `bin/`, and writes nothing
+
+#### Scenario: init --clean in a workspace whose bin/ holds only wrappers
+
+- **GIVEN** a workspace whose `bin/` holds only the tool wrappers and their marker
+- **WHEN** the user runs `init --clean`
+- **THEN** the cleanup removes the wrappers, the marker, and the empty `bin/`, and `init` succeeds
+
+`init --clean` MUST ask AWS whether the workspace's cluster has live infrastructure before it deletes anything, because it deletes `state.json`, the only local record of the cluster's VPC. It finds the cluster the way `down` does: from the VPC ID in the cluster state, through the same discovery as `down --dry-run` (the whole VPC, or only the cluster's `ClusterId`-tagged resources when the VPC came from `init --vpc`). A VPC that still holds any resource counts as live. When the lookup itself fails, `init --clean` MUST fail and delete nothing. When AWS reports the recorded VPC as not found, or the recorded region differs from the configured one, `init --clean` MUST fail and delete nothing, because a VPC in another region or account may still be live.
+
+#### Scenario: init --clean refuses while the cluster has live infrastructure
+
+- **GIVEN** a workspace whose cluster state records a VPC that still holds instances or other resources in AWS
+- **WHEN** the user runs `init --clean`
+- **THEN** `init` fails with `Setup.CleanRefusedLiveInfrastructure`, which names the VPC and the instances and tells the user to run `down` first
+- **AND** no local file is deleted
+
+#### Scenario: init --clean proceeds when AWS shows no infrastructure
+
+- **GIVEN** a workspace whose cluster state records a VPC that AWS shows empty, or records no VPC
+- **WHEN** the user runs `init --clean`
+- **THEN** the cleanup runs and `init` proceeds as before
+
+#### Scenario: init --clean refuses when the recorded VPC is gone or in another region
+
+- **GIVEN** a workspace whose recorded VPC AWS reports as not found, or whose recorded region is not the configured one
+- **WHEN** the user runs `init --clean`
+- **THEN** `init` fails, names the VPC and the regions, tells the user to run `down` first, and deletes nothing

@@ -1,28 +1,28 @@
 ## Context
 
-Issue #1242 (Teardown module: plan once, delete exactly the confirmed plan).  Paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`.
+Issue #1242 (Teardown module: plan once, delete exactly the confirmed plan).  Paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`.  This file holds D1 to D6.  D7 to D10, the declined findings and the risks are in [`design-fit.md`](design-fit.md), and the tests are in [`test-plan.md`](test-plan.md).
 
-Today `down` makes two separate calls into `AwsInfrastructureService`: a preview (`dryRun = true`) and a delete (`dryRun = false`).  Each call discovers the VPC again (`teardownVpc`, `teardownOwned`, `teardownAllTagged`, `teardownPackerInfrastructure`).  The tail save runs between the two calls and can take minutes.  The scope rule appears three times: in `Down.teardownCurrentCluster` (line 388), in `Down.scopeForNamedVpc` (359) and in `LiveInfrastructureLookup.find` (29).  `Down` is 630 lines with `@Suppress("TooManyFunctions")`, holds the whole sequence, and decides the exit code in two places.
+Today `down` makes two separate calls into `AwsInfrastructureService`, a preview (`dryRun = true`) and a delete (`dryRun = false`), and each call discovers the VPC again.  The tail save runs between the two and can take minutes.  The scope rule is written three times: `Down.teardownCurrentCluster` (line 388), `Down.scopeForNamedVpc` (359) and `LiveInfrastructureLookup.find` (29).  `Down` is 630 lines, carries `@Suppress("TooManyFunctions")`, and decides the exit code in two places.
 
-Bugs found while reading the code.  This change fixes all of them (see proposal):
-- **A:** `SpecificVpc` mode runs `removeTailscaleDevice` and `updateClusterState` for any VPC id (`Down.kt:191`), so `down <other-vpc>` resets the workspace.
-- **B:** `cleanupSocks5Proxy` runs for every `Finished` outcome (`Down.kt:188`).  That includes a declined prompt, `--packer`, an empty `--all`, and the "nothing recorded" paths.
-- **C:** `down <own-vpc-id>` and a `down --all` that finds the workspace's VPC destroy the workspace's cluster without the tail save.
-- **Dead VPC id:** a removal that records an error but still deletes the VPC (an ENI wait timeout, `AwsInfrastructureService.kt:702`) leaves `vpcId` in the state.  The next `down` then calls `getVpcName` on a VPC that no longer exists.  `DescribeVpcs` answers `InvalidVpcID.NotFound`, so `plan` throws, and the workspace cannot be torn down.
+Bugs this change fixes (see the proposal):
+- **A:** `down <other-vpc>` resets the workspace (`Down.kt:191`).
+- **B:** the tunnel stops for every `Finished` outcome (`Down.kt:188`): a declined prompt, `--packer`, an empty `--all`, and the "nothing recorded" paths.
+- **C:** `down <own-vpc-id>`, and a `down --all` that finds the workspace's VPC, skip the tail save.
+- **Dead VPC id:** a removal that deletes the VPC but records an error (an ENI wait timeout, `AwsInfrastructureService.kt:702`) leaves `vpcId` in the state.  The next `down` gets `InvalidVpcID.NotFound` from `getVpcName` and cannot finish.
 
 ## Goals / Non-Goals
 
 Goals:
-- One plan per `down`, and `execute` changes only what that plan holds.
-- The scope rule in one place.
+- One plan per `down`, and `execute` changes only what the plan holds.
+- The scope rule written once.
 - Provider types behind a neutral port.
 - The local work after a teardown in one step.
 - One exit path.
 
 Non-goals:
-- The delete order and the AWS calls (unchanged; #398 changes them).
+- Changing the delete order or the AWS calls (#398 does that).
 - The `ClusterNetwork` module (#1056).
-- The tail save itself (`TeardownBackupService` is unchanged).
+- The tail save itself.
 - A second provider adapter.
 
 ## Decisions
@@ -30,45 +30,59 @@ Non-goals:
 ### D1. The module: `services/teardown/`
 
 ```kotlin
-class ClusterTeardown(stateManager, infrastructure: InfrastructureTeardown, workspace: WorkspaceTeardown,
-                      buckets: BucketTeardown) {
+class ClusterTeardown(stateManager, infrastructure: InfrastructureTeardown, workspace: WorkspaceTeardown, buckets: BucketTeardown) {
     fun plan(target: TeardownTarget): TeardownPlan        // discovers once; emits no Teardown.* event
     fun execute(confirmed: ConfirmedPlan): TeardownReport // discovers nothing
 }
 sealed interface TeardownTarget { companion object { fun from(vpcId: String?, all: Boolean, packer: Boolean): TeardownTarget } }
 data object CurrentCluster : TeardownTarget
 data class Network(val id: String) : TeardownTarget
-data class AllTagged(val includePacker: Boolean) : TeardownTarget, TeardownScope   // one type, both roles
+data class AllTagged(val includePacker: Boolean) : TeardownTarget, TeardownScope
 data object Packer : TeardownTarget, TeardownScope
 
 sealed interface TeardownPlan
 data class NothingRecorded(val reason: NothingReason, val clusterName: String?) : TeardownPlan
 sealed interface ExecutablePlan : TeardownPlan
 data class DeviceOnly(val deviceId: String) : ExecutablePlan
-data class Networks(val target: TeardownTarget, val scope: TeardownScope, val networks: List<PlannedNetwork>,
-                    val workspaceNetworkId: String?) : ExecutablePlan { val includesWorkspace: Boolean }
+data class Networks(val target: TeardownTarget, val networks: List<PlannedNetwork>, val workspace: WorkspacePlan?,
+                    val dataBuckets: List<String>) : ExecutablePlan
+data class WorkspacePlan(val networkId: String, val clusterName: String, val deviceId: String?)
 enum class NothingReason { NO_CLUSTER_STATE, NO_NETWORK_RECORDED }
 class ConfirmedPlan internal constructor(val plan: ExecutablePlan)
-data class NetworkRemoval(val networkId: String, val errors: List<String>, val networkGone: Boolean)
-data class TeardownReport(val removals: Map<String, NetworkRemoval>, val workspaceErrors: List<String>) {
-    val errors get() = removals.values.flatMap { it.errors } + workspaceErrors
-    val success get() = errors.isEmpty()
+
+sealed interface NetworkOutcome {
+    data class Removed(val errors: List<String>, val networkDeleted: Boolean) : NetworkOutcome
+    data object Gone : NetworkOutcome          // planned as GONE, confirmed, no remove call
+    data object NotAttempted : NetworkOutcome  // planned, but an earlier network threw first
+    data object NotPlanned : NetworkOutcome    // the id is not in the plan
+}
+data class NetworkResult(val networkId: String, val outcome: NetworkOutcome)
+data class TeardownReport(val results: List<NetworkResult>, val workspaceErrors: List<String>, val thrown: Throwable?) {
+    fun outcomeFor(id: String): NetworkOutcome = results.firstOrNull { it.networkId == id }?.outcome ?: NetworkOutcome.NotPlanned
+    val errors: List<String>                   // every Removed error, plus workspaceErrors
+    val success get() = errors.isEmpty() && thrown == null && results.none { it.outcome == NetworkOutcome.NotAttempted }
 }
 ```
 
-`TeardownTarget.from` holds the flag precedence that `TeardownPlanner.modeFor` holds today: a VPC id wins over `--all`, and `--all` wins over `--packer`.
+`workspace` is non-null exactly when the plan includes the workspace's own cluster (D5).  `TeardownTarget.from` holds today's flag precedence: a VPC id beats `--all`, and `--all` beats `--packer`.
 
-`plan` returns its reasons, and `Down` emits the events from them: `NoClusterState`, `NoVpcId(clusterName)`, `PreparingVpc(scope id)` and `FindingPackerVpc`.  So `init --clean` emits no `Teardown.*` event.  The adapter still emits its own `Infra.*` discovery events, which `init --clean` emits today too.
+`plan` returns its reasons, and `Down` emits the events from them (`NoClusterState`, `NoVpcId`, `PreparingVpc`, `FindingPackerVpc`).  So `init --clean` emits no `Teardown.*` event; it still gets the adapter's own `Infra.*` discovery events, as it does today.
 
-`ConfirmedPlan` takes an `ExecutablePlan`, so `execute` has no unreachable `NothingRecorded` branch.  Only `TeardownConfirmation` may call its constructor; an ArchUnit rule enforces that (D7), because `internal` alone does not stop `Down`, which is in the same Gradle module.
+Before any discovery, `plan` compares the region the state recorded (`infrastructure.region`, else `initConfig.region`) with `infrastructure.region()`, the region the port's adapter talks to.  If they differ, `plan` throws `TeardownRegionMismatch(recorded, current)`.  `Down` turns that into `Teardown.RegionMismatch` and exits non-zero.  `init --clean` turns it into `Setup.CleanRegionMismatch` and deletes nothing.  This is a configuration check made before anything happens, not a verify check.
 
-`execute` runs in this order:
-1. When `includesWorkspace`, unpublish the proxy port.
-2. Inside `try`, call `remove` on each planned network, in order, and keep one `NetworkRemoval` per network id.
-3. In the `finally`, when `includesWorkspace` (or the plan is `DeviceOnly`), run `WorkspaceTeardown.after(workspaceRemoval)`.  A thrown defect therefore still stops the tunnel.
-4. Last, for `AllTagged` and only when every removal succeeded, sweep the empty data buckets.  The sweep runs after the workspace step, so `stopMetrics` never targets a bucket the sweep has just deleted.
+`ConfirmedPlan` takes only an `ExecutablePlan`, so `execute` has no unreachable branch.  Only `TeardownConfirmation` constructs one, which an ArchUnit rule enforces (design-fit D7).
 
-`Event.Teardown.Starting` is still the first event `down` emits, before `plan`.
+`execute` runs these steps in order:
+1. `workspace.beforeRemoval()`, when `workspace != null`.
+2. Inside a `try`, each planned network in order:
+   - a `GONE` network records `Gone`, with no remove call;
+   - any other network gets `remove`, and its result is recorded as `Removed`.
+   If one throws, the networks after it record `NotAttempted`, and the throwable goes into the report.
+3. In the `finally`: `WorkspaceTeardown.after(report.outcomeFor(workspace.networkId))` when `workspace != null`, or `after(DeviceOnly)` for a `DeviceOnly` plan.
+4. Only when `report.success`: `buckets.deleteEmptyBuckets(dataBuckets)`, the buckets the plan listed (D3).  It runs after the workspace step, so `stopMetrics` never targets a bucket the sweep just deleted.
+5. After the `finally`, the throwable is rethrown.
+
+`Event.Teardown.Starting` stays the first event `down` emits.
 
 ### D2. The scope rule: `TeardownScopes.resolve`, one pure function
 
@@ -91,187 +105,135 @@ fun resolve(target: TeardownTarget, state: ClusterState?): Resolution   // Nothi
 | Network(id) | anything else | ByTags(id) |
 | AllTagged / Packer | any | the target itself |
 
-Every row matches today's code (`Down.kt:359-415`; #1171 introduced `ByTags`).  `workspaceNetworkId` is `state.vpcId` whenever a state exists.
+Every row matches today's code (`Down.kt:359-415`).  `workspaceNetworkId` is `state.vpcId`.
 
-`includesWorkspace` is true in these cases:
+The plan includes the workspace (`Networks.workspace != null`) in three cases:
 - the target is `CurrentCluster`;
 - the target is `Network(id)` with `id == workspaceNetworkId`;
 - the target is `AllTagged` and a planned network's id is `workspaceNetworkId`.
 
-It is never true for `Packer`.  `--all` searches by the legacy tag, so it never finds a supplied VPC, and a supplied-VPC workspace is not included.
+It never does for `Packer`.  `--all` searches by the legacy tag, so it never finds a supplied VPC.
 
-`init --clean` calls `plan(CurrentCluster)`.  It is refused when a planned network `holdsResources()`.  `NothingRecorded`, `DeviceOnly` and an empty `Networks` let it proceed, as `LiveInfrastructureLookup` does today.  `LiveInfrastructureLookup` is removed.
+`init --clean` calls `plan(CurrentCluster)`.  It is refused when a planned network `holdsResources()` (`CleanRefusedLiveInfrastructure`, as today).  It is also refused when the workspace network is `GONE` (`Setup.CleanRefusedNetworkNotFound(vpcId, region)`, which says to run `down`).  `NothingRecorded`, `DeviceOnly` and a planned network with no live resources let it proceed.  A thrown `plan` fails it, and it deletes nothing.  `LiveInfrastructureLookup` is removed.
 
 ### D3. The port: `InfrastructureTeardown`
 
 ```kotlin
 interface InfrastructureTeardown {
-    fun discover(scope: TeardownScope): List<PlannedNetwork>
-    fun remove(network: PlannedNetwork): NetworkRemoval       // a step failure is an error, never a throw
+    fun region(): String
+    fun discover(scope: TeardownScope, workspaceNetworkId: String?): List<PlannedNetwork>
+    fun remove(network: PlannedNetwork): NetworkOutcome.Removed      // a step failure is an error, never a throw
 }
 data class PlannedNetwork(val id: String, val name: String?, val kindLabel: String, val ownership: NetworkOwnership,
-                          val groups: List<ResourceGroup>) {
+                          val clusterId: String?, val groups: List<ResourceGroup>) {
     fun holdsResources() = groups.any { it.live && it.ids.isNotEmpty() }
     fun nonInstanceResourceCount() = groups.filter { it.live && it.kind != ResourceKind.INSTANCE }.sumOf { it.ids.size }
     fun summary(): String
 }
-enum class NetworkOwnership { OWNED, KEPT_UNTAGGED, KEPT_SUPPLIED }
+enum class NetworkOwnership { OWNED, KEPT_UNTAGGED, KEPT_SUPPLIED, GONE }
 data class ResourceGroup(val kind: ResourceKind, val label: String?, val ids: List<String>, val live: Boolean)
 enum class ResourceKind { INSTANCE, SPARK_CLUSTER, SEARCH_DOMAIN, FIREWALL_GROUP, SUBNET, ROUTE_TABLE,
-                          ROUTE_ASSOCIATION, NAT_GATEWAY, INTERNET_GATEWAY }
+                          ROUTE_ASSOCIATION, GATEWAY_ROUTE, NAT_GATEWAY, INTERNET_GATEWAY }
 ```
 
-The plan holds the full inventory as neutral ids, grouped by a neutral kind.  The adapter supplies everything that carries a provider word or a provider rule:
-- `kindLabel` ("VPC") and each group's `label` ("EC2 Instances"), so `summary()` prints today's text exactly: `"$kindLabel: $id ($name)"`, then " (not created by easy-db-lab, kept)" for both kept values, then each labelled non-empty group.
-- `live`, which the adapter sets false for route tables and route associations.  AWS gives every VPC a main route table, so a route table alone does not make a network live.  A group with a null `label` is not printed.
+The plan holds the full inventory as neutral ids, grouped by a neutral kind.  Neutral code reads only `INSTANCE` (for `init --clean`) and `live`.  Every other kind exists so the adapter can rebuild its inventory and tests can read ids; the `ResourceKind` KDoc says so.
 
-One adapter, `services/aws/AwsInfrastructureTeardown`.  It takes the teardown half of `AwsInfrastructureService` (lines 330-825: discovery, the three phases, `guarded`, `logError`, `TeardownStepResult` and `Phase1Result`) as a pure move.  `remove` turns the plan back into an inventory (`AwsNetworkInventory.fromPlanned`, the inverse of `toPlanned`) and runs `executeVpcTeardown` on it, with the same order and the same `ownsVpc` branches.  `ownsVpc` is `ownership == OWNED`.
+The adapter supplies everything that carries a provider word or a provider rule:
+- `kindLabel` ("VPC") and each group's `label`, so `summary()` prints today's text: `"$kindLabel: $id ($name)"`, then " (not created by easy-db-lab, kept)" for both kept values, then each labelled non-empty group.
+- `live`, which is false for route tables, route associations and gateway routes.  A group with a null `label` is not printed.
+- `clusterId`, read from the VPC's `ClusterId` tag.
 
-For `KEPT_UNTAGGED` only, `remove` emits `Infra.VpcKept` before it removes anything, as `teardownVpcByTags` does today; a supplied VPC does not get the event, also as today.  `DiscoveredResources` becomes `internal` `AwsNetworkInventory`.  `TeardownMode`, `TeardownResult` and `providers/aws/TeardownTypes.kt` are deleted.
+A `GONE` network has no groups.  Its summary line reads `"$kindLabel: $id no longer exists in region <r>"`.
 
-**Route associations.**  Today `deleteRouteTable` describes the table and disassociates every non-main association (`EC2VpcService.kt:963-1011`), including that of a subnet created after the plan.  Discovery now records each planned route table's association ids in `ROUTE_ASSOCIATION`.  `VpcService.deleteRouteTable(routeTableId, associationIds)` disassociates only the listed ids that it still finds.  `findRouteTablesInVpc` and `findOwnedResources` return the association ids from the describe call they already make, so no call is added.
+**The adapter.**  `services/aws/AwsInfrastructureTeardown` takes the teardown half of `AwsInfrastructureService` (lines 330-825) as a pure move.  `remove` rebuilds the inventory (`AwsNetworkInventory.fromPlanned`, the inverse of `toPlanned`) and runs `executeVpcTeardown` on it, with the same order.  `ownsVpc` is `ownership == OWNED`.  `networkDeleted` is true only when the network is `OWNED` and `deleteVpc` succeeded; a kept network is never deleted.  For `KEPT_UNTAGGED` only, `remove` emits `Infra.VpcKept` first, as today.  `DiscoveredResources` becomes the `internal` class `AwsNetworkInventory`.  `TeardownMode`, `TeardownResult` and `providers/aws/TeardownTypes.kt` are deleted.
 
-**What `remove` still reads.**  It reads, but does not change, unplanned state:
-- the ENI wait covers the whole VPC;
-- `deleteRoutesToInternetGateway` describes the VPC's route tables;
-- `revokeSecurityGroupRules` describes the group.
+**Only planned resources change.**  `remove` reads, but never changes, unplanned state: the ENI waits and the security group describe.
+- **Route associations:** discovery records each planned route table's non-main association ids in `ROUTE_ASSOCIATION`.  It gets them from the `DescribeRouteTables` that `findRouteTablesInVpc` and `findOwnedResources` already make.  `VpcService.deleteRouteTable(routeTableId, associationIds)` disassociates only those ids.
+- **Gateway routes:** for a kept network, discovery records each route to the planned gateway as `GATEWAY_ROUTE` (`<rtb>|<destination>`), using the describe that `deleteRoutesToInternetGateway` makes today.  The preview counts them as "Routes to the gateway: N".  `VpcService.deleteRoutes(planned)` deletes only those routes.
 
-It removes a route only when that route points at a planned gateway that is being deleted.  The requirement says exactly this.
+**Discovery cost.**
+- `discover` fetches the EMR cluster-to-subnet map and the OpenSearch domain-to-subnet map once per call, for every scope, and filters them in the adapter.  `findClustersInVpc` and `findDomainsInVpc` are deleted, and their tests move to the map methods.
+- `findVpcsByTag` returns `TaggedVpc(id, name, tags)` from the one tag search.  `--all` skips the packer VPC on that name, before reading any inventory, and passes the name and `ClusterId` on.  `commands/aws/Vpcs.kt` uses the tags it now gets, instead of calling `getVpcTags` once per VPC.
 
-**Discovery cost (P1, P2).**  `discover(AllTagged)` fetches the EMR cluster-to-subnet map and the OpenSearch domain-to-subnet map once, then matches each network's subnets against them.  It reads the VPC name first and skips the packer VPC before any inventory call.
-
-**A network that no longer exists.**  When `getVpcName` or `getVpcTags` gets `InvalidVpcID.NotFound`, `discover` returns no network for that id.  The plan is then an empty `Networks`.  For the workspace's own network, the workspace step runs and marks the state down.  This frees a workspace that an earlier release left with a dead VPC id.
+**A network that no longer exists.**  The adapter matches only the error code `InvalidVpcID.NotFound`, and only for the workspace's own recorded network (`id == workspaceNetworkId`) under `WholeNetwork` or `ClusterInSuppliedNetwork`.  There it returns that network with `ownership = GONE`.  Every other case keeps today's failure, so `plan` throws, `down` exits non-zero and nothing changes:
+- `NotFound` for any other id: `down <typo-id>` fails as it does today.
+- `UnauthorizedOperation` or any other code.
+- An empty `vpcs()` list from `getVpcName`.
+- `getVpcTags`'s `error("VPC … not found")`.
 
 Rejected alternatives:
-- An opaque inventory (`inventory: Any`, which the adapter casts back): it fails only at run time, and a test could not read the ids.
-- A closure (`remove: () -> NetworkRemoval`): it hides the data and breaks equality.
-- `keepsNetwork: Boolean`: it cannot tell `KEPT_UNTAGGED` from `KEPT_SUPPLIED`, so `VpcKept` could not be emitted as it is today.
+- An opaque inventory: it fails only at run time.
+- A closure: it hides the data.
+- A `keepsNetwork` Boolean: it cannot carry `VpcKept`.
+- Planning a gone network as "no network": that resets a workspace without a prompt (r2 adv N1).
 
 ### D4. A resource that appears after the plan
 
 `execute` removes only planned ids and changes no unplanned resource (D3).
 
-- **Kept network** (`KEPT_UNTAGGED` or `KEPT_SUPPLIED`): a late resource is left alone, and the removal succeeds.
-- **`OWNED` network:** a late resource blocks the dependent deletes.
-  - The ENI wait times out after 5 minutes when the late resource has an ENI.  This is recorded as an error, as today.
-  - Each blocked delete (security group, subnet, IGW detach, VPC) fails with `DependencyViolation` after `createVpcTeardownRetryConfig`'s 5 attempts, about 75 s each.
-  - A late subnet (the L1 case) blocks only the VPC delete, so it costs about 75 s.  A late instance can cost about 5 min plus 75 s per blocked delete, 10 to 15 min in all.
-  - `down` then reports the errors and exits non-zero, and the state is not marked down.  A re-run plans again and shows the late resource before it removes it.
+A late resource that touches nothing planned is left alone, in every ownership, and the removal succeeds.  A late resource that depends on a planned one blocks that delete, in every ownership, and the removal fails.  Examples are a late instance in a planned subnet or security group, or a late subnet associated with a planned route table.
 
-Nothing is deleted that the operator did not see.  There is no pre-delete drift check: that would be a verify check, which `down` must not have.
+The added time before `down` exits non-zero:
 
-A planned id that is gone at execute time (another `down` ran meanwhile) fails its delete with NotFound.  For an instance, that is a fatal phase 1 failure: phases 2 and 3 do not run for that network, and a re-run finishes it.  `TerminateInstances` on an instance terminated in the last hour succeeds, so only an instance that has aged out hits this.  A second concurrent `down` is operator error.
+| late resource | blocked deletes | about |
+|---|---|---|
+| a subnet in an `OWNED` network (L1) | the VPC delete | 75 s |
+| a subnet associated with a planned route table | the route table delete and the VPC delete | 150 s |
+| an instance in a planned subnet | the ENI wait (5 min), then each dependent delete at about 75 s | 10 to 15 min |
+
+When the removal fails, `down` reports the errors and exits non-zero, and the state is not marked down (D5).  A re-run plans again and shows the late resource before it removes anything.  No pre-delete drift check is added, because that would be a verify check.
+
+A planned id that is gone at execute time, because another `down` ran meanwhile, fails its delete with NotFound.  For an instance, that is a fatal phase 1 failure: that network's phases 2 and 3 do not run, and a re-run finishes it.
 
 ### D5. The workspace step: `WorkspaceTeardown`
 
-When `includesWorkspace` is true:
-- `Down` runs the tail save before `execute` when the plan holds a network.  This fixes bug C.
-- `execute` calls `beforeRemoval()`, which runs `SocksProxyService.unpublishPort()`.  That method replaces `Down.clearProxySystemProperties` and clears only `Constants.Proxy.PORT_PROPERTY`.
-- `after(workspaceRemoval)` always stops the tunnel.  It then runs the rest only when the workspace network's own removal succeeded (`errors.isEmpty() || networkGone`), or when the workspace network is not in the plan (it is gone):
-  1. remove the tailnet device;
-  2. delete the auth key;
-  3. stop the data bucket metrics;
-  4. mark the state down, clearing hosts, EMR, OpenSearch, infrastructure and the auth key id.
+When `Networks.workspace != null`:
+- `Down` runs the tail save before `execute`, when the workspace network is not `GONE`.  This fixes bug C.
+- `beforeRemoval()` runs `SocksProxyService.unpublishPort()`.  It clears only `Constants.Proxy.PORT_PROPERTY` and never `socksProxyHost` or `socksProxyPort`.
+- `after(outcome)` always stops the tunnel.  It runs the rest only when the outcome is `Gone`, or `Removed` with no errors or with `networkDeleted`:
+  - remove the device;
+  - delete the auth key;
+  - stop the bucket metrics;
+  - mark the state down through `ClusterStateManager.update`, so a write made meanwhile is kept.
+  - A failed device removal adds to `workspaceErrors`, as today.
+- `NotAttempted` and `NotPlanned` never reset the state.
 
-  A failed device removal adds to `workspaceErrors`, as it does today.  The step depends only on the workspace's own network.  Under `--all`, a failure in another network does not keep the workspace state pointing at a deleted VPC, but `down` still exits non-zero.  This fixes the dead-VPC-id bug.
+So a failed removal in a supplied or untagged network keeps the state and its `vpcId`, and so does a throw on an earlier `--all` network.  A failure in another `--all` network does not block the workspace's reset, but `down` still exits non-zero.  This fixes the dead VPC id.
 
-`after` re-reads the state through `ClusterStateManager.update`, so a write another command made meanwhile is kept.  When `includesWorkspace` is false, none of these steps runs, which fixes bugs A and B.
+When `workspace` is null, nothing here runs, which fixes bugs A and B.
 
 ### D6. What stays in `Down`
 
-`Down` keeps the flag parsing (`TeardownTarget.from`), the confirmation (`TeardownConfirmation`, renamed from `TeardownPlanner`) and the tail-save gate (`saveTailBeforeTeardown`, `stateToSave`, `abortEvent`, `unsavedAbort`).  `review(plan, ReviewOptions(dryRun, autoApprove, forceSkips))` returns one of `Proceed(ConfirmedPlan)`, `DryRun`, `Declined` or `NothingToDo(reason)`.  `forceSkips` holds the signals that will not be saved.  `Down` computes it, through `reportForceSkipsTail`'s logic, when `--force`, `includesWorkspace` and the plan is not empty; otherwise it is null.
+`Down` keeps the flag parsing, `TeardownConfirmation` (renamed from `TeardownPlanner`) and the tail-save gate (`saveTailBeforeTeardown`, `stateToSave`, `abortEvent`, `unsavedAbort`).  `reportForceSkipsTail` is deleted.  When `--force` is set and the workspace network is not `GONE`, `Down` computes `forceSkips = teardownBackupService.unsavedSignals(state)`.  `review` is the only code that emits `ForceSkipsTail`.
 
-"Empty" means `Networks.networks.isEmpty()`, and nothing else.  A planned network always counts as a removal, whatever its groups hold.  What `review` does for each plan:
+`review(plan, ReviewOptions(dryRun, autoApprove, forceSkips))` returns one of `Proceed(ConfirmedPlan)`, `DryRun`, `Declined` or `NothingToDo(reason)`.
 
-| plan | `--dry-run` | `--auto-approve` | neither, answer yes | neither, answer no |
+"Empty" means `networks.isEmpty()`.  A planned network always needs confirmation, `GONE` included.  When the plan includes the workspace, the summary ends with one more line: "This workspace (`<name>`): cluster state marked down, tailnet device `<id>` removed, auth key deleted, data bucket metrics stopped".  When `dataBuckets` is not empty, a "Data buckets deleted if empty: N" line follows.  `--dry-run` wins over `--auto-approve`, as today.
+
+| plan | `--dry-run` | `--auto-approve` | no flag, answer yes | no flag, answer no |
 |---|---|---|---|---|
-| NothingRecorded | NothingToDo, exit 1 | NothingToDo, exit 1 | NothingToDo, exit 1 | NothingToDo, exit 1 |
-| DeviceOnly | `DryRunDeviceRemovalPreview`, DryRun, exit 0 | Proceed, no prompt | Proceed, no prompt | (no prompt) |
-| Networks([]) | `No*Found`, DryRun, exit 0 | `No*Found`, Proceed, no prompt | `No*Found`, Proceed, no prompt | (no prompt) |
-| Networks(non-empty) | `ForceSkipsTail`?, `DryRunPreview`, DryRun, exit 0 | `ForceSkipsTail`?, Proceed | `ForceSkipsTail`?, prompt, Proceed | `ForceSkipsTail`?, prompt, `CancelledByUser`, Declined, exit 1 |
+| NothingRecorded | reason, `CompletedWithErrors`, exit 1 | same | same | same |
+| DeviceOnly | `DryRunDeviceRemovalPreview`, exit 0 | Proceed, no prompt | Proceed, no prompt | (no prompt) |
+| Networks([]) | `No*Found`, exit 0 | `No*Found`, nothing changes, exit 0 | same | (no prompt) |
+| Networks(non-empty, `GONE` included) | `ForceSkipsTail`?, `DryRunPreview`, exit 0 | `ForceSkipsTail`?, Proceed | `ForceSkipsTail`?, prompt, Proceed | `ForceSkipsTail`?, prompt, `CancelledByUser`, exit 1 |
 
 - `No*Found` is `NoResourcesFound` for `CurrentCluster` and `Network`, `NoTaggedVpcsFound` for `AllTagged`, and `NoPackerVpcFound` for `Packer`.
-- `ForceSkipsTail`? is emitted when `forceSkips` is not null, after the summary is built and before the dry-run stop or the prompt, as today.
+- `NothingRecorded` keeps today's `CompletedWithErrors([reason])`.
+- `ForceSkipsTail` comes after the summary and before the dry-run stop or the prompt.
 - A dry run changes nothing in any row.
-- An empty `Networks` with `includesWorkspace` runs only the workspace step: the network is already gone.  Otherwise an empty plan changes nothing.
+- An empty plan changes nothing: a gone workspace network is a `GONE` entry, never an empty plan.
 
 ```text
 emit Starting
-plan = teardown.plan(target)                        // one discovery
+plan = teardown.plan(target)                        // one discovery; a region mismatch throws
 emit NoClusterState | NoVpcId | PreparingVpc | FindingPackerVpc   (from plan)
 when (review(plan, options))
-  NothingToDo -> throw CommandFailedException        // dry run too, as today
+  NothingToDo -> emit CompletedWithErrors; throw CommandFailedException
   DryRun      -> return
   Declined    -> throw CommandFailedException        // CancelledByUser already emitted
-  Proceed     -> if (includesWorkspace && networks not empty && !force && !saveTail()) throw
+  Proceed     -> if (workspace != null && workspace network not GONE && !force && !saveTail()) throw
                  report = teardown.execute(confirmed)
                  emit CompletedSuccessfully, or CompletedWithErrors(report.errors) and throw
 ```
 
-`TeardownOutcome`, `VpcScope`, the mutable `exitCode`, the `call()` override and `@Suppress("TooManyFunctions")` are removed.  Every failure exit is a `CommandFailedException` thrown after its typed event.  The executor returns the error code and prints nothing more.
-
-### D7. Boundary rules, ports, Koin
-
-The new rules go into `architecture/PackageBoundaryTest`, next to the SDK rules:
-- No class in `services.teardown..`, and not `commands.Down`, depends on `providers.aws..` or `services.aws..`.
-- Only classes in `services.teardown..` call `InfrastructureTeardown.discover` or construct a `TeardownScope`.
-- Only `TeardownConfirmation` calls the `ConfirmedPlan` constructor.
-
-Each rule has a fixture in a test package the rule selects:
-- `com.rustyrazorblade.easydblab.services.teardown.fixtures.NamesAwsInventory` for the first rule;
-- `com.rustyrazorblade.easydblab.commands.fixtures.CallsDiscover` and `BuildsConfirmedPlan` for the other two.
-
-The main scan uses `DoNotIncludeTests`, so the fixtures stay out of it.  `Init` keeps its other AWS dependencies, so the first rule does not cover `Init`; the second rule stops `Init` from resolving a scope of its own.
-
-`S3DataBucketTeardown` (renamed from `DataBucketTeardown`) implements the neutral `BucketTeardown` port.  `MetricsStop` and `DataBucketSweep` move to the port file.
-
-The VPC teardown retry becomes `VpcTeardownRetryPolicy(maxAttempts, baseInterval)`, a constructor parameter of `EC2VpcService` and `EC2SecurityGroupService` (like `pollInterval`).  Its default comes from the existing `Constants.Retry` values.  The retry stays; a test passes a short policy.
-
-Koin:
-- in `AwsServicesModule`: `single<InfrastructureTeardown> { AwsInfrastructureTeardown(...) }` and `factory<BucketTeardown> { S3DataBucketTeardown(...) }` (`factory`, as `DataBucketTeardown` is bound today);
-- in `ServicesModule`: `ClusterTeardown`, `WorkspaceTeardown` and `TeardownConfirmation`.
-
-`AwsInfrastructureService` loses `emrService`, `openSearchService` and `@Suppress("TooManyFunctions")`, and `Init` loses `infrastructureService`.
-
-### D8. An existing Kubernetes cluster
-
-The port is neutral, and the scope rule is not yet.  `TeardownScopes.resolve` reads `state.vpcId` and `state.vpcSupplied`, which are AWS-shaped fields of `InfrastructureState`.  An existing cluster (EKS, where the tool made no network) records no VPC id, so `plan(CurrentCluster)` returns `NothingRecorded(NO_NETWORK_RECORDED)` or `DeviceOnly` today, and no adapter's `discover` is called.
-
-The one later change that path needs is a recorded "no network of ours" state that resolves to a scope whose `discover` returns no networks.  `plan` then returns an empty `Networks` with `includesWorkspace`, and `execute` runs only the workspace step, which already works (D6 table, row 3).  The reshape of `InfrastructureState` belongs to #1062.  Nothing for it is built here.
-
-### D9. How this fits the related issues
-
-- **#1056 (ClusterNetwork module):** when it lands, `ClusterNetwork.teardown(network)` takes phase 3 out of `AwsInfrastructureTeardown.remove`, which then calls it.  The port, the plan and `Down` do not change.  `Down` calls `ClusterTeardown` and never `ClusterNetwork`; task 6.4 posts this on #1056.
-- **#398 (parallel VPC teardown):**
-  - Its dependency queue replaces `executeVpcTeardown` inside the adapter.  The plan already holds every id by kind, which is the queue's input.
-  - The per-network loop is in `ClusterTeardown.execute`, and `TeardownReport` already keeps one result per network.
-  - #398 must give phase 1 and that loop a dedicated, bounded executor.  Today phase 1 runs on the common ForkJoinPool (`AwsInfrastructureService.kt:592`), which blocking waits would starve.
-  - #398 can start the other networks while the workspace saves its tail, if "a failed save removes nothing" is scoped to the workspace's network.
-- **#1171 (ByTags):** its `VpcOwnership` decision stays in `discover(ByTags)`.
-- **#1062 (multi-cloud):** the port is neutral and the adapter carries the provider name.  D8 names the state reshape that remains.
-
-### D10. Scale
-
-One discovery per `down` instead of two.  One discovery is `9 + E + D` calls per VPC: 7 EC2 calls, plus `ListClusters` and one `DescribeCluster` per active EMR cluster in the account, plus `ListDomainNames` and one `DescribeDomain` per OpenSearch domain.  Today a `down` makes `2 x (9 + E + D)`.  For `--all` over K VPCs it was `2K x (9 + E + D)`; it is now about `8K + 2 + E + D`, through P1 and P2.
-
-`TerminateInstances` takes the whole instance list in one call.  At 100 nodes the plan holds about 110 ids, in memory only.  Execute stays sequential per network (#398).
-
-`down <own-vpc>` and a `down --all` that includes the workspace now run the tail save first: up to the Tempo drain's 5 minutes, usually less.  The total is the save plus the sum of the network removals.
-
-## Test plan
-
-The full test plan, with a control for each test, is in [`test-plan.md`](test-plan.md).
-
-## Declined findings
-
-- **Debt m10 (move the tail-save gate out of `Down`):** declined.  #1242 says `Down` keeps the gate, and moving it is a separate change.  For later: `abortEvent` and `unsavedAbort` could sit beside `TeardownBackupService`.
-- **Tests T13 (`remove makes no describe call`):** dropped, per the lead decision.  `remove` must describe (the waits, the IGW routes).  Instead, `AwsInfrastructureTeardownIntegrationTest` asserts what survives, and T23's event count shows that discovery runs once.
-
-## Risks / Trade-offs
-
-- An `OWNED` network with a late resource now fails instead of deleting it (D4).  That is the fix, and a re-run finishes the teardown.
-- The pure move of about 500 lines into the adapter is large.  It lands as its own commit (task 2.1), and the moved tests keep their assertions.
-
-## Owner decisions
-
-None yet.  Open questions are in the hand-back.  The working assumption for the late resource is D4.
+`TeardownOutcome`, `VpcScope`, `exitCode`, `call()`, `reportForceSkipsTail` and `@Suppress("TooManyFunctions")` are removed.  Every failure exit is a `CommandFailedException` thrown after its typed event, and the executor prints nothing more.

@@ -20,7 +20,8 @@ Reading the code turned up four more bugs.  This change fixes them all:
 - **The scope rule is resolved once, in `TeardownScopes`.**  The scopes are: the whole network, by tags, one cluster in a supplied network, all tagged, and packer.  `down` and `init --clean` both get the scope from `plan`.
 - **A neutral port, `InfrastructureTeardown` (`discover`, `remove`), with one adapter, `services/aws/AwsInfrastructureTeardown`.**
   - The teardown half of `AwsInfrastructureService` moves into the adapter unchanged, delete order included.
-  - The plan also records each route table's subnet associations, so `remove` disassociates only planned ones.
+  - The plan also records each route table's subnet associations and, in a kept network, each route to the gateway, so `remove` changes only planned ones.
+  - Only the AWS error code `InvalidVpcID.NotFound` for the workspace's own network plans that network as gone.
   - `--all` fetches the EMR and OpenSearch maps once and skips the packer VPC before reading its inventory.
   - The VPC teardown retry takes a policy that a test can shorten.
 - **The local work after a teardown becomes one step, `WorkspaceTeardown`.**  That work is the tunnel stop, the tailnet device, the auth key, the bucket metrics and the state reset.
@@ -28,6 +29,8 @@ Reading the code turned up four more bugs.  This change fixes them all:
   - The step depends on that network's own result, not on the whole run.
   - The tail save runs under the same condition.
 - **`Down` keeps the flag parsing, the confirmation prompt and the tail-save gate.**  The prompt is `TeardownConfirmation`, renamed from `TeardownPlanner`.  `Down` fails through `CommandFailedException`, so the exit code is decided in one place.
+- **`plan` fails when the region the state recorded differs from the configured region**, before it discovers anything.
+- **`down --all` deletes only the empty data buckets of the clusters it planned**, not every empty data bucket in the account.
 - **`LiveInfrastructureLookup` is removed.**  `init --clean` asks `ClusterTeardown.plan(CurrentCluster)` instead and emits no teardown event.
 - **New ArchUnit rules in `PackageBoundaryTest`:**
   - neutral teardown code names no AWS type;
@@ -38,11 +41,13 @@ Reading the code turned up four more bugs.  This change fixes them all:
 
 ### New Capabilities
 
-- `cluster-teardown-plan`: "down changes only the confirmed plan" and "Teardown of the workspace's own cluster".  They are a capability of their own so that each spec file stays under 300 lines, since the `cluster-lifecycle` delta must copy the whole of "Cluster Teardown".
+- `cluster-teardown`: "down changes only the confirmed plan" and "Teardown of the workspace's own cluster".  At archive, "Cluster Teardown" moves here from `cluster-lifecycle` (task 7.1), so every teardown rule lives in one capability.
 
 ### Modified Capabilities
 
-- `cluster-lifecycle`: "Cluster Teardown" now runs the pre-teardown save only for a teardown that includes the workspace's own cluster, as "Teardown of the workspace's own cluster" defines.  It also gains the scenario "A teardown of another network runs no save".  The rest of the requirement is unchanged.
+- `cluster-lifecycle`:
+  - "Cluster Teardown" runs the pre-teardown save only for a teardown that includes the workspace's own cluster, and gains the scenario "A teardown of another network runs no save".  Its "Teardown of all clusters" scenario now deletes only the empty data buckets of the removed clusters.
+  - "Cluster Initialization": `init --clean` refuses when the recorded VPC is not found or the recorded region differs, instead of proceeding on a VPC "AWS shows gone".  "When the lookup itself fails, `init --clean` MUST fail and delete nothing" is kept.
 
 ## Impact
 
@@ -65,11 +70,13 @@ Reading the code turned up four more bugs.  This change fixes them all:
   - One discovery per `down` instead of two, so the discovery events print once.
   - A resource created after the preview is not removed.  In a network easy-db-lab created, it makes `down` fail and keep the state, after the existing retries (about 75 s for a subnet, up to about 15 min for an instance).  A re-run lists the resource and removes it.
   - `down <own-vpc-id>` saves the tail and resets the workspace.
-  - A `down --all` that includes the workspace's network saves the tail first and resets the workspace.  The extra time is the save, usually under the Tempo drain's 5 minutes.  Today `--all` never touches the workspace.
+  - A `down --all` that includes the workspace's network saves the tail first and resets the workspace.  The extra time is the save: usually a few minutes, about 23 minutes at worst (design-fit D10).  Today `--all` never touches the workspace.
   - `down <other-vpc-id>`, `down --packer`, a declined prompt and "nothing to tear down" no longer stop the tunnel or change the workspace.
   - A declined prompt emits `CancelledByUser` only, not also `CompletedWithErrors(["Teardown cancelled by user"])`.  It still exits non-zero.
   - Under `--all`, a failure in another network no longer keeps the workspace's state pointing at its deleted VPC; `down` still exits non-zero.
-  - A recorded VPC that AWS no longer has plans as empty, so `down` finishes the workspace step instead of failing.
+  - A recorded VPC that AWS no longer has is shown in the preview as gone and must be confirmed; then `down` finishes the workspace step instead of failing.  `init --clean` refuses on it.
+  - A recorded region that differs from the configured one fails `down` and `init --clean`, and changes nothing.
+  - `down --all` no longer deletes the empty data bucket of a cluster it did not plan.
   - Under `--all`, the workspace step runs before the empty-bucket sweep.
 - **Docs:** `docs/reference/commands.md` (`down`), `providers/CLAUDE.md`, `services/CLAUDE.md`, `services/aws/CLAUDE.md` and `commands/CLAUDE.md`.
-- **Related:** #1056 (ClusterNetwork module), #398 (parallel VPC teardown), #1171 (ByTags scope) and #1062 (multi-cloud epic).  `design.md` D9 explains how each one fits.
+- **Related:** #1056 (ClusterNetwork module), #398 (parallel VPC teardown), #1171 (ByTags scope) and #1062 (multi-cloud epic).  `design-fit.md` D9 explains how each one fits.

@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.kits
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.Container
@@ -84,7 +85,7 @@ class CqliteFlightKitTest : BaseKoinTest() {
         val container = flightContainer()
 
         assertThat(container.env.map { it.name }).doesNotContain("HOST_IP")
-        assertThat(env(container, "CQLITE_OTEL_ENDPOINT").value).isEqualTo(OtelEndpoints.otlpGrpcEndpoint())
+        assertThat(env(container, "CQLITE_OTEL_ENDPOINT").value).isEqualTo(ServiceDns(TestScopes.EC2.namespace).otlpGrpcEndpoint())
         assertThat(env(flightContainer(mapOf("OTEL_ENDPOINT" to "http://elsewhere:4317")), "CQLITE_OTEL_ENDPOINT").value)
             .isEqualTo("http://elsewhere:4317")
         assertThat(env(container, "CQLITE_OTEL_PROTOCOL").value).isEqualTo("grpc")

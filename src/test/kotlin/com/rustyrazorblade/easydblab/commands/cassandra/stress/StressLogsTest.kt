@@ -1,11 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -74,7 +74,7 @@ class StressLogsTest : BaseKoinTest() {
         name: String,
         status: String,
     ) = KubernetesPod(
-        namespace = Constants.Stress.NAMESPACE,
+        namespace = TestScopes.NAMESPACE,
         name = name,
         status = status,
         ready = "1/1",
@@ -125,7 +125,7 @@ class StressLogsTest : BaseKoinTest() {
         val testPods =
             listOf(
                 KubernetesPod(
-                    namespace = Constants.Stress.NAMESPACE,
+                    namespace = TestScopes.NAMESPACE,
                     name = "stress-test-1234567890-abc12",
                     status = "Running",
                     ready = "1/1",

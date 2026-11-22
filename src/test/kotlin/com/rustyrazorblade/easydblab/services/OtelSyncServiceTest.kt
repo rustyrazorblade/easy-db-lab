@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -22,9 +23,9 @@ import io.fabric8.kubernetes.api.model.ConfigMapList
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.client.KubernetesClient
-import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
 import io.fabric8.kubernetes.client.dsl.MixedOperation
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.Resource
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -90,14 +91,14 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
         val mockConfigMapOps =
             mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockAnyNsOps =
-            mock<AnyNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        val mockNamespacedOps =
+            mock<NonNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
         mockFiltered = mock()
         val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
 
         whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
-        whenever(mockConfigMapOps.inAnyNamespace()).thenReturn(mockAnyNsOps)
-        whenever(mockAnyNsOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
+        whenever(mockConfigMapOps.inNamespace(any<String>())).thenReturn(mockNamespacedOps)
+        whenever(mockNamespacedOps.withLabel(any<String>(), any<String>())).thenReturn(mockFiltered)
         whenever(mockFiltered.list()).thenReturn(emptyConfigMapList)
 
         whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
@@ -328,7 +329,13 @@ class OtelSyncServiceTest : BaseKoinTest() {
     private fun collectorHash(clusterConfig: Map<String, String>): String =
         ConfigHashAnnotator
             .annotate(
-                otelManifestBuilder.buildAllResources(capabilities, emptyList(), null, CollectorResources.podLogSource(capabilities)),
+                otelManifestBuilder.buildAllResources(
+                    TestScopes.EC2,
+                    capabilities,
+                    emptyList(),
+                    null,
+                    CollectorResources.podLogSource(capabilities),
+                ),
                 mapOf(ClusterConfigData.NAME to clusterConfig),
             ).let(::appliedConfigHash)
 }

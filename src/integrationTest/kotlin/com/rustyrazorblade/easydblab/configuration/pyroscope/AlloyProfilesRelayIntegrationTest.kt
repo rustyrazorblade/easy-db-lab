@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
@@ -109,7 +110,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
 
     /** The cluster's rendered server config.yaml (multi-tenant), with the S3 client pointed at LocalStack. */
     private fun serverConfig(): String {
-        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data.getValue("config.yaml")
+        val rendered = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml")
         val endpointLine = "    endpoint: s3.${SharedLocalStack.region()}.amazonaws.com"
         check(rendered.contains(endpointLine)) { "rendered config no longer names the regional S3 endpoint" }
         return rendered.replace(
@@ -125,7 +126,7 @@ class AlloyProfilesRelayIntegrationTest : BaseKoinTest() {
     }
 
     private fun startAlloy(pyroscope: GenericContainer<*>): GenericContainer<*> {
-        val config = PyroscopeManifestBuilder(getKoin().get()).buildEbpfConfigMap().data.getValue("config.alloy")
+        val config = PyroscopeManifestBuilder(getKoin().get()).buildEbpfConfigMap(TestScopes.EC2).data.getValue("config.alloy")
         return started(
             GenericContainer(PyroscopeManifestBuilder.ALLOY_IMAGE)
                 .withCopyToContainer(Transferable.of(config), "/etc/alloy/config.alloy")

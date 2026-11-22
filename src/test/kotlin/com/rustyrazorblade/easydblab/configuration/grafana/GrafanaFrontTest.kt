@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
@@ -145,7 +146,7 @@ class GrafanaFrontTest : BaseKoinTest() {
         fun hash(bucket: String): String? =
             ConfigHashAnnotator
                 .annotate(
-                    builder.buildAllResources(DocumentsBucket(bucket, "eu-west-1"), ObservabilityHosting.AWS),
+                    builder.buildAllResources(TestScopes.EC2, DocumentsBucket(bucket, "eu-west-1"), ObservabilityHosting.AWS),
                     mapOf("grafana-datasources" to emptyMap()),
                 ).filterIsInstance<Deployment>()
                 .single()

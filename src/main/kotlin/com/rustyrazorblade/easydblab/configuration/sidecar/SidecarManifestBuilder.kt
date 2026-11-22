@@ -2,9 +2,10 @@ package com.rustyrazorblade.easydblab.configuration.sidecar
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Constants.Cassandra
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
-import com.rustyrazorblade.easydblab.configuration.otel.OtelEndpoints
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -61,25 +62,26 @@ class SidecarManifestBuilder(
      * @return List of: ConfigMap, DaemonSet
      */
     fun buildAllResources(
+        scope: InstallScope,
         image: String = DEFAULT_IMAGE,
         clusterName: String,
         tenant: String,
         telemetryRedirect: TelemetryRedirect? = null,
     ): List<HasMetadata> =
         listOf(
-            buildConfigMap(),
-            buildDaemonSet(image, clusterName, tenant, telemetryRedirect),
+            buildConfigMap(scope),
+            buildDaemonSet(scope, image, clusterName, tenant, telemetryRedirect),
         )
 
     /**
      * Builds the ConfigMap containing the sidecar config template.
      * The __HOST_IP__ placeholder is substituted by the init container at pod startup.
      */
-    fun buildConfigMap() =
+    fun buildConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(Constants.K8s.NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -100,6 +102,7 @@ class SidecarManifestBuilder(
      */
     @Suppress("LongMethod")
     fun buildDaemonSet(
+        scope: InstallScope,
         image: String,
         clusterName: String,
         tenant: String,
@@ -107,7 +110,7 @@ class SidecarManifestBuilder(
     ) = DaemonSetBuilder()
         .withNewMetadata()
         .withName(APP_LABEL)
-        .withNamespace(Constants.K8s.NAMESPACE)
+        .withNamespace(scope.namespace.value)
         .addToLabels("app.kubernetes.io/name", APP_LABEL)
         .endMetadata()
         .withNewSpec()
@@ -166,11 +169,11 @@ class SidecarManifestBuilder(
         .endEnv()
         .addNewEnv()
         .withName("JAVA_TOOL_OPTIONS")
-        .withValue(buildJavaToolOptions(clusterName, tenant, telemetryRedirect))
+        .withValue(buildJavaToolOptions(scope, clusterName, tenant, telemetryRedirect))
         .endEnv()
         .addNewEnv()
         .withName("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .withValue(OtelEndpoints.otlpGrpcEndpoint())
+        .withValue(ServiceDns(scope.namespace).otlpGrpcEndpoint())
         .endEnv()
         .addNewEnv()
         .withName("OTEL_SERVICE_NAME")
@@ -243,11 +246,12 @@ class SidecarManifestBuilder(
         .build()
 
     private fun buildJavaToolOptions(
+        scope: InstallScope,
         clusterName: String,
         tenant: String,
         telemetryRedirect: TelemetryRedirect?,
     ): String {
-        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(telemetryRedirect)
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(telemetryRedirect, ServiceDns(scope.namespace))
         return listOf(
             "-Dsidecar.config=file://$SIDECAR_CONFIG_PATH",
             "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",

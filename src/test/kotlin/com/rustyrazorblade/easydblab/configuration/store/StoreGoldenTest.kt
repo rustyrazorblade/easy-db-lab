@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.services.ClusterConfigData
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -161,28 +162,28 @@ class StoreGoldenTest : BaseKoinTest() {
     @Test
     fun `mimir config expands to the golden file`() {
         val builder = MimirManifestBuilder(templateService)
-        val config = builder.buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
-        assertExpandedGolden("mimir.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        val config = builder.buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
+        assertExpandedGolden("mimir.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment(TestScopes.EC2))))
     }
 
     @Test
     fun `loki config expands to the golden file`() {
         val builder = LokiManifestBuilder(templateService)
-        val config = builder.buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
-        assertExpandedGolden("loki.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        val config = builder.buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE)
+        assertExpandedGolden("loki.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment(TestScopes.EC2))))
     }
 
     @Test
     fun `tempo config expands to the golden file`() {
         val builder = TempoManifestBuilder(templateService)
-        val config = builder.buildConfigMap().data.getValue("tempo.yaml")
-        assertExpandedGolden("tempo.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment())))
+        val config = builder.buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
+        assertExpandedGolden("tempo.yaml", ExpandEnv.expand(config, podEnv(builder.buildDeployment(TestScopes.EC2))))
     }
 
     @Test
     fun `pyroscope config renders to the golden file`() {
         val builder = PyroscopeManifestBuilder(templateService)
-        val config = builder.buildServerConfigMap().data.getValue("config.yaml")
+        val config = builder.buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml")
         assertExpandedGolden("pyroscope.yaml", config)
     }
 
@@ -195,11 +196,14 @@ class StoreGoldenTest : BaseKoinTest() {
     @Test
     fun `compactor configs expand to the golden file`() {
         val builder = CompactorManifestBuilder(templateService)
-        val configs = builder.buildConfigMap().data
+        val configs = builder.buildConfigMap(TestScopes.EC2).data
         val containers =
             builder
-                .buildDeployment(CompactorAgentJar("0".repeat(SHA256_HEX_DIGITS)), S3Backend(bucket = BUCKET, region = REGION))
-                .spec.template.spec.containers
+                .buildDeployment(
+                    TestScopes.EC2,
+                    CompactorAgentJar("0".repeat(SHA256_HEX_DIGITS)),
+                    S3Backend(bucket = BUCKET, region = REGION),
+                ).spec.template.spec.containers
                 .associateBy { it.name }
         val readers =
             mapOf(

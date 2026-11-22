@@ -10,7 +10,7 @@ There are **two capture mechanisms** in the fleet, and which one applies depends
 
 ## Architecture
 
-Profiling data is collected from these sources and sent to the Pyroscope server. In-cluster agents reach it by its Service, `pyroscope.default.svc:4040`; the Cassandra node reconciler posts to the Alloy relay on its node's loopback (`127.0.0.1:4041`), which forwards to that Service; EMR reaches it on the control node's NodePort 31040:
+Profiling data is collected from these sources and sent to the Pyroscope server. In-cluster agents reach it by its Service, `pyroscope.<namespace>.svc:4040` (the cluster's install namespace, `default` unless `init --namespace` named another); the Cassandra node reconciler posts to the Alloy relay on its node's loopback (`127.0.0.1:4041`), which forwards to that Service; EMR reaches it on the control node's NodePort 31040:
 
 - **async-profiler, attached at runtime (Cassandra)** — A systemd timer on every Cassandra node runs `edl-profiling-reconcile`, which attaches async-profiler to the live Cassandra JVM, writes rotating JFR chunks to `/mnt/db1/cassandra/profiles`, uploads completed chunks to Pyroscope's `/ingest`, and prunes the directory. What is being profiled changes without restarting Cassandra.
 - **Pyroscope Java agent (Stress jobs)** — Runs as a `-javaagent` inside cassandra-easy-stress K8s Jobs. Collects CPU, allocation, and lock profiles. The agent JAR is copied into the pod from the Pyroscope agent image by an init container, so stress runs on any node.

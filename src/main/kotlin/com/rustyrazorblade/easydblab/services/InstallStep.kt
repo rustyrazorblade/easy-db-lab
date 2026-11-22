@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -17,7 +18,7 @@ sealed interface InstallStep {
     data class Helm(
         val chart: String,
         val release: String,
-        val namespace: String = "default",
+        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
         val version: String? = null,
         val values: Map<String, String> = emptyMap(),
         @SerialName("values-file")
@@ -34,7 +35,7 @@ sealed interface InstallStep {
     @SerialName("helm-uninstall")
     data class HelmUninstall(
         val release: String,
-        val namespace: String = "default",
+        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
         @SerialName("keep-while-any")
         val keepWhileAny: String = "",
     ) : InstallStep
@@ -154,7 +155,7 @@ sealed interface InstallStep {
     @SerialName("configmap")
     data class ConfigMap(
         val name: String,
-        val namespace: String = "default",
+        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
         val data: Map<String, String> = emptyMap(),
     ) : InstallStep
 
@@ -170,7 +171,7 @@ sealed interface InstallStep {
     @SerialName("exec")
     data class Exec(
         val pod: String,
-        val namespace: String = "default",
+        val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
         val command: List<String>,
     ) : InstallStep
 

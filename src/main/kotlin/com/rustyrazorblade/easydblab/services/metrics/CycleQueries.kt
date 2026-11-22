@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.services.metrics
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
@@ -93,7 +95,12 @@ class CycleQueries(
         access: ServiceAccess,
         kubernetesRoute: ObservabilityRoute,
     ) = Target.Ready(
-        mimir = mimirFor(DefaultObservabilityHttp(access, state::tenant, httpClientFactory)),
+        mimir =
+            mimirFor(
+                DefaultObservabilityHttp(access, state::tenant, {
+                    InstallScope.of(state, ClusterContract.of(state)).namespace
+                }, httpClientFactory),
+            ),
         cluster = state.clusterLabelName(),
         stressJobs = { isStopping -> stressJobs.completed(state, kubernetesRoute, isStopping) },
     )

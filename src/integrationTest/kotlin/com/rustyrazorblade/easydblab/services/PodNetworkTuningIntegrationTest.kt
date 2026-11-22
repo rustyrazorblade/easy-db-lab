@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -43,7 +44,7 @@ class PodNetworkTuningIntegrationTest {
     }
 
     private val container: K3sContainer = SharedK3s.newContainer(Constants.NodeTuning.POD_SYSCTL_PROBE_IMAGE)
-    private val namespace = Constants.NodeTuning.POD_SYSCTL_PROBE_NAMESPACE
+    private val namespace = TestScopes.NAMESPACE
     private val sysctls = PodNetworkSysctls.packaged()
 
     private lateinit var client: KubernetesClient
@@ -56,7 +57,7 @@ class PodNetworkTuningIntegrationTest {
         container.start()
         val provider = WorkspaceK8s.provider(container.kubeConfigYaml)
         client = provider.createClient()
-        probe = Fabric8PodSysctlProbe(provider)
+        probe = Fabric8PodSysctlProbe(provider) { TestScopes.EC2.namespace }
         PodNetworkTuning(DefaultK8sManifestOperations(provider, EventBus()), probe, EventBus()).apply()
     }
 

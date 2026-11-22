@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -83,7 +84,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildServerDeployment has no init container`() {
-        val deployment = builder.buildServerDeployment()
+        val deployment = builder.buildServerDeployment(TestScopes.EC2)
 
         assertThat(deployment.spec.template.spec.initContainers).isNullOrEmpty()
     }
@@ -92,7 +93,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     fun `the server's startup budget outlasts Pyroscope 2's fixed readiness waits`() {
         val container =
             builder
-                .buildServerDeployment()
+                .buildServerDeployment(TestScopes.EC2)
                 .spec.template.spec.containers
                 .single { it.image == PyroscopeManifestBuilder.SERVER_IMAGE }
         val startup = container.startupProbe
@@ -109,7 +110,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `eBPF config discovers Kubernetes pods and derives per-pod attribution labels`() {
-        val configMap = builder.buildEbpfConfigMap()
+        val configMap = builder.buildEbpfConfigMap(TestScopes.EC2)
         val config = configMap.data.getValue("config.alloy")
 
         // Discovers pods on the local node so processes can be attributed.
@@ -127,14 +128,14 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `eBPF DaemonSet uses the pod-reading ServiceAccount`() {
-        val daemonSet = builder.buildEbpfDaemonSet()
+        val daemonSet = builder.buildEbpfDaemonSet(TestScopes.EC2)
 
         assertThat(daemonSet.spec.template.spec.serviceAccountName).isEqualTo("pyroscope-ebpf")
     }
 
     @Test
     fun `eBPF ClusterRole grants read access to pods for discovery`() {
-        val clusterRole = builder.buildEbpfClusterRole()
+        val clusterRole = builder.buildEbpfClusterRole(TestScopes.EC2)
 
         val podRule =
             clusterRole.rules.single { rule ->
@@ -143,7 +144,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(podRule.verbs).contains("get", "list", "watch")
     }
 
-    private fun serverConfig(): String = builder.buildServerConfigMap().data.getValue("config.yaml")
+    private fun serverConfig(): String = builder.buildServerConfigMap(TestScopes.EC2).data.getValue("config.yaml")
 
     @Test
     fun `the server runs native multi-tenancy on pure v2 storage`() {
@@ -174,12 +175,12 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     fun `the Service sends every client to the ingest front, which forwards to the server on the pod's loopback`() {
         val port =
             builder
-                .buildServerService()
+                .buildServerService(TestScopes.EC2)
                 .spec.ports
                 .single()
         val front =
             builder
-                .buildServerDeployment()
+                .buildServerDeployment(TestScopes.EC2)
                 .spec.template.spec.containers
                 .single { it.image == Constants.PyroscopeServer.FRONT_IMAGE }
         val frontConfig = builder.buildFrontConfig().lines().map { it.trim() }
@@ -192,7 +193,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
             "server pyroscope 127.0.0.1:${PyroscopeManifestBuilder.SERVER_PORT}",
         )
         assertThat(front.args.last()).endsWith("/${PyroscopeManifestBuilder.FRONT_CONFIG_KEY}")
-        assertThat(builder.buildServerConfigMap().data).containsKey(PyroscopeManifestBuilder.FRONT_CONFIG_KEY)
+        assertThat(builder.buildServerConfigMap(TestScopes.EC2).data).containsKey(PyroscopeManifestBuilder.FRONT_CONFIG_KEY)
     }
 
     @Test
@@ -252,7 +253,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     fun `a change to the front's config rolls the server pod`() {
         fun hashWith(frontConfig: String): String? {
             val resources =
-                builder.buildServerResources().map { resource ->
+                builder.buildServerResources(TestScopes.EC2).map { resource ->
                     if (resource is ConfigMap && PyroscopeManifestBuilder.FRONT_CONFIG_KEY in resource.data.orEmpty()) {
                         ConfigMapBuilder(resource).addToData(PyroscopeManifestBuilder.FRONT_CONFIG_KEY, frontConfig).build()
                     } else {
@@ -280,7 +281,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
     fun `a front that is down takes the pod out of the Service, and a starting server never restarts it`() {
         val front =
             builder
-                .buildServerDeployment()
+                .buildServerDeployment(TestScopes.EC2)
                 .spec.template.spec.containers
                 .single { it.name == Constants.PyroscopeServer.FRONT_NAME }
 
@@ -305,7 +306,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         val config = serverConfig()
         val pod =
             builder
-                .buildServerDeployment()
+                .buildServerDeployment(TestScopes.EC2)
                 .spec.template.spec
         val volume = pod.volumes.single { it.name == "data" }
         val mount = pod.containers[0].volumeMounts.single { it.name == "data" }
@@ -323,7 +324,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     /** An integer setting `name = value` in the eBPF agent's config.alloy. */
     private fun alloySetting(name: String): Long {
-        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val alloy = builder.buildEbpfConfigMap(TestScopes.EC2).data.getValue("config.alloy")
         val match = requireNotNull(Regex("""\b$name\s*=\s*"?(\d+)""").find(alloy)) { "config.alloy sets no $name" }
         return match.groupValues[1].toLong()
     }
@@ -352,7 +353,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `the profiles relay listens on the node's loopback at the relay port and forwards to the agent's writer`() {
-        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val alloy = builder.buildEbpfConfigMap(TestScopes.EC2).data.getValue("config.alloy")
         val relay = requireNotNull(Regex("""pyroscope\.receive_http "relay" \{(.*?)\n}""", RegexOption.DOT_MATCHES_ALL).find(alloy))
 
         assertThat(relay.groupValues[1])
@@ -363,10 +364,10 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `the eBPF agent sends the cluster's tenant on every write`() {
-        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val alloy = builder.buildEbpfConfigMap(TestScopes.EC2).data.getValue("config.alloy")
         val env =
             builder
-                .buildEbpfDaemonSet()
+                .buildEbpfDaemonSet(TestScopes.EC2)
                 .spec.template.spec.containers[0]
                 .env
 

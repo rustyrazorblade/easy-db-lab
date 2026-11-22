@@ -4,6 +4,8 @@ import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.YamlTestSupport.nodeAt
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -17,7 +19,7 @@ class GrafanaDatasourceSetTest {
 
     private fun yaml(
         set: TenantSet = tenants,
-        urls: BackendUrls = BackendUrls.IN_CLUSTER,
+        urls: BackendUrls = BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)),
     ) = GrafanaDatasourceSet.build(set, urls).toYaml()
 
     /** Every provisioned datasource, by UID, as Grafana reads it from the rendered YAML. */
@@ -98,7 +100,7 @@ class GrafanaDatasourceSetTest {
     @Test
     fun `the same tenants with other backend URLs differ only in their URLs`() {
         val other = BackendUrls("http://m:1/prometheus", "http://l:2", "http://t:3", "http://p:4")
-        val control = GrafanaDatasourceSet.build(tenants, BackendUrls.IN_CLUSTER).datasources
+        val control = GrafanaDatasourceSet.build(tenants, BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace))).datasources
         val compose = GrafanaDatasourceSet.build(tenants, other).datasources
 
         assertThat(compose.map { it.copy(url = null) }).isEqualTo(control.map { it.copy(url = null) })

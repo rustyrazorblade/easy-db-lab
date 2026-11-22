@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import org.assertj.core.api.Assertions.assertThat
@@ -45,11 +46,11 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
 
     private fun yamlFrom(configMap: ConfigMap): String = checkNotNull(configMap.data["otel-host-collector-config.yaml"])
 
-    private fun config(cni: CniMode = CniMode.Flannel) = yamlFrom(builder.buildConfigMap(cni))
+    private fun config(cni: CniMode = CniMode.Flannel) = yamlFrom(builder.buildConfigMap(TestScopes.EC2, cni))
 
     private fun container() =
         builder
-            .buildDaemonSet()
+            .buildDaemonSet(TestScopes.EC2)
             .spec.template.spec.containers
             .single()
 
@@ -96,7 +97,7 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
 
         val pod =
             builder
-                .buildDaemonSet()
+                .buildDaemonSet(TestScopes.EC2)
                 .spec.template.spec
         assertThat(pod.hostNetwork).isTrue()
         assertThat(container().securityContext.privileged).isTrue()
@@ -104,7 +105,7 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         assertThat(pod.tolerations).anyMatch { it.operator == "Exists" && it.key == null }
         assertThat(
             builder
-                .buildDaemonSet()
+                .buildDaemonSet(TestScopes.EC2)
                 .spec.template.metadata.labels,
         ).containsEntry("app.kubernetes.io/name", "otel-collector-host")
             .doesNotContainEntry("app.kubernetes.io/name", "otel-collector")
@@ -145,7 +146,7 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         assertThat(mount.readOnly).isTrue()
         val volume =
             builder
-                .buildDaemonSet()
+                .buildDaemonSet(TestScopes.EC2)
                 .spec.template.spec.volumes
                 .single { it.name == OtelHostCollectorManifestBuilder.HOST_ROOT_VOLUME }
         assertThat(volume.hostPath.path).isEqualTo("/")
@@ -244,10 +245,10 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         )
         assertThat(operator.relabelConfigs.single { it.targetLabel == "__address__" }.replacement).isEqualTo("\$\$1:9963")
         // Pod discovery needs pod read access under the add-on's own ServiceAccount.
-        assertThat(builder.buildClusterRole().rules).anyMatch { "pods" in it.resources && "list" in it.verbs }
+        assertThat(builder.buildClusterRole(TestScopes.EC2).rules).anyMatch { "pods" in it.resources && "list" in it.verbs }
         assertThat(
             builder
-                .buildDaemonSet()
+                .buildDaemonSet(TestScopes.EC2)
                 .spec.template.spec.serviceAccountName,
         ).isEqualTo("otel-collector-host")
     }
@@ -283,7 +284,7 @@ class OtelHostCollectorManifestBuilderTest : BaseKoinTest() {
         assertThat(scraped["instance"]).isEqualTo("control0:${Constants.K3s.ETCD_METRICS_PORT}")
         assertThat(scraped["cluster"]).isEqualTo("test-cluster")
         // Node discovery needs node read access under the add-on's own ServiceAccount.
-        assertThat(builder.buildClusterRole().rules).anyMatch { "nodes" in it.resources && "list" in it.verbs }
+        assertThat(builder.buildClusterRole(TestScopes.EC2).rules).anyMatch { "nodes" in it.resources && "list" in it.verbs }
     }
 
     /**

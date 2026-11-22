@@ -5,9 +5,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.region
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.profiling.pyroscopeBrowserUrl
 
 /**
@@ -23,16 +25,18 @@ class ObservabilityDeployInputs(
     private val contractSource: ClusterContractSource,
     private val profileRegion: ProfileRegion,
 ) {
-    /** One reading: the cluster state, its contract, and its region (the profile's when it records none). */
+    /** One reading: the cluster state, its contract, its region (the profile's when it records none) and the scope (namespace and cluster id) every resource is installed with. */
     data class Reading(
         val state: ClusterState,
         val contract: ClusterContract,
         val region: String,
+        val scope: InstallScope,
     )
 
     fun read(): Reading {
         val state = clusterStateManager.load()
-        return Reading(state, contractSource.current(), state.region(profileRegion))
+        val contract = contractSource.current()
+        return Reading(state, contract, state.region(profileRegion), InstallScope.of(state, contract))
     }
 }
 
@@ -52,6 +56,7 @@ class GrafanaStage(
     fun prepare(
         clusterState: ClusterState,
         hosting: ObservabilityHosting,
+        scope: InstallScope,
     ): GrafanaRelease =
         grafanaDeployService
             .prepare(
@@ -59,7 +64,8 @@ class GrafanaStage(
                 ObservabilityStore.from(clusterState).bucket,
                 hosting,
                 // The control host is null on a cluster the operator brought, which publishes no NodePorts.
-                pyroscopeBrowserUrl(hosting.publishing, clusterState.getControlHost()),
+                pyroscopeBrowserUrl(hosting.publishing, clusterState.getControlHost(), ServiceDns(scope.namespace)),
+                scope,
             ).getOrElse { exception ->
                 throw IllegalStateException("Failed to deploy Grafana: ${exception.message}", exception)
             }

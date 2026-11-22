@@ -1,9 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.stress
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -41,16 +42,19 @@ class StressSidecarConfigTest : BaseKoinTest() {
 
     private fun sidecarConfig() = StressSidecarConfig(getKoin().get(), k8sService)
 
+    private fun cluster(namespace: String? = null) =
+        StressCluster.from(ClusterState(name = "test", s3Bucket = "easy-db-lab-test", initConfig = InitConfig(namespace = namespace)))
+
     @Test
     fun `renders the collector config the sidecar runs`() {
-        val rendered = sidecarConfig().render()
+        val rendered = sidecarConfig().render(cluster())
 
         assertThat(rendered).contains("receivers:").contains("exporters:")
     }
 
     @Test
     fun `the sidecar detects its resource from the environment and exports to its node's core collector Service`() {
-        val rendered = sidecarConfig().render()
+        val rendered = sidecarConfig().render(cluster())
 
         assertThat(rendered)
             .contains("detectors: [env]")
@@ -61,27 +65,34 @@ class StressSidecarConfigTest : BaseKoinTest() {
     }
 
     @Test
+    fun `in another namespace the sidecar exports to that namespace's collector Service`() {
+        assertThat(sidecarConfig().render(cluster("lab-a")))
+            .contains("endpoint: otel-collector.lab-a.svc:4317")
+            .doesNotContain(".default.svc")
+    }
+
+    @Test
     fun `creates the ConfigMap in the stress namespace holding the rendered config under the file name the Job runs`() {
         whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
 
         val config = sidecarConfig()
-        config.ensureConfigMap()
+        config.ensureConfigMap(cluster())
 
         val data = argumentCaptor<Map<String, String>>()
         verify(k8sService).createConfigMap(
-            eq(Constants.Stress.NAMESPACE),
+            eq(TestScopes.NAMESPACE),
             eq(StressSidecarConfig.CONFIG_MAP_NAME),
             data.capture(),
             any(),
         )
         assertThat(data.firstValue).containsOnlyKeys(StressSidecarConfig.FILE_NAME)
-        assertThat(data.firstValue.getValue(StressSidecarConfig.FILE_NAME)).isEqualTo(config.render())
+        assertThat(data.firstValue.getValue(StressSidecarConfig.FILE_NAME)).isEqualTo(config.render(cluster()))
     }
 
     @Test
     fun `fails when the ConfigMap cannot be created`() {
         whenever(k8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.failure(IllegalStateException("denied")))
 
-        assertThatThrownBy { sidecarConfig().ensureConfigMap() }.hasMessage("denied")
+        assertThatThrownBy { sidecarConfig().ensureConfigMap(cluster()) }.hasMessage("denied")
     }
 }

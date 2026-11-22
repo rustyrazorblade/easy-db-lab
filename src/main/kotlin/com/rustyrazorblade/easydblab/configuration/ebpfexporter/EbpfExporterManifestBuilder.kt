@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.ebpfexporter
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
@@ -24,7 +25,6 @@ import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
  */
 class EbpfExporterManifestBuilder {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "ebpf-exporter"
         private const val IMAGE = "ghcr.io/cloudflare/ebpf_exporter:v2.5.1"
         private const val EXAMPLES_DIR = "/examples"
@@ -50,9 +50,9 @@ class EbpfExporterManifestBuilder {
      *
      * @return List of: DaemonSet
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildDaemonSet(),
+            buildDaemonSet(scope),
         )
 
     /**
@@ -62,11 +62,11 @@ class EbpfExporterManifestBuilder {
      * Mounts kernel, BPF, proc, modules, and kernel source directories.
      */
     @Suppress("LongMethod")
-    fun buildDaemonSet(): DaemonSet =
+    fun buildDaemonSet(scope: InstallScope): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()

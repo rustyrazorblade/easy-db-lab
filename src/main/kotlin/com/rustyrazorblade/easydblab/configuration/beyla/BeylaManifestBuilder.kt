@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.beyla
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -26,7 +27,6 @@ class BeylaManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "beyla"
         private const val CONFIGMAP_NAME = "beyla-config"
         private const val IMAGE = "grafana/beyla:3.36.0"
@@ -37,20 +37,20 @@ class BeylaManifestBuilder(
      *
      * @return List of: ConfigMap, DaemonSet
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildConfigMap(),
-            buildDaemonSet(),
+            buildConfigMap(scope),
+            buildDaemonSet(scope),
         )
 
     /**
      * Builds the Beyla ConfigMap containing beyla-config.yaml.
      */
-    fun buildConfigMap(): ConfigMap =
+    fun buildConfigMap(scope: InstallScope): ConfigMap =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -68,11 +68,11 @@ class BeylaManifestBuilder(
      * Runs on all nodes with hostNetwork, hostPID, and privileged mode for eBPF access.
      */
     @Suppress("LongMethod")
-    fun buildDaemonSet(): DaemonSet =
+    fun buildDaemonSet(scope: InstallScope): DaemonSet =
         DaemonSetBuilder()
             .withNewMetadata()
             .withName(APP_LABEL)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .withNewSpec()

@@ -12,6 +12,13 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 private val log = KotlinLogging.logger {}
 
 /**
+ * The namespace the kits create their claims in. It is the owned default, not the cluster namespace
+ * `init --namespace` records: the kits move to the cluster namespace in issue 1094 PR 2, and until
+ * then a reopen filtered on the cluster namespace would find none of their Released volumes.
+ */
+private const val KIT_NAMESPACE = Constants.ContractDefaults.OWNED_NAMESPACE
+
+/**
  * The volumes one `kit-storage` step reserves for a kit.
  *
  * @property kit the kit instance; its PVs are labelled with it and live under `/mnt/db1/<kit>`.
@@ -117,7 +124,8 @@ class KitStorageProvisioner(
                     count = count,
                     storageSize = volumes.size,
                     storageClass = storageClass,
-                    namespace = Constants.K8s.NAMESPACE,
+                    namespace = KIT_NAMESPACE,
+                    clusterId = state.clusterId,
                     volumeClaimTemplateName = volumes.volumeClaimTemplateName,
                     nodeType = volumes.nodeType,
                 ),
@@ -133,7 +141,12 @@ class KitStorageProvisioner(
         kit: String,
         storageClass: String,
     ) {
-        val reopened = k8sService.reopenReleasedVolumes(storageClass, Constants.K8s.NAMESPACE).getOrThrow()
+        val reopened =
+            k8sService
+                .reopenReleasedVolumes(
+                    storageClass,
+                    KIT_NAMESPACE,
+                ).getOrThrow()
         if (reopened.isNotEmpty()) log.info { "Reopened Released volumes $reopened of $storageClass for $kit" }
     }
 

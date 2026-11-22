@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
@@ -286,6 +287,20 @@ class DefaultK8sStorageOperationsTest {
         assertThat(names).containsExactlyInAnyOrder("data-kafka-0", "data-kafka-1", "data-presto-0")
     }
 
+    @Test
+    fun `a created kit PV carries the cluster's ownership labels`() {
+        storageOps.createLocalPersistentVolumes(kitVolumes("kafka", count = 1)).getOrThrow()
+
+        val pv =
+            server
+                .createClient()
+                .persistentVolumes()
+                .withName("data-kafka-0")
+                .get()
+
+        assertThat(pv.metadata.labels).containsAllEntriesOf(OwnershipLabels.of("storage-ops-cluster"))
+    }
+
     private fun kitVolumes(
         kit: String,
         count: Int,
@@ -296,6 +311,7 @@ class DefaultK8sStorageOperationsTest {
         storageSize = "1Gi",
         storageClass = "edl-local-$kit",
         namespace = "default",
+        clusterId = "storage-ops-cluster",
         volumeClaimTemplateName = "data",
         nodeType = "db",
     )

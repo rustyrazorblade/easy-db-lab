@@ -1,14 +1,15 @@
 package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.BackendEndpoints
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
@@ -33,7 +34,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
     private val redirect = TelemetryRedirect.fromBaseHost("10.0.0.9")
 
     /** The Pyroscope URL local mode produces: the Pyroscope Service, which a redirect must displace. */
-    private val localPyroscopeUrl = BackendEndpoints.pyroscope()
+    private val localPyroscopeUrl = ServiceDns(TestScopes.EC2.namespace).pyroscope()
 
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -70,7 +71,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
     @Test
     fun `pyroscopeIngestBaseUrl resolves to the external profiles endpoint under redirect`() {
-        val url = pyroscopeIngestBaseUrl(redirect)
+        val url = pyroscopeIngestBaseUrl(redirect, ServiceDns(TestScopes.EC2.namespace))
 
         assertThat(url).isEqualTo(redirect.profiles)
         assertThat(url).doesNotContain(CONTROL_NODE_IP)
@@ -95,7 +96,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         // default policy it reads the node's resolv.conf and every profile is dropped silently.
         val podSpec =
             PyroscopeManifestBuilder(templateService)
-                .buildEbpfDaemonSet(telemetryRedirect = null)
+                .buildEbpfDaemonSet(TestScopes.EC2, telemetryRedirect = null)
                 .spec.template.spec
         assertThat(podSpec.hostNetwork).isTrue()
         assertThat(podSpec.dnsPolicy).isEqualTo("ClusterFirstWithHostNet")
@@ -106,7 +107,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val builder = PyroscopeManifestBuilder(templateService)
         val alloy =
             builder
-                .buildEbpfDaemonSet(redirect)
+                .buildEbpfDaemonSet(TestScopes.EC2, redirect)
                 .spec.template.spec.containers
                 .single { it.name == "alloy" }
         val clusterName = alloy.env.single { it.name == "CLUSTER_NAME" }.value
@@ -122,7 +123,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val builder = PyroscopeManifestBuilder(templateService)
         val configMap =
             builder
-                .buildAgentResources(redirect)
+                .buildAgentResources(TestScopes.EC2, redirect)
                 .filterIsInstance<ConfigMap>()
                 .single { it.metadata.name == "pyroscope-ebpf-config" }
         val alloy = configMap.data.getValue("config.alloy")
@@ -146,7 +147,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val builder = PyroscopeManifestBuilder(templateService)
         val alloy =
             builder
-                .buildEbpfDaemonSet(telemetryRedirect)
+                .buildEbpfDaemonSet(TestScopes.EC2, telemetryRedirect)
                 .spec.template.spec.containers
                 .single { it.name == "alloy" }
         return alloy.env.single { it.name == "PYROSCOPE_WRITE_URL" }.value
@@ -159,6 +160,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
         val daemonSet =
             builder
                 .buildAllResources(
+                    scope = TestScopes.EC2,
                     clusterName = "test-cluster",
                     tenant = "acme",
                     telemetryRedirect = redirect,
@@ -181,7 +183,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
     fun `sidecar Pyroscope agent sends to the Pyroscope Service in local mode`() {
         val daemonSet =
             SidecarManifestBuilder(templateService)
-                .buildAllResources(clusterName = "test-cluster", tenant = "acme")
+                .buildAllResources(TestScopes.EC2, clusterName = "test-cluster", tenant = "acme")
                 .filterIsInstance<DaemonSet>()
                 .single()
         val podSpec = daemonSet.spec.template.spec

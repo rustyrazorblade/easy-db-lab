@@ -4,9 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CapabilityProbePods
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
-import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import com.rustyrazorblade.easydblab.services.tenancy.NamespaceEnsurer
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -48,17 +49,19 @@ class CapabilityProbeService(
     private val clientFactory: KubernetesClientFactory,
 ) {
     /**
-     * Probes [namespace] on the cluster [api] names.
+     * Probes the namespace of [scope] on the cluster [api] names, creating or adopting it labelled as
+     * the cluster's first ([NamespaceEnsurer]).
      *
      * @throws IllegalStateException naming the namespace and the API server's message when the
      *   baseline Pod is rejected or any request fails in a way that says nothing about a capability
      */
     fun probe(
         api: KubeApi,
-        namespace: String,
-    ): ProbeResult =
-        clientFactory.createClient(api).use { client ->
-            ensureNamespace(client, namespace)
+        scope: InstallScope,
+    ): ProbeResult {
+        val namespace = scope.namespace.value
+        return clientFactory.createClient(api).use { client ->
+            ensureNamespace(client, scope)
             when (val baseline = submit(client, CapabilityProbePods.baseline(namespace))) {
                 null -> Unit
                 else -> fail(namespace, "the restricted baseline Pod was rejected: ${baseline.message}", baseline.exception)
@@ -78,6 +81,7 @@ class CapabilityProbeService(
             val admitted = CapabilityProbePods.probes(namespace).keys - refused.keys
             ProbeResult(NodeCapabilities(admitted), refused)
         }
+    }
 
     /** The API server's answer to a rejected request, and the exception that carried it. */
     private data class Rejection(
@@ -105,28 +109,14 @@ class CapabilityProbeService(
 
     private fun ensureNamespace(
         client: KubernetesClient,
-        namespace: String,
+        scope: InstallScope,
     ) {
-        val existing =
-            try {
-                client.namespaces().withName(namespace).get()
-            } catch (e: KubernetesClientException) {
-                fail(namespace, "reading the namespace: ${e.serverMessage()}", e)
-            }
-        if (existing == null) {
-            createIfAbsent(namespace, "creating the namespace") {
-                client
-                    .namespaces()
-                    .resource(
-                        NamespaceBuilder()
-                            .withNewMetadata()
-                            .withName(namespace)
-                            .endMetadata()
-                            .build(),
-                    ).create()
-            }
+        try {
+            NamespaceEnsurer.ensure(client, scope)
+        } catch (e: KubernetesClientException) {
+            fail(scope.namespace.value, "ensuring the namespace: ${e.serverMessage()}", e)
         }
-        ensureDefaultServiceAccount(client, namespace)
+        ensureDefaultServiceAccount(client, scope.namespace.value)
     }
 
     /**

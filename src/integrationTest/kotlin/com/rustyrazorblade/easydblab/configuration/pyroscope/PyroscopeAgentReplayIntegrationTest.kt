@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -57,7 +59,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         val WAIT: Duration = Duration.ofMinutes(3)
         val POLL: Duration = Duration.ofSeconds(5)
 
-        val PYROSCOPE_HOST = "${Constants.K8s.PYROSCOPE_APP_LABEL}.default.svc.cluster.local"
+        val PYROSCOPE_HOST = "${ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.PYROSCOPE_APP_LABEL)}.cluster.local"
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -92,7 +94,7 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
 
     /** Starts the server and the ingest front in its network namespace, then gives them the Service name. */
     private fun startPyroscope(): GenericContainer<*> {
-        val configMap = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap().data
+        val configMap = PyroscopeManifestBuilder(getKoin().get()).buildServerConfigMap(TestScopes.EC2).data
         val rendered = configMap.getValue("config.yaml")
         val pyroscope = ObservabilityBackends.startPyroscope(ObservabilityBackends.pyroscopeConfig(rendered), volume)
         containers.add(pyroscope)

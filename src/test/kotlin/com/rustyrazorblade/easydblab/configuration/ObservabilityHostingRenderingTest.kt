@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
@@ -55,11 +56,11 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
     private fun backends(hosting: ObservabilityHosting): Map<String, List<HasMetadata>> {
         val templates: TemplateService = getKoin().get()
         return mapOf(
-            "/mnt/db1/mimir" to MimirManifestBuilder(templates).buildAllResources(hosting),
-            "/mnt/db1/loki" to LokiManifestBuilder(templates).buildAllResources(hosting),
-            "/mnt/db1/tempo" to TempoManifestBuilder(templates).buildAllResources(hosting),
-            "/mnt/db1/pyroscope" to PyroscopeManifestBuilder(templates).buildServerResources(hosting),
-            GRAFANA to GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"), hosting),
+            "/mnt/db1/mimir" to MimirManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting),
+            "/mnt/db1/loki" to LokiManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting),
+            "/mnt/db1/tempo" to TempoManifestBuilder(templates).buildAllResources(TestScopes.EC2, hosting),
+            "/mnt/db1/pyroscope" to PyroscopeManifestBuilder(templates).buildServerResources(TestScopes.EC2, hosting),
+            GRAFANA to GrafanaManifestBuilder(templates).buildAllResources(TestScopes.EC2, DocumentsBucket("acct", "us-west-2"), hosting),
         )
     }
 
@@ -156,11 +157,11 @@ class ObservabilityHostingRenderingTest : BaseKoinTest() {
     fun `kube-state-metrics follows the same placement`() {
         val aws =
             KubeStateMetricsManifestBuilder()
-                .buildDeployment(Placement.CONTROL_NODE)
+                .buildDeployment(TestScopes.EC2, Placement.CONTROL_NODE)
                 .spec.template.spec
         val anyNode =
             KubeStateMetricsManifestBuilder()
-                .buildDeployment(Placement.ANY_NODE)
+                .buildDeployment(TestScopes.EC2, Placement.ANY_NODE)
                 .spec.template.spec
 
         assertThat(aws.nodeSelector).containsEntry(controlPlaneLabel, "true")

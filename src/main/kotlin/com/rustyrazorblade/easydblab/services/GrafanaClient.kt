@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
@@ -70,11 +71,13 @@ interface GrafanaClient : GrafanaAnnotationSource {
  * @property eventBus reports an installed dashboard
  * @property access opens the Grafana Service
  * @property httpClientFactory the base HTTP client the route is applied to
+ * @property scopeSource the cluster namespace the Grafana Service is in
  */
 class DefaultGrafanaClient(
     private val eventBus: EventBus,
     private val access: ServiceAccess,
     private val httpClientFactory: HttpClientFactory,
+    private val scopeSource: InstallScopeSource,
 ) : GrafanaClient {
     companion object {
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
@@ -97,7 +100,7 @@ class DefaultGrafanaClient(
     )
 
     private fun connect(): Connection {
-        val endpoint = access.open(ClusterServices.GRAFANA)
+        val endpoint = access.open(ClusterServices.GRAFANA.inNamespace(scopeSource.current().namespace))
         return Connection(endpoint.baseUrl(), httpClientFactory.createClient().forEndpoint(endpoint))
     }
 

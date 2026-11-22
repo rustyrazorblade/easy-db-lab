@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.configuration.stress
 
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.stress.StressTarget
 import io.fabric8.kubernetes.client.utils.Serialization
@@ -32,6 +34,7 @@ class StressJobManifestBuilderTest {
             tenant = "acme",
             telemetryRedirect = null,
             appSelector = RoleSelectors.OWNED_NODES.app,
+            namespace = TestScopes.EC2.namespace,
         )
 
     private fun golden(name: String): String =
@@ -60,9 +63,22 @@ class StressJobManifestBuilderTest {
                 "ghcr.io/apache/cassandra-easy-stress:latest",
                 listOf("list"),
                 RoleSelectors.OWNED_NODES.app,
+                TestScopes.EC2.namespace,
             )
 
         assertThat(Serialization.asYaml(job)).isEqualTo(golden("command-job.yaml"))
+    }
+
+    @Test
+    fun `in another namespace both Jobs are created there and the agents export to its collector`() {
+        val elsewhere = cluster.copy(namespace = K8sNamespace("lab-a"))
+
+        val job = StressJobManifestBuilder.buildStressJob(config, elsewhere)
+        val command = StressJobManifestBuilder.buildCommandJob("cmd-1", "img", listOf("list"), elsewhere.appSelector, elsewhere.namespace)
+
+        assertThat(job.metadata.namespace).isEqualTo("lab-a")
+        assertThat(command.metadata.namespace).isEqualTo("lab-a")
+        assertThat(Serialization.asYaml(job)).contains("otel-collector.lab-a.svc").doesNotContain(".default.svc")
     }
 
     @Test

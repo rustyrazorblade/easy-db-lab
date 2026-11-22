@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
+import com.rustyrazorblade.easydblab.services.InstallNamespace
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitStorageResolver
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
@@ -22,7 +23,8 @@ import org.mockito.kotlin.whenever
 import java.time.Duration
 
 /**
- * Tests for [UpPostSteps]: the pod network sysctl policy is a gate that comes first, so when it never
+ * Tests for [UpPostSteps]: the install namespace is ensured before anything is applied into it,
+ * and the pod network sysctl policy is the gate that comes next, so when it never
  * takes effect no kit StorageClass is checked and no observability pod or annotation is created with
  * the kernel defaults, and a failed observability deploy keeps the Fabric8 failure as its cause, so a
  * 403 on a cluster without RBAC is described as a Kubernetes permission denial, not as rebuilt text.
@@ -31,6 +33,8 @@ class UpPostStepsTest {
     private val k8sService = mock<K8sService>()
     private val observability = mock<ObservabilityStackService>()
     private val annotator = mock<CiliumInstallAnnotator>()
+    private val ensured = mutableListOf<String>()
+    private val namespaceStep = InstallNamespace { ensured += "ensured" }
 
     @Test
     fun `a pod network policy that never takes effect stops every later step`() {
@@ -44,7 +48,7 @@ class UpPostStepsTest {
                 Duration.ofMillis(50),
                 Duration.ofMillis(10),
             )
-        val steps = UpPostSteps(untuned, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
+        val steps = UpPostSteps(namespaceStep, untuned, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
 
         assertThatThrownBy { steps.run(localTelemetry = true, kitStorageClass = "kits") }
             .isInstanceOf(CommandFailedException::class.java)
@@ -61,6 +65,7 @@ class UpPostStepsTest {
             PodNetworkTuning(
                 manifests,
                 {
+                    calls += "namespace ${ensured.size}"
                     val later = mockingDetails(k8sService).invocations.size + mockingDetails(observability).invocations.size
                     calls += "probe after ${manifests.applied.size} applied, with $later later calls"
                     PodSysctlProbeResult.Admitted(sysctls)
@@ -74,10 +79,10 @@ class UpPostStepsTest {
         whenever(k8sService.storageClassReclaimPolicy("kits")).thenReturn(Result.success("Retain"))
         whenever(observability.deploy()).thenReturn(Result.success(Unit))
 
-        UpPostSteps(tuning, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
+        UpPostSteps(namespaceStep, tuning, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
             .run(localTelemetry = false, kitStorageClass = "kits")
 
-        assertThat(calls).containsExactly("probe after 2 applied, with 0 later calls")
+        assertThat(calls).containsExactly("namespace 1", "probe after 2 applied, with 0 later calls")
         inOrder(k8sService, observability) {
             verify(k8sService).storageClassReclaimPolicy("kits")
             verify(observability).deploy()
@@ -99,7 +104,7 @@ class UpPostStepsTest {
             )
         val denied = KubernetesClientException("forbidden", 403, null)
         whenever(observability.deploy()).thenReturn(Result.failure(denied))
-        val steps = UpPostSteps(tuning, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
+        val steps = UpPostSteps(namespaceStep, tuning, KitStorageResolver(k8sService, eventBus), observability, annotator, eventBus)
 
         assertThatThrownBy { steps.run(localTelemetry = false, kitStorageClass = null) }
             .hasMessageContaining("Observability stack deployment failed")

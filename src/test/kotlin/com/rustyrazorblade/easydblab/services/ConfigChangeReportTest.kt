@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -114,18 +115,18 @@ class ConfigChangeReportTest : BaseKoinTest() {
 
     @Test
     fun `a pod template change with the same ConfigMaps is reported as changed`() {
-        val running = hashOf(hashed(withoutStartupProbe(pyroscope.buildServerResources())))
+        val running = hashOf(hashed(withoutStartupProbe(pyroscope.buildServerResources(TestScopes.EC2))))
 
-        val compared = reportAgainst(running, hashed(pyroscope.buildServerResources()))
+        val compared = reportAgainst(running, hashed(pyroscope.buildServerResources(TestScopes.EC2)))
 
         assertThat(compared).containsExactly(Event.Grafana.WorkloadConfigCompared(pyroscopeRef.toString(), changed = true))
     }
 
     @Test
     fun `an identical render is reported as unchanged`() {
-        val running = hashOf(hashed(pyroscope.buildServerResources()))
+        val running = hashOf(hashed(pyroscope.buildServerResources(TestScopes.EC2)))
 
-        val compared = reportAgainst(running, hashed(pyroscope.buildServerResources()))
+        val compared = reportAgainst(running, hashed(pyroscope.buildServerResources(TestScopes.EC2)))
 
         assertThat(compared).containsExactly(Event.Grafana.WorkloadConfigCompared(pyroscopeRef.toString(), changed = false))
     }
@@ -141,7 +142,7 @@ class ConfigChangeReportTest : BaseKoinTest() {
             )
         whenever(k8sService.workloadConfigHashes(any(), any())).thenReturn(Result.failure(denial))
 
-        val resources = hashed(pyroscope.buildServerResources())
+        val resources = hashed(pyroscope.buildServerResources(TestScopes.EC2))
 
         val thrown = catchThrowable { ConfigChangeReport(k8sService, EventBus()).report(resources, "default") }
 

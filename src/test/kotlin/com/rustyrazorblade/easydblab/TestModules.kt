@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
 import com.rustyrazorblade.easydblab.configuration.environment.StateClusterContractSource
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
+import com.rustyrazorblade.easydblab.configuration.tenancy.StateInstallScopeSource
 import com.rustyrazorblade.easydblab.di.commandsModule
 import com.rustyrazorblade.easydblab.di.prompterModule
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -132,6 +134,8 @@ object TestModules {
             // Real: it resolves the contract from whichever ClusterStateManager a test binds (usually
             // a stub whose load() returns an inline state), so a test picks the environment by state.
             single<ClusterContractSource> { StateClusterContractSource(get()) }
+            // Real for the same reason: the namespace and cluster id come from the bound state.
+            single<InstallScopeSource> { StateInstallScopeSource(get()) }
             // Real: the wrappers, then the network mode, in the test workspace.
             single { EnvScriptWriter(DirectSshRoute(22)) }
             single { WorkspaceShellTools(get(), get()) }

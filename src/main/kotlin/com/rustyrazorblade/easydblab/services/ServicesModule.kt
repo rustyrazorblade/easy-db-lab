@@ -25,6 +25,7 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScopeSource
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
@@ -155,8 +156,10 @@ val servicesModule =
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
         single<KubeApiLocator> { WorkspaceKubeApiLocator(get(), get<Context>().workingDirectory) }
         single { K8sClientProvider(get(), get()) }
-        factory { PodNetworkTuning(get(), Fabric8PodSysctlProbe(get()), get()) }
-        factoryOf(::DefaultK8sService).binds(
+        factory<InstallNamespace> { K8sInstallNamespace(get(), get(), get()) }
+        factory { PodNetworkTuning(get(), Fabric8PodSysctlProbe(get()) { get<InstallScopeSource>().current().namespace }, get()) }
+        // Every create path (typed apply, Job create, ConfigMap create) adds the ownership labels.
+        factory { DefaultK8sService.owned(get(), get(), get()) }.binds(
             arrayOf(
                 K8sService::class,
                 K8sManifestOperations::class,
@@ -197,7 +200,7 @@ val servicesModule =
         }
         factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
         // GrafanaClient reaches Grafana through the service-access seam, with the route on its own client.
-        factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
+        factory<GrafanaClient> { DefaultGrafanaClient(get(), get(), get(), get<InstallScopeSource>()) }
         factory { DashboardInstallContextFactory(get()) }
         factory { TemplateService(get(), get()) }
         factoryOf(::InstallTemplateResolver)
@@ -225,8 +228,14 @@ val servicesModule =
         // The pre-teardown save `down` runs: annotation mirror and collector stop, then
         // the Loki and Mimir flushes, the Tempo drain, the profiles report and the annotations backup
         // in parallel.
-        factory<BackendWorkloads> { K8sBackendWorkloads(get()) }
-        factory<TelemetrySenders> { K8sTelemetrySenders(get()) }
+        factory<BackendWorkloads> {
+            val scopes = get<InstallScopeSource>()
+            K8sBackendWorkloads(get(), namespace = { scopes.current().namespace.value })
+        }
+        factory<TelemetrySenders> {
+            val scopes = get<InstallScopeSource>()
+            K8sTelemetrySenders(get(), namespace = { scopes.current().namespace.value })
+        }
         factory { LokiTailFlush(get(), get()) }
         factory { MimirTailFlush(get(), get()) }
         factory { TempoTailFlush(get(), get()) }
@@ -245,7 +254,8 @@ val servicesModule =
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         single<ObservabilityHttp> {
             val clusterStateManager = get<ClusterStateManager>()
-            DefaultObservabilityHttp(get(), { clusterStateManager.load().tenant() }, get())
+            val scopeSource = get<InstallScopeSource>()
+            DefaultObservabilityHttp(get(), { clusterStateManager.load().tenant() }, { scopeSource.current().namespace }, get())
         }
         factory { TailnetCleanup(get(), lazy { get<User>() }, get()) }
         factory { TeardownPlanner(get()) }

@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.access.ServiceTarget
+import com.rustyrazorblade.easydblab.services.access.ClusterService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -86,7 +86,7 @@ class TempoTailFlushTest {
         val http =
             object : ObservabilityHttp by recorded {
                 override fun get(
-                    target: ServiceTarget,
+                    target: ClusterService,
                     pathAndQuery: String,
                     timeout: Duration,
                 ): ObservabilityResponse {

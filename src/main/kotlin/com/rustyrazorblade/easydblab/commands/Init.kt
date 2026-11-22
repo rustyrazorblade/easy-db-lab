@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
@@ -382,6 +383,16 @@ class Init :
     var tenant: String = Constants.Observability.DEFAULT_TENANT
 
     @Option(
+        names = ["--namespace"],
+        description = [
+            "Kubernetes namespace easy-db-lab installs the observability stack into (default: default, " +
+                "in every environment, including your own cluster). Must be a DNS-1123 label of at most 63 characters, " +
+                "not kube-system, kube-public or kube-node-lease.",
+        ],
+    )
+    var namespace: String? = null
+
+    @Option(
         names = [Constants.Capabilities.OVERRIDE_OPTION],
         description = [
             "Override one node capability, as <name>=true or <name>=false (repeatable). " +
@@ -678,6 +689,7 @@ class Init :
             "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
                 "(a Loki tenant with that name would collide with Loki's index path)."
         }
+        namespace?.let { K8sNamespace(it) }
         redirectTelemetryProblem()?.let { problem -> throw IllegalArgumentException(problem) }
         resolvedTelemetryRedirect?.validate()?.let { offending ->
             require(offending.isEmpty()) {

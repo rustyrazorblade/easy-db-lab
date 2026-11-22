@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -84,7 +85,7 @@ class JournaldRetryIntegrationTest : BaseKoinTest() {
      * filters and output.
      */
     private fun startFluentBit(): GenericContainer<*> {
-        val data = JournaldOtelManifestBuilder(getKoin().get()).buildConfigMap().data
+        val data = JournaldOtelManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data
         return GenericContainer(JournaldOtelManifestBuilder.IMAGE)
             .withCopyToContainer(
                 Transferable.of(data.getValue(JournaldOtelManifestBuilder.CONFIG_DATA_KEY)),

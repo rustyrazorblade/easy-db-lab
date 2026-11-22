@@ -20,8 +20,9 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * It is resolved from the current state on each use (through [ClusterContractSource]), so an `init`
  * inside the REPL or the server takes effect on the next command.
  *
- * [nodeAccessForm], [storeKind] and [namespace] are the slots #1039, #1035 and #1094 plug into; they
- * are fixed per environment now (design D1), so those changes touch no consumer. [storeKind] names
+ * [nodeAccessForm] and [storeKind] are the slots #1039 and #1035 plug into; they are fixed per
+ * environment now (design D1), so those changes touch no consumer. [namespace] is the one `init
+ * --namespace` recorded, or the environment default. [storeKind] names
  * what the backends are rendered with today, [StoreKind.ObjectStore] in every environment, so it never
  * disagrees with [hosting]; #1035 moves the two together.
  *
@@ -36,7 +37,9 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  *   `state.json` (`socks` or `tailscale`); anywhere else always `direct`, whatever the state records.
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
- * @property namespace the namespace easy-db-lab's workloads run in (#1094 adds the flag).
+ * @property namespace the namespace easy-db-lab installs into: the one `init --namespace` recorded, or
+ *   [Constants.ContractDefaults.OWNED_NAMESPACE]. A brought cluster keeps that default until the kits
+ *   take the cluster namespace, when it becomes [Constants.ContractDefaults.BROUGHT_NAMESPACE] (#1094 D10).
  * @property recordedDatacenter the datacenter name the database nodes are given, or null for an EC2
  *   state that records no region, whose datacenter is the AWS profile's region; read it through
  *   [datacenter], never directly.
@@ -71,6 +74,7 @@ data class ClusterContract(
             val environment = state.environment
             val capabilities = NodeCapabilities.from(state)
             val nodeLabels = state.initConfig?.nodeLabels.orEmpty()
+            val recordedNamespace = state.initConfig?.namespace
             return when (environment) {
                 Environment.Ec2K3s ->
                     ClusterContract(
@@ -83,7 +87,7 @@ data class ClusterContract(
                         networkMode = state.networkMode,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts, StoreCredentials.InstanceRole),
-                        namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
+                        namespace = recordedNamespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = state.initConfig?.region?.ifBlank { null },
                         clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
                     )
@@ -99,7 +103,7 @@ data class ClusterContract(
                         nodeCapabilities = capabilities,
                         // The node is a container: the CLI reaches Services by a port-forward, never a node port.
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
-                        namespace = Constants.ContractDefaults.OWNED_NAMESPACE,
+                        namespace = recordedNamespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                         clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     )
@@ -114,7 +118,8 @@ data class ClusterContract(
                         networkMode = NetworkMode.Direct,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
-                        namespace = Constants.ContractDefaults.BROUGHT_NAMESPACE,
+                        // Stays at the owned default until the kits take the cluster namespace (design D10).
+                        namespace = recordedNamespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
                         recordedDatacenter = Constants.ContractDefaults.LOCAL_DATACENTER,
                         clientNetworkOrigin = ClientNetworkOrigin.Recorded,
                     )

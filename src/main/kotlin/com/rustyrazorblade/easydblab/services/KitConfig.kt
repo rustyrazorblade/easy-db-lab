@@ -171,7 +171,7 @@ data class KitRuntime(
     val release: String = "",
     val selector: String = "",
     val name: String = "",
-    val namespace: String = "default",
+    val namespace: String = Constants.ContractDefaults.OWNED_NAMESPACE,
 ) {
     @Serializable
     enum class RuntimeType {

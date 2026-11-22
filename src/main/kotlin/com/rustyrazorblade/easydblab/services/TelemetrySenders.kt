@@ -49,12 +49,12 @@ interface TelemetrySenders {
 /**
  * [TelemetrySenders] over the Kubernetes API.
  *
- * @property namespace where the collectors' DaemonSets run.
+ * @property namespace where the collectors' DaemonSets run, read on each call so the current workspace decides.
  * @property pollInterval how often a wait lists a collector's pods.
  */
 class K8sTelemetrySenders(
     private val clientProvider: K8sClientProvider,
-    private val namespace: String = Constants.K8s.NAMESPACE,
+    private val namespace: () -> String,
     private val pollInterval: Duration = Duration.ofSeconds(Constants.TeardownFlush.POLL_INTERVAL_SECONDS),
 ) : TelemetrySenders {
     private companion object {
@@ -128,7 +128,7 @@ class K8sTelemetrySenders(
     ) = client
         .apps()
         .daemonSets()
-        .inNamespace(namespace)
+        .inNamespace(namespace())
         .withName(name)
 
     private fun pods(
@@ -137,7 +137,7 @@ class K8sTelemetrySenders(
     ): List<Pod> =
         client
             .pods()
-            .inNamespace(namespace)
+            .inNamespace(namespace())
             .withLabel(NAME_LABEL, name)
             .list()
             .items

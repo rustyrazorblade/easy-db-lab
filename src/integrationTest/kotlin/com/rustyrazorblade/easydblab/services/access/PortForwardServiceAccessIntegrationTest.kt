@@ -6,6 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.ServicePublishing
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
+import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.ProxiedHttpClientFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
@@ -235,11 +238,11 @@ class PortForwardServiceAccessIntegrationTest {
     @Test
     fun `after its pod is replaced, one request through the stale forward fails and the next one works`() {
         val replaced = "replaced"
-        val replacedTarget = target.copy(service = replaced)
+        val replacedTarget = ClusterService(replaced, HTTP_PORT, ServerType.Control, HTTP_PORT)
         createWebPod(replaced)
         createService(replaced)
         newAccess().use { access ->
-            val http = DefaultObservabilityHttp(access, { "acme" }, ProxiedHttpClientFactory())
+            val http = DefaultObservabilityHttp(access, { "acme" }, { K8sNamespace(NAMESPACE) }, ProxiedHttpClientFactory())
             assertThat(http.get(replacedTarget, "/").body.trim()).isEqualTo(BODY)
 
             val pod = client.pods().inNamespace(NAMESPACE).withName(replaced)
@@ -262,22 +265,20 @@ class PortForwardServiceAccessIntegrationTest {
     @Test
     fun `a backend Service published ClusterIP only is reached through the port-forward`() {
         val templateService = TemplateService(mock<ClusterStateManager>())
-        val rendered = MimirManifestBuilder(templateService).buildService(ServicePublishing.ClusterIp)
+        val rendered =
+            MimirManifestBuilder(
+                templateService,
+            ).buildService(InstallScope(K8sNamespace(NAMESPACE), TestScopes.CLUSTER_ID), ServicePublishing.ClusterIp)
         assertThat(rendered.spec.type).isEqualTo("ClusterIP")
         assertThat(rendered.spec.ports.mapNotNull { it.nodePort }).isEmpty()
 
         createWebPod("mimir-backend", Constants.K8s.MIMIR_HTTP_PORT, rendered.spec.selector)
         client
-            .resource(
-                ServiceBuilder(rendered)
-                    .editMetadata()
-                    .withNamespace(NAMESPACE)
-                    .endMetadata()
-                    .build(),
-            ).create()
+            .resource(rendered)
+            .create()
 
         newAccess().use { access ->
-            val endpoint = access.open(ClusterServices.MIMIR.copy(namespace = NAMESPACE)) as ServiceEndpoint.Plain
+            val endpoint = access.open(ClusterServices.MIMIR.inNamespace(K8sNamespace(NAMESPACE))) as ServiceEndpoint.Plain
 
             assertThat(get(endpoint.port)).isEqualTo(BODY)
         }

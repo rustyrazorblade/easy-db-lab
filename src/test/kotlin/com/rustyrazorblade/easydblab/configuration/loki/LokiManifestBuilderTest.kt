@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.nodeAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -47,11 +48,11 @@ class LokiManifestBuilderTest : BaseKoinTest() {
         builder = LokiManifestBuilder(getKoin().get())
     }
 
-    private fun config(): String = builder.buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
+    private fun config(): String = builder.buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE)
 
     private fun pod() =
         builder
-            .buildDeployment()
+            .buildDeployment(TestScopes.EC2)
             .spec.template.spec
 
     @Test

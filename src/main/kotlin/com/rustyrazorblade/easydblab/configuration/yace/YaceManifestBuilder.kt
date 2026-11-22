@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.yace
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.controlPlaneDeployment
 import com.rustyrazorblade.easydblab.configuration.hostNetworked
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -25,7 +26,6 @@ class YaceManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
-        private const val NAMESPACE = "default"
         private const val APP_LABEL = "yace"
         private const val CONFIG_DATA_KEY = "yace-config.yaml"
     }
@@ -35,20 +35,20 @@ class YaceManifestBuilder(
      *
      * @return List of: ConfigMap, Deployment
      */
-    fun buildAllResources(): List<HasMetadata> =
+    fun buildAllResources(scope: InstallScope): List<HasMetadata> =
         listOf(
-            buildConfigMap(),
-            buildDeployment(),
+            buildConfigMap(scope),
+            buildDeployment(scope),
         )
 
     /**
      * Builds the YACE ConfigMap containing the exporter config.
      */
-    fun buildConfigMap() =
+    fun buildConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
             .withNewMetadata()
             .withName(Constants.Yace.CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()
             .addToData(
@@ -72,8 +72,8 @@ class YaceManifestBuilder(
      * Runs on the control node with hostNetwork for YACE to use the node's
      * IAM role for CloudWatch API access.
      */
-    fun buildDeployment() =
-        controlPlaneDeployment(Constants.Yace.DEPLOYMENT_NAME, NAMESPACE, appLabel = APP_LABEL) {
+    fun buildDeployment(scope: InstallScope) =
+        controlPlaneDeployment(Constants.Yace.DEPLOYMENT_NAME, scope.namespace.value, appLabel = APP_LABEL) {
             hostNetworked()
                 .addNewContainer()
                 .withName(APP_LABEL)

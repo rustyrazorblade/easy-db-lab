@@ -4,14 +4,17 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 
 /**
  * The contents of the runtime `cluster-config` ConfigMap: the object store in neutral `store_*`
  * keys ([StoreBackend]: bucket, prefix, region and endpoint) and the Tempo, Mimir and Loki prefixes
  * in it, the cluster name (metric label), the tenant every in-cluster producer and backend sends in
- * `X-Scope-OrgID`, the present node capabilities (serial names in enum order, comma-joined, so an
+ * `X-Scope-OrgID`, the namespace the cluster installs into (so a kit script or pod reads it from
+ * one place), the present node capabilities (serial names in enum order, comma-joined, so an
  * unchanged set never changes the hash; the account-level `aws-account` describes no node and is
  * left out). It names no node address: every in-cluster caller reaches
  * the backends by Service DNS, so a cluster with no control host in its state renders it the same way.
@@ -46,6 +49,7 @@ object ClusterConfigData {
             putAll(locationOf(backend))
             put("cluster_name", clusterState.clusterLabelName())
             put("tenant", clusterState.tenant())
+            put("namespace", InstallScope.of(clusterState, ClusterContract.of(clusterState)).namespace.value)
             put(
                 Constants.Capabilities.CLUSTER_CONFIG_KEY,
                 NodeCapabilities

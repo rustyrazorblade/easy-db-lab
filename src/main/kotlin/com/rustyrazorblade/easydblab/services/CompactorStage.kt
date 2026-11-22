@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFi
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.store.S3Backend
 import com.rustyrazorblade.easydblab.configuration.store.StoreBackend
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.services.CompactorAgentInstaller
 import io.fabric8.kubernetes.api.model.HasMetadata
 
@@ -40,9 +41,10 @@ class CompactorStage(
     fun prepare(
         controlNode: ClusterHost,
         clusterState: ClusterState,
+        scope: InstallScope,
     ): List<HasMetadata> {
         val remoteJar = installer.install(controlNode.toHost(), agentJar())
-        return builder.buildAllResources(remoteJar, store(clusterState))
+        return builder.buildAllResources(scope, remoteJar, store(clusterState))
     }
 
     /**

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -83,7 +84,7 @@ class LokiIntegrationTest : BaseKoinTest() {
         tenant: String,
         cluster: String,
     ): GenericContainer<*> {
-        val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE)
+        val rendered = LokiManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue(LokiManifestBuilder.CONFIG_FILE)
         return ObservabilityBackends
             .startLoki(ObservabilityBackends.lokiConfig(rendered), volume, bucket, PREFIX, LokiIngester(tenant, cluster))
             .also { containers.add(it) }

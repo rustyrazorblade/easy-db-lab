@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.nodeAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -47,7 +48,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         builder = TempoManifestBuilder(getKoin().get())
     }
 
-    private fun config(): String = builder.buildConfigMap().data.getValue("tempo.yaml")
+    private fun config(): String = builder.buildConfigMap(TestScopes.EC2).data.getValue("tempo.yaml")
 
     @Test
     fun `Tempo runs native multi-tenancy`() {
@@ -84,7 +85,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
 
         val env =
             builder
-                .buildDeployment()
+                .buildDeployment(TestScopes.EC2)
                 .spec.template.spec.containers[0]
                 .env
         val prefix = env.single { it.name == "TRACES_STORE_PREFIX" }
@@ -101,7 +102,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
 
         val pod =
             builder
-                .buildDeployment()
+                .buildDeployment(TestScopes.EC2)
                 .spec.template.spec
         val mount = pod.containers[0].volumeMounts.single { it.name == "wal" }
         val volume = pod.volumes.single { it.name == "wal" }
@@ -175,7 +176,7 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     fun `a startup probe gives the first blocklist poll ten minutes before the liveness probe starts`() {
         val container =
             builder
-                .buildDeployment()
+                .buildDeployment(TestScopes.EC2)
                 .spec.template.spec.containers
                 .single()
         val startup = container.startupProbe

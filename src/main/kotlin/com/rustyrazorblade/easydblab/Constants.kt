@@ -741,9 +741,6 @@ object Constants {
         /** How often `up` checks whether the policy is in effect. */
         const val POD_SYSCTL_POLICY_POLL_SECONDS = 2L
 
-        /** The namespace of the dry-run pod `up` checks the policy with; it is never created, so any namespace that exists does. */
-        const val POD_SYSCTL_PROBE_NAMESPACE = "default"
-
         /** The dry-run pod's generateName prefix; a generated name never collides with a pod that exists. */
         const val POD_SYSCTL_PROBE_NAME_PREFIX = "easydblab-pod-sysctl-probe-"
 
@@ -1000,8 +997,6 @@ object Constants {
 
     // K8s observability configuration
     object K8s {
-        const val NAMESPACE = "default"
-
         /** The longest label name, and the longest label value, Kubernetes accepts. */
         const val LABEL_NAME_MAX_LENGTH = 63
 
@@ -1016,6 +1011,9 @@ object Constants {
 
         /** The longest DNS-1123 label Kubernetes accepts, e.g. for a pod volume name. */
         const val DNS_LABEL_MAX_LENGTH = 63
+
+        /** The longest DNS subdomain name Kubernetes accepts, e.g. for a ClusterRole or ClusterRoleBinding name. */
+        const val DNS_SUBDOMAIN_MAX_LENGTH = 253
 
         /**
          * How many times a Service port-forward is opened, each on a freshly chosen loopback port,
@@ -1310,6 +1308,13 @@ object Constants {
     }
 
     // The fixed per-environment values ClusterContract.of resolves, until #1094/#1097 add their flags
+
+    /** Where easy-db-lab's objects live in a Kubernetes cluster and how they are marked as its own. */
+    object Tenancy {
+        /** Kubernetes' own namespaces, which `init --namespace` refuses. */
+        val RESERVED_NAMESPACES = setOf("kube-system", "kube-public", "kube-node-lease")
+    }
+
     object ContractDefaults {
         /** The namespace a cluster easy-db-lab built runs its workloads in. */
         const val OWNED_NAMESPACE = "default"
@@ -1790,7 +1795,6 @@ object Constants {
 
     // Cassandra stress testing configuration
     object Stress {
-        const val NAMESPACE = "default"
         const val IMAGE = "ghcr.io/apache/cassandra-easy-stress:latest"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-easy-stress"

@@ -7,9 +7,11 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.metrics.StreamMetric
 import org.assertj.core.api.Assertions.assertThat
@@ -59,7 +61,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
     /** The trace-to-metrics queries as Grafana runs them, with the span's tags filled in. */
     private fun traceToMetrics(): List<String> =
         GrafanaDatasourceSet
-            .build(TenantSet.of("acme"), BackendUrls.IN_CLUSTER)
+            .build(TenantSet.of("acme"), BackendUrls.inCluster(ServiceDns(TestScopes.EC2.namespace)))
             .datasources
             .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
             .mapNotNull { it.jsonData?.tracesToMetrics }
@@ -76,7 +78,7 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
         SharedLocalStack.createBucketIfMissing(s3, bucket)
         Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
         docker.createVolumeCmd().withName(volume).exec()
-        val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap().data.getValue(MimirManifestBuilder.CONFIG_FILE)
+        val rendered = MimirManifestBuilder(getKoin().get()).buildConfigMap(TestScopes.EC2).data.getValue(MimirManifestBuilder.CONFIG_FILE)
         val container =
             ObservabilityBackends.startMimir(
                 ObservabilityBackends.mimirConfig(rendered),

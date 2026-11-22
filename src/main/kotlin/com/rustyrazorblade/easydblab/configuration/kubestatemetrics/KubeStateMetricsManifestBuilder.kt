@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.kubestatemetrics
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Placement
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -29,7 +30,6 @@ import io.fabric8.kubernetes.api.model.rbac.PolicyRuleBuilder
  */
 class KubeStateMetricsManifestBuilder {
     companion object {
-        private val NAMESPACE = Constants.K8s.NAMESPACE
         private val NAME = Constants.KubeStateMetrics.NAME
         private const val APP_NAME_LABEL = "app.kubernetes.io/name"
         private const val READINESS_INITIAL_DELAY = 5
@@ -82,30 +82,33 @@ class KubeStateMetricsManifestBuilder {
      * @param placement where the Deployment runs.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, Service, Deployment
      */
-    fun buildAllResources(placement: Placement = Placement.CONTROL_NODE): List<HasMetadata> =
+    fun buildAllResources(
+        scope: InstallScope,
+        placement: Placement = Placement.CONTROL_NODE,
+    ): List<HasMetadata> =
         listOf(
-            buildServiceAccount(),
-            buildClusterRole(),
-            buildClusterRoleBinding(),
-            buildService(),
-            buildDeployment(placement),
+            buildServiceAccount(scope),
+            buildClusterRole(scope),
+            buildClusterRoleBinding(scope),
+            buildService(scope),
+            buildDeployment(scope, placement),
         )
 
     /** Builds the ServiceAccount the Deployment runs as. */
-    fun buildServiceAccount() =
+    fun buildServiceAccount(scope: InstallScope) =
         ServiceAccountBuilder()
             .withNewMetadata()
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(APP_NAME_LABEL, NAME)
             .endMetadata()
             .build()
 
     /** Builds the read-only ClusterRole: one `list`/`watch` rule per API group in [WATCHED_RESOURCES]. */
-    fun buildClusterRole() =
+    fun buildClusterRole(scope: InstallScope) =
         ClusterRoleBuilder()
             .withNewMetadata()
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .addToLabels(APP_NAME_LABEL, NAME)
             .endMetadata()
             .withRules(WATCHED_RESOURCES.map { (apiGroup, resources) -> readOnlyRule(apiGroup, resources) })
@@ -122,33 +125,33 @@ class KubeStateMetricsManifestBuilder {
             .build()
 
     /** Builds the ClusterRoleBinding linking the ServiceAccount to the ClusterRole. */
-    fun buildClusterRoleBinding() =
+    fun buildClusterRoleBinding(scope: InstallScope) =
         ClusterRoleBindingBuilder()
             .withNewMetadata()
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .addToLabels(APP_NAME_LABEL, NAME)
             .endMetadata()
             .withNewRoleRef()
             .withApiGroup("rbac.authorization.k8s.io")
             .withKind("ClusterRole")
-            .withName(NAME)
+            .withName(scope.clusterScoped(NAME))
             .endRoleRef()
             .addNewSubject()
             .withKind("ServiceAccount")
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .endSubject()
             .build()
 
     /**
      * Builds the ClusterIP Service on the metrics port, so any pod can reach the exporter at
-     * `kube-state-metrics.default.svc:8080` without knowing the pod IP.
+     * `kube-state-metrics.<namespace>.svc:8080` without knowing the pod IP.
      */
-    fun buildService() =
+    fun buildService(scope: InstallScope) =
         ServiceBuilder()
             .withNewMetadata()
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(APP_NAME_LABEL, NAME)
             .endMetadata()
             .withNewSpec()
@@ -169,8 +172,11 @@ class KubeStateMetricsManifestBuilder {
      * Pod network, not hostNetwork: the exporter has no reason to bind a node port, and keeping it
      * off the host stack means it cannot collide with anything the control node already listens on.
      */
-    fun buildDeployment(placement: Placement = Placement.CONTROL_NODE): Deployment {
-        val deployment = buildUnplacedDeployment()
+    fun buildDeployment(
+        scope: InstallScope,
+        placement: Placement = Placement.CONTROL_NODE,
+    ): Deployment {
+        val deployment = buildUnplacedDeployment(scope)
         return DeploymentBuilder(deployment)
             .editSpec()
             .editTemplate()
@@ -180,11 +186,11 @@ class KubeStateMetricsManifestBuilder {
             .build()
     }
 
-    private fun buildUnplacedDeployment(): Deployment =
+    private fun buildUnplacedDeployment(scope: InstallScope): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(NAME)
-            .withNamespace(NAMESPACE)
+            .withNamespace(scope.namespace.value)
             .addToLabels(APP_NAME_LABEL, NAME)
             .endMetadata()
             .withNewSpec()

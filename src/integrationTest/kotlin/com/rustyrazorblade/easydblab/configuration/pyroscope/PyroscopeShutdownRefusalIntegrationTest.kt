@@ -7,8 +7,10 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockSource
+import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
@@ -65,7 +67,7 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
         const val TENANT = "acme"
         const val SERVICE = "shutdown-refusal"
         const val PUSHER_SERVICE = "shutdown-pusher"
-        const val PYROSCOPE_HOST = "pyroscope.default.svc.cluster.local"
+        val PYROSCOPE_HOST = "${ServiceDns(TestScopes.EC2.namespace).host(Constants.K8s.PYROSCOPE_APP_LABEL)}.cluster.local"
         const val CURL_IMAGE = "curlimages/curl:8.11.1"
         const val PUSHER_SCRIPT = "/push-through-shutdown.sh"
         const val PUSHER_SCRIPT_RESOURCE = "push-through-shutdown.sh"
@@ -140,7 +142,7 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
     private fun startPyroscope(withFront: Boolean = true): GenericContainer<*> {
         val builder =
             PyroscopeManifestBuilder(getKoin().get(), StoreBlockRenderer(StoreBlockSource { FILESYSTEM_STORE }))
-        val configMap = builder.buildServerConfigMap().data
+        val configMap = builder.buildServerConfigMap(TestScopes.EC2).data
         val pyroscope = ObservabilityBackends.startPyroscope(configMap.getValue("config.yaml"), volume)
         containers.add(pyroscope)
         if (withFront) {

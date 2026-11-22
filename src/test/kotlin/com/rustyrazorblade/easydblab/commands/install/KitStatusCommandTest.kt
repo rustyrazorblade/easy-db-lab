@@ -21,7 +21,6 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
@@ -161,8 +160,7 @@ class KitStatusCommandTest : BaseKoinTest() {
     @ParameterizedTest
     @MethodSource("helmLookupFailures")
     fun `a failed helm release lookup is Unknown with the cause, not Stopped`(case: HelmLookupFailure) {
-        // doAnswer, not thenThrow: the lookup declares no checked exception, and Mockito checks.
-        doAnswer { throw case.failure }.whenever(mockHelmService).releaseExists(any(), any())
+        whenever(mockHelmService.releaseExists(any(), any())).thenThrow(case.failure)
 
         val output = runStatus(listOf(runningPod), KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"))
 

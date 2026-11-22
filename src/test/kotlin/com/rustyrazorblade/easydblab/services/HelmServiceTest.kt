@@ -51,15 +51,14 @@ internal class HelmServiceTest {
     /**
      * `helm list` shows only deployed and failed releases unless asked for all. A release an
      * interrupted install left `pending-install` still holds its name, so the lookup must list
-     * every state, or a re-run of `up` would try to install over it.
+     * every state, or a re-run of `up` would try to install over it. The fake answers as helm
+     * does for a release left `pending-install`: listed only when `--all` asks for every state.
      */
     @Test
-    fun `releaseExists lists releases in every state, pending ones included`() {
-        val tooling = RecordingClusterTooling { "" }
+    fun `releaseExists finds a release an interrupted install left pending`() {
+        val pendingOnly = RecordingClusterTooling { call -> if ("--all" in call.args) "cilium\n" else "" }
 
-        DefaultHelmService(tooling).releaseExists("cilium", "kube-system")
-
-        assertThat(tooling.calls.single().args).contains("--all")
+        assertThat(DefaultHelmService(pendingOnly).releaseExists("cilium", "kube-system")).isTrue()
     }
 
     /**

@@ -138,10 +138,11 @@ Input travels over the SSH channel as stdin, so nothing is staged in `/tmp`. Ste
 `/tmp` listing before the first kit step; compare it with the listing now.
 
 ```bash
-"$(dirname "$EDB")/bin/ssh" control0 'ls -A /tmp | diff ~/tmp-before.txt - | grep "^>" || echo none-added'
+"$(dirname "$EDB")/bin/ssh" control0 'test -f ~/tmp-before.txt || { echo no-snapshot; exit 1; }; ls -A /tmp | diff ~/tmp-before.txt - | grep "^>" || echo none-added'
 ```
 
-Expect: `none-added`. Any `>` line is a file the kit steps left in `/tmp`; a values file or a
+Expect: `none-added`. `no-snapshot` means step 3 did not save the listing, and the step has not
+run; save it and re-run steps 3 to 7. Any `>` line is a file the kit steps left in `/tmp`; a values file or a
 manifest there means input was staged instead of sent as stdin.
 
 ### 9. Grafana reachable

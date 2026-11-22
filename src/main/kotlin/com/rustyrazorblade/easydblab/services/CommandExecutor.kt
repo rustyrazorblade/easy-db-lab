@@ -138,21 +138,26 @@ class DefaultCommandExecutor(
             exitCode = runCommands(command)
             return exitCode
         } finally {
+            // The one place the scheduled queue is emptied. A failure (runCommands returns at the
+            // first one) or a throw (Ctrl-C in the REPL) can leave commands queued on this thread,
+            // and they depend on the commands before them having worked. The REPL runs its next
+            // line on the same thread, which would run them unasked.
+            scheduledQueue.get().clear()
             closeResources(commandSucceeded = exitCode == 0)
         }
     }
 
-    /** Runs [command] and then each command it scheduled, stopping at the first failure. */
+    /**
+     * Runs [command] and then each command it scheduled, stopping at the first failure. A failed
+     * [command] runs none of them.
+     */
     private fun runCommands(command: PicoCommand): Int {
         val exitCode = executeWithLifecycle(command)
+        if (exitCode != 0) return exitCode
         while (scheduledQueue.get().isNotEmpty()) {
             val scheduledCommand = scheduledQueue.get().removeFirst()()
             val scheduledExitCode = executeWithLifecycle(scheduledCommand)
-            if (scheduledExitCode != 0) {
-                // Clear remaining scheduled commands on failure
-                scheduledQueue.get().clear()
-                return scheduledExitCode
-            }
+            if (scheduledExitCode != 0) return scheduledExitCode
         }
         return exitCode
     }

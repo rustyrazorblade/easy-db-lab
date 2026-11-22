@@ -351,6 +351,42 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a command interrupted after it schedules another leaves nothing for the next top-level command`() {
+        val interrupted =
+            TestCommand {
+                commandExecutor.schedule { TestCommand { executionOrder.add("scheduled") } }
+                throw InterruptedException("Ctrl-C")
+            }
+
+        try {
+            assertThatThrownBy { commandExecutor.executeTopLevel(interrupted) }
+                .isInstanceOf(InterruptedException::class.java)
+        } finally {
+            Thread.interrupted()
+        }
+        val exitCode = commandExecutor.executeTopLevel(TestCommand { executionOrder.add("next") })
+
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(executionOrder).containsExactly("next")
+    }
+
+    @Test
+    fun `a command that fails after it schedules another runs neither it nor leaves it for the next command`() {
+        val failing =
+            TestCommand {
+                commandExecutor.schedule { TestCommand { executionOrder.add("scheduled") } }
+                error("broken")
+            }
+
+        val failedExit = commandExecutor.executeTopLevel(failing)
+        val nextExit = commandExecutor.executeTopLevel(TestCommand { executionOrder.add("next") })
+
+        assertThat(failedExit).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(nextExit).isEqualTo(0)
+        assertThat(executionOrder).containsExactly("next")
+    }
+
+    @Test
     fun `multiple scheduled commands should run in order`() {
         // Given - a command that schedules multiple commands
         val parentCommand =

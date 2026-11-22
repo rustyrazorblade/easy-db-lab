@@ -44,9 +44,11 @@ import kotlin.concurrent.withLock
  * when close() is called.
  *
  * @property session The underlying Apache SSHD ClientSession
+ * @property exec Runs one command on [session]; the default is [ChannelRemoteExec]
  */
 class SSHClient(
     private val session: ClientSession,
+    private val exec: RemoteExec = ChannelRemoteExec(session),
 ) : ISSHClient {
     private val log = KotlinLogging.logger {}
 
@@ -109,12 +111,7 @@ class SSHClient(
             val stderrLines = lineSink?.let { lines(it, NodeStream.Stderr) }
             try {
                 PlatformThreadCall.run {
-                    session.executeRemoteCommand(
-                        command,
-                        tee(stdoutStream, stdoutLines),
-                        tee(stderrStream, stderrLines),
-                        Charset.defaultCharset(),
-                    )
+                    exec.run(command, tee(stdoutStream, stdoutLines), tee(stderrStream, stderrLines))
                 }
             } catch (e: RemoteException) {
                 throw remoteCommandFailure(command, secret, stdoutStream, stderrStream, e)

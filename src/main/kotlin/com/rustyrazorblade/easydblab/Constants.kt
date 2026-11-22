@@ -2016,6 +2016,12 @@ object Constants {
         const val FILE_MODE_PATTERN = "[0-7]{3,4}"
 
         /**
+         * How long an interrupted remote command gets to end after each signal (`ssh/ChannelRemoteExec`):
+         * after `INT`, before `KILL` is sent, and after `KILL`, before the channel is closed.
+         */
+        const val INTERRUPT_SIGNAL_GRACE_SECONDS = 2L
+
+        /**
          * ssh keepalive interval for every host, direct or over SSM: well inside Session Manager's
          * 20-minute idle timeout, and short enough that a tunnel whose connection died is noticed.
          */

@@ -25,12 +25,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import java.io.OutputStream
 import java.net.InetSocketAddress
-import java.nio.charset.Charset
 import java.rmi.RemoteException
 
 /**
@@ -73,15 +70,13 @@ class NodetoolTest : BaseKoinTest() {
                 whenever(ioSession.remoteAddress).thenReturn(InetSocketAddress(host.private, SSH_PORT))
                 val session = mock<ClientSession>()
                 whenever(session.ioSession).thenReturn(ioSession)
-                whenever(session.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
-                    invocation.getArgument<OutputStream>(1).write(ringOf(host.alias).toByteArray())
+                return SSHClient(session) { _, stdout, stderr ->
+                    stdout.write(ringOf(host.alias).toByteArray())
                     if (host.alias == failingAlias) {
-                        invocation.getArgument<OutputStream>(2).write(LONG_ERROR.toByteArray())
+                        stderr.write(LONG_ERROR.toByteArray())
                         throw RemoteException("Remote command failed (1): nodetool")
                     }
-                    null
                 }
-                return SSHClient(session)
             }
 
             override fun stop() {

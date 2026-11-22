@@ -14,14 +14,12 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.component.KoinComponent
 import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.io.OutputStream
 import java.net.InetSocketAddress
-import java.nio.charset.Charset
 import java.rmi.RemoteException
 
 /**
@@ -42,6 +40,12 @@ class SSHClientTest :
     private lateinit var sshClient: SSHClient
     private lateinit var outputHandler: BufferedOutputHandler
 
+    /** What the remote side does for each command: by default it prints nothing and exits 0. */
+    private var exec: (String, OutputStream, OutputStream) -> Unit = { _, _, _ -> }
+
+    /** Every command the client ran remotely, in order. */
+    private val ran = mutableListOf<String>()
+
     @BeforeEach
     fun setup() {
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
@@ -52,7 +56,7 @@ class SSHClientTest :
         whenever(mockSession.username).thenReturn("testuser")
         whenever(mockIoSession.remoteAddress).thenReturn(InetSocketAddress("10.0.0.1", 22))
 
-        sshClient = SSHClient(mockSession)
+        sshClient = SSHClient(mockSession) { command, stdout, stderr -> exec(command, stdout, stderr) }
     }
 
     // ========== Command Execution Tests ==========
@@ -63,11 +67,11 @@ class SSHClientTest :
         stderr: String = "",
         failWith: RemoteException? = null,
     ) {
-        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
-            invocation.getArgument<OutputStream>(1).write(stdout.toByteArray())
-            invocation.getArgument<OutputStream>(2).write(stderr.toByteArray())
+        exec = { command, out, err ->
+            ran.add(command)
+            out.write(stdout.toByteArray())
+            err.write(stderr.toByteArray())
             failWith?.let { throw it }
-            null
         }
     }
 
@@ -84,7 +88,7 @@ class SSHClientTest :
         // Then
         assertThat(response.text).isEqualTo(expectedOutput)
         assertThat(response.stderr).isEqualTo("a warning")
-        verify(mockSession).executeRemoteCommand(eq(command), any(), any(), eq(Charset.defaultCharset()))
+        assertThat(ran).containsExactly(command)
     }
 
     @Test
@@ -181,13 +185,10 @@ class SSHClientTest :
         stderrChunks: List<String> = emptyList(),
         failWith: RemoteException? = null,
     ) {
-        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
-            val out = invocation.getArgument<OutputStream>(1)
-            val err = invocation.getArgument<OutputStream>(2)
+        exec = { _, out, err ->
             stdoutChunks.forEach { out.write(it.toByteArray()) }
             stderrChunks.forEach { err.write(it.toByteArray()) }
             failWith?.let { throw it }
-            null
         }
     }
 
@@ -228,8 +229,8 @@ class SSHClientTest :
     /** A dropped connection is not a failed command: it propagates as itself, and what printed before it still shows. */
     @Test
     fun `a connection lost mid-command propagates, and the lines before it reach the sink`() {
-        whenever(mockSession.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->
-            invocation.getArgument<OutputStream>(1).write("partial".toByteArray())
+        exec = { _, out, _ ->
+            out.write("partial".toByteArray())
             throw SshException("Session is being closed")
         }
         val sink = CollectingSink()

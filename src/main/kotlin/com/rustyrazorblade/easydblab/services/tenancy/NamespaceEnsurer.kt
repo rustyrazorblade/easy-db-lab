@@ -17,9 +17,14 @@ sealed interface NamespacePlan {
         override val namespace: Namespace,
     ) : NamespacePlan
 
-    /** Present without the labels: adopted, its own labels kept and the cluster's added. */
+    /**
+     * Present without the labels: adopted, its own labels kept and the cluster's added. [replaced]
+     * lists each ownership label it already carried with another value, such as the cluster id of an
+     * earlier `init` against the same Kubernetes cluster, which the adopt overwrites.
+     */
     data class Adopt(
         override val namespace: Namespace,
+        val replaced: List<ReplacedLabel> = emptyList(),
     ) : NamespacePlan
 
     /** Present with the labels already: nothing to do. */
@@ -27,6 +32,13 @@ sealed interface NamespacePlan {
         override val namespace: Namespace,
     ) : NamespacePlan
 }
+
+/** An ownership label [key] an adopted namespace carried as [previous], overwritten with [current]. */
+data class ReplacedLabel(
+    val key: String,
+    val previous: String,
+    val current: String,
+)
 
 /**
  * Makes sure the namespace an [InstallScope] names exists and is marked as the cluster's (design
@@ -58,6 +70,10 @@ object NamespaceEnsurer {
                 .withLabels<String, String>(labels + scope.labels)
                 .endMetadata()
                 .build(),
+            replaced =
+                scope.labels.mapNotNull { (key, value) ->
+                    labels[key]?.takeIf { it != value }?.let { ReplacedLabel(key, it, value) }
+                },
         )
     }
 

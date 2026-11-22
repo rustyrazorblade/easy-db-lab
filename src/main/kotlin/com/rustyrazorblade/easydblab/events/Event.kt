@@ -1299,6 +1299,22 @@ sealed interface Event {
             override fun toDisplayString(): String = "Namespace $namespace ${outcome.verb}"
         }
 
+        /**
+         * Adopting [namespace] overwrote its ownership label [label], which named another owner
+         * ([previous], such as the cluster id of an earlier `init` against the same Kubernetes
+         * cluster), with this cluster's [current] value.
+         */
+        @Serializable
+        @SerialName("K8s.NamespaceOwnershipReplaced")
+        data class NamespaceOwnershipReplaced(
+            val namespace: String,
+            val label: String,
+            val previous: String,
+            val current: String,
+        ) : K8s {
+            override fun toDisplayString(): String = "Namespace $namespace label $label was $previous; now $current"
+        }
+
         @Serializable
         @SerialName("K8s.LocalPvsCreated")
         data class LocalPvsCreated(

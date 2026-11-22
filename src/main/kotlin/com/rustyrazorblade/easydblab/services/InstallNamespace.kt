@@ -37,6 +37,11 @@ class K8sInstallNamespace(
                 val reason = e.status?.message ?: e.message.orEmpty()
                 throw IllegalStateException("Ensuring the install namespace '$namespace' failed: $reason", e)
             }
+        if (plan is NamespacePlan.Adopt) {
+            plan.replaced.forEach {
+                eventBus.emit(Event.K8s.NamespaceOwnershipReplaced(namespace, it.key, it.previous, it.current))
+            }
+        }
         val outcome =
             when (plan) {
                 is NamespacePlan.Create -> Event.K8s.NamespaceOutcome.CREATED

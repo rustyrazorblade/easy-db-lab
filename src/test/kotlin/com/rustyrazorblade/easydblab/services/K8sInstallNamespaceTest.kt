@@ -3,10 +3,15 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.configuration.tenancy.K8sNamespace
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
 import io.fabric8.kubernetes.api.model.Namespace
+import io.fabric8.kubernetes.api.model.NamespaceBuilder
 import io.fabric8.kubernetes.api.model.NamespaceList
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientException
@@ -50,5 +55,39 @@ class K8sInstallNamespaceTest {
             .hasMessageContaining("'lab-a'")
             .hasMessageContaining("is forbidden")
             .hasCause(denied)
+    }
+
+    @Test
+    fun `adopting a namespace another cluster labelled reports the cluster id it replaced`() {
+        val stale =
+            NamespaceBuilder()
+                .withNewMetadata()
+                .withName("lab-a")
+                .addToLabels(OwnershipLabels.of("old-id"))
+                .endMetadata()
+                .build()
+        whenever(client.namespaces()).thenReturn(namespaces)
+        whenever(namespaces.withName("lab-a")).thenReturn(named)
+        whenever(named.get()).thenReturn(stale)
+        val events = mutableListOf<Event>()
+        val eventBus =
+            EventBus().apply {
+                addListener(
+                    object : EventListener {
+                        override fun onEvent(envelope: EventEnvelope) {
+                            events += envelope.event
+                        }
+
+                        override fun close() = Unit
+                    },
+                )
+            }
+
+        K8sInstallNamespace(provider, { scope }, eventBus).ensure()
+
+        assertThat(events).containsExactly(
+            Event.K8s.NamespaceOwnershipReplaced("lab-a", Constants.K8s.CLUSTER_LABEL, "old-id", "id-1"),
+            Event.K8s.InstallNamespaceReady("lab-a", Event.K8s.NamespaceOutcome.ADOPTED),
+        )
     }
 }

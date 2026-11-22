@@ -1340,7 +1340,6 @@ tasks.withType<Test>().configureEach {
     )
 }
 
-// Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.
 // The cassandra-pods kit's in-pod scripts, run under a real /bin/sh (dash where present): the
 // cassandra-fetch cache (curl stubbed) and the cassandra-render merge (the real yq).
 tasks.register<Exec>("testCassandraPodsFetch") {
@@ -1357,6 +1356,7 @@ tasks.register<Exec>("testCassandraPodsRender") {
     commandLine = listOf("bash", "src/test/shell/cassandra-pods-render.test.sh")
 }
 
+// Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.
 tasks.register<Exec>("testCassandraPodsStart") {
     group = "Verification"
     description = "Unit-test the cassandra-pods kit start check and UN wait"

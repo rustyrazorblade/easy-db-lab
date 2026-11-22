@@ -97,7 +97,8 @@ jobs:
   # (Constants.Kit.Agents.PYROSCOPE_IMAGE). Its tag is the agent version and its content is fixed by
   # the Dockerfile's checksum and pinned base images. It is published only from trusted refs (a tag
   # push, PR Checks passing on a push to main, or a maintainer's manual dispatch on main; never a
-  # branch dispatch, which only builds, or a pull request's own run), and a version that is already published is never overwritten.
+  # branch dispatch, which only builds, or a pull request's own run), and a version that is
+  # already published is never overwritten.
   publish-pyroscope-agent:
     runs-on: ubuntu-latest
     # The push trigger fires only for v* tags (see on.push), so no branch push reaches this job;

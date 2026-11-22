@@ -47,6 +47,27 @@ class CassandraRuntimeImageTest {
     }
 
     /**
+     * `install_yq.sh` pins only the version (the AMI fetches through the S3 cache), so the version is
+     * what the two share; the checksums are the image's own, checked by `sha256sum -c` at build. Each
+     * platform the publish job builds needs its own well-formed sum, or that platform's build fails.
+     */
+    @Test
+    fun `the image pins a distinct yq sha256 for every platform it is published for`() {
+        val workflow = File(".github/workflows/publish-container.yml").readText()
+        val platforms =
+            Regex("""context: docker/cassandra-runtime\s+platforms: (\S+)""")
+                .find(workflow)
+                ?.groupValues
+                ?.get(1)
+                ?.split(',')
+                .orEmpty()
+        val sums = platforms.map { arg("YQ_SHA256_${it.substringAfter('/').uppercase()}") }
+
+        assertThat(platforms).containsExactlyInAnyOrder("linux/amd64", "linux/arm64")
+        assertThat(sums).allMatch { it != null && Regex("[0-9a-f]{64}").matches(it) }.doesNotHaveDuplicates()
+    }
+
+    /**
      * A manual dispatch runs on whatever branch the maintainer picks, and a published tag is never
      * overwritten, so an unreviewed branch that pushed would fix its image under that tag for good.
      * Each push in the workflow is therefore gated to main when the run is a dispatch.

@@ -579,8 +579,13 @@ for any image it does not have. The Pyroscope image is built from `docker/pyrosc
 the `publish-pyroscope-agent` job of `publish-container.yml`. That job runs on a tag push, after PR
 Checks pass on main, or by manual dispatch. A dispatch pushes only when it runs on main; on any
 other branch it builds and checks the image but publishes nothing, so a branch that bumps
-`Constants.PyroscopeJavaAgent.VERSION` publishes its image once it merges. The same holds for the
-`publish-cassandra-runtime` job.
+`Constants.PyroscopeJavaAgent.VERSION` cannot publish its image before it merges, and
+`JavaAgentImagesPublishedIntegrationTest` fails for the new tag until it is published. PR Checks on
+main fail on that test too, so the run that publishes after them never starts: once the bump
+merges, run the workflow by hand on main (**Run workflow**, branch `main`), which publishes the
+image, and the test passes from then on. The same holds for the `publish-cassandra-runtime` job,
+whose integration tests build the image locally, so a branch that bumps the runtime revision does
+not need it published.
 
 An agent upgrade changes `PYROSCOPE_VERSION` and `PYROSCOPE_SHA256` in the Dockerfile together,
 and `Constants.PyroscopeJavaAgent.VERSION` to match. The build checks the downloaded jar against

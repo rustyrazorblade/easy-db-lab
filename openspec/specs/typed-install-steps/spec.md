@@ -106,14 +106,19 @@ successfully, replacing the hardcoded directory scan in `KitRunnerCommand`.
 - **WHEN** a collision-checked kit is stopped and started again immediately
 - **THEN** `stop` returns only after the kit's workload is gone AND the `start` is not refused
 
-### Requirement: Helm step values support nested YAML structures
-The `values` field of a `helm` step SHALL accept arbitrary nested YAML (not restricted to flat
-`Map<String, String>`). Values SHALL be serialized to a temporary file and passed to helm via
-`--values`.
+### Requirement: Helm step values reach helm without a file
+The `values` field of a `helm` step SHALL be a flat string map, passed to helm as
+`--set key=value`. A `values-file` SHALL reach helm on stdin through `--values -`; no file is
+written on either machine.
 
-#### Scenario: Nested values passed to helm
-- **WHEN** a `helm` step declares `values` with nested maps and mixed types
-- **THEN** the CLI writes a temp values.yaml and passes it to `helm upgrade --install --values`
+#### Scenario: Inline values passed to helm
+- **WHEN** a `helm` step declares `values` as a map of strings
+- **THEN** the CLI passes each entry to `helm upgrade --install` as `--set key=value`
+
+#### Scenario: Values file sent on stdin
+- **WHEN** a `helm` step declares `values-file`
+- **THEN** the CLI sends the file's contents as the stdin of `helm upgrade --install --values -`
+  AND writes no values file on the control node
 
 ### Requirement: Step execution failures stop the phase and are reported as events
 When any step in a phase fails, the CLI SHALL stop executing remaining steps in that phase,

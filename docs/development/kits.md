@@ -421,6 +421,11 @@ Install args and command args are parsed the same way:
   is an empty string. `repeatable` is refused on a non-string arg, and on an install arg, because
   `resolved-args.env` stores one `KEY=VALUE` per line; the kit then fails to load with an error
   that names the arg.
+- An arg may not use the name of a variable the cluster defines (the table above, such as
+  `NAMESPACE`, `CLUSTER_NAME` or `KUBECONFIG`): the cluster value would replace it, or, for an
+  install arg, it would replace the cluster value for the install steps alone. The kit then fails
+  to load with an error that names the arg and the variable. The one exception is an install arg
+  named `STORAGE_SIZE`, which is how a kit sizes its claims.
 
 `kit info <kit>` lists the install args and then each command's args under the command name,
 with the flag, variable, description, default, and a `[repeatable]` marker.

@@ -4,7 +4,7 @@ Grafana Mimir stores the metrics from every node in the cluster. It runs on the 
 
 ## How metrics get there
 
-The OpenTelemetry Collector runs on every node. It gathers host metrics, scrapes every database, kit and infrastructure exporter, and receives OTLP pushes (the OpenTelemetry Java agent, stress jobs, kits). It sends everything to Mimir with Prometheus remote write, at `http://mimir.default.svc.cluster.local:9009/api/v1/push`, with the cluster's tenant in the `X-Scope-OrgID` header. Tempo's metrics generator writes the span metrics (`traces_spanmetrics_*`) and the service graph to the same place.
+The OpenTelemetry Collector runs on every node. It gathers host metrics, scrapes every database, kit and infrastructure exporter, and receives OTLP pushes (the OpenTelemetry Java agent, stress jobs, kits). It sends everything to Mimir with Prometheus remote write, at `http://mimir.<namespace>.svc.cluster.local:9009/api/v1/push`, with the cluster's tenant in the `X-Scope-OrgID` header. Tempo's metrics generator writes the span metrics (`traces_spanmetrics_*`) and the service graph to the same place.
 
 Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that share a tenant stay distinguishable.
 

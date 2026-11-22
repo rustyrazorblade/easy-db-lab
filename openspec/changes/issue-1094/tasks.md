@@ -25,18 +25,18 @@ Start only after #1231 (round-4 main merge) and #1227 (#1102 error handler) merg
 
 - [x] 2.1 `TemplateVariables`: add `NAMESPACE` to the map and to `RESERVED_NAMES`. `TemplateVariablesTest`: `RESERVED_NAMES` equals the keys; a kit arg named `NAMESPACE` is refused
 - [x] 2.2 `KitRuntime.namespace` and the `InstallStep` namespace fields become `String? = null`; `WorkloadStepExecutor` resolves `step.namespace?.let(::interp) ?: scope.namespace`; `KitWorkloadProbe`, `KitEndpointServices`, `KitStatusCommand` take the cluster namespace. Tests: a step with no namespace acts in the cluster namespace; a runtime block with none probes the cluster namespace
-- [ ] 2.3 Convert every built-in kit (about 40 files): delete `namespace: default`; `-n default` and `--namespace default` become `"${NAMESPACE}"`; every `.default.svc.cluster.local` becomes `<svc>.${NAMESPACE}.svc` (`cassandra-pods` seed, `ferrosa`, `ignite3`, presto and trino catalogs, `kafka` README); include the kits #1231 added (`cqlite-flight`, `trino-loadtest`)
-- [ ] 2.4 `kafka`: `watchNamespaces: "{${NAMESPACE}}"`; render test that the value interpolates
-- [ ] 2.5 `clickhouse`: move the operator from `kube-system` to its own namespace, created by a labelled `namespace` step; operator namespaces of `postgres`, `kafka`, `tidb` stay and are labelled when created
-- [ ] 2.6 `configuration/edl-kit-lib.sh`: `: "${NAMESPACE:?NAMESPACE is not set}"` in each function that calls the cluster; gauge-push pod lookup and pod-proxy URL, Helm install, scale, uninstall and the `cluster-config` read use `$NAMESPACE`. Library shell tests under `/bin/bash` 3.2: lookup and URL use `lab-a`; Helm helpers pass `--namespace lab-a`; missing `NAMESPACE` exits non-zero with the message and no cluster call
-- [ ] 2.7 `ProxyEnvFile` writes `EDL_NAMESPACE` at `init` and `up`; `env.sh` `clickhouse-client` helpers read it; the `kubectl` wrapper unchanged. Tests: the env file holds `EDL_NAMESPACE` and keeps the other keys; the wrapper adds no `-n`
-- [ ] 2.8 `configuration/clickhouse/{config,keeper_config}.xml`: remove if no code reads them, else convert
-- [ ] 2.9 `help/observability.md` and kit `METRICS.md`/README text use the cluster namespace
-- [ ] 2.10 Extend `NoDefaultNamespaceLiteralTest` to `src/main/resources`, dashboards included
-- [ ] 2.11 D10: the Kubeconfig contract default returns to `BROUGHT_NAMESPACE` (`easy-db-lab`). `ClusterContractTest`: Kubeconfig with none resolves to `easy-db-lab`
+- [x] 2.3 Convert every built-in kit (about 40 files): delete `namespace: default`; `-n default` and `--namespace default` become `"${NAMESPACE}"`; every `.default.svc.cluster.local` becomes `<svc>.${NAMESPACE}.svc` (`cassandra-pods` seed, `ferrosa`, `ignite3`, presto and trino catalogs, `kafka` README); include the kits #1231 added (`cqlite-flight`, `trino-loadtest`)
+- [x] 2.4 `kafka`: `watchNamespaces: "{${NAMESPACE}}"`; render test that the value interpolates
+- [x] 2.5 `clickhouse`: move the operator from `kube-system` to its own namespace, created by a labelled `namespace` step; operator namespaces of `postgres`, `kafka`, `tidb` stay and are labelled when created
+- [x] 2.6 `configuration/edl-kit-lib.sh`: `: "${NAMESPACE:?NAMESPACE is not set}"` in each function that calls the cluster; gauge-push pod lookup and pod-proxy URL, Helm install, scale, uninstall and the `cluster-config` read use `$NAMESPACE`. Library shell tests under `/bin/bash` 3.2: lookup and URL use `lab-a`; Helm helpers pass `--namespace lab-a`; missing `NAMESPACE` exits non-zero with the message and no cluster call
+- [x] 2.7 `ProxyEnvFile` writes `EDL_NAMESPACE` at `init` and `up`; `env.sh` `clickhouse-client` helpers read it; the `kubectl` wrapper unchanged. Tests: the env file holds `EDL_NAMESPACE` and keeps the other keys; the wrapper adds no `-n`
+- [x] 2.8 `configuration/clickhouse/{config,keeper_config}.xml`: remove if no code reads them, else convert
+- [x] 2.9 `help/observability.md` and kit `METRICS.md`/README text use the cluster namespace
+- [x] 2.10 Extend `NoDefaultNamespaceLiteralTest` to `src/main/resources`, dashboards included
+- [x] 2.11 D10: the Kubeconfig contract default returns to `BROUGHT_NAMESPACE` (`easy-db-lab`). `ClusterContractTest`: Kubeconfig with none resolves to `easy-db-lab`
 - [ ] 2.12 Run `PostgresSysbenchAnywhereIntegrationTest` with namespace `easy-db-lab`
 - [ ] 2.13 AC1 integration test (own K3s, not `SharedK3s`): snapshot every API-discoverable object, run the stack deploy and the `cassandra-pods` kit `start` with namespace `easy-db-lab`, diff; every new object is in `easy-db-lab`, or carries both labels, or belongs to an easy-db-lab-installed Helm release
-- [ ] 2.14 Docs: `docs/` kit development (`NAMESPACE`, optional step and runtime namespaces), `kits/CLAUDE.md`, the user guide pages for kafka, postgres, presto, trino
+- [x] 2.14 Docs: `docs/` kit development (`NAMESPACE`, optional step and runtime namespaces), `kits/CLAUDE.md`, the user guide pages for kafka, postgres, presto, trino
 - [ ] 2.15 `./gradlew check` on JDK 21 (in a subagent); one AWS lab run of `up` and a kit `start` confirming everything lands in `default`
 
 ## 3. PR 3: CRD baseline and owned-object sweep

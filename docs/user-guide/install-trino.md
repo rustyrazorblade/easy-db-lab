@@ -55,6 +55,10 @@ easy-db-lab trino stop
 
 ## Automatic Catalog Management
 
+The kit runs in the cluster namespace (`NAMESPACE`): `default` on a cluster easy-db-lab builds,
+`easy-db-lab` on one you bring with `init --kubeconfig`, or whatever `init --namespace` named. The catalogs name the other kits' Services in that namespace
+(`<svc>.<namespace>.svc`).
+
 Trino has built-in support for two catalogs that wire up automatically:
 
 - **Cassandra** — uses the Cassandra connector, pointing at the cluster's Cassandra nodes

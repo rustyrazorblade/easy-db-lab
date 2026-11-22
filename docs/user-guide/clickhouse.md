@@ -410,7 +410,7 @@ folder named `clickhouse`.
 
 The ClickHouse deployment includes:
 
-- **Altinity ClickHouse operator**: Helm release `clickhouse-operator` in `kube-system`, installed by `kit install clickhouse`
+- **Altinity ClickHouse operator**: Helm release `clickhouse-operator` in its own `clickhouse-operator` namespace, installed by `kit install clickhouse`
 - **ClickHouse Server**: ClickHouseInstallation `clickhouse`, one cluster named `clickhouse` with 1 shard and `--replicas` replicas, on db nodes only
 - **ClickHouse Keeper**: ClickHouseKeeperInstallation `clickhouse-keeper` with `--replicas` replicas on db nodes, used for replication and `ON CLUSTER` DDL (ZooKeeper-compatible); the CHI references it by name
 - **Service**: `clickhouse-nodeport`, a NodePort service in front of the server pods

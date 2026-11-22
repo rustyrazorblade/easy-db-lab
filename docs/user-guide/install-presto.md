@@ -52,6 +52,10 @@ easy-db-lab presto stop
 ```
 
 ### start
+The kit runs in the cluster namespace (`NAMESPACE`): `default` on a cluster easy-db-lab builds,
+`easy-db-lab` on one you bring with `init --kubeconfig`, or whatever `init --namespace` named. The catalogs name the other kits' Services in that namespace
+(`<svc>.<namespace>.svc`).
+
 
 ```bash
 helm upgrade --install presto prestodb/presto --version 0.4.0 -f values.yaml

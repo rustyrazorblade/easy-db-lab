@@ -50,8 +50,12 @@ Removes all Kafka resources including PVCs and PVs, then uninstalls the Strimzi 
 
 **Internal** (in-cluster pods, e.g. a Cassandra sidecar or another kit):
 
+`<namespace>` is the cluster namespace: `default` on a cluster easy-db-lab builds, `easy-db-lab` on
+one you bring with `init --kubeconfig`, or whatever `init --namespace` named. The Strimzi operator runs
+in its own `strimzi` namespace and watches only the cluster namespace.
+
 ```
-kafka-kafka-bootstrap.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.<namespace>.svc:9092
 ```
 
 **External** (from outside the cluster via Tailscale):
@@ -123,7 +127,7 @@ The Kafka Overview Grafana dashboard is installed automatically and shows broker
 When using Kafka as a CDC target for Cassandra, configure the sidecar connector with the internal bootstrap address to avoid NodePort overhead:
 
 ```
-kafka-kafka-bootstrap.default.svc.cluster.local:9092
+kafka-kafka-bootstrap.<namespace>.svc:9092
 ```
 
 ## Replication and Multi-Broker Setup

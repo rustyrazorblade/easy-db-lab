@@ -69,7 +69,7 @@ Every client listener of the first pod (`ferrosa-0-0`) is published on a NodePor
 
 Every NodePort leads to pod `ferrosa-0-0`, so that pod is the one entry point for outside clients: if it is down, every NodePort listener is down. A CQL client that connects through a NodePort and then discovers peers from `system.peers` gets pod IPs it cannot reach from outside the cluster; point it at the NodePort only, with the driver's peer discovery turned off. Run load from inside the cluster (see cassandra-easy-stress below) to reach every pod.
 
-Internode traffic (port 17000) has no NodePort. Inside the cluster, pod `ferrosa-<i>-0` is `ferrosa-<i>.default.svc.cluster.local`, with CQL on 9042.
+Internode traffic (port 17000) has no NodePort. Inside the cluster, pod `ferrosa-<i>-0` is `ferrosa-<i>.<namespace>.svc.cluster.local`, with CQL on 9042.
 
 ## Connecting with CQL
 
@@ -134,13 +134,13 @@ done
 Run cassandra-easy-stress against the first pod's Service name. The stress pod uses the cluster's DNS, so it resolves the name. Put `--` before the cassandra-easy-stress arguments, so that easy-db-lab passes `-d` and `--host` through to it:
 
 ```bash
-easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.default.svc.cluster.local
+easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.<namespace>.svc.cluster.local
 ```
 
 To spread the stress keyspace over all three pods, pass a replication map that names the cluster's data center and a factor of 3:
 
 ```bash
-easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.default.svc.cluster.local \
+easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.<namespace>.svc.cluster.local \
   --replication "{'class': 'NetworkTopologyStrategy', '<region>': 3}"
 ```
 

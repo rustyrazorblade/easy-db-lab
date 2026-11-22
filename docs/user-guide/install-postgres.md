@@ -56,6 +56,10 @@ Deletes PersistentVolumes and uninstalls the CNPG operator Helm release. The ope
 `postgres` and every `postgres-<extension>` instance, so it is kept while any CNPG `Cluster` is
 left and removed with the last one.
 
+The CNPG operator runs in its own `cnpg-system` namespace, which the install creates with the
+cluster's ownership labels. The kit runs in the cluster namespace (`NAMESPACE`): `default` on a cluster easy-db-lab builds,
+`easy-db-lab` on one you bring with `init --kubeconfig`, or whatever `init --namespace` named.
+
 ## Connecting
 
 The PostgreSQL primary is exposed as a NodePort on port `30432` of each db node.

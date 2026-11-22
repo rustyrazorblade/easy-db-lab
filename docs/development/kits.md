@@ -51,7 +51,7 @@ metrics:                 # a list; see Metrics section
 runtime:
   type: helm             # see Runtime section
   release: myworkload
-  namespace: default
+  # namespace: optional; the cluster namespace when omitted
 
 endpoints:
   - name: "HTTP UI"
@@ -145,7 +145,7 @@ Installs or upgrades a Helm chart.
 - type: helm
   chart: altinity/altinity-clickhouse-operator
   release: clickhouse-operator
-  namespace: kube-system
+  namespace: clickhouse-operator  # optional: the cluster namespace when omitted
   version: "1.2.3"          # optional: pin chart version
   values:                    # optional: inline values
     replicaCount: "3"
@@ -157,7 +157,7 @@ Uninstalls a Helm release.
 ```yaml
 - type: helm-uninstall
   release: clickhouse-operator
-  namespace: kube-system
+  namespace: clickhouse-operator
 ```
 
 When one operator serves several kit instances, `keep-while-any` names a resource type and keeps
@@ -193,7 +193,10 @@ Applies a kustomize configuration from a URL.
 ```
 
 ### `namespace`
-Creates a Kubernetes namespace (no-op if it already exists).
+Creates a Kubernetes namespace carrying the cluster's ownership labels
+(`app.kubernetes.io/managed-by=easy-db-lab`, `easydblab/cluster=<id>`), or adds those labels to
+an existing one. Use it for an operator's own namespace, before the `helm` step that installs
+into it; never install into `kube-system` or another namespace easy-db-lab does not own.
 ```yaml
 - type: namespace
   name: monitoring
@@ -205,7 +208,7 @@ Waits for a K8s resource to reach a condition.
 - type: wait
   kind: Deployment
   name: my-operator
-  namespace: kube-system
+  namespace: my-operator     # default: the cluster namespace
   condition: Available   # default: Available
   timeout: 300s          # default: 300s
 ```
@@ -221,7 +224,7 @@ By name — `kind` and `name` are required:
 - type: delete
   kind: ClickHouseInstallation
   name: clickhouse
-  namespace: default         # default: default
+  namespace: lab-a           # default: the cluster namespace
   ignore-not-found: true     # default: true
 ```
 
@@ -230,7 +233,7 @@ By label — `selector` and `kinds` are required:
 - type: delete
   kinds: [deployment, replicaset, pod, service, configmap]
   selector: easydblab/kit=memcached
-  namespace: default         # default: default
+  # namespace: optional; the cluster namespace when omitted
 ```
 Every object of the listed kinds in `namespace` that `selector` matches is deleted. When nothing
 matches, the step succeeds and prints nothing. A failed cluster query fails the step. `selector`,
@@ -273,8 +276,7 @@ root-owned. `KitClaimStorageTest` checks every built-in kit for all of this.
 Creates or updates a K8s ConfigMap.
 ```yaml
 - type: configmap
-  name: my-config
-  namespace: default
+  name: my-config            # in the cluster namespace; `namespace:` names another
   data:
     key: value
 ```
@@ -292,8 +294,7 @@ Applies labels to cluster nodes.
 Runs a command inside a running pod.
 ```yaml
 - type: exec
-  pod: my-pod-name
-  namespace: default
+  pod: my-pod-name           # in the cluster namespace; `namespace:` names another
   command: ["clickhouse-client", "--query", "SELECT 1"]
 ```
 
@@ -365,6 +366,7 @@ All scripts and shell steps receive the following environment variables:
 | `ACCOUNT_BUCKET` | S3 account-level bucket name |
 | `REGION` | AWS region |
 | `KIT_NAME` | Name of this kit |
+| `NAMESPACE` | The cluster namespace: the one `init --namespace` recorded, else `default` on a cluster easy-db-lab builds and `easy-db-lab` on one you bring with `--kubeconfig`. Reserved: a kit arg may not take this name. Shell steps and `bin/` scripts pass it to every namespaced `kubectl` and `helm` call (`-n "${NAMESPACE}"`); templates take `__NAMESPACE__`, and in-cluster DNS names are `<svc>.${NAMESPACE}.svc`. A typed step or `runtime` block with no `namespace` uses it |
 | `STORAGE_SIZE` | Claim size (from the `--storage-size` arg, if used) |
 | `KIT_STORAGE_CLASS` | The StorageClass every kit claim names: `edl-local-<kit>` on local volumes, else the `init --kit-storage-class` class |
 | `KIT_STORAGE_SIZE` | The environment's default claim size: `init --kit-storage-size`, else `10Ti` on local volumes or `100Gi` |
@@ -804,7 +806,7 @@ the `start` collision check.
 runtime:
   type: helm          # helm | deployment | statefulset | pods
   release: presto     # for helm: the Helm release name
-  namespace: default
+  namespace: presto  # optional: the cluster namespace when omitted
   selector: "app=presto"  # for pods: label selector
   name: presto            # for deployment/statefulset: resource name
 ```
@@ -874,8 +876,10 @@ set -euo pipefail
 ```
 
 Sourcing it changes no `set` option, trap or working directory, and defines only `edl_` functions
-and `EDL_` variables. The functions read `KIT_NAME`, `KUBECONFIG`, `APP_NODE_LABELS`, `APP_NODE_SELECTOR` and `CONTROL_NODE_LABELS` from
-the environment. A function that fails prints why to stderr and exits the script.
+and `EDL_` variables. The functions read `KIT_NAME`, `NAMESPACE`, `KUBECONFIG`, `APP_NODE_LABELS`, `APP_NODE_SELECTOR` and `CONTROL_NODE_LABELS` from
+the environment. A function that fails prints why to stderr and exits the script. Every function
+that calls the cluster acts in `NAMESPACE` and exits with `NAMESPACE is not set` when it is unset or
+empty, before any call.
 
 | Function | What it does |
 |---|---|

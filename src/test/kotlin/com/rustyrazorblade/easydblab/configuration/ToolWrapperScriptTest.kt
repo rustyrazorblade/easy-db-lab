@@ -95,6 +95,20 @@ internal class ToolWrapperScriptTest {
         assertThat(wrapped.proxyVariables()).isEqualTo(NONE + mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128"))
     }
 
+    /** The wrapper never picks a namespace: a kit names its own, and a user's call stays as typed (design D5). */
+    @Test
+    fun `a recorded namespace is not added to a kubectl call`() {
+        ProxyEnvFile(workspace).apply {
+            recordNetworkMode(NetworkMode.Direct)
+            recordNamespace("lab-a")
+        }
+
+        val result = run("kubectl get pods")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.arguments()).containsExactly("get", "pods")
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("tools")
     fun `in direct mode a recorded tunnel is not used`(tool: String) {

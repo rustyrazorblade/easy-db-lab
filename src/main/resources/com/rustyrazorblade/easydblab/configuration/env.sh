@@ -244,19 +244,37 @@ socks5-status() {
   fi
 }
 
+# The cluster namespace the CLI recorded (EDL_NAMESPACE in .socks5-proxy.env), where the helpers
+# below find the kits' pods; nothing when none is recorded. Values inherited from the shell are ignored.
+_edl_namespace() {
+  (
+    unset EDL_NAMESPACE
+    if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
+      . "$CLUSTER_DIR/.socks5-proxy.env"
+    fi
+    printf '%s\n' "${EDL_NAMESPACE:-}"
+  )
+}
+
 # ClickHouse client helper (interactive). Extra arguments go to clickhouse-client.
 # The Altinity operator names server pods chi-clickhouse-clickhouse-<shard>-<replica>-0, so the
 # first Running pod of the CHI is found by label. The kit's default user has no password.
 clickhouse-client() {
   local pod
-  pod=$(ssh control0 'kubectl get pods -n default -l clickhouse.altinity.com/chi=clickhouse --field-selector=status.phase=Running -o jsonpath="{.items[0].metadata.name}"')
+  local ns
+  ns=$(_edl_namespace)
+  if [ -z "$ns" ]; then
+    echo "No cluster namespace recorded in $CLUSTER_DIR/.socks5-proxy.env. Run 'easy-db-lab up' in $CLUSTER_DIR to record it." >&2
+    return 1
+  fi
+  pod=$(ssh control0 "kubectl get pods -n $ns -l clickhouse.altinity.com/chi=clickhouse --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}'")
   if [ -z "$pod" ]; then
     echo "No running ClickHouse server pod found (label clickhouse.altinity.com/chi=clickhouse)." >&2
     return 1
   fi
   local args=""
   [ $# -gt 0 ] && args=$(printf '%q ' "$@")
-  ssh -t control0 "kubectl exec -it -n default $pod -c clickhouse -- clickhouse-client $args"
+  ssh -t control0 "kubectl exec -it -n $ns $pod -c clickhouse -- clickhouse-client $args"
 }
 
 # ClickHouse query helper (non-interactive, sends query via HTTP POST)

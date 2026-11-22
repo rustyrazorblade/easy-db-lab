@@ -5,7 +5,7 @@ import java.io.File
 
 /**
  * Prepares a workspace for the shell-side tools: the wrappers in `<workspace>/bin/`, `env.sh`, and
- * the cluster's network mode in the proxy env file.
+ * the cluster's network mode and namespace in the proxy env file.
  *
  * It is the only caller of [ProxyEnvFile.recordNetworkMode], and it always writes the wrappers first.
  * A workspace made by an earlier release has wrappers and `env.sh` helpers (`with-proxy`,
@@ -35,7 +35,7 @@ class WorkspaceShellTools(
 ) {
     /**
      * Writes the wrappers, rewrites `env.sh` when the env file is about to be converted or `env.sh` is
-     * missing, then records [state]'s network mode in [workspace]'s proxy env file.
+     * missing, then records [state]'s network mode and namespace in [workspace]'s proxy env file.
      *
      * @throws IllegalStateException if `bin/` holds a tool file that easy-db-lab did not write; the
      *   env file is then left as it was
@@ -50,11 +50,12 @@ class WorkspaceShellTools(
             envScript.write(workspace, state, envScript.proxyCommandsFor(state.hosts))
         }
         envFile.recordNetworkMode(state.effectiveNetworkMode())
+        envFile.recordNamespace(state.namespace().value)
     }
 
     /**
      * Writes the wrappers and `env.sh` (its fallback `sshConfig` routed by [proxyCommands]), then
-     * records [state]'s network mode.
+     * records [state]'s network mode and namespace.
      *
      * @throws IllegalStateException as [prepare] does
      */
@@ -65,6 +66,9 @@ class WorkspaceShellTools(
     ) {
         installer.install(workspace)
         envScript.write(workspace, state, proxyCommands)
-        ProxyEnvFile(workspace).recordNetworkMode(state.effectiveNetworkMode())
+        ProxyEnvFile(workspace).apply {
+            recordNetworkMode(state.effectiveNetworkMode())
+            recordNamespace(state.namespace().value)
+        }
     }
 }

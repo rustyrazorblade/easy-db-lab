@@ -2071,8 +2071,8 @@ object Constants {
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
          * tool wrappers in `bin/`, the tunnel script and `env.sh`. The CLI writes only [ENV_NETWORK_MODE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses
-         * JSON. A file from an earlier release holds [ENV_TAILSCALE_ACTIVE] in place of the mode.
+         * [ENV_NAMESPACE], [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no
+         * shell code ever parses JSON. A file from an earlier release holds [ENV_TAILSCALE_ACTIVE] in place of the mode.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -2089,6 +2089,13 @@ object Constants {
          * with [ENV_NETWORK_MODE].
          */
         const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
+
+        /**
+         * The env file key that holds the cluster namespace, for the `env.sh` helpers that call the
+         * cluster outside a kit (a kit gets it as `NAMESPACE`). The tool wrappers never read it: a
+         * `kubectl` call keeps the namespace its caller named, or the kubeconfig's (design D5).
+         */
+        const val ENV_NAMESPACE = "EDL_NAMESPACE"
 
         /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
         const val ENV_SOCKS_PORT = "EDL_SOCKS_PORT"

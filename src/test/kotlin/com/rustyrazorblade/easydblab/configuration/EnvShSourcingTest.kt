@@ -154,6 +154,30 @@ internal class EnvShSourcingTest {
         assertThat(File(stdout.trim()).canonicalPath).isEqualTo(File(workspace, "bin/kubectl").canonicalPath)
     }
 
+    /** The clickhouse-client helper finds and execs into the server pod in the recorded cluster namespace. */
+    @Test
+    fun `clickhouse-client looks in the namespace the env file records`() {
+        ProxyEnvFile(workspace).recordNamespace("lab-a")
+        val calls = File(workspace, "ssh.calls")
+        val stubs =
+            File(workspace, "stubs").apply {
+                mkdirs()
+                File(this, "ssh").apply {
+                    writeText(
+                        "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"${'$'}a\"; done >> '${calls.absolutePath}'\necho chi-pod-0\n",
+                    )
+                    setExecutable(true)
+                }
+            }
+
+        val result = bash("source ./env.sh >/dev/null; PATH='${stubs.absolutePath}':${'$'}PATH; clickhouse-client --query 'SELECT 1'")
+
+        assertThat(result.exitCode).withFailMessage(result.stderr).isZero()
+        val sent = calls.readLines().filter { it.contains("kubectl") }
+        assertThat(sent).hasSize(2).allMatch { it.contains("-n lab-a ") }
+        assertThat(sent.joinToString("\n")).doesNotContain("-n default")
+    }
+
     @Test
     fun `with-proxy with no port recorded fails and names socks start`() {
         ProxyEnvFile(workspace).recordNetworkMode(NetworkMode.Socks)

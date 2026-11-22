@@ -594,7 +594,10 @@ class Init :
         // above), so no wrapper from an earlier release can read the file, and the wrappers come with `up`.
         val contract = ClusterContract.of(clusterState)
         val networkMode = contract.networkMode
-        if (networkMode == NetworkMode.Direct) ProxyEnvFile(context.workingDirectory).recordNetworkMode(networkMode)
+        val envFile = ProxyEnvFile(context.workingDirectory)
+        if (networkMode == NetworkMode.Direct) envFile.recordNetworkMode(networkMode)
+        // The namespace the env.sh helpers act in; the wrappers never read it (design D5).
+        envFile.recordNamespace(clusterState.namespace().value)
         clusterStateManager.replace(clusterState)
 
         eventBus.emit(Event.Setup.InitializingDirectory)

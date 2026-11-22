@@ -223,7 +223,9 @@ internal class ProxyPreflightTest {
 
         val packaged = packagedWrapperScript()
         Constants.ToolWrappers.WRAPPED_TOOLS.forEach { assertThat(File(bin, it)).hasContent(packaged) }
-        assertThat(envFile.file).hasContent("${Constants.Proxy.ENV_NETWORK_MODE}=tailscale")
+        assertThat(envFile.file).hasContent(
+            "${Constants.Proxy.ENV_NETWORK_MODE}=tailscale\n${Constants.Proxy.ENV_NAMESPACE}=${Constants.ContractDefaults.OWNED_NAMESPACE}",
+        )
     }
 
     @Test
@@ -235,7 +237,9 @@ internal class ProxyPreflightTest {
 
         preflight.ensureTunnel()
 
-        assertThat(envFile.file).hasContent("${Constants.Proxy.ENV_NETWORK_MODE}=tailscale")
+        assertThat(envFile.file).hasContent(
+            "${Constants.Proxy.ENV_NETWORK_MODE}=tailscale\n${Constants.Proxy.ENV_NAMESPACE}=${Constants.ContractDefaults.OWNED_NAMESPACE}",
+        )
         // The old with-proxy reads only EDL_TAILSCALE_ACTIVE, so on the converted file it looks for a tunnel and fails.
         val withOldEnv = File(workspace, "env-old.sh").apply { writeText(oldEnvScript()) }
         assertThat(sourceAndRun(withOldEnv, "with-proxy true").first).isEqualTo(1)

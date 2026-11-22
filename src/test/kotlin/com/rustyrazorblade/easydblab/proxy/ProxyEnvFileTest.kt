@@ -30,6 +30,33 @@ internal class ProxyEnvFileTest {
     }
 
     @Test
+    fun `records the cluster namespace beside the other keys, and each later write keeps it`() {
+        envFile.recordNetworkMode(NetworkMode.Socks)
+        envFile.recordTunnel(41234, PID)
+
+        envFile.recordNamespace("lab-a")
+        envFile.recordNetworkMode(NetworkMode.Tailscale)
+        envFile.removeTunnel()
+
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=tailscale", "EDL_NAMESPACE=lab-a")
+        assertThat(envFile.namespace()).isEqualTo("lab-a")
+    }
+
+    @Test
+    fun `recording the namespace keeps the tunnel and an earlier release's mode key`() {
+        file.writeText("EDL_TAILSCALE_ACTIVE=true\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
+
+        envFile.recordNamespace("easy-db-lab")
+
+        assertThat(file.readLines()).containsExactly(
+            "EDL_TAILSCALE_ACTIVE=true",
+            "EDL_NAMESPACE=easy-db-lab",
+            "EDL_SOCKS_PORT=41234",
+            "EDL_SOCKS_PID=$PID",
+        )
+    }
+
+    @Test
     fun `each mode is written as its id and read back`() {
         NetworkMode.entries.forEach { mode ->
             envFile.recordNetworkMode(mode)

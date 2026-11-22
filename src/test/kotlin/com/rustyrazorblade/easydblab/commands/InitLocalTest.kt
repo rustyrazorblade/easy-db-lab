@@ -125,6 +125,7 @@ class InitLocalTest : BaseKoinTest() {
         parsed("--local", "--namespace", "lab-a").execute()
 
         assertThat(state().initConfig?.namespace).isEqualTo("lab-a")
+        assertThat(ProxyEnvFile(workspace).namespace()).isEqualTo("lab-a")
     }
 
     @Test

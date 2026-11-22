@@ -36,8 +36,8 @@ data class ProxyEnv(
  * The tool wrappers in `<workspace>/bin/`, the tunnel script and `env.sh` source this file, so shell
  * code never reads `.socks5-proxy-state` or parses JSON. Any value a shell-side tool needs belongs
  * here. This class is the file's only writer. It writes only [Constants.Proxy.ENV_NETWORK_MODE],
- * [Constants.Proxy.ENV_SOCKS_PORT] and [Constants.Proxy.ENV_SOCKS_PID]; the port and the PID are
- * written and removed together. Each update keeps the other keys and replaces the file in one
+ * [Constants.Proxy.ENV_NAMESPACE], [Constants.Proxy.ENV_SOCKS_PORT] and [Constants.Proxy.ENV_SOCKS_PID];
+ * the port and the PID are written and removed together. Each update keeps the other keys and replaces the file in one
  * rename, so a wrapper that sources it while another CLI process writes always reads a whole file.
  *
  * A file written by an earlier release holds [Constants.Proxy.ENV_TAILSCALE_ACTIVE] in place of the
@@ -62,6 +62,12 @@ class ProxyEnvFile(
     /** The recorded state; with no file, both fields are null. */
     fun read(): ProxyEnv = parse(readValues()).env
 
+    /**
+     * The cluster namespace the `env.sh` helpers act in, or null before the CLI recorded it. Not part
+     * of [ProxyEnv]: no proxy reader needs it, and the tool wrappers never read it (design D5).
+     */
+    fun namespace(): String? = parse(readValues()).namespace
+
     private val lockFile = File(workspace, Constants.Proxy.ENV_LOCK_FILE)
 
     /**
@@ -75,6 +81,9 @@ class ProxyEnvFile(
      * [WorkspaceShellTools.prepare], which installs the wrappers that read the new key first.
      */
     fun recordNetworkMode(mode: NetworkMode) = update { it.copy(env = it.env.copy(networkMode = mode), legacyTailscale = null) }
+
+    /** Records the cluster namespace, keeping every other key as it found it. */
+    fun recordNamespace(namespace: String) = update { it.copy(namespace = namespace) }
 
     /** Records the verified tunnel on [port] whose script is [pid], keeping the recorded mode in its format. */
     fun recordTunnel(
@@ -120,6 +129,7 @@ class ProxyEnvFile(
             listOfNotNull(
                 stored.modeLine?.let { "${Constants.Proxy.ENV_NETWORK_MODE}=$it" },
                 stored.legacyTailscale?.let { "${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=$it" },
+                stored.namespace?.let { "${Constants.Proxy.ENV_NAMESPACE}=$it" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PORT}=${it.port}" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PID}=${it.pid}" },
             )
@@ -138,12 +148,14 @@ class ProxyEnvFile(
 
     /**
      * The file as found, with what a rewrite must keep: the raw mode value (an unknown one is written
-     * back unchanged by a tunnel write) and the legacy Tailscale key of an unconverted file.
+     * back unchanged by a tunnel write), the legacy Tailscale key of an unconverted file and the
+     * recorded namespace.
      */
     private data class StoredEnv(
         val env: ProxyEnv,
         val rawMode: String?,
         val legacyTailscale: String?,
+        val namespace: String?,
     ) {
         /**
          * The mode value to write: none while the file is unconverted (the legacy key stays instead),
@@ -168,6 +180,7 @@ class ProxyEnvFile(
             env = ProxyEnv(networkMode = mode, tunnel = if (port != null && pid != null) RecordedTunnel(port, pid) else null),
             rawMode = rawMode,
             legacyTailscale = legacy.takeIf { rawMode == null },
+            namespace = values[Constants.Proxy.ENV_NAMESPACE],
         )
     }
 

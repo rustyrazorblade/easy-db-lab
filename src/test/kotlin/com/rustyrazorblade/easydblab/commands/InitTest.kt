@@ -411,9 +411,10 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager).replace(
                 argThat { environment == Environment.Ec2K3s && exposure == Exposure.Socks && initConfig?.cni == CniMode.Cilium },
             )
-            // No mode is recorded until `up` or the command preflight writes it with the wrappers.
-            assertThat(envFile.file).doesNotExist()
+            // No mode is recorded until `up` or the command preflight writes it with the wrappers; the
+            // namespace the env.sh helpers use is recorded at once.
             assertThat(envFile.read().networkMode).isNull()
+            assertThat(envFile.namespace()).isEqualTo(Constants.ContractDefaults.OWNED_NAMESPACE)
         }
 
         @Test

@@ -270,7 +270,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         val nodes = Constants.Scale.MAX_NAMED_IN_ERROR + 5
         val touched = Collections.synchronizedList(mutableListOf<String>())
         whenever(k8sService.deleteLocalPersistentVolumes(any())).thenReturn(Result.success(Unit))
-        val failAll = executorWith(recordingRemoteOps(touched, { touched.toSet() }))
+        val failAll = executorWith(recordingRemoteOps(touched, { (0 until nodes).map { "db$it" }.toSet() }))
 
         val failure =
             execute(

@@ -63,6 +63,11 @@ class InstallTemplateResolverTest : BaseKoinTest() {
             "cassandra-jmx-rules.yaml",
             "lib/check-start.sh",
             "lib/apply-statefulset.sh",
+            "lib/apply-config.sh",
+            "statefulset-image.yaml.template",
+            "bin/upgrade.sh",
+            "config/fetch-tarball.sh",
+            "config/render-config.sh",
             "lib/wait-un.sh",
         )
         assertThat(resolver.loadInstallConfig(source)?.name).isEqualTo("cassandra-pods")

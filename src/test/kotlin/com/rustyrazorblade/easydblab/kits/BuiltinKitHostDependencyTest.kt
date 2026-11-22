@@ -133,7 +133,8 @@ class BuiltinKitHostDependencyTest {
     private fun File.isScanned(root: File): Boolean =
         name != "kit.yaml" &&
             extension != "md" &&
-            "dashboards" !in relativeTo(root).path.split(File.separatorChar)
+            "dashboards" !in relativeTo(root).path.split(File.separatorChar) &&
+            relativeTo(root.parentFile).invariantSeparatorsPath !in PACKAGED_FROM_PACKER
 
     private fun File.kitsRoot(): File = generateSequence(this) { it.parentFile }.first { it.name == "kits" || it.name == "configuration" }
 
@@ -169,6 +170,18 @@ class BuiltinKitHostDependencyTest {
                 "type label" to Regex("""(?<![\w-])type:\s*"?$ROLE"?\s*$"""),
                 "type label in JSON" to Regex(""""type"\s*:\s*"$ROLE""""),
                 "AWS client network" to Regex("""\b10\.0\.0\.0/8\b"""),
+            )
+
+        /**
+         * The AMI's own scripts, packaged byte for byte from `packer/cassandra/` so the pods merge and
+         * start Cassandra as the VMs do. Their AMI paths are the VM defaults; the pod sets every one
+         * through its `EDL_*` override, which `CassandraPodsKitTest` checks.
+         */
+        val PACKAGED_FROM_PACKER =
+            setOf(
+                "cassandra-pods/config/cassandra.in.sh",
+                "cassandra-pods/config/edl-cassandra-agents.sh",
+                "cassandra-pods/config/edl-cassandra-config.sh",
             )
 
         /** The pattern a kit that `requires` the capability may use. */

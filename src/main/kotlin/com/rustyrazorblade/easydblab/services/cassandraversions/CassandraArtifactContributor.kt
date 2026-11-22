@@ -8,7 +8,9 @@ import com.rustyrazorblade.easydblab.services.KitContribution
 import com.rustyrazorblade.easydblab.services.KitPlacementVariables
 import com.rustyrazorblade.easydblab.services.KitVariableContributor
 import com.rustyrazorblade.easydblab.services.RoleNodes
+import kotlinx.serialization.json.Json
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * The cassandra-pods kit's `cassandra-artifact` contributor: what its `start` and `upgrade` need from
@@ -49,10 +51,36 @@ class CassandraArtifactContributor(
                 else -> tarballs.resolveBuild(build, java)
             }
         val artifactVariables = artifactVariables(artifact)
+        val configFiles = configFiles(args, state, kitDir)
         return KitContribution(
-            variables = artifactVariables + sizing,
-            files = configFiles(args, state, kitDir) + (Constants.Kit.CassandraPods.ARTIFACT_FILE to envFile(artifactVariables)),
+            variables = artifactVariables + sizing + (CONFIG_HASH to configHash(artifactVariables, configFiles, kitDir)),
+            files = configFiles + (Constants.Kit.CassandraPods.ARTIFACT_FILE to envFile(artifactVariables)),
         )
+    }
+
+    /**
+     * The pod template's `easydblab/config-hash`: the ConfigMap's config inputs and scripts
+     * (`config/` in the kit directory) and the artifact, so a change to any rolls the pods and a
+     * start with none rolls nothing. The URLs are left out: a catalog build is signed again on
+     * every start, and the sha256 already names the tarball.
+     */
+    private fun configHash(
+        artifact: Map<String, String>,
+        configFiles: Map<String, String>,
+        kitDir: File,
+    ): String {
+        val scripts =
+            File(kitDir, CONFIG_DIR)
+                .listFiles()
+                .orEmpty()
+                .filter { it.isFile }
+                .associate { "$CONFIG_DIR/${it.name}" to it.readText() }
+        val hashed = artifact.filterKeys { it !in URL_VARIABLES } + configFiles + scripts
+        val digest = MessageDigest.getInstance("SHA-256")
+        hashed.toSortedMap().forEach { (key, value) ->
+            digest.update("$key\u0000$value\u0000".toByteArray())
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }.take(CONFIG_HASH_LENGTH)
     }
 
     private fun artifactVariables(artifact: TarballArtifact): Map<String, String> =
@@ -98,7 +126,24 @@ class CassandraArtifactContributor(
                 false -> Constants.Kit.CassandraPods.DEFAULT_MEMORY
             }
         val cpus = args.value(CPUS) ?: (allocatable.cpu - 1).coerceAtLeast(1).toString()
-        return mapOf(MEMORY to memory, CPUS to cpus)
+        val requests = mapOf("cpu" to cpus, "memory" to memory)
+        val cassandra =
+            when (placement.guaranteedPods) {
+                true -> mapOf("requests" to requests, "limits" to requests)
+                false -> mapOf("requests" to requests, "limits" to mapOf("memory" to memory))
+            }
+        // A pod is Guaranteed only when every container, init containers included, sets equal requests and limits.
+        val init =
+            when (placement.guaranteedPods) {
+                true -> mapOf("requests" to INIT_RESOURCES, "limits" to INIT_RESOURCES)
+                false -> emptyMap()
+            }
+        return mapOf(
+            MEMORY to memory,
+            CPUS to cpus,
+            "EDL_CASSANDRA_RESOURCES" to Json.encodeToString(cassandra),
+            "EDL_INIT_RESOURCES" to Json.encodeToString(init),
+        )
     }
 
     /** `KEY='value'` lines a POSIX shell can source, whatever a presigned URL holds. */
@@ -118,5 +163,16 @@ class CassandraArtifactContributor(
         const val DEFAULT_VERSION = "5.0"
         const val DEFAULT_DC = "dc1"
         const val PERCENT = 100
+        const val CONFIG_HASH = "EDL_CONFIG_HASH"
+        const val CONFIG_HASH_LENGTH = 16
+        const val CONFIG_DIR = "config"
+        val URL_VARIABLES = setOf("EDL_TARBALL_URL", "EDL_TARBALL_FALLBACK_URL")
+
+        /** Each init container's request and limit on Guaranteed nodes: they copy files and exit. */
+        val INIT_RESOURCES =
+            mapOf(
+                "cpu" to Constants.Kit.CassandraPods.INIT_CONTAINER_CPU,
+                "memory" to Constants.Kit.CassandraPods.INIT_CONTAINER_MEMORY,
+            )
     }
 }

@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.KitContribution
 import com.rustyrazorblade.easydblab.services.NodeAllocatable
 import com.rustyrazorblade.easydblab.services.RoleNodes
 import com.rustyrazorblade.easydblab.services.aws.S3Uri
+import kotlinx.serialization.json.Json
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -240,6 +241,39 @@ class CassandraArtifactContributorTest {
     }
 
     @Test
+    fun `the config hash is stable while nothing changes`() {
+        File(kitDir, "config").mkdirs()
+        File(kitDir, "config/render-config.sh").writeText("render v1\n")
+
+        assertThat(contribute().variables["EDL_CONFIG_HASH"]).isNotBlank().isEqualTo(contribute().variables["EDL_CONFIG_HASH"])
+    }
+
+    /** A catalog build is signed again on every start; a new signature alone must not roll the pods. */
+    @Test
+    fun `the config hash ignores the tarball URLs, so a re-signed URL rolls nothing`() {
+        val first = Sources(nightly = listOf(CassandraBuild("5.0-HEAD", "https://gh/x.tgz?sig=1", digest = "sha256:$nightlySha")))
+        val resigned = Sources(nightly = listOf(CassandraBuild("5.0-HEAD", "https://gh/x.tgz?sig=2", digest = "sha256:$nightlySha")))
+
+        assertThat(contribute(args("CASSANDRA_BUILD" to "5.0-HEAD"), sources = first).variables["EDL_CONFIG_HASH"])
+            .isEqualTo(contribute(args("CASSANDRA_BUILD" to "5.0-HEAD"), sources = resigned).variables["EDL_CONFIG_HASH"])
+    }
+
+    @Test
+    fun `the config hash changes with the workspace patch, the ConfigMap's scripts and the artifact`() {
+        File(kitDir, "config").mkdirs()
+        File(kitDir, "config/render-config.sh").writeText("render v1\n")
+        val before = contribute().variables.getValue("EDL_CONFIG_HASH")
+
+        File(workspace, Constants.ConfigPaths.CASSANDRA_PATCH_FILE).writeText("concurrent_reads: 128\n")
+        val patched = contribute().variables.getValue("EDL_CONFIG_HASH")
+        File(kitDir, "config/render-config.sh").writeText("render v2\n")
+        val scripted = contribute().variables.getValue("EDL_CONFIG_HASH")
+        val otherJdk = contribute(args("CASSANDRA_JAVA" to "11")).variables.getValue("EDL_CONFIG_HASH")
+
+        assertThat(listOf(before, patched, scripted, otherJdk)).doesNotHaveDuplicates()
+    }
+
+    @Test
     fun `on owned nodes the memory defaults to 75 percent of the smallest db node, rounded down to Mi`() {
         allocatable(NodeAllocatable(memoryMib = 30001, cpu = 8))
 
@@ -256,6 +290,38 @@ class CassandraArtifactContributorTest {
         allocatable(NodeAllocatable(memoryMib = 4000, cpu = 1))
 
         assertThat(contribute(state = local).variables).containsEntry("CASSANDRA_CPUS", "1")
+    }
+
+    private fun resources(json: String?): Map<String, Map<String, String>> =
+        Json.decodeFromString<Map<String, Map<String, String>>>(requireNotNull(json))
+
+    @Test
+    fun `on Guaranteed nodes every container's requests equal its limits`() {
+        val variables = contribute().variables
+        val cassandra = resources(variables["EDL_CASSANDRA_RESOURCES"])
+        val init = resources(variables["EDL_INIT_RESOURCES"])
+
+        assertThat(cassandra.getValue("requests")).isEqualTo(mapOf("cpu" to "7", "memory" to "22500Mi"))
+        assertThat(cassandra.getValue("limits")).isEqualTo(cassandra.getValue("requests"))
+        assertThat(init.getValue("requests")).containsOnlyKeys("cpu", "memory")
+        assertThat(init.getValue("limits")).isEqualTo(init.getValue("requests"))
+    }
+
+    @Test
+    fun `elsewhere the cassandra container requests CPU with no CPU limit, and init containers set nothing`() {
+        val variables = contribute(state = local).variables
+        val cassandra = resources(variables["EDL_CASSANDRA_RESOURCES"])
+
+        assertThat(cassandra.getValue("requests")).isEqualTo(mapOf("cpu" to "7", "memory" to "3Gi"))
+        assertThat(cassandra.getValue("limits")).isEqualTo(mapOf("memory" to "3Gi"))
+        assertThat(resources(variables["EDL_INIT_RESOURCES"])).isEmpty()
+    }
+
+    @Test
+    fun `the --image path gets the same sizing`() {
+        val variables = contribute(args("CASSANDRA_IMAGE" to "x:y")).variables
+
+        assertThat(resources(variables["EDL_CASSANDRA_RESOURCES"]).getValue("limits")).containsEntry("cpu", "7")
     }
 
     @Test

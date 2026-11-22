@@ -73,27 +73,38 @@ begin() {
 run_check() {
   (
     cd "${WORK}/kit" &&
-      env PATH="${WORK}/stubs:${PATH}" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_VERSION=5.0 CASSANDRA_IMAGE= CASSANDRA_NODES=3 \
-        "$@" "${BASH}" lib/check-start.sh
+      env PATH="${WORK}/stubs:${PATH}" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_IMAGE=cassandra:5.0 CASSANDRA_NODES=3 \
+        CASSANDRA_MEMORY=3Gi CASSANDRA_CPUS=2 "$@" "${BASH}" lib/check-start.sh
   ) > "${WORK}/out" 2>&1
   rc=$?
   out="$(cat "${WORK}/out")"
 }
 
-begin "a known default image passes and is resolved from --version"
+begin "the tarball path (no --image) passes its checks with no registry lookup and no resolved-image.env"
+run_check CASSANDRA_IMAGE=
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+[ ! -f "${WORK}/curl.calls" ] || fail "the registry was queried: $(cat "${WORK}/curl.calls")"
+[ ! -f "${WORK}/kit/resolved-image.env" ] || fail "resolved-image.env written for the tarball path"
+[ "$(grep -c 'systemctl is-active --quiet cassandra' "${WORK}/ssh.calls" 2> /dev/null)" = 3 ] || fail "the AMI check did not run on every db node"
+
+begin "the tarball path still validates its args"
+run_check CASSANDRA_IMAGE= CASSANDRA_NODES=5
+[ "${rc}" -eq 1 ] || fail "exit ${rc}"
+
+begin "a Docker Hub image is looked up under library/"
 run_check
 [ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 grep -q '^RESOLVED_IMAGE=cassandra:5.0$' "${WORK}/kit/resolved-image.env" || fail "image not resolved"
 grep -q 'library/cassandra' "${WORK}/curl.calls" || fail "Docker Hub official image not looked up under library/"
 
 begin "an unknown image exits 1 and names it"
-run_check STUB_MANIFEST_CODE=404 CASSANDRA_VERSION=9.9
+run_check STUB_MANIFEST_CODE=404 CASSANDRA_IMAGE=cassandra:9.9
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *cassandra:9.9*) ;; *) fail "message does not name the image: ${out}" ;; esac
 [ ! -f "${WORK}/kit/resolved-image.env" ] || fail "resolved file written for a missing image"
 
-begin "--image overrides --version and is looked up in its own registry"
-run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc CASSANDRA_VERSION=4.1
+begin "--image is looked up in its own registry"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc
 [ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 grep -q '^RESOLVED_IMAGE=ghcr.io/example/cassandra:sha-abc$' "${WORK}/kit/resolved-image.env" || fail "image override ignored"
 grep -q 'https://ghcr.io/v2/example/cassandra/manifests/sha-abc' "${WORK}/curl.calls" || fail "wrong registry or path"
@@ -131,9 +142,9 @@ begin "the build label is the tag for a tag plus digest reference"
 run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:5.0-nightly@sha256:0123456789abcdef0123456789abcdef
 grep -q '^RESOLVED_BUILD=5.0-nightly$' "${WORK}/kit/resolved-image.env" || fail "build is not the tag: $(cat "${WORK}/kit/resolved-image.env")"
 
-begin "the build label is the version when no --image is given"
+begin "the build label is the tag of a Docker Hub image"
 run_check
-grep -q '^RESOLVED_BUILD=5.0$' "${WORK}/kit/resolved-image.env" || fail "build is not the version"
+grep -q '^RESOLVED_BUILD=5.0$' "${WORK}/kit/resolved-image.env" || fail "build is not the tag"
 
 begin "an image reference with a character outside the OCI set is rejected before any lookup"
 for bad in 'ghcr.io/example/cassandra:a&b' 'ghcr.io/example/cassandra:a|b' 'ghcr.io/example/cass andra:1' 'ghcr.io/example/cassandra:$(id)'; do
@@ -144,30 +155,59 @@ for bad in 'ghcr.io/example/cassandra:a&b' 'ghcr.io/example/cassandra:a|b' 'ghcr
   [ ! -f "${WORK}/kit/resolved-image.env" ] || fail "'${bad}' wrote resolved-image.env"
 done
 
-begin "apply-statefulset substitutes the image and build literally, even with sed metacharacters"
-printf 'image: "@RESOLVED_IMAGE@"\nbuild=@RESOLVED_BUILD@\n' > "${WORK}/kit/statefulset.yaml"
-printf "RESOLVED_IMAGE='a&b|c\\\\d'\nRESOLVED_BUILD='x&y'\n" >"${WORK}/kit/resolved-image.env"
-(cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1 || fail "exit $?: $(cat "${WORK}/out")"
-grep -qxF 'image: "a&b|c\d"' "${WORK}/applied.yaml" || fail "image not literal: $(cat "${WORK}/applied.yaml")"
-grep -qxF 'build=x&y' "${WORK}/applied.yaml" || fail "build not literal"
+# The resources both templates take from the contributor, as JSON.
+RESOURCES='{"requests":{"cpu":"2","memory":"3Gi"},"limits":{"memory":"3Gi"}}'
 
-# Runs apply-statefulset.sh in the kit directory against a one-line statefulset.yaml; sets rc and out.
+# Runs apply-statefulset.sh in the kit directory with the given environment against one-line
+# templates; sets rc and out. The --image path applies statefulset-image.yaml, the tarball path statefulset.yaml.
 run_apply() {
   rm -f "${WORK}/applied.yaml"
-  printf 'image: "@RESOLVED_IMAGE@"\n' > "${WORK}/kit/statefulset.yaml"
-  (cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1
+  printf 'image: "@RESOLVED_IMAGE@"\nbuild: "@RESOLVED_BUILD@"\nresources: {} # @EDL_CASSANDRA_RESOURCES@\n' > "${WORK}/kit/statefulset-image.yaml"
+  printf 'url: "@EDL_TARBALL_URL@"\nfallback: "@EDL_TARBALL_FALLBACK_URL@"\nhash: "@EDL_CONFIG_HASH@"\nresources: {} # @EDL_CASSANDRA_RESOURCES@\ninit: {} # @EDL_INIT_RESOURCES@\n' > "${WORK}/kit/statefulset.yaml"
+  (cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" EDL_CASSANDRA_RESOURCES="${RESOURCES}" EDL_INIT_RESOURCES='{}' \
+    "$@" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1
   rc=$?
   out="$(cat "${WORK}/out")"
 }
 
-begin "a stale resolved-image.env from an earlier run is replaced by the new --version"
+# The tarball path's contributed variables.
+ARTIFACT=(EDL_TARBALL_URL='https://b.s3/x.tgz?X-Amz-Expires=1&sig=a|b\c' EDL_TARBALL_FALLBACK_URL= EDL_TARBALL_SHA256=abc
+  EDL_CASSANDRA_BUILD=5.0.6 EDL_RUNTIME_IMAGE=ghcr.io/r/cassandra-runtime:1-jre17 EDL_CONFIG_HASH=0123abcd CASSANDRA_IMAGE=)
+
+begin "apply-statefulset substitutes the image and build literally, even with sed metacharacters"
+printf "RESOLVED_IMAGE='a&b|c\\\\d'\nRESOLVED_BUILD='x&y'\n" > "${WORK}/kit/resolved-image.env"
+run_apply CASSANDRA_IMAGE=x
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+grep -qxF 'image: "a&b|c\\d"' "${WORK}/applied.yaml" || fail "image not literal: $(cat "${WORK}/applied.yaml")"
+grep -qxF 'build: "x&y"' "${WORK}/applied.yaml" || fail "build not literal"
+
+begin "apply-statefulset puts the contributed resources in as YAML, not as a string"
+printf "RESOLVED_IMAGE='cassandra:5.0'\nRESOLVED_BUILD='5.0'\n" > "${WORK}/kit/resolved-image.env"
+run_apply CASSANDRA_IMAGE=x
+grep -qxF "resources: ${RESOURCES}" "${WORK}/applied.yaml" || fail "resources: $(cat "${WORK}/applied.yaml")"
+
+begin "the tarball path applies statefulset.yaml with the artifact substituted literally"
+run_apply "${ARTIFACT[@]}"
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+grep -qxF 'url: "https://b.s3/x.tgz?X-Amz-Expires=1&sig=a|b\\c"' "${WORK}/applied.yaml" || fail "url not literal: $(cat "${WORK}/applied.yaml")"
+grep -qxF 'fallback: ""' "${WORK}/applied.yaml" || fail "empty fallback not applied"
+grep -qxF 'hash: "0123abcd"' "${WORK}/applied.yaml" || fail "hash not applied"
+grep -qxF 'init: {}' "${WORK}/applied.yaml" || fail "init resources not applied"
+
+begin "the tarball path with a contributed variable missing applies nothing, naming it"
+run_apply "${ARTIFACT[@]}" EDL_TARBALL_SHA256=
+[ "${rc}" -ne 0 ] || fail "exit 0"
+case "${out}" in *EDL_TARBALL_SHA256*) ;; *) fail "message: ${out}" ;; esac
+[ ! -f "${WORK}/applied.yaml" ] || fail "kubectl apply ran"
+
+begin "a stale resolved-image.env from an earlier run is replaced by the new --image"
 printf "RESOLVED_IMAGE='cassandra:4.0'\nRESOLVED_BUILD='4.0'\n" > "${WORK}/kit/resolved-image.env"
 rm -f "${WORK}/curl.stale"
-run_check CASSANDRA_VERSION=5.0
+run_check CASSANDRA_IMAGE=cassandra:5.0
 [ "${rc}" -eq 0 ] || fail "check exit ${rc}: ${out}"
 # The stale file must be gone before the check gets that far, not only overwritten at its end.
 [ ! -f "${WORK}/curl.stale" ] || fail "stale resolved-image.env still present while the check ran"
-run_apply
+run_apply CASSANDRA_IMAGE=cassandra:5.0
 [ "${rc}" -eq 0 ] || fail "apply exit ${rc}: ${out}"
 grep -qxF 'image: "cassandra:5.0"' "${WORK}/applied.yaml" || fail "stale image applied: $(cat "${WORK}/applied.yaml" 2> /dev/null)"
 
@@ -176,10 +216,22 @@ printf "RESOLVED_IMAGE='cassandra:4.0'\nRESOLVED_BUILD='4.0'\n" > "${WORK}/kit/r
 run_check CASSANDRA_NODES=0
 [ "${rc}" -eq 1 ] || fail "check exit ${rc}: ${out}"
 [ ! -f "${WORK}/kit/resolved-image.env" ] || fail "stale resolved-image.env survived a failed check"
-run_apply
+run_apply CASSANDRA_IMAGE=cassandra:5.0
 [ "${rc}" -ne 0 ] || fail "apply succeeded with the stale image: $(cat "${WORK}/applied.yaml" 2> /dev/null)"
 case "${out}" in *"resolved-image.env is missing"*) ;; *) fail "apply message: ${out}" ;; esac
 [ ! -f "${WORK}/applied.yaml" ] || fail "kubectl apply ran"
+
+begin "--cpus must be a whole number of at least 1"
+for bad in '' 0 1.5 abc -2; do
+  run_check CASSANDRA_CPUS="${bad}"
+  [ "${rc}" -eq 1 ] || fail "'${bad}': exit ${rc}"
+  case "${out}" in *"--cpus"*) ;; *) fail "'${bad}': message: ${out}" ;; esac
+done
+
+begin "an empty --memory fails: the contributor always fills it"
+run_check CASSANDRA_MEMORY=
+[ "${rc}" -eq 1 ] || fail "exit ${rc}"
+case "${out}" in *"--memory"*) ;; *) fail "message: ${out}" ;; esac
 
 begin "a 401 or 403 is not reported as not-found and does not block start"
 for code in 401 403; do
@@ -264,7 +316,7 @@ done
 
 # The pod's heap computation, extracted from the shipped template and run through sh (the
 # container's /bin/sh): from the `if [ -n "$CASSANDRA_HEAP" ]` through the HEAP_NEWSIZE export.
-TEMPLATE="${KIT}/statefulset.yaml.template"
+TEMPLATE="${KIT}/statefulset-image.yaml.template"
 sed -n '/^ *if \[ -n "\$CASSANDRA_HEAP" \]/,/^ *export MAX_HEAP_SIZE=/p' "${TEMPLATE}" | sed 's/^ *//' > "${WORK}/heap-snippet.sh"
 
 # Prints "<MAX_HEAP_SIZE> <HEAP_NEWSIZE>" for --heap $1 (may be empty) in a container limited to $2 MiB.
@@ -406,7 +458,7 @@ for tool in cat cut mktemp rm; do ln -sf "$(command -v "${tool}")" "${WORK}/nojq
 for stub in curl ssh; do ln -sf "${WORK}/stubs/${stub}" "${WORK}/nojq/${stub}"; done
 (
   cd "${WORK}/kit" &&
-    env PATH="${WORK}/nojq" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_VERSION=5.0 CASSANDRA_IMAGE= CASSANDRA_NODES=3 \
+    env PATH="${WORK}/nojq" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_IMAGE=cassandra:5.0 CASSANDRA_NODES=3 CASSANDRA_MEMORY=3Gi CASSANDRA_CPUS=2 \
       "${BASH}" lib/check-start.sh
 ) > "${WORK}/out" 2>&1
 rc=$?

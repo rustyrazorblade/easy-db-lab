@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kits.BuiltinKitFixture
+import com.rustyrazorblade.easydblab.kits.KitPodResources
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
@@ -124,7 +125,7 @@ class KitStorageIntegrationTest {
 
         val template =
             fixture("cassandra-pods", RETAINED_CLASS)
-                .render("statefulset.yaml.template", mapOf("CASSANDRA_NODES" to "1"))
+                .renderFilled("statefulset-image.yaml.template", mapOf("CASSANDRA_NODES" to "1"), yaml = KitPodResources.LOCAL)
                 .filterIsInstance<StatefulSet>()
                 .single()
                 .spec.volumeClaimTemplates

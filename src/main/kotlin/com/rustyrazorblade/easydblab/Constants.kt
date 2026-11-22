@@ -1350,6 +1350,16 @@ object Constants {
 
             /** `--memory` on Guaranteed nodes, as a percentage of the smallest db node's allocatable memory. */
             const val GUARANTEED_MEMORY_PERCENT = 75
+
+            /**
+             * Each init container's CPU on Guaranteed nodes, where requests must equal limits. The
+             * scheduler counts the largest init container, not their sum, beside the cassandra
+             * container, so this does not have to fit next to it.
+             */
+            const val INIT_CONTAINER_CPU = "1"
+
+            /** Each init container's memory on Guaranteed nodes; the fetch streams the tarball through curl and tar. */
+            const val INIT_CONTAINER_MEMORY = "512Mi"
         }
 
         object Presto {

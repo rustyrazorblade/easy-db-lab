@@ -1,6 +1,6 @@
 name: cassandra-pods
 type: db
-description: Cassandra as a StatefulSet on the db nodes, any image or branch build, CQL on a NodePort
+description: Cassandra as a StatefulSet on the db nodes, from an Apache or cassandra-builds tarball or any image, CQL on a NodePort
 version: "1.0.0"
 collision-check: true
 
@@ -24,12 +24,22 @@ endpoints:
 args:
   - flag: --version
     variable: CASSANDRA_VERSION
-    description: "Cassandra version, run as the image cassandra:<version>"
+    description: "Cassandra release or release line (5.0, 5.0.6), run from its Apache tarball"
     type: string
     default: "5.0"
+  - flag: --build
+    variable: CASSANDRA_BUILD
+    description: "A cassandra-builds build (5.0-HEAD, trunk) instead of a release; overrides --version"
+    type: string
+    default: ""
+  - flag: --java
+    variable: CASSANDRA_JAVA
+    description: "JDK to run on (8, 11, 17, 21); empty is the release line's default"
+    type: string
+    default: ""
   - flag: --image
     variable: CASSANDRA_IMAGE
-    description: "Any image reference, such as a branch build; overrides --version"
+    description: "Any Cassandra image instead of a tarball, such as a branch build; cannot be used with --build"
     type: string
     default: ""
   - flag: --nodes
@@ -44,9 +54,14 @@ args:
     default: ""
   - flag: --memory
     variable: CASSANDRA_MEMORY
-    description: "Memory request and limit per node, such as 4Gi; the default heap is half of it"
+    description: "Memory request and limit per node, such as 4Gi; empty is 75% of the smallest db node where pods are Guaranteed, else 3Gi"
     type: string
-    default: "4Gi"
+    default: ""
+  - flag: --cpus
+    variable: CASSANDRA_CPUS
+    description: "CPUs per node, a whole number; empty is the smallest db node's CPUs minus 1"
+    type: string
+    default: ""
   - flag: --dc
     variable: CASSANDRA_DC
     description: "Datacenter name"
@@ -58,13 +73,41 @@ args:
     type: string
     default: "${KIT_STORAGE_SIZE}"
 
+# Resolves the artifact, the config inputs and the sizing in the CLI before any resource exists
+# (CassandraArtifactContributor), for start and upgrade.
+contributors: [cassandra-artifact]
+
+commands:
+  # Rolls the running pods onto another version, one at a time. On success the runner records the
+  # three args, so a later start runs what was applied; an arg not given is recorded empty.
+  upgrade:
+    description: "Roll the running pods onto another --version or --build, one pod at a time"
+    records: [CASSANDRA_VERSION, CASSANDRA_BUILD, CASSANDRA_JAVA]
+    args:
+      - flag: --version
+        variable: CASSANDRA_VERSION
+        description: "Cassandra release or release line to upgrade to"
+        type: string
+        default: ""
+      - flag: --build
+        variable: CASSANDRA_BUILD
+        description: "cassandra-builds build to upgrade to"
+        type: string
+        default: ""
+      - flag: --java
+        variable: CASSANDRA_JAVA
+        description: "JDK to run on; empty is the release line's default"
+        type: string
+        default: ""
+
 install:
   - type: kit-storage
     node-type: db
     volume-claim-template-name: data
 
 start:
-  # Fails before any resource exists: unknown image, too many nodes, or the AMI Cassandra running.
+  # Fails before any resource exists: bad args, too many nodes, an unknown --image, or the AMI
+  # Cassandra running. The tarball itself was resolved by the contributor before this step.
   - type: shell
     script: |
       #!/usr/bin/env bash
@@ -76,11 +119,16 @@ start:
       set -euo pipefail
       . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
       edl_create_configmap cassandra-pods-jmx-rules jmx cassandra-jmx-rules.yaml=cassandra-jmx-rules.yaml
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      bash lib/apply-config.sh
   - type: manifest
     template: headless-service.yaml
   - type: manifest
     template: nodeport-service.yaml
-  # The image and build label are resolved by the check, so the StatefulSet is filled in here.
+  # The artifact, image, sizing and config hash are resolved at start, so the StatefulSet is filled in here.
   - type: shell
     script: |
       #!/usr/bin/env bash

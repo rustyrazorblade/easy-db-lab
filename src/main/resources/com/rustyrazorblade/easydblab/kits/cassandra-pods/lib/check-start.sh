@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 # Start checks for the cassandra-pods kit; nothing has been created yet when this runs.
 #
-# Resolves the image (--image, else cassandra:<--version>) and writes it, with the build label,
-# to resolved-image.env for apply-statefulset.sh. Exits 1, naming the cause, when:
+# With --image, looks the image up and writes it, with the build label, to resolved-image.env for
+# apply-statefulset.sh. Without it the tarball path needs no lookup: the cassandra-artifact
+# contributor resolved and checked the tarball, and supplies --memory and --cpus when they are not
+# given. Exits 1, naming the cause, when:
 #   - --nodes is more than the number of db nodes
 #   - the AMI-based Cassandra is running on a db node (both would report under job="cassandra")
 #   - --nodes is not a whole number >= 1, or --heap is not a whole number of G or M
 #   - --dc is not a plain name (letters, digits, _ and -, starting with a letter or digit): the
 #     name is substituted into a double-quoted YAML string in the StatefulSet and used as the snitch DC
 #   - --memory is not a whole number of Gi or Mi, or --heap is not smaller than --memory
+#   - --cpus is not a whole number >= 1
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
 #   - EDL_NODE_SSH is not true or false. With EDL_NODE_SSH=false (no node SSH) the AMI Cassandra
 #     check is skipped with one printed line.
-#   - jq is not installed (it reads the registry token, `token` or `access_token`)
-#   - the image's manifest is definitely not in its registry (404). A 401/403 (private image) warns
-#     and continues; any other answer fails with curl's own message.
+#   - with --image: jq is not installed (it reads the registry token, `token` or `access_token`)
+#   - with --image: the image's manifest is definitely not in its registry (404). A 401/403
+#     (private image) warns and continues; any other answer fails with curl's own message.
 #
-# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_DC, DB_NODE_COUNT, EDL_NODE_SSH.
+# Reads CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_CPUS, CASSANDRA_DC, DB_NODE_COUNT, EDL_NODE_SSH.
 set -euo pipefail
 
 # A resolved-image.env left by an earlier start would let apply-statefulset.sh apply that run's
@@ -61,7 +64,7 @@ esac
 
 # --memory is the container's memory request and limit: a whole number of Gi or Mi. The default
 # heap is half of it, and an explicit --heap must be smaller, leaving room for off-heap memory.
-memory="${CASSANDRA_MEMORY:-4Gi}"
+memory="${CASSANDRA_MEMORY:-}"
 memory_amount="${memory%[GM]i}"
 case "${memory}:${memory_amount}" in
   "${memory_amount}:"*) fail "ERROR: --memory '${memory}' is not valid; use a whole number followed by Gi or Mi, such as 4Gi or 2048Mi." ;;
@@ -83,15 +86,17 @@ if [ -n "${heap}" ]; then
   fi
 fi
 
-if [ -n "${CASSANDRA_IMAGE:-}" ]; then
-  image="${CASSANDRA_IMAGE}"
-else
-  image="cassandra:${CASSANDRA_VERSION}"
-fi
+# --cpus is a whole number of at least 1: the contributor fills the default, so it is never empty here.
+cpus="${CASSANDRA_CPUS:-}"
+case "${cpus}" in
+  '' | *[!0-9]* | 0*) fail "ERROR: --cpus '${cpus}' is not valid; use a whole number of at least 1, such as 4." ;;
+esac
+
+image="${CASSANDRA_IMAGE:-}"
 
 # The OCI reference grammar's characters. apply-statefulset.sh substitutes the image into the
 # manifest, so anything else (such as '&' or '|') is refused here, before any lookup.
-case "${image}" in
+[ -z "${image}" ] || case "${image}" in
   '' | *[!A-Za-z0-9._/:@-]*)
     fail "ERROR: '${image}' is not a valid image reference; use only letters, digits and . _ / : @ - (for example ghcr.io/example/cassandra:my-branch)."
     ;;
@@ -121,6 +126,13 @@ while [ "${check_nodes}" = yes ] && [ "${i}" -lt "${DB_NODE_COUNT}" ]; do
   esac
   i=$((i + 1))
 done
+
+# The tarball path: the cassandra-artifact contributor already resolved and checked the tarball,
+# so there is no image to look up.
+if [ -z "${image}" ]; then
+  echo "Start checks passed."
+  exit 0
+fi
 
 # Split <registry>/<repository>:<tag>. A first component with no '.' or ':' and not localhost is a
 # Docker Hub namespace, and a Hub name with no namespace is under library/.
@@ -203,9 +215,7 @@ esac
 
 # The cassandra_build label is the image tag; for a digest-only reference, sha256- plus the first
 # 12 hex chars of the digest, so a dashboard variable stays short.
-if [ -z "${CASSANDRA_IMAGE:-}" ]; then
-  build="${CASSANDRA_VERSION}"
-elif [ "${tag_given}" = yes ]; then
+if [ "${tag_given}" = yes ]; then
   build="${tag}"
 else
   digest="${reference#sha256:}"

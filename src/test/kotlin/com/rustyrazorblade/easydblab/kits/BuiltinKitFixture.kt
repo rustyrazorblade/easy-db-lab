@@ -82,6 +82,21 @@ class BuiltinKitFixture(
     ): List<HasMetadata> = parseManifests(renderText(templateFile, args))
 
     /**
+     * Renders [templateFile] as `kit install` does, then fills it in as `lib/apply-statefulset.sh`
+     * does before parsing: each `@KEY@` of [strings] inside its quoted string, and each `"@KEY@"` of
+     * [yaml] (`resources: {} # @KEY@`) replaced, `{}` and comment, by its YAML (the contributed resources JSON).
+     */
+    fun renderFilled(
+        templateFile: String,
+        args: Map<String, String> = emptyMap(),
+        strings: Map<String, String> = emptyMap(),
+        yaml: Map<String, String> = emptyMap(),
+    ): List<HasMetadata> {
+        val withYaml = yaml.entries.fold(renderText(templateFile, args)) { text, (key, value) -> text.replace("{} # @$key@", value) }
+        return parseManifests(strings.entries.fold(withYaml) { text, (key, value) -> text.replace("@$key@", value) })
+    }
+
+    /**
      * Renders [templateFile] to text as `kit install` writes it into the kit directory, failing on
      * any placeholder left unresolved.
      */

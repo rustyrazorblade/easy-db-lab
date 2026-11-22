@@ -101,6 +101,44 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 If no typed steps are defined for a phase and a matching script exists in `bin/` (e.g.
 `bin/start.sh`), the script is executed instead.
 
+### Variable contributors
+
+A kit can name Kotlin contributors that compute variables and files before its steps run:
+
+```yaml
+contributors: [cassandra-artifact]
+```
+
+Each name must be a `KitVariableContributor` registered in Koin (`Constants.Kit.Contributors.ALL`);
+an unknown name makes the `kit.yaml` invalid. Before `start` and before every command declared under
+`commands:` (never `stop`, `uninstall` or the other phases), the runner calls each contributor in list
+order with the kit's resolved args, the cluster state and the kit directory. It writes the files the
+contributor returns into the kit directory and adds its variables to the environment, over the args
+but under the cluster-state variables, so a contributor never replaces a cluster value. A contributor
+that throws fails the command, with a `Kit.ContributorFailed` event, before any step runs. The
+built-in `cassandra-pods` kit's `cassandra-artifact` resolves the Cassandra tarball, the runtime
+image, the sizing defaults and the config hash this way.
+
+### Commands that record an arg
+
+A declared command can change an install arg for good, so a later `start` sees the new value:
+
+```yaml
+commands:
+  upgrade:
+    records: [CASSANDRA_VERSION, CASSANDRA_BUILD]
+    args:
+      - flag: --version
+        variable: CASSANDRA_VERSION
+      - flag: --build
+        variable: CASSANDRA_BUILD
+```
+
+Every `records` entry must be an install arg. When the command succeeds and was given a value for any
+of them, the runner rewrites each recorded arg it parsed in the kit's resolved args, an empty one
+included (an `upgrade --version` clears a recorded `--build`), and keeps every other arg. A failed
+command records nothing.
+
 ## Step Types
 
 All phases use the same set of typed steps.

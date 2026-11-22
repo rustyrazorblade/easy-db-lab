@@ -47,10 +47,10 @@
 - [x] 8.1 `build.gradle.kts` `processResources` copies `edl-cassandra-config.sh`, `cassandra.in.sh` and `edl-cassandra-agents.sh` into the kit resources (as it does for the JMX rules). A test checks the packaged copies match `packer/cassandra/`
 - [x] 8.2 `lib/fetch-tarball.sh`: checks the `.complete` marker before any network call; downloads with the fallback URL; checks the sha256; extracts into a temp directory on the claim; renames into place atomically. The mismatch error names both hashes, and the expired-presign error names the expiry and the fix. Shell tests: a cache hit makes zero curl calls, a mismatch leaves no cache directory, and an interrupted extract leaves no `.complete`
 - [x] 8.3 `lib/render-config.sh`: the four-layer merge into the `emptyDir` `CASSANDRA_CONF`, `cassandra.in.sh` with the snippet, `CASSANDRA_INCLUDE`, and `cassandra-rackdc.properties`
-- [ ] 8.4 `statefulset.yaml.template` for the tarball path: the `cassandra-fetch` and `cassandra-render` init containers, the artifact env, the `easydblab/config-hash` annotation, `fsGroup: 999`, restricted security contexts, CPU and memory per `GUARANTEED_PODS`, and `RollingUpdate`/`OrderedReady` with `preStop` drain. A separate `--image` template keeps today's spec
-- [ ] 8.5 `kit.yaml`: the new args (`--build`, `--java`, `--cpus`, the new `--memory` default), `contributors: [cassandra-artifact]`, the `cassandra-pods-config` ConfigMap step, and the `upgrade` command. `check-start.sh` looks up the image only for `--image`, and `apply-statefulset.sh` picks the template
-- [ ] 8.6 `lib/upgrade.sh`: refuse a major-version downgrade before changing anything, rewrite the recorded arg, apply the StatefulSet, and wait for the rollout and UN
-- [ ] 8.7 Update the kit.yaml parse test and the template render tests (agent pin, no AMI hostPath, the config hash changes only when the inputs change)
+- [x] 8.4 `statefulset.yaml.template` for the tarball path: the `cassandra-fetch` and `cassandra-render` init containers, the artifact env, the `easydblab/config-hash` annotation, `fsGroup: 999`, restricted security contexts, CPU and memory per `GUARANTEED_PODS`, and `RollingUpdate`/`OrderedReady` with `preStop` drain. A separate `--image` template keeps today's spec
+- [x] 8.5 `kit.yaml`: the new args (`--build`, `--java`, `--cpus`, the new `--memory` default), `contributors: [cassandra-artifact]`, the `cassandra-pods-config` ConfigMap step, and the `upgrade` command. `check-start.sh` looks up the image only for `--image`, and `apply-statefulset.sh` picks the template
+- [x] 8.6 `lib/upgrade.sh`: refuse a major-version downgrade before changing anything, rewrite the recorded arg, apply the StatefulSet, and wait for the rollout and UN
+- [x] 8.7 Update the kit.yaml parse test and the template render tests (agent pin, no AMI hostPath, the config hash changes only when the inputs change)
 
 ## 9. Integration tests
 
@@ -60,11 +60,11 @@
 
 ## 10. Docs
 
-- [ ] 10.1 `docs/user-guide/cassandra-pods.md`: the args, `--build`, `--image`, the cache, config parity and its known differences, `upgrade`, and the 3.x Python 2 cqlsh
-- [ ] 10.2 `docs/development/kits.md`: kit variable contributors and the arg-rewrite operation
-- [ ] 10.3 The kit's `CLAUDE.md` and the root `CLAUDE.md` where the kit is described
+- [x] 10.1 `docs/user-guide/cassandra-pods.md`: the args, `--build`, `--image`, the cache, config parity and its known differences, `upgrade`, and the 3.x Python 2 cqlsh
+- [x] 10.2 `docs/development/kits.md`: kit variable contributors and the arg-rewrite operation
+- [x] 10.3 The kit's `CLAUDE.md` and the root `CLAUDE.md` where the kit is described
 
 ## 11. Lab validation
 
-- [ ] 11.1 Lab plan in `test-plans/`: a 3-node rolling `upgrade` under QUORUM load with RF=3, and the start on arm64 (Graviton)
+- [x] 11.1 Lab plan in `test-plans/`: a 3-node rolling `upgrade` under QUORUM load with RF=3, and the start on arm64 (Graviton)
 - [ ] 11.2 Run the plan, and check the Cassandra dashboards show the kit pods

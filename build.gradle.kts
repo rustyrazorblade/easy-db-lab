@@ -531,6 +531,7 @@ tasks.register("testScripts") {
         "testCassandraRuntimePlatforms",
         "testKitShellLib",
         "testCassandraPodsStart",
+        "testCassandraPodsUpgrade",
         "testCassandraPodsFetch",
         "testCassandraPodsRender",
         "testClickhouseBenchmarkReport",
@@ -1361,4 +1362,11 @@ tasks.register<Exec>("testCassandraPodsStart") {
     description = "Unit-test the cassandra-pods kit start check and UN wait"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-start.test.sh")
+}
+
+tasks.register<Exec>("testCassandraPodsUpgrade") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit upgrade command and its ConfigMap step"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-upgrade.test.sh")
 }

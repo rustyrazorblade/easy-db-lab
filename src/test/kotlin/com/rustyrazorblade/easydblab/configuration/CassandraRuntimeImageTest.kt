@@ -38,7 +38,12 @@ class CassandraRuntimeImageTest {
         val workflow = File(".github/workflows/publish-container.yml").readText()
         val matrix = Regex("""java: \[([^\]]*)]""").find(workflow)?.groupValues?.get(1)
 
-        val tableJdks = ReleaseLines.load().lines.flatMap { it.javaSupported }.toSet()
+        val tableJdks =
+            ReleaseLines
+                .load()
+                .lines
+                .flatMap { it.javaSupported }
+                .toSet()
 
         assertThat(matrix?.split(',')?.map { it.trim().trim('"') }).containsExactlyInAnyOrderElementsOf(tableJdks)
     }

@@ -142,6 +142,7 @@ class KitRolePlacementTest : BaseKoinTest() {
         fun placedTemplates(): Stream<Arguments> =
             Stream.of(
                 Arguments.of("cassandra-pods", "statefulset.yaml.template", listOf(DB)),
+                Arguments.of("cassandra-pods", "statefulset-image.yaml.template", listOf(DB)),
                 Arguments.of("memcached", "memcached.yaml.template", listOf(DB)),
                 Arguments.of("memcached", "memcached-extstore.yaml.template", listOf(DB)),
                 Arguments.of("neo4j", "statefulset.yaml.template", listOf(DB)),

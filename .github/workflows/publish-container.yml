@@ -4,8 +4,9 @@ on:
   push:
     tags:
       - 'v*'
-  # Run by hand by a maintainer, to publish the Pyroscope agent image from a branch before it
-  # reaches main. Only publish-pyroscope-agent and publish-cassandra-runtime run on it.
+  # Run by hand by a maintainer. Only publish-pyroscope-agent and publish-cassandra-runtime run on
+  # it, and they push only when it is run on main: on any other branch they build and check the
+  # images but push nothing, so an unreviewed branch can never publish a tag.
   workflow_dispatch:
   workflow_run:
     workflows: ["PR Checks"]
@@ -95,8 +96,8 @@ jobs:
   # The Pyroscope Java agent image kit and stress pods copy their agent jar from
   # (Constants.Kit.Agents.PYROSCOPE_IMAGE). Its tag is the agent version and its content is fixed by
   # the Dockerfile's checksum and pinned base images. It is published only from trusted refs (a tag
-  # push, PR Checks passing on a push to main, or a maintainer's manual dispatch of a branch; never
-  # a pull request's own run), and a version that is already published is never overwritten.
+  # push, PR Checks passing on a push to main, or a maintainer's manual dispatch on main; never a
+  # branch dispatch, which only builds, or a pull request's own run), and a version that is already published is never overwritten.
   publish-pyroscope-agent:
     runs-on: ubuntu-latest
     # The push trigger fires only for v* tags (see on.push), so no branch push reaches this job;
@@ -170,7 +171,7 @@ jobs:
         with:
           context: docker/pyroscope-java-agent
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
           tags: ghcr.io/rustyrazorblade/pyroscope-java-agent:${{ steps.version.outputs.version }}
 
   # The JRE image the cassandra-pods kit runs a Cassandra tarball on
@@ -245,10 +246,11 @@ jobs:
           context: docker/cassandra-runtime
           platforms: linux/amd64,linux/arm64
           build-args: JAVA=${{ matrix.java }}
-          push: true
+          push: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
           tags: ${{ steps.tag.outputs.image }}
 
       - name: Check both platforms are published
+        if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
         env:
           IMAGE: ${{ steps.tag.outputs.image }}
         run: bash .github/cassandra-runtime/platforms-present.sh

@@ -46,6 +46,25 @@ class CassandraRuntimeImageTest {
         assertThat(arg("YQ_VERSION")).isNotNull().isEqualTo(amiYq)
     }
 
+    /**
+     * A manual dispatch runs on whatever branch the maintainer picks, and a published tag is never
+     * overwritten, so an unreviewed branch that pushed would fix its image under that tag for good.
+     * Each push in the workflow is therefore gated to main when the run is a dispatch.
+     */
+    @Test
+    fun `a manual dispatch pushes images only from main`() {
+        val pushes =
+            File(".github/workflows/publish-container.yml")
+                .readLines()
+                // A step's `with: push:`, never the workflow's own `on: push:` trigger.
+                .filter { it.startsWith("          push:") }
+                .map { it.trim() }
+
+        assertThat(pushes)
+            .isNotEmpty
+            .allMatch { it == "push: \${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}" }
+    }
+
     @Test
     fun `the publish job builds every JDK the release-line table can choose`() {
         val workflow = File(".github/workflows/publish-container.yml").readText()

@@ -577,9 +577,10 @@ Both images must be in their registry before a pod can load the agent.
 `JavaAgentImagesPublishedIntegrationTest` asks the registry for each `JavaAgent` image and fails
 for any image it does not have. The Pyroscope image is built from `docker/pyroscope-java-agent/` by
 the `publish-pyroscope-agent` job of `publish-container.yml`. That job runs on a tag push, after PR
-Checks pass on main, or by manual dispatch, so a branch that changes the agent version can publish
-the image before it merges. When you bump `Constants.PyroscopeJavaAgent.VERSION`, dispatch the
-workflow on that branch.
+Checks pass on main, or by manual dispatch. A dispatch pushes only when it runs on main; on any
+other branch it builds and checks the image but publishes nothing, so a branch that bumps
+`Constants.PyroscopeJavaAgent.VERSION` publishes its image once it merges. The same holds for the
+`publish-cassandra-runtime` job.
 
 An agent upgrade changes `PYROSCOPE_VERSION` and `PYROSCOPE_SHA256` in the Dockerfile together,
 and `Constants.PyroscopeJavaAgent.VERSION` to match. The build checks the downloaded jar against

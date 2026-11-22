@@ -1,69 +1,238 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
-### Requirement: down deletes exactly the confirmed plan
+### Requirement: Cluster Teardown
 
-`down` MUST discover the resources to remove once, before the preview and the confirmation prompt.  After the operator confirms (or `--auto-approve`), `down` MUST remove only the resources in that discovered plan, and MUST NOT discover again before or during the removal.  A resource that appears after the preview MUST NOT be removed by that `down`.  When such a resource blocks the removal of a planned resource (a subnet, a security group or the network itself), `down` MUST report the failure, exit non-zero and leave the cluster state as it was, so a later `down` previews the new resource before removing it.
+The system MUST clean up all AWS resources on cluster teardown. Teardown MUST NOT set any S3 lifecycle, expiry, or retention rule, on the account bucket or on any data bucket, and MUST NOT delete any object that holds the owner's data. `down` MUST NOT accept a `--retention-days` option.
 
-`init --clean` and `down` MUST resolve which resources belong to the workspace's cluster through the same rule: the whole network when easy-db-lab created it, and only the cluster's own tagged resources when the network was supplied with `init --vpc`.
+Before any infrastructure is torn down by a teardown that includes the workspace's own cluster (see "Teardown of the workspace's own cluster"), the system MUST save everything the cluster still holds that is not yet in S3.  A teardown that does not include it MUST NOT run the save.  It MUST NOT take any VictoriaMetrics or VictoriaLogs snapshot.  The save runs in two phases.
 
-#### Scenario: A resource created during the tail save is not removed
+**Phase A, in order:**
+1. Mirror every Grafana annotation inside Loki's accepted window (not older than `Constants.Loki.MAX_ENTRY_AGE_HOURS`, not more than `Constants.Loki.MAX_ENTRY_AHEAD_HOURS` ahead) to Loki, reporting any annotation outside it with the `AnnotationsOutsideLokiWindow` warning and keeping it in Grafana and the S3 JSON backup.  This runs only while the logs signal is not yet recorded.
+2. Stop the telemetry senders: delete the OTel collector DaemonSet and wait until its pods are gone, so its last batches reach Loki, Mimir and Tempo while they still accept writes.  The stop MUST succeed when the collector is already gone.
 
-- **GIVEN** a running cluster whose teardown the operator confirmed
-- **WHEN** a new resource is created in the cluster's network while the tail save runs
-- **THEN** `down` removes only the resources the preview listed
-- **AND** the new resource is still there after `down` ends
+**Phase B, in parallel.**  Every step MUST run to completion, and a failed step MUST NOT stop the others:
+- **Logs:** the Loki flush.  It MUST stop Loki's ingester with a synchronous flush and wait for the flush to finish, then stop the Loki process and wait until it has exited, so it builds and uploads its index.  IF the mirror failed, the Loki flush MUST NOT run, Loki MUST keep running, and the logs signal fails with the cause "not run, the annotation mirror failed".
+- **Metrics:** the Mimir flush.  It MUST stop Mimir's ingester with a synchronous flush and wait for the flush to finish, then stop the Mimir process.
+- **Traces:** the Tempo drain.  It MUST wait until Tempo holds no live traces for any tenant and its count of created traces has not changed across two readings at least 2 seconds apart.  Then it MUST poll the control node's disk until no Tempo write-ahead block holds a `meta.json` and every local complete block that holds a `meta.json` also holds its `flushed` marker.  Tempo MUST NOT be stopped or restarted.
+- **Profiles:** no flush.  `down` MUST report that profiles need no flush, because Pyroscope writes each batch to S3 before it accepts it.
+- **Annotations:** back up the Grafana annotations.
 
-#### Scenario: A late resource that blocks the network delete fails down
+Rules for both phases:
+- Every step MUST have a timeout.  The Tempo drain's timeout is 5 minutes.
+- `down` MUST only flush, wait for the flush to finish, and refuse to tear down if it did not finish.  It MUST NOT run any other check: no check that a backend runs before its flush, and no check of write-ahead data, head compaction, or objects in S3 after it.
+- The logs signal and the metrics signal MUST each be recorded in the cluster state at the moment its flush succeeds, with the time it completed.  One writer MUST make every state write, and each write MUST replace the state file atomically.  A `down` MUST skip a recorded signal.  The annotations backup, the collector stop, the Tempo drain and the profiles report MUST run on every `down` until a save succeeds for every signal.  When every Phase B step succeeds, the record MUST also note that the save is complete, before the infrastructure teardown starts; a later `down` that finds this note MUST skip both phases, open no tunnel, report every signal as already saved, and go straight to the teardown.  `up` MUST clear the record.
+- IF any step fails or times out, `down` MUST stop after every Phase B step has finished: it MUST NOT tear down any infrastructure, MUST NOT start, scale up or restart any backend or the collector, and MUST leave each backend as its step left it.  It MUST report every failed signal with its step and cause, the state of each backend (running, ingester stopped, or scaled to 0), and that `down --force` tears down without the data not yet saved, and it MUST exit non-zero.  The write-ahead data and local blocks stay on the control node's disk.
+- `down` MUST NOT retry a step within one run.
+- `down` MUST NEVER scale Loki or Mimir up or recreate a backend pod.  A teardown that fails after a successful save MUST restore nothing and MUST report the teardown failure.
+- The `--force` flag MUST skip both phases.  It MUST list the signals that will not be saved with the teardown preview, before the confirmation prompt.  The list is every signal not yet recorded among logs and metrics, plus traces and annotations, and it is empty once a complete save is recorded; profiles are never listed.
+- A cluster that redirects its telemetry MUST skip both phases.
+- Teardown is final.  Once `down` has saved the tail and started the infrastructure teardown, the cluster is done: no operation is supported on it afterwards (no `up`, no `grafana update-config`, no start, scale-up or restart of any backend).  Re-running `down` is the only supported step.  Behavior of any other operation on such a cluster is out of scope.
 
-- **GIVEN** a confirmed teardown of a network easy-db-lab created, and a subnet created in it after the preview
-- **WHEN** `down` removes the planned resources
-- **THEN** the network delete fails, `down` reports the error and exits non-zero
-- **AND** the cluster state is not marked down
-- **AND** the next `down` lists the new subnet in its preview
+#### Scenario: A teardown of another network runs no save
 
-#### Scenario: --all removes only the networks it previewed
+- **GIVEN** a running cluster in this workspace
+- **WHEN** the user runs `down <vpc-id>` for a different VPC, or `down --packer`, and confirms
+- **THEN** no save step runs, and the collector, Loki and Mimir keep running
 
-- **GIVEN** `down --all` whose preview listed two networks
-- **WHEN** a third tagged network is created before the operator confirms
-- **THEN** only the two previewed networks are torn down
-
-#### Scenario: init --clean and down agree on the cluster's resources
-
-- **GIVEN** a workspace whose cluster runs in a network supplied with `init --vpc`
-- **WHEN** the operator runs `down --dry-run`, and separately `init --clean`
-- **THEN** both look only at the resources tagged with the cluster's `ClusterId`
-
-### Requirement: Teardown of the workspace's own cluster
-
-`down` MUST treat a teardown as including the workspace's own cluster when it is the current-cluster teardown, a `down <vpc-id>` that names the workspace's network, or a `down --all` whose preview includes the workspace's network, and never for `down --packer`.
-
-When a confirmed teardown includes the workspace's own cluster, `down` MUST run the pre-teardown save before any infrastructure is removed, under the rules of "Cluster Teardown" (`--force` and a telemetry redirect skip it).  After a successful removal it MUST stop the SOCKS tunnel, remove the control node's Tailscale device, delete the Tailscale auth key, stop the data bucket's request metrics and mark the cluster state down.  When the removal fails, it MUST stop the SOCKS tunnel and MUST NOT change the cluster state.
-
-When a teardown does not include the workspace's own cluster, or the operator declines the prompt, `down` MUST NOT run the save, stop the SOCKS tunnel, remove the Tailscale device, delete the auth key, stop the bucket metrics or change the cluster state.
-
-#### Scenario: down of another VPC leaves the workspace alone
-
-- **GIVEN** a workspace with a running cluster and a recorded Tailscale device
-- **WHEN** the operator runs `down <vpc-id>` for a different VPC and confirms
-- **THEN** that VPC's resources are removed
-- **AND** the workspace's cluster state, Tailscale device and SOCKS tunnel are left as they were
-
-#### Scenario: down of the workspace's VPC by id saves the tail
+#### Scenario: Teardown removes AWS resources
 
 - **GIVEN** a running cluster
-- **WHEN** the operator runs `down <vpc-id>` naming the cluster's own network and confirms
-- **THEN** the pre-teardown save runs before any infrastructure is removed
-- **AND** after a successful removal the cluster state is marked down
+- **WHEN** the user tears it down with confirmation
+- **THEN** all AWS resources (EC2, NAT gateways, security groups, route tables, subnets, internet gateways, VPC) are terminated.
 
-#### Scenario: down --all that includes the workspace's network saves the tail
+#### Scenario: Teardown keeps a VPC supplied with --vpc
 
-- **GIVEN** a running cluster in this workspace, and other easy-db-lab networks in the account
-- **WHEN** the operator runs `down --all` and confirms
-- **THEN** the pre-teardown save runs before any network is removed
+- **GIVEN** a cluster initialized with `init --vpc <id>`, in a VPC that also holds the user's own resources and other clusters' resources
+- **WHEN** `down` runs
+- **THEN** only the resources that carry this cluster's `ClusterId` tag are removed: its instances, subnets, security group and internet gateway, and the default route to that gateway in the VPC's route tables
+- **AND** the VPC and every untagged or differently tagged resource in it are left as they are
+- **AND** the dry-run preview names the VPC as kept
 
-#### Scenario: A declined prompt keeps the tunnel
+#### Scenario: Teardown by VPC id with no state keeps a VPC easy-db-lab did not tag
 
-- **GIVEN** a running cluster whose SOCKS tunnel is up
-- **WHEN** the operator declines the `down` prompt
-- **THEN** the SOCKS tunnel is still running and the cluster state is unchanged
-- **AND** `down` exits non-zero
+- **GIVEN** no cluster state, and a VPC with no easy-db-lab tags (no `easy_cass_lab=1` marker, or no `ClusterId`)
+- **WHEN** `down <vpc-id>` runs
+- **THEN** only the resources that carry an easy-db-lab `ClusterId` tag and the marker tag are removed
+- **AND** the VPC is kept, and `down` says it was kept
+
+#### Scenario: Teardown by VPC id with no state deletes a VPC easy-db-lab created
+
+- **GIVEN** no cluster state, and a VPC that carries the `easy_cass_lab=1` marker and a `ClusterId` tag (or the packer VPC, which carries the marker and its name)
+- **WHEN** `down <vpc-id>` runs
+- **THEN** the VPC and everything in it are removed
+
+#### Scenario: Teardown sets no expiry rule
+
+- **GIVEN** a running cluster with a data bucket
+- **WHEN** `down` completes
+- **THEN** no lifecycle or expiry rule exists on `clusters/<name>-<id>/`, on `mimir/`, `loki/`, `tempo/`, `pyroscope/` or `grafana/`, or on the data bucket
+- **AND** every object in both buckets is still present
+
+#### Scenario: The retention option no longer exists
+
+- **WHEN** a user runs `down --retention-days 1`
+- **THEN** the CLI reports an unknown option and tears nothing down
+
+#### Scenario: Teardown of all clusters
+
+- **GIVEN** multiple clusters
+- **WHEN** the user tears down all clusters
+- **THEN** every tagged cluster VPC and its resources are removed
+- **AND** each per-cluster data bucket that is empty is deleted, and each data bucket that still holds objects is kept with no expiry rule
+
+#### Scenario: Teardown of all clusters finds a VPC with only the legacy marker
+
+- **GIVEN** a VPC that carries `easy_cass_lab=1` and not `easy_db_lab=1`, as every VPC created before the new marker does
+- **WHEN** the user runs `down --all`
+- **THEN** the VPC is found and torn down like any other easy-db-lab VPC
+
+#### Scenario: Teardown requires confirmation
+
+- **GIVEN** a teardown request without confirmation
+- **WHEN** the command runs
+- **THEN** the user is prompted for approval before proceeding.
+
+#### Scenario: Declining the confirmation stops nothing
+
+- **GIVEN** a running cluster
+- **WHEN** the user declines the teardown prompt, or runs `down --dry-run`
+- **THEN** no save step runs, the collector, Loki and Mimir keep running, and nothing is torn down
+
+#### Scenario: A dry run changes nothing
+
+- **GIVEN** a cluster in any teardown mode: the current cluster, a specific VPC, `--all`, or `--packer`, including one where no resources are found
+- **WHEN** the user runs `down --dry-run`
+- **THEN** the resources that would be deleted are previewed and the command exits zero
+- **AND** the cluster state is not changed: it is not marked down, and its VPC and Tailscale device are kept
+- **AND** the SOCKS tunnel is not stopped and no Tailscale device is removed
+
+#### Scenario: A dry run after the VPC is gone only previews the device removal
+
+- **GIVEN** a cluster whose VPC an earlier `down` removed, but whose control node is still recorded as a Tailscale device
+- **WHEN** the user runs `down --dry-run`
+- **THEN** it reports that the device would be removed from the tailnet and exits zero
+- **AND** the device stays recorded, the cluster state is not marked down, and the SOCKS tunnel is not stopped
+
+#### Scenario: A dry run with nothing recorded to tear down fails and changes nothing
+
+- **GIVEN** a workspace with no cluster state, or a cluster state that records neither a VPC nor a Tailscale device
+- **WHEN** the user runs `down --dry-run`
+- **THEN** it reports that there is nothing to tear down and exits non-zero, as `down` without `--dry-run` does
+- **AND** the SOCKS tunnel is not stopped and the cluster state is not changed
+
+#### Scenario: The tail of every signal reaches S3 before teardown
+
+- **GIVEN** a running cluster whose Mimir, Loki and Tempo hold data not yet in S3
+- **WHEN** the user tears it down
+- **THEN** the annotations are mirrored to Loki and the collector is stopped before any flush starts
+- **AND** Loki's chunks and index, Mimir's blocks, and every span Tempo received are in S3, and the annotations backup is written, before any infrastructure is torn down
+- **AND** no VictoriaMetrics or VictoriaLogs snapshot is taken
+
+#### Scenario: The Phase B steps run in parallel
+
+- **GIVEN** a teardown whose Loki flush, Mimir flush and Tempo drain each take time
+- **WHEN** the command runs
+- **THEN** the steps run at the same time, and the save takes about as long as its slowest step
+
+#### Scenario: One failed signal does not stop the others
+
+- **GIVEN** a teardown whose Tempo drain times out
+- **WHEN** the command runs without `--force`
+- **THEN** the Loki flush, the Mimir flush and the annotations backup still finish, and the logs and metrics signals are recorded
+- **AND** `down` reports traces as the failed signal with its step and cause, tears nothing down, scales nothing up, names `down --force`, and exits non-zero
+
+#### Scenario: Every failed signal is reported
+
+- **GIVEN** a teardown in which two Phase B steps fail
+- **WHEN** the command runs without `--force`
+- **THEN** the report names both failed signals, each with its step and cause
+
+#### Scenario: A failed mirror fails only the logs signal
+
+- **GIVEN** a teardown whose annotation mirror fails
+- **WHEN** the command runs without `--force`
+- **THEN** the Loki flush does not run and Loki keeps running
+- **AND** the Mimir flush, the Tempo drain and the annotations backup still run
+- **AND** `down` reports the logs signal as failed because the mirror failed, and tears nothing down
+
+#### Scenario: The Tempo drain waits for traces still in memory
+
+- **GIVEN** Tempo holds traces in memory that are not yet in a block
+- **WHEN** the Tempo drain runs
+- **THEN** it passes only after those traces are in a block that Tempo has uploaded to S3
+
+#### Scenario: Profiles need no flush
+
+- **WHEN** `down` saves the tail
+- **THEN** it reports that profiles need no flush because Pyroscope writes each batch to S3 before it accepts it
+- **AND** Pyroscope is not stopped
+
+#### Scenario: A failed teardown after a successful save restores nothing
+
+- **GIVEN** a save that succeeded and left Loki and Mimir at 0
+- **WHEN** the infrastructure teardown then fails
+- **THEN** the teardown failure is reported and `down` exits non-zero
+- **AND** neither Loki nor Mimir is scaled up or restarted
+
+#### Scenario: A re-run skips the recorded signals
+
+- **GIVEN** a cluster whose state records the logs and metrics signals, and whose Tempo drain failed
+- **WHEN** the user runs `down` again and confirms
+- **THEN** the mirror and the Loki and Mimir flushes are skipped and reported as already saved
+- **AND** the collector stop, the Tempo drain, the profiles report and the annotations backup run again
+
+#### Scenario: A signal is recorded when its flush finishes
+
+- **GIVEN** a teardown whose Loki and Mimir flushes succeed while the Tempo drain still runs
+- **WHEN** the process is interrupted before the Tempo drain ends
+- **THEN** the cluster state already records the logs and metrics signals
+- **AND** the next `down` skips them
+
+#### Scenario: A re-run after a complete save goes straight to teardown
+
+- **GIVEN** a cluster whose state records a complete save, and whose infrastructure teardown then failed part-way, with the control node already gone
+- **WHEN** the user runs `down` again and confirms
+- **THEN** no save step runs and no tunnel to the control node is opened
+- **AND** every signal is reported as already saved, and the teardown goes ahead
+
+#### Scenario: down runs no verify check
+
+- **GIVEN** a running cluster
+- **WHEN** the user tears it down
+- **THEN** `down` flushes Loki and Mimir, drains Tempo, and waits for each to finish
+- **AND** it runs no Loki, Mimir or Tempo running check, no Loki index write-ahead check, no Loki index-in-S3 check, no Mimir head-compaction check, and no Mimir block-in-S3 check
+
+#### Scenario: A flush that does not finish stops down
+
+- **GIVEN** a teardown whose Mimir ingester shutdown fails or times out
+- **WHEN** the command runs without `--force`
+- **THEN** the metrics signal fails with its step and cause
+- **AND** no infrastructure is torn down, nothing is scaled up, and the report points at `down --force`
+
+#### Scenario: The collector stop succeeds when the collector is gone
+
+- **GIVEN** a cluster whose collector DaemonSet was already deleted by an earlier `down`
+- **WHEN** `down` runs again
+- **THEN** the collector stop succeeds and the save continues
+
+#### Scenario: --force lists what it will not save before the prompt
+
+- **GIVEN** a cluster whose state records the logs signal only
+- **WHEN** the user runs `down --force`
+- **THEN** the preview lists metrics, traces and annotations as not saved, before the confirmation prompt
+- **AND** profiles are not listed
+- **AND** after confirmation, both phases are skipped and teardown proceeds
+
+#### Scenario: Teardown is final
+
+- **GIVEN** a cluster on which `down` has completed a successful save and started the infrastructure teardown
+- **WHEN** the operator continues
+- **THEN** re-running `down` is the only supported operation on that cluster
+- **AND** no `up`, `grafana update-config`, or backend start, scale-up or restart is supported on it
+
+#### Scenario: down does nothing about the compactor
+
+- **GIVEN** a cluster whose control node runs the account compactor, as the holder or as a standby
+- **WHEN** `down` runs
+- **THEN** it flushes every backend, waits for each flush, and refuses to tear down if a flush did not finish
+- **AND** it does not count other clusters, does not stop or start any compactor, and does not touch any lease

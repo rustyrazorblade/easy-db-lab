@@ -1,43 +1,113 @@
-Each task is marked **[M]** mechanical (Sonnet) or **[J]** judgement (Opus).  Paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/` unless they start with `src/`.  Work test first: write the test, see it fail, then write the code.  Run every test's control (design.md, "Test plan") and note it in the PR.
+Each task is marked **[M]** mechanical (Sonnet) or **[J]** judgement (Opus).  Paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/` unless they start with `src/`.
+
+Work test first: write the test, see it fail, then write the code.  Run every test's control (`test-plan.md`) and record its failing run in the PR.  Read exit codes through `CommandExecutor` only.
+
+## 0. The bugs, seen failing on main
+
+- [ ] 0.1 [J] On `main`'s code, before any other task, add the five tests in test-plan.md section 0 to `src/test/.../commands/DownTest.kt`, using `main`'s mocks: bug A, bug B (twice), bug C, and the dead VPC id.  Run them, record the five failures in the PR, and commit them on their own.  Task 4.3 ports them to the fakes.
 
 ## 1. Neutral types and the scope rule
 
-- [ ] 1.1 [M] `services/teardown/TeardownTypes.kt`: `TeardownTarget`, `TeardownScope`, `TeardownPlan` (`Nothing`, `DeviceOnly`, `Networks`), `ConfirmedPlan`, `PlannedNetwork` (with `holdsResources()` and `summary()`), `ResourceGroup`, `ResourceKind`, `NetworkRemoval`, `TeardownReport`.  KDoc on each.  Unit test `PlannedNetworkTest`: `summary()` text for an owned and a kept network (same text as `DiscoveredResources.summary()` today), `holdsResources()` is false for route tables only (today's rule)
-- [ ] 1.2 [M] `services/teardown/TeardownScopes.kt`: `resolve(target, state)`, one branch per row of design D2.  `TeardownScopesTest`, one case per row, with the two controls
-- [ ] 1.3 [M] `services/teardown/InfrastructureTeardown.kt` (port) and `BucketTeardown.kt` (port; `MetricsStop` and `DataBucketSweep` move here from `services/aws/DataBucketTeardown.kt`)
-- [ ] 1.4 [M] `src/test/.../services/teardown/FakeInfrastructureTeardown.kt` and `FakeBucketTeardown.kt` as design.md describes.  No test of the fakes themselves
+- [ ] 1.1 [M] Create `services/teardown/TeardownTypes.kt` with the types in design D1 and D3:
+  - `TeardownTarget` (with `from`), `TeardownScope`, `AllTagged` and `Packer` (each implements both interfaces);
+  - `TeardownPlan`, `ExecutablePlan`, `NothingRecorded`, `NothingReason`, `DeviceOnly`, `Networks` (`includesWorkspace`);
+  - `ConfirmedPlan` (`internal` constructor);
+  - `PlannedNetwork`, `NetworkOwnership`, `ResourceGroup` (`live`), `ResourceKind` (with `ROUTE_ASSOCIATION`);
+  - `NetworkRemoval` and `TeardownReport`.
 
-## 2. The EC2 adapter (pure move)
+  Give each type its KDoc.  Write `PlannedNetworkTest` and `TeardownTargetTest` (test-plan R2, R3).
+- [ ] 1.2 [M] Create `services/teardown/TeardownScopes.kt`, with `resolve(target, state)` and one branch per row of the D2 table.  Write `TeardownScopesTest`, with one case per row plus the blank device id.
+- [ ] 1.3 [M] Create `services/teardown/InfrastructureTeardown.kt` (the port) and `BucketTeardown.kt` (the port; `MetricsStop` and `DataBucketSweep` move here).
+- [ ] 1.4 [M] Write the fakes and `TeardownLog`, as test-plan "Fakes" describes:
+  - `src/test/.../services/teardown/FakeInfrastructureTeardown.kt`, with the dependency rule and a `remove` that reads only its argument;
+  - `FakeBucketTeardown.kt`;
+  - `src/test/.../services/FakeTeardownBackupService.kt`, with a scripted `Result`, `unsavedSignals` and an `onSave` hook.
 
-- [ ] 2.1 [M] Move `AwsInfrastructureService` lines 330-783 (discovery, `teardown*`, `executeVpcTeardown` and its phases, `guarded`, `logError`, `TeardownStepResult`, `Phase1Result`) into `services/aws/Ec2InfrastructureTeardown.kt`.  No behaviour change.  `AwsInfrastructureService` keeps only creation; drop its `emrService`/`openSearchService` dependencies if nothing else uses them, and update `AwsBuildSites`' `infrastructureFor` lambda
-- [ ] 2.2 [M] Move `DiscoveredResources` into `services/aws/Ec2Inventory.kt` (`internal`), with `toPlanned()` and `fromPlanned()`.  Delete `providers/aws/TeardownTypes.kt` (`TeardownMode`, `TeardownResult` are gone).  `Ec2InventoryTest` round-trip, with its control
-- [ ] 2.3 [J] `Ec2InfrastructureTeardown` implements the port: `discover(scope)` dispatches to the existing discovery per scope (`WholeNetwork`, `ByTags` with `VpcOwnership`, `ClusterInSuppliedNetwork`, `AllTagged` with the packer skip, `Packer`) and emits the same `Infra.*` events once.  `Infra.VpcKept` is emitted by `remove` for a `ByTags` network that is kept, before anything is removed, as today.  `remove(network)` runs `executeVpcTeardown(fromPlanned(network))` and never discovers
-- [ ] 2.4 [M] Move the teardown cases of `AwsInfrastructureServiceTest` to `Ec2InfrastructureTeardownTest` (call `discover` then `remove` where they called `teardown*(dryRun = false)`; keep every assertion and the `inOrder` order test).  Add `remove makes no describe call` with its control
-- [ ] 2.5 [M] `DataBucketTeardown` implements `BucketTeardown`.  Koin in `AwsServicesModule`: `single<InfrastructureTeardown>`, `factory<BucketTeardown>`
-- [ ] 2.6 [M] `src/integrationTest/.../services/aws/Ec2InfrastructureTeardownIntegrationTest`: on `SharedLocalStack`, discover a VPC, add a subnet, remove; the new subnet is still there.  Scope every assertion to its own VPC (shared backend)
+## 2. The AWS adapter
+
+- [ ] 2.1 [M] Make a pure move as its own commit, so that `git diff -M` shows it as a move:
+  - `AwsInfrastructureService` lines 330-825 go to `services/aws/AwsInfrastructureTeardown.kt`;
+  - `DiscoveredResources` goes to `services/aws/AwsNetworkInventory.kt` (`internal`);
+  - `DataBucketTeardown` is renamed `S3DataBucketTeardown`.
+
+  Then remove `emrService`, `openSearchService` and `@Suppress("TooManyFunctions")` from `AwsInfrastructureService`.  Update `AwsServicesModule.kt:75-80` and the `AwsBuildSites` lambda (`:185`).  Fix the constructors in `AwsInfrastructureServiceTest`, `AwsInfrastructureServiceIntegrationTest`, `AwsBuildSitesIntegrationTest`, `UpTestFixture`, `UpVpcCidrTest`, `SetupProfileTest`, `SetupProfileIntegrationTest` and `DataBucketTeardownTest` (renamed `S3DataBucketTeardownTest`).
+- [ ] 2.2 [M] Add `AwsNetworkInventory.toPlanned()` and `fromPlanned()`; route tables and route associations are `live = false`.  Delete `providers/aws/TeardownTypes.kt` (`TeardownMode` and `TeardownResult` go with it).  Write `AwsNetworkInventoryTest`: every field filled with a distinct id, `vpcName` set, each ownership, and a case with a null gateway.
+- [ ] 2.3 [J] `AwsInfrastructureTeardown` implements the port (design D3):
+  - `discover(scope)` dispatches per scope and emits the `Infra.*` events once.
+  - For `AllTagged`, it reads the VPC name first and skips the packer VPC before its inventory, and it fetches the EMR and OpenSearch subnet maps once.  This needs `EMRService` and `OpenSearchService` methods that return the maps, so that `findClustersInVpc` and `findDomainsInVpc` become filters over them.
+  - A NotFound VPC returns no network.
+  - `remove` emits `VpcKept` for `KEPT_UNTAGGED` only and runs `executeVpcTeardown(fromPlanned(network))`.  It returns a `NetworkRemoval` whose `networkGone` is true when the VPC delete succeeded or the network was kept.
+- [ ] 2.4 [J] Plan the route associations:
+  - `findRouteTablesInVpc` and `findOwnedResources` return each table's non-main association ids from the describe call they already make (`VpcService.kt:257`, `ClusterVpcResources`).
+  - `VpcService.deleteRouteTable(routeTableId, associationIds)` disassociates only those ids.
+  - Update `EC2VpcServiceTest`.
+- [ ] 2.5 [M] Add `VpcTeardownRetryPolicy(maxAttempts, baseInterval)`: `RetryUtil.createVpcTeardownRetryConfig(policy)` and `withVpcTeardownRetry(policy, ...)`.  It is a constructor parameter of `EC2VpcService` and `EC2SecurityGroupService`, defaulting to `Constants.Retry.MAX_VPC_TEARDOWN_RETRIES` and `VPC_TEARDOWN_BACKOFF_BASE_MS`.  Update the `providers/CLAUDE.md` retry table.
+- [ ] 2.6 [M] Move the teardown cases of `AwsInfrastructureServiceTest` to `AwsInfrastructureTeardownTest`.  Each case calls `discover` and then `remove`; keep every assertion and the `inOrder` test.  Add the R1 and R7 adapter tests from test-plan.md.
+- [ ] 2.7 [M] Koin, in `AwsServicesModule`: `single<InfrastructureTeardown>` and `factory<BucketTeardown>`.
+- [ ] 2.8 [M] Integration tests:
+  - Move the `discoverResources` cases of `src/integrationTest/.../services/aws/AwsInfrastructureServiceIntegrationTest.kt` (lines 235-305) to `AwsInfrastructureTeardownIntegrationTest`.
+  - Add the three R1 integration cases there.
+  - First check whether LocalStack's `DeleteVpc` refuses a VPC that holds a subnet, and record the answer in the PR.
 
 ## 3. The module
 
-- [ ] 3.1 [J] `services/teardown/WorkspaceTeardown.kt`: `beforeRemoval()` (unpublish the proxy port) and `after(report)` (tunnel stop always; on success device removal, auth key, bucket metrics, state reset through `ClusterStateManager.update`; a failed device removal fails the report).  Moves `Down.cleanupSocks5Proxy`, `updateClusterState`, `removeTailscaleDevice`, `reportClusterStateFailure`.  Add `SocksProxyService.unpublishPort()` (clears only `Constants.Proxy.PORT_PROPERTY`; never touch `socksProxyHost`/`socksProxyPort`) and move `DownTest`'s `clearProxySystemProperties` and `cleanupSocks5Proxy` cases to `WorkspaceTeardownTest` and `ProcessSocksProxyServiceTest`
-- [ ] 3.2 [J] `services/teardown/ClusterTeardown.kt`: `plan(target)` (load state, `TeardownScopes.resolve`, `discover` once, compute `includesWorkspace` per design D5, emit `NoClusterState`/`NoVpcId`/`PreparingVpc`/`FindingPackerVpc`), `execute(confirmed)` (workspace `beforeRemoval` when it applies, `remove` each planned network in order, collect errors, sweep empty buckets for `AllTagged` on success, then the workspace step).  `ClusterTeardownTest` over the fakes: the late-resource test and its control, the shared-scope test, `includesWorkspace` for each target, the empty plan (design D8) removes nothing and runs only the workspace step, `DeviceOnly` runs only the workspace step
-- [ ] 3.3 [M] Rename `services/TeardownPlanner.kt` to `services/teardown/TeardownConfirmation.kt`: drop `modeFor`; `review(plan, options)` returns `Proceed(ConfirmedPlan)`, `DryRun`, `Declined`, `Nothing`; the summary is `PlannedNetwork.summary()` joined by newline; the dry-run device preview (`DryRunDeviceRemovalPreview`) moves here.  Move `TeardownPlannerTest` to `TeardownConfirmationTest`
-- [ ] 3.4 [M] Koin: `ClusterTeardown`, `WorkspaceTeardown` and `TeardownConfirmation` in `ServicesModule`; update `src/test/.../TestModules.kt` to bind the fakes
+- [ ] 3.1 [J] Create `services/teardown/WorkspaceTeardown.kt` (design D5):
+  - `beforeRemoval()` unpublishes the proxy port.
+  - `after(workspaceRemoval)` always stops the tunnel.  On the workspace network's own success, it removes the device, deletes the auth key, stops the bucket metrics and marks the state down through `update`.  It returns its errors.
+  - It takes over `Down.cleanupSocks5Proxy`, `updateClusterState`, `removeTailscaleDevice` and `reportClusterStateFailure`.
+
+  Add `SocksProxyService.unpublishPort()`.  It clears only `Constants.Proxy.PORT_PROPERTY` and never touches `socksProxyHost` or `socksProxyPort`.  Delete the six `DownTest` cases at lines 158-314 and write `WorkspaceTeardownTest` over a real `ClusterStateManager` on `@TempDir` (test-plan R4).  Move the `clearProxySystemProperties` case to `ProcessSocksProxyServiceTest`.
+- [ ] 3.2 [J] Create `services/teardown/ClusterTeardown.kt`.  `plan` loads the state, resolves, discovers once and emits no `Teardown.*` event.  `execute` follows design D1:
+  - `beforeRemoval`;
+  - the loop inside `try`, with a result per network;
+  - `after` in the `finally`;
+  - the sweep last, for `AllTagged` on full success.
+
+  Write `ClusterTeardownTest` with every `ClusterTeardownTest` case in test-plan.md.
+- [ ] 3.3 [M] Rename `services/TeardownPlanner.kt` to `services/teardown/TeardownConfirmation.kt`:
+  - drop `modeFor` and `TeardownOptions`;
+  - `review(plan, ReviewOptions(dryRun, autoApprove, forceSkips))` follows the D6 table and emits `ForceSkipsTail` after the summary and before the dry-run stop;
+  - `DryRunDeviceRemovalPreview` and the `No*Found` choice move here.
+
+  Move `TeardownPlannerTest` to `TeardownConfirmationTest` and add one case per table cell.
+- [ ] 3.4 [M] Koin: put `ClusterTeardown`, `WorkspaceTeardown` and `TeardownConfirmation` in `ServicesModule`.  `src/test/.../TestModules.kt:286` binds the fakes and drops `TeardownPlanner`.
 
 ## 4. Commands
 
-- [ ] 4.1 [J] Rewrite `commands/Down.kt` per design D6: flags to `TeardownTarget`, `plan`, `review`, the tail-save gate when `includesWorkspace` and the plan holds resources, `execute`, report; every failure is `CommandFailedException` after its event.  Remove `TeardownOutcome`, `VpcScope`, `exitCode`, `call()`, `@Suppress("TooManyFunctions")`.  No `providers.aws` or `services.aws` import
-- [ ] 4.2 [M] `commands/Init.kt`: `refuseLiveInfrastructure` calls `clusterTeardown.plan(CurrentCluster)` and refuses when a planned network `holdsResources()`; `CleanRefusedLiveInfrastructure` gets the network id, the `INSTANCE` group's ids and the count of the rest.  Delete `services/LiveInfrastructureLookup.kt` and move `LiveInfrastructureLookupTest`'s cases into `InitTest` over the fake
-- [ ] 4.3 [M] Move the six `Down*Test` files and `DownS3NoExpiryIntegrationTest` from mocks of `AwsInfrastructureService` to `FakeInfrastructureTeardown`.  Keep every behaviour each test checks; drop assertions on `teardown*(dryRun)` calls
-- [ ] 4.4 [J] New `DownTest` cases for R1, R4 and R6 (design.md test plan), each with its control
-- [ ] 4.5 [M] `src/test/.../architecture/TeardownBoundaryTest.kt` and its fixture, with the fixture test as the control
+- [ ] 4.1 [J] Rewrite `commands/Down.kt` per design D6:
+  - emit `Starting`, then `plan`, then emit the plan's reason events, then `review`;
+  - run the tail-save gate when `includesWorkspace` and the plan is not empty;
+  - `execute`, then report;
+  - every failure exit is a `CommandFailedException` thrown after its event.
+
+  Remove `TeardownOutcome`, `VpcScope`, `exitCode`, `call()` and `@Suppress("TooManyFunctions")`.  Leave no `providers.aws` or `services.aws` import.
+- [ ] 4.2 [M] `commands/Init.kt`: `refuseLiveInfrastructure` calls `clusterTeardown.plan(CurrentCluster)` and refuses when a planned network `holdsResources()`.  `CleanRefusedLiveInfrastructure` gets the network id, the `INSTANCE` ids and `nonInstanceResourceCount()`.  Remove the `infrastructureService` and `liveInfrastructure` fields.  Delete `services/LiveInfrastructureLookup.kt` and move `LiveInfrastructureLookupTest` into `InitTest`, with the two new cases.
+- [ ] 4.3 [M] Move the `Down*Test` files, the task 0 tests and `DownS3NoExpiryIntegrationTest` to the fakes, and remove every Mockito stub of a `Result`.  Move every exit-code assertion to `CommandExecutor`.  Rewrite these cases to the bug C behaviour:
+  - `DownBackupTest.kt:575`, as `down --all that does not include the workspace network never runs the save`;
+  - `:687`, which now saves the tail first.
+
+  Keep every other assertion.
+- [ ] 4.4 [J] Add the remaining `DownTest`, `DownCommandTest` and `DownInitScopeTest` cases from test-plan R1, R2, R4 and R6, and `src/integrationTest/.../commands/DownLateResourceIntegrationTest`.
+- [ ] 4.5 [M] Add the three teardown rules to `architecture/PackageBoundaryTest`, with fixtures in `src/test/.../services/teardown/fixtures/` and `src/test/.../commands/fixtures/` (design D7).  Each fixture's own test is its control.
 
 ## 5. Docs
 
-- [ ] 5.1 [M] `docs/reference/commands.md` (`down`): the preview is the plan that is removed; a resource created after the preview is not removed and can make `down` fail; `down <vpc-id>` of the workspace's network and `down --all` save the tail; `down` of another VPC, `--packer` and a declined prompt leave the workspace alone
-- [ ] 5.2 [M] `providers/CLAUDE.md` (remove `TeardownTypes.kt`), `services/aws/CLAUDE.md` (`Ec2InfrastructureTeardown`, `Ec2Inventory`; `AwsInfrastructureService` is creation only), `commands/CLAUDE.md` (services table: `ClusterTeardown`), root `CLAUDE.md` if a new rule is needed
+- [ ] 5.1 [M] `docs/reference/commands.md` (`down`):
+  - the preview is the plan that is removed;
+  - a resource created after the preview is not removed and can make `down` fail, possibly after several minutes;
+  - `down <vpc-id>` of the workspace's network and a `down --all` that includes it save the tail first and reset the workspace;
+  - `down` of another VPC, `--packer`, a declined prompt and "nothing to tear down" leave the workspace and the tunnel alone.
+
+  Fix "a VPC with nothing left in it" in the save paragraph.
+- [ ] 5.2 [M] Update the CLAUDE.md files:
+  - `providers/CLAUDE.md`: remove `TeardownTypes.kt`, add the retry policy.
+  - `services/aws/CLAUDE.md`: rewrite line 85 (`guarded` errors become `NetworkRemoval` errors).  Add `AwsInfrastructureTeardown`, `AwsNetworkInventory` and `S3DataBucketTeardown`, and note that `AwsInfrastructureService` now only creates.
+  - `services/CLAUDE.md`: a short section on `services/teardown/` covering the ports, the fakes, where the scope rule lives, and the ArchUnit rules.
+  - `commands/CLAUDE.md`: in the services table, `ClusterTeardown` replaces `TeardownPlanner`.
 
 ## 6. Gates and real AWS
 
-- [ ] 6.1 [M] `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21 (build-engineer on Sonnet).  No new `@Suppress`, threshold or baseline entry
-- [ ] 6.2 [J] Real AWS L2 (design.md R7): on `main` and on the branch, `init --up` then `down --auto-approve`, once with its own VPC and once with `init --vpc`.  Tag `embark_offhours=off`.  Compare the resources removed and the `Infra.*` event order
-- [ ] 6.3 [J] Real AWS L1 (design.md R1): at the `down` prompt create a subnet in the cluster VPC, then confirm; the subnet survives, `down` exits non-zero, the state is not marked down; a second `down` lists and removes it.  Put the commands and output of 6.2 and 6.3 in the PR
+- [ ] 6.1 [M] Run `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21, through the build-engineer on Sonnet.  Add no `@Suppress`, threshold change or baseline entry.
+- [ ] 6.2 [J] Real AWS L2 (test-plan "Real AWS"): own VPC and supplied VPC, on `main` and on the branch, with the describe-before and describe-after records, the comparison and the cleanup.
+- [ ] 6.3 [J] Real AWS L1: on `main` (the control) and on the branch, using the fifo, `jq` and the secondary block steps.  Put the commands and the output of 6.2 and 6.3 in the PR, with no account numbers.
+- [ ] 6.4 [M] Comment on #1056: `Down` calls `ClusterTeardown`, and `AwsInfrastructureTeardown.remove` calls `ClusterNetwork.teardown` (design D9).

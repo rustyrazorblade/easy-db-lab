@@ -7,8 +7,12 @@ import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.test.get
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 class CleanTest : BaseKoinTest() {
     @Test
@@ -118,6 +122,21 @@ class CleanTest : BaseKoinTest() {
             projectRootFile.delete()
             projectRoot.delete()
         }
+    }
+
+    /** A workspace entry Clean removes may be a link; Clean removes the link and keeps its target. */
+    @ParameterizedTest
+    @ValueSource(strings = ["provisioning", "cassandra", "sshConfig", "environment.sh"])
+    fun `clean removes a linked entry and keeps the link's target`(name: String) {
+        val outside = File(tempDir, "outside-$name").apply { mkdirs() }
+        val precious = File(outside, "precious.txt").apply { writeText("owner") }
+        val link = File(context.workingDirectory, name).toPath()
+        Files.createSymbolicLink(link, outside.toPath())
+
+        get<Clean>().execute()
+
+        assertThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS)).isFalse()
+        assertThat(precious).hasContent("owner")
     }
 
     @Test

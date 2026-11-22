@@ -36,6 +36,7 @@ import org.koin.test.get
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Tests that KitInstallCommand creates the right directory name based on kit-ref args.
@@ -535,6 +536,22 @@ class KitInstallCommandTest : BaseKoinTest() {
 
         assertThat(exitCode).isZero()
         assertThat(File(workingDir, "needs-kubectl")).isDirectory()
+    }
+
+    @Test
+    fun `a forced reinstall over a kit directory that is a link replaces the link and keeps its target`() {
+        val outside = File(tempDir, "kit-checkout").apply { mkdirs() }
+        val precious = File(outside, "precious.txt").apply { writeText("source") }
+        val link = File(workingDir, "mydb")
+        Files.createSymbolicLink(link.toPath(), outside.toPath())
+        val cmd = factory.build(KitConfig(name = "mydb", type = null), source).commandSpec.userObject() as KitInstallCommand
+        cmd.force = true
+
+        cmd.execute()
+
+        assertThat(precious).hasContent("source")
+        assertThat(Files.isSymbolicLink(link.toPath())).isFalse()
+        assertThat(File(link, Constants.Kit.RESOLVED_ARGS_FILE)).isFile()
     }
 
     private fun resolvedArgs(kitDir: String): Map<String, String> =

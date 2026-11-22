@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -47,9 +50,25 @@ class LinkSafeDeleteTest {
     fun `nothing is left at the path and the link target survives`(shape: String) {
         val target = build(shape)
 
-        assertThat(target.deleteWithoutFollowingLinks()).isTrue()
+        target.deleteWithoutFollowingLinks()
 
         assertThat(Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)).isFalse()
         assertThat(File(tempDir, "outside/precious.txt")).hasContent("keep")
+    }
+
+    @Test
+    fun `a file that cannot be deleted fails the delete and names the path`() {
+        val target = File(tempDir, "ws/target").apply { mkdirs() }
+        val locked = File(target, "locked").apply { mkdirs() }
+        File(locked, "f").writeText("x")
+        assertThat(locked.setWritable(false)).isTrue()
+        try {
+            assertThatThrownBy { target.deleteWithoutFollowingLinks() }
+                .isInstanceOf(IOException::class.java)
+                .hasMessageContaining("Could not delete ${target.absolutePath}")
+            assertThat(File(locked, "f")).exists()
+        } finally {
+            locked.setWritable(true)
+        }
     }
 }

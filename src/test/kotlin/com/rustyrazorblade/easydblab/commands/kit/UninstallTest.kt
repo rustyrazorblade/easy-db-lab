@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -69,6 +70,43 @@ class UninstallTest : KitRunnerCommandTestBase() {
         assertThat(outcome.exceptionOrNull())
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("Kit 'MYDB' is not installed")
+    }
+
+    /**
+     * A workspace directory that holds no `kit.yaml` is the owner's data (fetched profiles, logs,
+     * the tool wrappers, provisioning files), never a kit, so it is refused and kept. A Cassandra
+     * conf directory such as `5.0` never gets this far: it is not a kit name.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["profiles", "logs", "bin", "provisioning", "k8s"])
+    fun `a workspace directory that is not an installed kit is refused and deletes nothing`(name: String) {
+        val dir = File(workingDir, name).apply { mkdirs() }
+        val owned = File(dir, "flamegraph.html").apply { writeText("owner") }
+
+        val outcome = runCatching { uninstall(name) }
+
+        assertThat(outcome.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Kit '$name' is not installed")
+        assertThat(owned).hasContent("owner")
+    }
+
+    @Test
+    fun `a kit directory that cannot be deleted fails kit uninstall and names the directory`() {
+        writeKitYaml("mydb", kitYaml)
+        val locked = File(workingDir, "mydb/locked").apply { mkdirs() }
+        File(locked, "f").writeText("x")
+        assertThat(locked.setWritable(false)).isTrue()
+        try {
+            val outcome = runCatching { uninstall() }
+
+            assertThat(outcome.exceptionOrNull())
+                .isInstanceOf(IOException::class.java)
+                .hasMessageContaining("Could not delete ${File(workingDir, "mydb").absolutePath}")
+            assertThat(File(locked, "f")).exists()
+        } finally {
+            locked.setWritable(true)
+        }
     }
 
     @Test

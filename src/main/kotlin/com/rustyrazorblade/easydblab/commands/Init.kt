@@ -548,7 +548,7 @@ class Init : PicoBaseCommand() {
         this::class.java.getResourceAsStream(resourceName).use { stream ->
             requireNotNull(stream) { "Resource $resourceName not found" }
             // Into the workspace, which is not always the process working directory (Server, Repl).
-            context.workspaceFile(targetFileName).outputStream().use { output -> stream.copyTo(output) }
+            context.workspaceFileForWrite(targetFileName).outputStream().use { output -> stream.copyTo(output) }
         }
     }
 

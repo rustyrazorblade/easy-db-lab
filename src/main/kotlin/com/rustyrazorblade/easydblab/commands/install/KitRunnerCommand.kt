@@ -70,7 +70,6 @@ class KitRunnerCommand(
     private val kitEndpointResolver: KitEndpointResolver by inject()
     private val endpointHost: KitEndpointHost by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
-    private val workspace: File by lazy { context.workingDirectory }
     private val workloadProbe: KitWorkloadProbe by inject()
 
     private var processExitCode: Int = 0
@@ -162,7 +161,7 @@ class KitRunnerCommand(
         val storageSize = resolvedArgs["STORAGE_SIZE"] ?: argDefaults["STORAGE_SIZE"] ?: ""
         val base =
             TemplateVariables
-                .from(state = clusterState, workspace = workspace, kitName = kitName, storageSize = storageSize)
+                .from(state = clusterState, workspace = context.workingDirectory, kitName = kitName, storageSize = storageSize)
                 .toMap()
         // base carries the absolute workspace KUBECONFIG, which typed steps interpolate;
         // KitProcessEnvironment sets the same path again for every process it launches.
@@ -282,7 +281,7 @@ class KitRunnerCommand(
                         clusterState = clusterState,
                         variables = envVars,
                         kitDir = kitDir,
-                        workspaceDir = workspace,
+                        workspaceDir = context.workingDirectory,
                     ),
             ).fold(
                 onSuccess = { 0 },
@@ -354,8 +353,11 @@ class KitRunnerCommand(
         envVars: Map<String, String>,
     ): Int =
         kitProcessEnvironment
-            .applyTo(ProcessBuilder(scriptFile.absolutePath).directory(context.workingDirectory).inheritIO(), workspace, envVars)
-            .start()
+            .applyTo(
+                ProcessBuilder(scriptFile.absolutePath).directory(context.workingDirectory).inheritIO(),
+                context.workingDirectory,
+                envVars,
+            ).start()
             .waitFor()
 
     private fun handlePostPhase(

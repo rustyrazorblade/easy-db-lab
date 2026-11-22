@@ -42,7 +42,7 @@ class K3sControlSteps(
     }
 
     override fun startControlPlane(control: ClusterHost): ControlPlaneAccess {
-        val kubeconfig = WorkspaceKubeconfig.file(workspace).toPath()
+        val kubeconfig = WorkspaceKubeconfig.fileForWrite(workspace).toPath()
         val cluster = state.read { it }
         val server = k3s.startServer(control, kubeconfig, cluster, useCustomCni = state.read(::cniOf) == CniMode.Cilium)
         return ControlPlaneAccess(server.url, server.token)

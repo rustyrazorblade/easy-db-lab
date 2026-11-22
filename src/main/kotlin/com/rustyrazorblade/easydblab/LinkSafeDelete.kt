@@ -10,18 +10,25 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 
 /**
- * Deletes this file or directory tree without ever following a symbolic link, and reports
- * whether nothing is left at this path.
+ * Deletes this file or directory tree without ever following a symbolic link. A path that does
+ * not exist is already deleted.
  *
  * Kotlin's `File.deleteRecursively()` follows a directory link and deletes the link's target, so a
  * kit directory linked to a source checkout would take the checkout with it. Here a link, at the
  * top or anywhere below, is unlinked and its target is left untouched. Every recursive delete of a
  * workspace path goes through this function.
+ *
+ * @throws IOException naming this path when anything under it could not be deleted, so no caller
+ *   reports a delete that did not happen
  */
-fun File.deleteWithoutFollowingLinks(): Boolean {
+fun File.deleteWithoutFollowingLinks() {
     val root = toPath()
-    if (Files.notExists(root, LinkOption.NOFOLLOW_LINKS)) return true
-    return runCatching { Files.walkFileTree(root, UnlinkingVisitor) }.isSuccess
+    if (Files.notExists(root, LinkOption.NOFOLLOW_LINKS)) return
+    try {
+        Files.walkFileTree(root, UnlinkingVisitor)
+    } catch (e: IOException) {
+        throw IOException("Could not delete $absolutePath: ${e.message}", e)
+    }
 }
 
 /**

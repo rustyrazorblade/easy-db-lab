@@ -40,6 +40,23 @@ fun resolveInWorkspace(
 }
 
 /**
+ * Resolves [name] like [resolveInWorkspace], for a file the CLI is about to write. A symbolic
+ * link at the final path is removed first, so the write creates a regular file inside the
+ * workspace and the link's target is left unchanged. Every writer of a workspace file opens it
+ * through this function (or writes by an atomic rename, which replaces a link without following it).
+ *
+ * @throws IllegalArgumentException naming the workspace and [name], as [resolveInWorkspace] does
+ */
+fun resolveInWorkspaceForWrite(
+    workspace: File,
+    name: String,
+): File {
+    val file = resolveInWorkspace(workspace, name)
+    if (Files.isSymbolicLink(file.toPath())) Files.delete(file.toPath())
+    return file
+}
+
+/**
  * True when the directory holding [resolved], with every link in it followed, is inside the real
  * workspace. A parent that does not exist yet is checked through its nearest existing ancestor; a
  * link whose target is missing counts as outside.

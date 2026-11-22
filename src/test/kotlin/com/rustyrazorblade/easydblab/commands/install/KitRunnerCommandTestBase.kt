@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -96,6 +97,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
                 single<K8sReadOperations> { mockKubeService }
                 single<KitEndpointResolver> { DefaultKitEndpointResolver(get()) }
                 single { KitProcessEnvironment(ToolWrapperInstaller()) }
+                single { WorkspaceKitScanner(get()) }
                 single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },
         )

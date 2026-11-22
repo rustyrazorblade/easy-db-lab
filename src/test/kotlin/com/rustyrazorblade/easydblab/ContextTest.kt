@@ -75,6 +75,21 @@ class ContextTest {
     }
 
     @Test
+    fun `a file about to be written replaces a final link with a regular file and keeps the link target`() {
+        val context = context()
+        val outsideFile = File(tempDir, "outside-file").apply { writeText("owner") }
+        context.workingDirectory.mkdirs()
+        val link = File(context.workingDirectory, "sshConfig").toPath()
+        Files.createSymbolicLink(link, outsideFile.toPath())
+
+        context.workspaceFileForWrite("sshConfig").writeText("new")
+
+        assertThat(outsideFile).hasContent("owner")
+        assertThat(Files.isSymbolicLink(link)).isFalse()
+        assertThat(link.toFile()).hasContent("new")
+    }
+
+    @Test
     fun `a link that stays inside the workspace is allowed`() {
         val context = context()
         val target = File(context.workingDirectory, "real").apply { mkdirs() }

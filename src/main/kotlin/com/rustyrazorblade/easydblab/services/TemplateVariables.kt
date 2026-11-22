@@ -101,7 +101,8 @@ data class TemplateVariables(
 
         /**
          * The variables for a kit of [state]'s cluster rendered in [workspace]. `KUBECONFIG` is the
-         * workspace's absolute kubeconfig path, so a kit script reaches this cluster from any directory.
+         * workspace's absolute kubeconfig path, for typed steps and manifests; kit scripts read the
+         * process `KUBECONFIG` that [KitProcessEnvironment] sets.
          */
         fun from(
             state: ClusterState,

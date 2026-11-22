@@ -33,7 +33,7 @@ internal class KitProcessEnvironmentTest {
     }
 
     @Test
-    fun `KUBECONFIG is the absolute workspace kubeconfig and replaces a relative one in the variables`() {
+    fun `KUBECONFIG is the absolute workspace kubeconfig whatever the variables hold`() {
         val builder = ProcessBuilder("true")
 
         environment.applyTo(builder, workspace, mapOf("KUBECONFIG" to "kubeconfig", "CLUSTER_NAME" to "lab"))

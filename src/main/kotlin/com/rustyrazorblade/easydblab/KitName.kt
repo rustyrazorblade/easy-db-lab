@@ -17,3 +17,13 @@ fun requireKitName(name: String): String {
     }
     return name
 }
+
+/**
+ * True when [listing], the names in the workspace directory, holds [name] exactly, case included.
+ * A case-insensitive file system opens `kafka` for `KAFKA`, so a name is matched against the
+ * listing and never by opening the path.
+ */
+fun listsExactly(
+    listing: Collection<String>,
+    name: String,
+): Boolean = name in listing

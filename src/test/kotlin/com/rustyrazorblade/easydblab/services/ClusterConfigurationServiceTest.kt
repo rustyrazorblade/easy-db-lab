@@ -25,9 +25,12 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -41,6 +44,10 @@ class ClusterConfigurationServiceTest {
 
     @TempDir
     lateinit var tempDir: Path
+
+    /** A directory outside the workspace, for files a workspace link points at. */
+    @TempDir
+    lateinit var outsideDir: File
 
     companion object {
         const val TEST_SSH_KEY_PATH = "/path/to/key"
@@ -100,6 +107,28 @@ class ClusterConfigurationServiceTest {
             assertThat(File(tempDir.toFile(), "env.sh")).exists()
             assertThat(File(tempDir.toFile(), "environment.sh")).exists()
             assertThat(File(tempDir.toFile(), "axonops-workbench.json")).exists()
+        }
+
+        /**
+         * A workspace file that is a link to a file outside the workspace is replaced by a regular
+         * file, and the outside file keeps its content.
+         */
+        @ParameterizedTest
+        @ValueSource(
+            strings = [Constants.Workspace.SSH_CONFIG_FILE, Constants.Workspace.STRESS_ENV_FILE, Constants.Workspace.AXONOPS_CONFIG_FILE],
+        )
+        fun `a workspace file linked outside the workspace is written as a new file and the outside file is kept`(name: String) {
+            val outsideFile = File(outsideDir, "precious").apply { writeText("owner") }
+            val link = File(tempDir.toFile(), name).toPath()
+            Files.createSymbolicLink(link, outsideFile.toPath())
+
+            val result = service.writeAllConfigurationFiles(tempDir, createClusterState(), createUserConfig())
+
+            assertThat(result.isSuccess).isTrue()
+            assertThat(outsideFile).hasContent("owner")
+            assertThat(Files.isSymbolicLink(link)).isFalse()
+            assertThat(Files.isRegularFile(link)).isTrue()
+            assertThat(link.toFile().readText()).isNotBlank().isNotEqualTo("owner")
         }
 
         @Test

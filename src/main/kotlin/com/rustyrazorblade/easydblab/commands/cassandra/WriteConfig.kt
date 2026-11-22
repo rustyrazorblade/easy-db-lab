@@ -39,7 +39,7 @@ class WriteConfig : PicoBaseCommand() {
 
     override fun execute() {
         // A typed path is the user's, as typed; with none, the workspace's patch file.
-        val patchFile = file?.let(::File) ?: context.workspaceFile(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
+        val patchFile = file?.let(::File) ?: context.workspaceFileForWrite(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
         eventBus.emit(Event.Cassandra.WriteConfigDone(patchFile.path))
         eventBus.emit(Event.Cassandra.WriteConfigHint)
 

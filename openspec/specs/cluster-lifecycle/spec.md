@@ -694,7 +694,7 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 
 ### Requirement: Workspace files resolve against the workspace
 
-Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, and so SHALL a name whose directory, with its links followed, is outside the workspace's real path. A recursive delete of a workspace path SHALL unlink a symbolic link, at the top or anywhere below, and SHALL NOT delete what the link points at, so no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path, and a kit script SHALL use the `KUBECONFIG` the CLI sets for its process rather than a path rendered into it. A command SHALL create no file in the process's current directory unless that directory is the workspace.
+Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, and so SHALL a name whose directory, with its links followed, is outside the workspace's real path. A recursive delete of a workspace path SHALL unlink a symbolic link, at the top or anywhere below, and SHALL NOT delete what the link points at; a delete that cannot remove a file SHALL fail the command with a message naming the path. A write to a workspace file whose name is a symbolic link SHALL replace the link with a regular file and leave the link's target unchanged. Together these mean no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path, and a kit script SHALL use the `KUBECONFIG` the CLI sets for its process rather than a path rendered into it. A command SHALL create no file in the process's current directory unless that directory is the workspace.
 
 #### Scenario: State is read and written in the workspace
 
@@ -714,6 +714,13 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 - **GIVEN** a workspace W and a process whose current directory is D
 - **WHEN** `setup-instances` (and the node setup `up` runs), `cassandra download-config`, `cassandra update-config`, `cassandra start`, the profiling fetch, or Spark log download opens or writes its workspace file
 - **THEN** each path is under W
+
+#### Scenario: A write through a linked workspace file stays in the workspace
+
+- **GIVEN** a workspace W whose `sshConfig` is a symbolic link to a file outside W
+- **WHEN** a command writes `sshConfig` (or `environment.sh`, `axonops-workbench.json`, `kubeconfig`)
+- **THEN** `W/sshConfig` is a regular file with the new content
+- **AND** the file outside W is unchanged
 
 #### Scenario: Today's normal case is unchanged
 

@@ -13,7 +13,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.proxy.EnvScriptWriter
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
-import com.rustyrazorblade.easydblab.resolveInWorkspace
+import com.rustyrazorblade.easydblab.resolveInWorkspaceForWrite
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
 
@@ -131,7 +131,7 @@ class DefaultClusterConfigurationService(
         // Built before the file is opened, so a host that cannot be routed fails the write instead of
         // leaving a half-written sshConfig behind.
         val proxyCommands = envScript.proxyCommandsFor(clusterState.hosts)
-        val sshConfigFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.SSH_CONFIG_FILE)
+        val sshConfigFile = resolveInWorkspaceForWrite(workingDirectory.toFile(), Constants.Workspace.SSH_CONFIG_FILE)
         sshConfigFile.bufferedWriter().use { writer ->
             ClusterConfigWriter.writeSshConfig(
                 writer,
@@ -162,7 +162,7 @@ class DefaultClusterConfigurationService(
             val cassandraHost = cassandraHosts.first().private
             val datacenter = clusterState.initConfig?.region ?: userConfig.region
 
-            val stressEnvFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.STRESS_ENV_FILE)
+            val stressEnvFile = resolveInWorkspaceForWrite(workingDirectory.toFile(), Constants.Workspace.STRESS_ENV_FILE)
             stressEnvFile.bufferedWriter().use { writer ->
                 writer.write("#!/usr/bin/env bash")
                 writer.newLine()
@@ -194,7 +194,7 @@ class DefaultClusterConfigurationService(
                     sshKeyPath = userConfigProvider.sshKeyPath,
                     clusterName = DEFAULT_CLUSTER_NAME,
                 )
-            val configFile = resolveInWorkspace(workingDirectory.toFile(), Constants.Workspace.AXONOPS_CONFIG_FILE)
+            val configFile = resolveInWorkspaceForWrite(workingDirectory.toFile(), Constants.Workspace.AXONOPS_CONFIG_FILE)
             AxonOpsWorkbenchConfig.writeToFile(config, configFile)
             eventBus.emit(Event.Provision.AxonOpsWorkbenchConfigWritten(Constants.Workspace.AXONOPS_CONFIG_FILE))
         }

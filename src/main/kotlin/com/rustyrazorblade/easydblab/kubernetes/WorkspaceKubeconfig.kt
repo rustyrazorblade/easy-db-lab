@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.resolveInWorkspaceForWrite
 import java.io.File
 
 /**
@@ -15,6 +16,12 @@ import java.io.File
 object WorkspaceKubeconfig {
     /** The absolute kubeconfig path for [workspace]. The file may not exist yet. */
     fun file(workspace: File): File = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
+
+    /**
+     * [file] for `up` to write the kubeconfig to: a symbolic link there is removed first
+     * ([resolveInWorkspaceForWrite]), so the write stays inside the workspace.
+     */
+    fun fileForWrite(workspace: File): File = resolveInWorkspaceForWrite(workspace, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
 
     /** True when [workspace] holds a kubeconfig, which means `up` has set up K3s. */
     fun exists(workspace: File): Boolean = file(workspace).isFile

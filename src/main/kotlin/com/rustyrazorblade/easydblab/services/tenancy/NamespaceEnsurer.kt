@@ -63,22 +63,31 @@ object NamespaceEnsurer {
 
     /**
      * Reads the namespace, then creates or labels it as [plan] decides; returns what it did. A create
-     * that loses a race with another creator (409) is planned again from the namespace that won.
+     * that loses a race with another creator (409) is planned again, once, from the namespace that
+     * won; a second conflict is thrown. The returned plan's [NamespacePlan.namespace] is used only
+     * for reporting: an adopted namespace is edited from the live object, not from the plan's copy.
      */
     fun ensure(
+        client: KubernetesClient,
+        scope: InstallScope,
+    ): NamespacePlan =
+        try {
+            attempt(client, scope)
+        } catch (e: KubernetesClientException) {
+            if (e.code != Constants.HttpStatus.CONFLICT) throw e
+            attempt(client, scope)
+        }
+
+    private fun attempt(
         client: KubernetesClient,
         scope: InstallScope,
     ): NamespacePlan {
         val name = scope.namespace.value
         return when (val plan = plan(client.namespaces().withName(name).get(), scope)) {
-            is NamespacePlan.Create ->
-                try {
-                    client.namespaces().resource(plan.namespace).create()
-                    plan
-                } catch (e: KubernetesClientException) {
-                    if (e.code != Constants.HttpStatus.CONFLICT) throw e
-                    ensure(client, scope)
-                }
+            is NamespacePlan.Create -> {
+                client.namespaces().resource(plan.namespace).create()
+                plan
+            }
             is NamespacePlan.Adopt -> {
                 client.namespaces().withName(name).edit { current ->
                     NamespaceBuilder(current)

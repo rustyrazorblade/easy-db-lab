@@ -1249,6 +1249,9 @@ object Constants {
          */
         const val NODE_SSH_ENV = "EDL_NODE_SSH"
 
+        /** The cluster variable `kit install` takes from a kit's size arg: the one reserved name an install arg may set. */
+        const val STORAGE_SIZE_VARIABLE = "STORAGE_SIZE"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.

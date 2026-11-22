@@ -300,6 +300,16 @@ data class KitConfig(
         require(repeatableInstallArg == null) {
             "Kit arg '${repeatableInstallArg?.flag}' is a top-level install arg and cannot be repeatable; declare it under commands"
         }
+        // kit install lays install args over the cluster variables, so a reserved name would
+        // silently replace the cluster value for install only (NAMESPACE would split a kit across
+        // namespaces). STORAGE_SIZE is the one cluster variable an install arg is meant to set.
+        val reserved =
+            args.firstOrNull {
+                it.variable in TemplateVariables.RESERVED_NAMES && it.variable != Constants.Kit.STORAGE_SIZE_VARIABLE
+            }
+        require(reserved == null) {
+            "Kit arg '${reserved?.flag}' uses the variable ${reserved?.variable}, which the cluster defines; choose another name"
+        }
     }
 
     /** The capabilities in [requires] that [provided] lacks, in enum order; empty when the kit can run. */

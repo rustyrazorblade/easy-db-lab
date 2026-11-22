@@ -111,7 +111,7 @@ class KitInstallCommand(
         }
 
         val extensionVars = buildExtensionVars()
-        val storageSize = argValues.remove("STORAGE_SIZE").orEmpty()
+        val storageSize = argValues.remove(Constants.Kit.STORAGE_SIZE_VARIABLE).orEmpty()
         renderAndWrite(
             source = source,
             kitName = instanceName,

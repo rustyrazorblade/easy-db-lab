@@ -1457,6 +1457,43 @@ class KitConfigTest {
             }.hasMessageContaining("--pick").hasMessageContaining(variable)
         }
 
+        /**
+         * `kit install` lays install args over the cluster variables, so a top-level arg named
+         * `NAMESPACE` would move the install steps into another namespace than later phases use.
+         */
+        @ParameterizedTest
+        @ValueSource(strings = ["NAMESPACE", "CLUSTER_NAME", "KUBECONFIG", "TENANT"])
+        fun `a top-level install arg named like a cluster variable is rejected, naming the arg and the variable`(
+            variable: String,
+        ) {
+            assertThatThrownBy {
+                parse(
+                    """
+                    name: mydb
+                    args:
+                      - flag: --pick
+                        variable: $variable
+                    """.trimIndent(),
+                )
+            }.hasMessageContaining("--pick").hasMessageContaining(variable)
+        }
+
+        /** `kit install` hands a `STORAGE_SIZE` arg to the cluster variable of that name; it is how kits size claims. */
+        @Test
+        fun `a top-level storage size arg loads`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    args:
+                      - flag: --storage-size
+                        variable: STORAGE_SIZE
+                    """.trimIndent(),
+                )
+
+            assertThat(config.args.single().variable).isEqualTo("STORAGE_SIZE")
+        }
+
         @Test
         fun `a command arg with an unreserved name loads`() {
             val config =

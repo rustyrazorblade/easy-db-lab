@@ -317,8 +317,23 @@ object Constants {
         const val POD_ADDRESSES_PER_NODE = 16
     }
 
-    /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
-    const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
+    /** File names inside a cluster workspace; each resolves through `Context.workspaceFile`. */
+    object Workspace {
+        /** The generated OpenSSH config every ssh, scp and tunnel call reads. */
+        const val SSH_CONFIG_FILE = "sshConfig"
+
+        /** The stress environment written at provisioning and installed on every node. */
+        const val STRESS_ENV_FILE = "environment.sh"
+
+        /** The AxonOps Workbench connection file `cassandra start` reports. */
+        const val AXONOPS_CONFIG_FILE = "axonops-workbench.json"
+
+        /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
+        const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
+
+        /** The workspace directory `upload-keys` reads `.pub` files from when none is given. */
+        const val AUTHORIZED_KEYS_DIR = "authorized_keys"
+    }
 
     // Exit codes
     object ExitCodes {
@@ -2023,9 +2038,6 @@ object Constants {
 
         /** Name prefix of a file staged in the login directory by `installFile` before it is moved into place. */
         const val INSTALL_STAGING_PREFIX = "edl-staged-"
-
-        /** The workspace directory `upload-keys` reads `.pub` files from when none is given. */
-        const val AUTHORIZED_KEYS_DIR = "authorized_keys"
 
         /** The file modes `installFile` accepts: octal digits as `chmod` takes them (`0644`, `755`). */
         const val FILE_MODE_PATTERN = "[0-7]{3,4}"

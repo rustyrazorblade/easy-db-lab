@@ -23,7 +23,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.s3.model.S3Exception
-import java.io.File
 
 /**
  * `down` tells the operator when a data-bucket step fails: the request-metric teardown of the
@@ -44,7 +43,6 @@ class DownDataBucketFailureTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(tempDir, "state.json")) }
                 single { mock<AwsInfrastructureService>() }
                 single { mock<TailscaleService>() }
                 single { mock<AwsS3BucketService>() }
@@ -162,7 +160,7 @@ class DownDataBucketFailureTest : BaseKoinTest() {
         saveStateWithDataBucket("data-bucket-1")
         // ClusterStateManager.save writes a temp file next to the state file; a read-only
         // directory makes that fail while load still works.
-        assertThat(tempDir.setWritable(false)).isTrue()
+        assertThat(context.workingDirectory.setWritable(false)).isTrue()
 
         try {
             val exitCode = runDown()
@@ -172,7 +170,7 @@ class DownDataBucketFailureTest : BaseKoinTest() {
             assertThat(failures.single().isError()).isTrue()
             assertThat(exitCode).isEqualTo(0)
         } finally {
-            tempDir.setWritable(true)
+            context.workingDirectory.setWritable(true)
         }
     }
 

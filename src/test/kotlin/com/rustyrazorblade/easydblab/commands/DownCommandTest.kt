@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -29,7 +30,6 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.ByteArrayInputStream
-import java.io.File
 
 class DownCommandTest : BaseKoinTest() {
     private lateinit var mockTeardownService: AwsInfrastructureService
@@ -78,7 +78,6 @@ class DownCommandTest : BaseKoinTest() {
         listOf(
             module {
                 single<AwsInfrastructureService> { mockTeardownService }
-                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 
@@ -95,7 +94,7 @@ class DownCommandTest : BaseKoinTest() {
     inner class CurrentClusterMode {
         @Test
         fun `execute reports error when no cluster state`() {
-            File(tempDir, "state.json").delete()
+            context.workspaceFile(CLUSTER_STATE).delete()
 
             val command = Down()
             command.autoApprove = true

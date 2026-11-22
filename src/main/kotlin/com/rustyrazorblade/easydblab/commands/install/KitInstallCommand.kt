@@ -103,7 +103,7 @@ class KitInstallCommand(
             val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables
-                    .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
+                    .from(state = clusterState, workspace = context.workingDirectory, kitName = instanceName, storageSize = storageSize)
                     .toMap() + argValues
 
             // A failed step is reported by the step executor as a typed event; the install then

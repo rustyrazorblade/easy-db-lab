@@ -24,7 +24,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 class TailscaleStopTest : BaseKoinTest() {
     private lateinit var mockTailscaleService: TailscaleService
@@ -54,7 +53,6 @@ class TailscaleStopTest : BaseKoinTest() {
         listOf(
             module {
                 single<TailscaleService> { mockTailscaleService }
-                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 

@@ -6,12 +6,20 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Factory for creating and caching Context instances. Manages Context lifecycle with key-based
  * caching to avoid recreating instances.
+ *
+ * [workingDirectory] is the workspace every context it builds resolves workspace files against.
+ * The CLI passes [processStartDirectory]; nothing else reads the process's current directory.
  */
 class ContextFactory(
-    private val baseDirectory: File = resolveEasyDbLabUserDir(),
-    private val workingDirectory: File = File(System.getProperty("user.dir")),
+    private val baseDirectory: File,
+    private val workingDirectory: File,
     private val appHome: String? = System.getProperty("easydblab.apphome"),
 ) {
+    companion object {
+        /** The directory the CLI was started in: the workspace. The one read of `user.dir` in the tool. */
+        fun processStartDirectory(): File = File(System.getProperty("user.dir")).absoluteFile
+    }
+
     private val contextCache = ConcurrentHashMap<String, Context>()
 
     /**

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -34,6 +35,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 class StartTest : BaseKoinTest() {
     private lateinit var mockCassandraService: CassandraService
@@ -127,6 +129,18 @@ class StartTest : BaseKoinTest() {
 
         verify(mockCassandraService).start(any(), eq(true))
         verify(mockSidecarService).deploy(any(), any())
+    }
+
+    @Test
+    fun `emits the AxonOps Workbench info only when the workspace holds its file`() {
+        File(context.workingDirectory.parentFile, Constants.Workspace.AXONOPS_CONFIG_FILE).writeText("{}")
+        Start().execute()
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain(Constants.Workspace.AXONOPS_CONFIG_FILE)
+
+        context.workspaceFile(Constants.Workspace.AXONOPS_CONFIG_FILE).writeText("{}")
+        val before = outputHandler.messages.size
+        Start().execute()
+        assertThat(outputHandler.messages.drop(before).joinToString("\n")).contains(Constants.Workspace.AXONOPS_CONFIG_FILE)
     }
 
     @Test

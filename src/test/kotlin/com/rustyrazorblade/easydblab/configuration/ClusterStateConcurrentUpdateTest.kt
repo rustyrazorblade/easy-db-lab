@@ -107,7 +107,8 @@ internal class ClusterStateConcurrentUpdateTest {
     fun `a change with no state file fails and creates none`() {
         assertThatThrownBy { manager().update { it.stressJobCounter = 1 } }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("easy-db-lab init")
+            .hasMessageContaining(stateFile.absolutePath)
+            .hasMessageContaining("run 'init'")
         assertThat(stateFile).doesNotExist()
     }
 

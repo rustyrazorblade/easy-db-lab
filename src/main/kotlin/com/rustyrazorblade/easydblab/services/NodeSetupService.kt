@@ -75,14 +75,14 @@ data class NodeSetupContext(
  *
  * An app node reads its own region from instance metadata for the stress default datacenter;
  * every node is in one region, so the value is the same one the first app node would give. The
- * workspace files it uploads are read from [workspace]'s directory, whatever directory the
+ * workspace files it uploads are read from [context]'s workspace directory, whatever directory the
  * process started in.
  */
 class NodeSetupService(
     private val remoteOps: RemoteOperationsService,
     private val profilingService: CassandraProfilingService,
     private val tuningFiles: NodeTuningFiles,
-    private val workspace: Context,
+    private val context: Context,
 ) {
     /** Sets up [host] as a node of [serverType]. */
     fun setup(
@@ -131,7 +131,7 @@ class NodeSetupService(
      * install.
      */
     fun installEnvironment(host: Host) {
-        val environment = workspace.workspaceFile(ENVIRONMENT_FILE).toPath()
+        val environment = context.workspaceFile(Constants.Workspace.STRESS_ENV_FILE).toPath()
         if (!Files.exists(environment)) return
         remoteOps.installFile(host, environment, ENVIRONMENT_PATH, FILE_MODE)
     }
@@ -176,7 +176,7 @@ class NodeSetupService(
     // and restart Cassandra - no rebake, no Gradle build.
     private fun writeJmxRules(host: Host) {
         remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
-        val rules = workspace.workspaceFile(Constants.Cassandra.JMX_RULES_FILE).toPath()
+        val rules = context.workspaceFile(Constants.Cassandra.JMX_RULES_FILE).toPath()
         remoteOps.installFile(host, rules, Constants.Cassandra.JMX_RULES_PATH, FILE_MODE)
     }
 
@@ -215,7 +215,7 @@ class NodeSetupService(
             remoteOps.executeRemotely(host, "rm -rf ${Constants.NodeTuning.REMOTE_DIR}", output = false)
             remoteOps.uploadDirectory(host, dir, Constants.NodeTuning.REMOTE_DIR)
         }
-        remoteOps.upload(host, workspace.workspaceFile(SETUP_SCRIPT).toPath(), SETUP_SCRIPT)
+        remoteOps.upload(host, context.workspaceFile(SETUP_SCRIPT).toPath(), SETUP_SCRIPT)
         try {
             remoteOps.executeRemotely(host, setupCommand(instanceType)).text
         } catch (e: RemoteCommandFailedException) {
@@ -225,10 +225,9 @@ class NodeSetupService(
 
     /** File names and the reason parse. */
     companion object {
-        private const val ENVIRONMENT_FILE = "environment.sh"
         private const val ENVIRONMENT_PATH = "/etc/profile.d/stress.sh"
         private const val STRESS_ENV_DIR = "/etc/cassandra-easy-stress"
-        private const val SETUP_SCRIPT = "setup_instance.sh"
+        private const val SETUP_SCRIPT = Constants.Workspace.SETUP_INSTANCE_SCRIPT
         private const val FILE_MODE = "0644"
 
         /** The prefix `setup_instance.sh` puts on the line that says why it failed. */

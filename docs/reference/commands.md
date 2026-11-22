@@ -267,7 +267,7 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 
 ### clean
 
-Clean up generated files from the current directory.
+Clean up generated files from the workspace.
 
 ```bash
 easy-db-lab clean
@@ -525,15 +525,22 @@ easy-db-lab cassandra write-config [filename] [options]
 |--------|-------------|---------|
 | `-t`, `--tokens` | Number of tokens | 4 |
 
+With no `filename`, the patch is written to `cassandra.patch.yaml` in the workspace. A `filename` you
+type is used as typed: a relative one resolves against the directory you run the command from.
+
 ### cassandra update-config
 
 Apply configuration patch to all nodes.
 
 ```bash
-easy-db-lab cassandra update-config [options]
+easy-db-lab cassandra update-config [file] [options]
 ```
 
 **Aliases:** `uc`
+
+With no `file`, the patch is read from `cassandra.patch.yaml` in the workspace. A `file` you type is
+used as typed, and is uploaded to each node under its own file name. Each host's version conf
+directory (for example `5.0/`) is read from the workspace.
 
 | Option | Description |
 |--------|-------------|

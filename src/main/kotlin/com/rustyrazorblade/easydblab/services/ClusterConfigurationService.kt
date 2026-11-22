@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.AxonOpsWorkbenchConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterConfigWriter
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -107,10 +108,10 @@ class DefaultClusterConfigurationService(
 ) : ClusterConfigurationService {
     companion object {
         private val log = KotlinLogging.logger {}
-        const val SSH_CONFIG_FILE = "sshConfig"
+        const val SSH_CONFIG_FILE = Constants.Workspace.SSH_CONFIG_FILE
         const val ENV_FILE = EnvScriptWriter.FILE_NAME
-        const val STRESS_ENV_FILE = "environment.sh"
-        const val AXONOPS_CONFIG_FILE = "axonops-workbench.json"
+        const val STRESS_ENV_FILE = Constants.Workspace.STRESS_ENV_FILE
+        const val AXONOPS_CONFIG_FILE = Constants.Workspace.AXONOPS_CONFIG_FILE
         const val DEFAULT_CLUSTER_NAME = "easy-db-lab"
     }
 

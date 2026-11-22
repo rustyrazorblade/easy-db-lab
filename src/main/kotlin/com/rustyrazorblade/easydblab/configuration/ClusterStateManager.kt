@@ -75,10 +75,7 @@ class ClusterStateManager(
      * @throws Exception if the file cannot be parsed
      */
     fun load(): ClusterState {
-        check(stateFile.exists()) {
-            "No cluster state at ${stateFile.absolutePath}. Run the command from the cluster's workspace, " +
-                "or run 'init' there first."
-        }
+        requireStateFile()
         val tree = mapper.readTree(stateFile)
         val initConfig = tree.get("initConfig")
         if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
@@ -123,7 +120,7 @@ class ClusterStateManager(
      */
     fun update(change: (ClusterState) -> Unit): ClusterState =
         locked {
-            check(stateFile.exists()) { "No cluster state at ${stateFile.absolutePath}: run 'easy-db-lab init' first" }
+            requireStateFile()
             val fresh = loadForUpdate()
             change(fresh)
             write(fresh)
@@ -160,6 +157,13 @@ class ClusterStateManager(
             it.lastAccessedAt = Instant.now()
         }
     }
+
+    /** Fails, naming the absolute path of the state file, when the workspace has no `state.json`. */
+    private fun requireStateFile() =
+        check(stateFile.exists()) {
+            "No cluster state at ${stateFile.absolutePath}. Run the command from the cluster's workspace, " +
+                "or run 'init' there first."
+        }
 
     private fun loadForUpdate(): ClusterState =
         try {

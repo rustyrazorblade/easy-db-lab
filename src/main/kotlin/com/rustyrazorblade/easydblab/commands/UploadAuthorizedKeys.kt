@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -14,7 +15,6 @@ import picocli.CommandLine.Parameters
 import java.io.File
 import java.io.FileFilter
 import java.nio.file.Files
-import kotlin.system.exitProcess
 
 /**
  * Uploads the authorized (public) keys in a local directory to every node, so other operators can
@@ -30,7 +30,7 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
 
     @Parameters(
         arity = "0..1",
-        description = ["Local directory of authorized keys (default: the workspace's ${Constants.Ssh.AUTHORIZED_KEYS_DIR})"],
+        description = ["Local directory of authorized keys (default: the workspace's ${Constants.Workspace.AUTHORIZED_KEYS_DIR})"],
     )
     var localDir: String? = null
 
@@ -41,10 +41,10 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
 
     override fun execute() {
         // A typed directory resolves where the user typed it; the default is the workspace's.
-        val keysDir = localDir?.let(::File) ?: context.workspaceFile(Constants.Ssh.AUTHORIZED_KEYS_DIR)
+        val keysDir = localDir?.let(::File) ?: context.workspaceFile(Constants.Workspace.AUTHORIZED_KEYS_DIR)
         if (!keysDir.exists()) {
-            eventBus.emit(Event.Command.UploadKeysNotFound(keysDir.path))
-            exitProcess(1)
+            eventBus.emit(Event.Command.UploadKeysNotFound(keysDir.absolutePath))
+            throw CommandFailedException("No authorized keys directory at ${keysDir.absolutePath}")
         }
 
         val files =
@@ -65,9 +65,12 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
             println(keys)
 
             val upload = doUpload(authorizedKeysExtraFile)
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, "") { upload(it.toHost()) }
-            hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { upload(it.toHost()) }
+            // One parallel fan-out over every node, so the scratch file outlives every upload.
+            val targets =
+                hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) +
+                    hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Stress) +
+                    hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Control)
+            hostOperationsService.withHosts(targets, parallel = true) { upload(it.toHost()) }
         } finally {
             authorizedKeysExtraFile.delete()
         }

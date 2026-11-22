@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Version
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -244,7 +245,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         module {
             single {
                 // The real manager on the test workspace; the spy only reports each saved state to [recordSaves].
-                spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+                spy(ClusterStateManager(context.workspaceFile(CLUSTER_STATE))).also { manager ->
                     doAnswer { invocation -> (invocation.callRealMethod() as ClusterState).also { onSave(it) } }
                         .whenever(manager)
                         .update(any())

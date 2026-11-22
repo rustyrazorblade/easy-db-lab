@@ -8,6 +8,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import java.io.File
@@ -44,13 +46,24 @@ class ConfigurationModuleTest {
         assertThat(File(workspace, "state.json")).exists()
     }
 
-    @Test
-    fun `missing state names the absolute path of the workspace state file`() {
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = ["load", "update"])
+    fun `missing state names the absolute path of the workspace state file`(operation: String) {
         val workspace = File(tempDir, "w").also { it.mkdirs() }
         withManager(workspace) { manager ->
-            assertThatThrownBy { manager.load() }
+            val read: () -> Unit =
+                when (operation) {
+                    "load" -> {
+                        { manager.load() }
+                    }
+                    else -> {
+                        { manager.update { } }
+                    }
+                }
+            assertThatThrownBy { read() }
                 .isInstanceOf(IllegalStateException::class.java)
                 .hasMessageContaining(File(workspace, "state.json").absolutePath)
+                .hasMessageContaining("Run the command from the cluster's workspace")
                 .hasMessageContaining("init")
         }
     }

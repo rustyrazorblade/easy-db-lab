@@ -17,7 +17,7 @@ data class Context(
     /**
      * Working directory for lab operations (cluster state, logs, etc.).
      * Must be absolute. Every workspace file resolves against it, never against the JVM's
-     * current directory; only the ContextFactory default reads `user.dir`.
+     * current directory; only `ContextFactory.processStartDirectory` reads `user.dir`.
      */
     val workingDirectory: File,
     /**
@@ -30,13 +30,8 @@ data class Context(
         /** The build number the start script passes as `easydblab.version`; 0 when run without it or when it is not a number. */
         fun buildVersion(): Int = System.getProperty("easydblab.version")?.toIntOrNull() ?: 0
 
-        /**
-         * Create a Context for regular CLI execution
-         */
-        fun forCli(
-            easyDbLabUserDirectory: File,
-            workingDirectory: File,
-        ): Context = Context(easyDbLabUserDirectory, isInteractive = false, workingDirectory = workingDirectory)
+        /** The profile `EASY_DB_LAB_PROFILE` names: `default` when it is unset or empty. */
+        internal fun profileName(envValue: String?): String = envValue?.ifEmpty { null } ?: "default"
     }
 
     init {
@@ -50,14 +45,25 @@ data class Context(
      * Long term, should probably make this something they can do via a command.
      * Will be useful once multiple cloud providers are supported.
      */
-    var profile = (System.getenv("EASY_DB_LAB_PROFILE") ?: "default").ifEmpty { "default" }
+    var profile = profileName(System.getenv("EASY_DB_LAB_PROFILE"))
     var profilesDir = File(easyDbLabUserDirectory, "profiles")
     var profileDir = File(profilesDir, profile).also { it.mkdirs() }
 
     /**
      * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current directory.
+     *
+     * Fails fast unless the result is strictly inside the workspace: a blank or absolute name, or one
+     * whose `.` and `..` segments reach the workspace itself or above it, is refused, so a typed name
+     * can never make a caller read, upload or delete the workspace or its parent.
      */
-    fun workspaceFile(name: String): File = File(workingDirectory, name)
+    fun workspaceFile(name: String): File {
+        val root = workingDirectory.toPath().normalize()
+        val resolved = root.resolve(name).normalize()
+        require(name.isNotBlank() && !File(name).isAbsolute && resolved.startsWith(root) && resolved != root) {
+            "A workspace file must be inside the workspace $workingDirectory: '$name'"
+        }
+        return resolved.toFile()
+    }
 
     /**
      * Version is either supplied by the in-repo script,

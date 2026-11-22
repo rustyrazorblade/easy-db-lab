@@ -97,7 +97,7 @@ internal class TunnelOverSshdIntegrationTest {
         TunnelTestProcesses.linkScript(installedScript, workspace)
         val command =
             ProcessSocksProxyService(
-                Context.forCli(easyDbLabUserDirectory = File(workspace, "edl-user"), workingDirectory = workspace),
+                Context(easyDbLabUserDirectory = File(workspace, "edl-user"), workingDirectory = workspace),
                 { _, _, _ -> false },
                 EventBus(),
             ).buildTunnelCommand(port, writeSshConfig().absolutePath, logFile, HOST_ALIAS)

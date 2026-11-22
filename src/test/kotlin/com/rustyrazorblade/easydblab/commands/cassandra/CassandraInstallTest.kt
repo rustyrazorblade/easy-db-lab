@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -31,7 +32,6 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * `cassandra install` end to end over a fake fleet: the real resolver and installer run, and only
@@ -85,7 +85,7 @@ class CassandraInstallTest : BaseKoinTest() {
         nodes = FakeNodes()
         // The real manager on the test workspace; the spy only records each saved state's records.
         stateManager =
-            spy(ClusterStateManager(File(tempDir, "state.json"))).also { manager ->
+            spy(ClusterStateManager(context.workspaceFile(CLUSTER_STATE))).also { manager ->
                 doAnswer { invocation ->
                     (invocation.callRealMethod() as ClusterState).also { saved ->
                         saves += saved.nodes.mapValues { (_, node) -> node.installed.keys.toSet() }

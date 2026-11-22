@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
@@ -98,8 +99,13 @@ data class TemplateVariables(
                 if (!appHome.isNullOrBlank()) "$appHome/bin/easy-db-lab" else "easy-db-lab"
             }
 
+        /**
+         * The variables for a kit of [state]'s cluster rendered in [workspace]. `KUBECONFIG` is the
+         * workspace's absolute kubeconfig path, so a kit script reaches this cluster from any directory.
+         */
         fun from(
             state: ClusterState,
+            workspace: File,
             kitName: String,
             storageSize: String,
         ): TemplateVariables {
@@ -119,7 +125,7 @@ data class TemplateVariables(
                 storageClassWfc = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
                 kitName = kitName,
                 storageSize = storageSize,
-                kubeconfig = Constants.K3s.LOCAL_KUBECONFIG,
+                kubeconfig = WorkspaceKubeconfig.file(workspace).path,
                 dbNodeIps = dbNodes.joinToString(",") { it.privateIp },
                 appNodeIps = appNodes.joinToString(",") { it.privateIp },
                 runningKits = state.runningKits.joinToString(","),

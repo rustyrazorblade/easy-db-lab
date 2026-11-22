@@ -36,7 +36,7 @@ setup() {
   mkdir -p "${WORK}/stubs" "${WORK}/kit/bin" "${WORK}/kit/catalogs"
   local script
   for script in start stop uninstall update-catalogs; do
-    sed -e 's#__KUBECONFIG__#kubeconfig#' -e 's#__WORKERS__#3#' "${KITS}/$1/bin/${script}.sh.template" > "${WORK}/kit/bin/${script}.sh"
+    sed -e "s#__KUBECONFIG__#${WORK}/kubeconfig#" -e 's#__WORKERS__#3#' "${KITS}/$1/bin/${script}.sh.template" > "${WORK}/kit/bin/${script}.sh"
     chmod +x "${WORK}/kit/bin/${script}.sh"
   done
   : > "${WORK}/kit/values.yaml"

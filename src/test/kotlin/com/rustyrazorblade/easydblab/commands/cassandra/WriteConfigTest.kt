@@ -84,4 +84,15 @@ class WriteConfigTest : BaseKoinTest() {
         assertThat(content).contains("8")
         configFile.delete()
     }
+
+    /** A path the user types is written as typed, not re-rooted under the workspace. */
+    @Test
+    fun `a typed absolute path is written as typed`() {
+        val typed = File(tempDir, "elsewhere/patch.yaml").apply { parentFile.mkdirs() }
+
+        WriteConfig().apply { file = typed.absolutePath }.execute()
+
+        assertThat(typed).content().contains("test-cluster")
+        assertThat(File(context.workingDirectory, "cassandra.patch.yaml")).doesNotExist()
+    }
 }

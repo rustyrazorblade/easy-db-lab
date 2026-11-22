@@ -532,7 +532,7 @@ class Init : PicoBaseCommand() {
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)
-        extractResourceFile(Constants.SETUP_INSTANCE_SCRIPT, Constants.SETUP_INSTANCE_SCRIPT)
+        extractResourceFile(Constants.Workspace.SETUP_INSTANCE_SCRIPT, Constants.Workspace.SETUP_INSTANCE_SCRIPT)
         // The OTel agent's JMX rules live in the workspace so an operator can edit them and push
         // them again with `setup-instances`, without a Gradle rebuild.
         extractResourceFile(

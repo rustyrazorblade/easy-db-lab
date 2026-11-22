@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
@@ -15,6 +16,7 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.io.File
 import java.nio.file.Files
 import kotlin.io.path.deleteExisting
 
@@ -35,8 +37,15 @@ class UpdateConfig : PicoBaseCommand() {
     @Mixin
     var hosts = HostsMixin()
 
-    @Parameters(description = ["Patch file to upload"], defaultValue = "cassandra.patch.yaml")
-    var file: String = "cassandra.patch.yaml"
+    @Parameters(
+        arity = "0..1",
+        description = ["Patch file to upload (default: the workspace's ${Constants.ConfigPaths.CASSANDRA_PATCH_FILE})"],
+    )
+    var file: String? = null
+
+    /** A typed path is the user's, as typed; with none, the workspace's patch file. */
+    private val patchFile: File
+        get() = file?.let(::File) ?: context.workspaceFile(Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
 
     @Option(names = ["--version"], description = ["Version to upload, default is current"])
     var version = "current"
@@ -56,6 +65,10 @@ class UpdateConfig : PicoBaseCommand() {
                 .filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList)
                 .associate { it.alias to remoteOps.getRemoteVersion(it.toHost(), version) }
         require(versions.isNotEmpty()) { "No ${ServerType.Cassandra.serverType} host matches --hosts '${hosts.hostList}'" }
+        val unversioned = versions.filterValues { it.versionString.isBlank() }.keys
+        require(unversioned.isEmpty()) {
+            "${unversioned.joinToString()} reports no active version (is /usr/local/cassandra/current set?)"
+        }
         val missing = versions.filterValues { !context.workspaceFile(it.versionString).isDirectory }
         check(missing.isEmpty()) {
             "No local config directory for " +
@@ -67,18 +80,18 @@ class UpdateConfig : PicoBaseCommand() {
 
     override fun execute() {
         val versions = versionsWithLocalConfig()
+        val patch = patchFile
+        // The node gets the file under its own name: a typed local path means nothing there.
+        val remotePatch = patch.name
 
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
             val resolvedVersion = versions.getValue(it.alias)
 
-            eventBus.emit(Event.Cassandra.ConfigFileUploading(file, it.alias))
+            eventBus.emit(Event.Cassandra.ConfigFileUploading(remotePatch, it.alias))
 
-            val yaml =
-                context.yaml.readTree(
-                    context.workspaceFile(file).inputStream(),
-                )
+            val yaml = patch.inputStream().use { stream -> context.yaml.readTree(stream) }
             (yaml as ObjectNode)
                 .put("listen_address", it.private)
                 .put("rpc_address", it.private)
@@ -89,13 +102,13 @@ class UpdateConfig : PicoBaseCommand() {
             context.yaml.writeValue(tmp.toFile(), yaml)
 
             // call the patch command on the server
-            remoteOps.upload(it, tmp, file)
+            remoteOps.upload(it, tmp, remotePatch)
             tmp.deleteExisting()
 
             // Execute patch-config and handle errors. Its stdout and stderr print tagged with the host.
             // Check stdout for the success marker — stderr may contain sudo warnings (e.g. sudoers
             // parse warnings from third-party packages) that are harmless but non-empty.
-            val patchResult = remoteOps.executeRemotely(it, "/usr/local/bin/patch-config $file")
+            val patchResult = remoteOps.executeRemotely(it, "/usr/local/bin/patch-config $remotePatch")
             if (!patchResult.text.contains("Successfully patched")) {
                 val reason = patchResult.stderr.ifEmpty { patchResult.text }.trim()
                 eventBus.emit(Event.Cassandra.PatchFailed(it.alias, reason))

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.PrintStream
 
 /**
@@ -38,7 +38,7 @@ import java.io.PrintStream
  * data so they are not coupled to the contents of any specific kit.
  */
 class KitInfoTest : BaseKoinTest() {
-    private val stateFile by lazy { File(tempDir, "state.json") }
+    private val stateFile by lazy { context.workspaceFile(CLUSTER_STATE) }
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -47,7 +47,6 @@ class KitInfoTest : BaseKoinTest() {
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
-                single { ClusterStateManager(stateFile) }
             },
         )
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
+export KUBECONFIG="__KUBECONFIG__"
 
 MANIFEST="${SCRIPT_DIR}/../daemonset.yaml"
 

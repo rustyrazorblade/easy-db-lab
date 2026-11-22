@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
@@ -29,7 +30,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
 
 /**
  * `down --dry-run` previews the teardown and changes nothing: the cluster state keeps its VPC and
@@ -48,7 +48,6 @@ class DownDryRunTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { ClusterStateManager(File(tempDir, "state.json")) }
                 single { mock<AwsInfrastructureService>() }
                 single { mock<TailscaleService>() }
                 single { mock<AwsS3BucketService>() }
@@ -176,7 +175,7 @@ class DownDryRunTest : BaseKoinTest() {
 
     @Test
     fun `a dry run with no cluster state fails without stopping the tunnel`() {
-        File(tempDir, "state.json").delete()
+        context.workspaceFile(CLUSTER_STATE).delete()
 
         val exitCode = Down().apply { dryRun = true }.call()
 

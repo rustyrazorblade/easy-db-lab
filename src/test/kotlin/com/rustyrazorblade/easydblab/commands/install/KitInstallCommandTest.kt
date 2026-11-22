@@ -103,7 +103,7 @@ class KitInstallCommandTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockResolver.listTemplateFiles(org.mockito.kotlin.any())).thenReturn(emptyList())
         whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(null)
-        val templateVars = TemplateVariables.from(state = clusterState, kitName = "", storageSize = "").toMap()
+        val templateVars = TemplateVariables.from(state = clusterState, workspace = workingDir, kitName = "", storageSize = "").toMap()
         factory = KitInstallCommandFactory(templateVars)
         source = InstallTemplateResolver.TemplateSource.Directory(templateDir)
     }

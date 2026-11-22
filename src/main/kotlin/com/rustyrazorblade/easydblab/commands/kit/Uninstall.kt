@@ -36,6 +36,9 @@ class Uninstall : PicoBaseCommand() {
     }
 
     override fun execute() {
+        require(Constants.Kit.NAME_PATTERN.matches(kit)) {
+            "Invalid kit name '$kit': use letters, digits, hyphens or underscores, and start with a letter or digit"
+        }
         val kitDir = context.workspaceFile(kit)
         if (!kitDir.isDirectory) {
             error("Kit '$kit' is not installed in ${context.workingDirectory}")

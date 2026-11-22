@@ -21,7 +21,13 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         storageSize: String,
         extraVars: Map<String, String> = emptyMap(),
     ) {
-        val vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = storageSize)
+        val vars =
+            TemplateVariables.from(
+                state = clusterState,
+                workspace = context.workingDirectory,
+                kitName = kitName,
+                storageSize = storageSize,
+            )
         val outputDir = context.workspaceFile(kitName)
         val tempDir = context.workspaceFile(".tmp-$kitName-${UUID.randomUUID()}")
         tempDir.mkdirs()

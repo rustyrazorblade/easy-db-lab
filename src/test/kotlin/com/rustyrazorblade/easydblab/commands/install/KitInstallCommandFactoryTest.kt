@@ -73,7 +73,8 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        templateVars = TemplateVariables.from(state = clusterState, kitName = "", storageSize = "").toMap()
+        templateVars =
+            TemplateVariables.from(state = clusterState, workspace = context.workingDirectory, kitName = "", storageSize = "").toMap()
         factory = KitInstallCommandFactory(templateVars)
         directorySource = InstallTemplateResolver.TemplateSource.Directory(templateDir)
     }

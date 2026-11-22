@@ -26,6 +26,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
@@ -33,6 +34,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.nio.file.Path
 
 class UpdateConfigTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -201,5 +203,46 @@ class UpdateConfigTest : BaseKoinTest() {
         command.restart = true
 
         command.execute()
+    }
+
+    /** The node gets the conf directory download-config made in the workspace, never a same-named one in the cwd. */
+    @Test
+    fun `the version conf directory is uploaded from the workspace`() {
+        UpdateConfig().execute()
+
+        val localDir = argumentCaptor<File>()
+        verify(mockRemoteOps).uploadDirectory(any(), localDir.capture(), eq("/tmp/easydblab.12345"))
+        assertThat(localDir.firstValue).isEqualTo(File(context.workingDirectory, "5.0"))
+    }
+
+    /** A path the user types is read as typed, not re-rooted under the workspace; the node gets it under its own name. */
+    @Test
+    fun `a typed absolute patch path is read as typed and uploaded under its file name`() {
+        File(context.workingDirectory, "cassandra.patch.yaml").delete()
+        val typed =
+            File(tempDir, "elsewhere/big-heap.yaml").apply {
+                parentFile.mkdirs()
+                writeText("num_tokens: 16\n")
+            }
+        val uploaded = argumentCaptor<Path>()
+        whenever(mockRemoteOps.upload(any(), uploaded.capture(), eq("big-heap.yaml"), any())).then {
+            assertThat(uploaded.lastValue.toFile().readText()).contains("num_tokens: 16", "listen_address: \"10.0.1.1\"")
+        }
+
+        UpdateConfig().apply { file = typed.absolutePath }.execute()
+
+        verify(mockRemoteOps).upload(any(), any(), eq("big-heap.yaml"), any())
+        verify(mockRemoteOps).executeRemotely(any<Host>(), eq("/usr/local/bin/patch-config big-heap.yaml"), any(), any())
+    }
+
+    /** A node whose current link resolves to nothing would make the workspace itself its conf dir. */
+    @Test
+    fun `a host that reports no active version fails before any host is patched`() {
+        whenever(mockRemoteOps.getRemoteVersion(any(), any())).doReturn(Version(""))
+
+        assertThatThrownBy { UpdateConfig().execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll("db0", "no active version")
+        verify(mockRemoteOps, never()).uploadDirectory(any(), any(), any())
     }
 }

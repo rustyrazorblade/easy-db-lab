@@ -30,7 +30,8 @@ if [ -f "$APP_HOME/.env" ]; then
     set +a
 fi
 
-export EASY_DB_LAB_LOG_DIR="${EASY_DB_LAB_LOG_DIR:-$(pwd)/logs}"
+# The packaged logback default: never the current directory, which may not be the workspace.
+export EASY_DB_LAB_LOG_DIR="${EASY_DB_LAB_LOG_DIR:-${EASY_DB_LAB_USER_DIR:-$HOME/.easy-db-lab}/logs}"
 mkdir -p "${EASY_DB_LAB_LOG_DIR}"
 
 # Extra JVM options handed to the generated start script. It word-splits

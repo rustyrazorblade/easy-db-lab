@@ -694,7 +694,7 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 
 ### Requirement: Workspace files resolve against the workspace
 
-Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument SHALL resolve against the process's current directory, as before. A command SHALL create no file in the process's current directory unless that directory is the workspace.
+Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the default `authorized_keys/` directory of `upload-keys`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument (including the `[file]` of `cassandra write-config` and `cassandra update-config`) SHALL resolve against the process's current directory, as before. A workspace file name SHALL be a relative name inside the workspace: a blank or absolute name, and a name that normalizes to the workspace itself or outside it (such as `.`, `..` or `a/../..`), SHALL be refused, so no command (for example `kit uninstall ..`) can delete or write outside the workspace. A kit's `__KUBECONFIG__` SHALL be the workspace kubeconfig's absolute path. A command SHALL create no file in the process's current directory unless that directory is the workspace.
 
 #### Scenario: State is read and written in the workspace
 
@@ -724,8 +724,14 @@ Every workspace-owned file the CLI opens SHALL resolve against the workspace dir
 #### Scenario: Missing state names its absolute path
 
 - **GIVEN** a workspace W with no `state.json`
-- **WHEN** a command loads cluster state
+- **WHEN** a command loads or updates cluster state
 - **THEN** the error names the absolute path of `W/state.json` and tells the user to run the command from the cluster's workspace or run `init` there
+
+#### Scenario: A workspace file name outside the workspace is refused
+
+- **GIVEN** a workspace W
+- **WHEN** a command resolves the workspace file `.`, `..`, `a/../..` or an absolute path, for example `kit uninstall ..`
+- **THEN** it fails naming the workspace and the name, and nothing inside or outside W is deleted
 
 #### Scenario: Uploading authorized keys leaves no file behind
 

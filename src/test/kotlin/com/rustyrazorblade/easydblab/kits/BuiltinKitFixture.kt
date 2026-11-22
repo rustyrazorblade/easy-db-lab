@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.client.utils.Serialization
+import java.io.File
 
 /**
  * Loads a built-in kit from the classpath exactly as `kit install` does: `kit.yaml` through the
@@ -34,6 +35,9 @@ class BuiltinKitFixture(
                     ServerType.Cassandra to listOf(host("db0", "10.0.1.10"), host("db1", "10.0.2.10")),
                 ),
         )
+
+    /** The workspace the rendered templates name; the fixture writes nothing there. */
+    val workspace = File("/workspace")
 
     /** The kit's parsed `kit.yaml`. */
     val config: KitConfig by lazy {
@@ -68,7 +72,7 @@ class BuiltinKitFixture(
         val rendered =
             templateService.renderKitTemplate(
                 templateContent = resource(templateFile),
-                vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = "10Gi"),
+                vars = TemplateVariables.from(state = clusterState, workspace = workspace, kitName = kitName, storageSize = "10Gi"),
                 extraVars = argDefaults + args,
             ) { unresolved.addAll(it) }
         check(unresolved.isEmpty()) { "Unresolved variables in $templateFile: $unresolved" }

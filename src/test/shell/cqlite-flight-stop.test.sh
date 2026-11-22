@@ -24,7 +24,7 @@ trap 'rm -rf "${WORK}"' EXIT
 export STUB_STATE="${WORK}/state"
 write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin"
-sed -e 's|__KUBECONFIG__|kubeconfig|g' "${KIT_SRC}/bin/stop.sh.template" > "${WORK}/kit/bin/stop.sh"
+sed -e "s|__KUBECONFIG__|${WORK}/kubeconfig|g" "${KIT_SRC}/bin/stop.sh.template" > "${WORK}/kit/bin/stop.sh"
 
 fail() {
   echo "FAIL: ${current_test}: $1"

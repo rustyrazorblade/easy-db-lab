@@ -1,27 +1,34 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Collections
 
 /**
  * `upload-keys` uploads the joined keys from a scratch file that it removes afterwards. A keys
@@ -32,9 +39,9 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     @TempDir
     lateinit var keysParent: File
 
-    private val uploadedContents = mutableListOf<String>()
-    private val uploadedTargets = mutableListOf<String>()
-    private val uploadedSources = mutableListOf<Path>()
+    private val uploadedContents = Collections.synchronizedList(mutableListOf<String>())
+    private val uploadedTargets = Collections.synchronizedList(mutableListOf<String>())
+    private val uploadedSources = Collections.synchronizedList(mutableListOf<Path>())
     private var failUpload = false
 
     private val remote: RemoteOperationsService =
@@ -51,18 +58,30 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     private val state =
         ClusterState(
             name = "test",
-            hosts = mapOf(ServerType.Cassandra to listOf(ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", "i-1"))),
+            hosts =
+                mapOf(
+                    ServerType.Cassandra to
+                        listOf(
+                            ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", "i-1"),
+                            ClusterHost("1.1.1.2", "10.0.0.2", "db1", "us-west-2a", "i-2"),
+                        ),
+                    ServerType.Stress to listOf(ClusterHost("1.1.2.1", "10.0.1.1", "app0", "us-west-2a", "i-3")),
+                    ServerType.Control to listOf(ClusterHost("1.1.3.1", "10.0.2.1", "control0", "us-west-2a", "i-4")),
+                ),
         )
 
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                // Never a mock: the real manager over the test workspace.
-                single { ClusterStateManager(File(tempDir, CLUSTER_STATE)).also { it.replace(state) } }
                 single { HostOperationsService(get()) }
                 single<RemoteOperationsService> { remote }
             },
         )
+
+    @BeforeEach
+    fun seedState() {
+        get<ClusterStateManager>().replace(state)
+    }
 
     @Test
     fun `uploads the joined keys and leaves no scratch file behind`() {
@@ -115,6 +134,8 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
 
     @Test
     fun `a relative keys directory resolves against the process current directory not the workspace`() {
+        // Not @TempDir: a relative path is resolved against the JVM current directory, which this
+        // test must not change, so the directory has to live under it.
         val relative = "build/tmp/upload-keys-relative-${System.nanoTime()}"
         val keys = File(relative).also { it.mkdirs() }
         try {
@@ -127,5 +148,37 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
         } finally {
             keys.deleteRecursively()
         }
+    }
+
+    /** Every db, app and control node gets the keys; `--hosts` narrows only the db nodes. */
+    @Test
+    fun `every node gets the keys, with the db nodes narrowed by the host filter`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+        val uploadedTo = Collections.synchronizedList(mutableListOf<String>())
+        whenever(remote.upload(any(), any(), any(), any())).doAnswer {
+            uploadedTo += it.getArgument<Host>(0).alias
+            uploadedContents += Files.readString(it.getArgument<Path>(1))
+        }
+
+        UploadAuthorizedKeys()
+            .apply {
+                localDir = keys.absolutePath
+                hosts.hostList = "db1"
+            }.execute()
+
+        assertThat(uploadedTo).containsExactlyInAnyOrder("db1", "app0", "control0")
+        assertThat(uploadedContents).hasSize(3).containsOnly("ssh-ed25519 AAA a\n")
+    }
+
+    /** A missing directory fails the one command, not the process, and names the absolute path it looked at. */
+    @Test
+    fun `with no keys directory in the workspace, the failure names the workspace's authorized_keys path`() {
+        val expected = File(context.workingDirectory, "authorized_keys").absolutePath
+
+        assertThatThrownBy { UploadAuthorizedKeys().execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining(expected)
+        assertThat((get<OutputHandler>() as BufferedOutputHandler).messages).anyMatch { it.contains("$expected does not exist") }
     }
 }

@@ -49,8 +49,6 @@ class MyCommandTest : BaseKoinTest() {
                 single {
                     mock<K8sService>().also { mockK8sService = it }
                 }
-                // Never a mock: the real manager over the test workspace.
-                single { ClusterStateManager(File(tempDir, "state.json")) }
             },
         )
 

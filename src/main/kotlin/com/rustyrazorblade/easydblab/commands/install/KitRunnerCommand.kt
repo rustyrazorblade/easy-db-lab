@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardDefaults
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
@@ -70,7 +69,6 @@ class KitRunnerCommand(
     private val endpointHost: KitEndpointHost by inject()
     private val kitProcessEnvironment: KitProcessEnvironment by inject()
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
-    private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
     private val workloadProbe: KitWorkloadProbe by inject()
 
     private var processExitCode: Int = 0
@@ -162,17 +160,14 @@ class KitRunnerCommand(
         val storageSize = resolvedArgs["STORAGE_SIZE"] ?: argDefaults["STORAGE_SIZE"] ?: ""
         val base =
             TemplateVariables
-                .from(state = clusterState, kitName = kitName, storageSize = storageSize)
+                .from(state = clusterState, workspace = workspace, kitName = kitName, storageSize = storageSize)
                 .toMap()
-        // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
-        // to clickhouse/kubeconfig which doesn't exist. Typed steps interpolate ${KUBECONFIG} from
-        // these variables too, so they carry the absolute workspace kubeconfig; KitProcessEnvironment
-        // sets the same path again for every process it launches.
-        val absoluteKubeconfig = workspaceKubeconfig.absolutePath
-        // Apply in order: argDefaults → resolvedArgs → cluster state (base) → KUBECONFIG → BACKUP_NAME.
+        // base carries the absolute workspace KUBECONFIG, which typed steps interpolate;
+        // KitProcessEnvironment sets the same path again for every process it launches.
+        // Apply in order: argDefaults → resolvedArgs → cluster state (base) → BACKUP_NAME.
         // argDefaults first so cluster-state values in base take precedence over kit defaults;
         // resolvedArgs overlays defaults with user-specified install-time values.
-        val env = argDefaults + resolvedArgs + runtimeArgValues + base + ("KUBECONFIG" to absoluteKubeconfig)
+        val env = argDefaults + resolvedArgs + runtimeArgValues + base
         val targetVars =
             config
                 ?.kitRefArg

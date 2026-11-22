@@ -1011,7 +1011,14 @@ class ProfilingCommandsTest : BaseKoinTest() {
         verify(profilingService, org.mockito.kotlin.times(2))
             .convertToFlamegraph(any(), chunks.capture(), any(), any())
         assertThat(chunks.firstValue).containsExactly("/p/a.jfr", "/p/b.jfr")
-        verify(profilingService, org.mockito.kotlin.times(2)).download(any(), any(), any())
+        val local = argumentCaptor<Path>()
+        verify(profilingService, org.mockito.kotlin.times(2)).download(any(), any(), local.capture())
+        val downloads = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+        assertThat(local.allValues.map { it.toFile() })
+            .containsExactly(
+                File(File(downloads, "db0"), "flame-db0-1.html"),
+                File(File(downloads, "db1"), "flame-db0-1.html"),
+            )
         assertThat(emitted.filterIsInstance<Event.Profiling.FlamegraphCreated>()).hasSize(2)
     }
 

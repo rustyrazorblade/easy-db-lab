@@ -10,7 +10,6 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockRenderer
 import com.rustyrazorblade.easydblab.configuration.store.StoreBlockSource
 import com.rustyrazorblade.easydblab.services.TemplateService
-import jdk.jfr.Recording
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -30,7 +29,6 @@ import org.testcontainers.utility.LogUtils
 import org.testcontainers.utility.MountableFile
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.nio.file.Files
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -45,9 +43,13 @@ import java.util.concurrent.TimeUnit
  * (`ingest-front.cfg`, rendered from the server's ConfigMap, run in the server's network namespace
  * as in the pod) answers that one refusal 503 instead.
  *
- * The refusal window lasts from under a second to a few seconds, so a pusher sends a real JFR
- * profile every [PUSH_PERIOD] from just before SIGTERM until the server is gone, and records the
- * status of every answer. Through the front it must see a 503 refusal and no 422; straight to the
+ * The refusal window lasts from under a second to a few seconds, so a pusher starts a push of a
+ * JFR profile with known CPU samples ([CpuSampleJfr]) every [PUSH_PERIOD], each on its own, from
+ * before SIGTERM until the server is gone, and records the status of every answer. Pushes are not
+ * sent one after another: the stopping server holds the push it is handling until it exits, and a
+ * pusher waiting on it sent nothing in the window. SIGTERM is sent only once the pusher has had a
+ * push stored, so it is known to be reaching the server when the window opens. Through the front
+ * it must see a 503 refusal and no 422; straight to the
  * server it must see a 422, which shows the test reaches the window the front covers. That the
  * agent retries a 503 is the agent's documented behaviour, not something this test can force: its
  * uploads land in the window only by chance, so the agent's part is only that it dropped nothing
@@ -75,18 +77,23 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
         const val FILESYSTEM_STORE = "backend: filesystem\nfilesystem:\n  dir: /data/store\n"
 
         val UPLOAD_INTERVAL: Duration = Duration.ofSeconds(1)
-        val PUSH_PERIOD: Duration = Duration.ofMillis(50)
         val PUSH_TIMEOUT: Duration = Duration.ofSeconds(5)
 
-        /** Pushes in a row that could not connect, after which the pusher takes the server as gone. */
-        const val GONE_AFTER = 5
+        /**
+         * How often the pusher starts a push. Each runs on its own, so a push the stopping server
+         * holds never delays the next, and the refusal window gets a push every period.
+         */
+        val PUSH_PERIOD: Duration = Duration.ofMillis(50)
 
         /** The pusher's own bound, past the server's grace and every push's timeout. */
         val PUSHER_LIMIT: Duration = Duration.ofMinutes(2)
 
-        /** Pushes answered before SIGTERM, so the pusher is known to be running when the stop starts. */
-        val BEFORE_STOP: Duration = Duration.ofSeconds(2)
-        val JFR_SPIN: Duration = Duration.ofMillis(1_500)
+        /** The pusher's line for its first stored push; SIGTERM is sent only after it. */
+        const val READY_LINE = "READY"
+
+        /** How long the pusher may take to have its first push stored. */
+        val PUSHER_READY: Duration = Duration.ofMinutes(1)
+        val READY_POLL: Duration = Duration.ofMillis(100)
 
         /** Uploads before and after the stop, so profiles on both sides can be checked. */
         val RUNNING: Duration = Duration.ofSeconds(20)
@@ -184,9 +191,9 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
     }
 
     /**
-     * Starts the pusher on the test network, sending a JFR profile to the Service name on [port]
-     * every [PUSH_PERIOD]. It runs on the network, not in the server's namespace, so it outlives the
-     * server and sees it go. Returns its container id.
+     * Starts the pusher on the test network, starting a push of a JFR profile to the Service name
+     * on [port] every [PUSH_PERIOD]. It runs on the network, not in the server's namespace, so it
+     * outlives the server and sees it go. Returns its container id.
      */
     private fun startPusher(port: Int): String {
         val script = checkNotNull(javaClass.getResource(PUSHER_SCRIPT_RESOURCE)) { "$PUSHER_SCRIPT_RESOURCE is missing" }.readText()
@@ -203,9 +210,8 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
                     "URL=$url",
                     "TENANT=$TENANT",
                     "BODY=$PUSHER_BODY",
-                    "PERIOD_MS=${PUSH_PERIOD.toMillis()}",
                     "PUSH_TIMEOUT_SECONDS=${PUSH_TIMEOUT.toSeconds()}",
-                    "GONE=$GONE_AFTER",
+                    "PERIOD_MS=${PUSH_PERIOD.toMillis()}",
                     "MAX_SECONDS=${PUSHER_LIMIT.toSeconds()}",
                 ).withHostConfig(HostConfig.newHostConfig().withNetworkMode(network.id))
                 .exec()
@@ -214,7 +220,7 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
         val tar = ByteArrayOutputStream()
         TarArchiveOutputStream(tar).use {
             Transferable.of(script).transferTo(it, PUSHER_SCRIPT.removePrefix("/"))
-            Transferable.of(recordJfr()).transferTo(it, PUSHER_BODY.removePrefix("/"))
+            Transferable.of(CpuSampleJfr.bytes()).transferTo(it, PUSHER_BODY.removePrefix("/"))
         }
         docker
             .copyArchiveToContainerCmd(id)
@@ -225,8 +231,12 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
         return id
     }
 
-    /** Waits for the pusher [id] to finish and counts its answers. */
+    /**
+     * Tells the pusher [id] to stop (TERM: it starts no more pushes and waits for those running),
+     * waits for it to finish and counts its answers.
+     */
     private fun pusherResult(id: String): Pushes {
+        docker.killContainerCmd(id).withSignal("TERM").exec()
         val exit =
             docker
                 .waitContainerCmd(id)
@@ -243,34 +253,29 @@ class PyroscopeShutdownRefusalIntegrationTest : BaseKoinTest() {
         return Pushes(counts, output)
     }
 
-    /** A real JFR recording of this JVM spinning, so the pushed profile has CPU samples to parse. */
-    private fun recordJfr(): ByteArray {
-        val file = Files.createTempFile(tempDir.toPath(), "profile", ".jfr")
-        Recording().use { recording ->
-            recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
-            recording.start()
-            val end = System.nanoTime() + JFR_SPIN.toNanos()
-            var sink = 0.0
-            while (System.nanoTime() < end) {
-                sink += Math.sqrt(sink + 1)
-            }
-            recording.stop()
-            recording.dump(file)
-            check(sink > 0)
+    /**
+     * Waits until the pusher [id] has had a push stored (it prints READY), so SIGTERM never comes
+     * before the pusher reaches the server, and fails naming the pusher's output if it never does.
+     */
+    private fun awaitPusherReady(id: String) {
+        val deadline = System.nanoTime() + PUSHER_READY.toNanos()
+        while (System.nanoTime() < deadline) {
+            if (READY_LINE in LogUtils.getOutput(docker, id).lines()) return
+            Thread.sleep(READY_POLL.toMillis())
         }
-        return Files.readAllBytes(file)
+        error("the pusher had no push stored within $PUSHER_READY:\n${LogUtils.getOutput(docker, id)}")
     }
 
     /**
-     * Starts the pusher on [port], stops [pyroscope] as a pod restart does, and returns the pusher's
-     * answers with the stopped server's log.
+     * Starts the pusher on [port], waits until it has a push stored, stops [pyroscope] as a pod
+     * restart does, and returns the pusher's answers with the stopped server's log.
      */
     private fun pushThroughStop(
         pyroscope: GenericContainer<*>,
         port: Int,
     ): Pair<Pushes, String> {
         val pusher = startPusher(port)
-        Thread.sleep(BEFORE_STOP.toMillis())
+        awaitPusherReady(pusher)
         // As ObservabilityBackends.stopGracefully, but the stopped server's log is read before it is removed.
         docker.stopContainerCmd(pyroscope.containerId).withTimeout(GRACE.toSeconds().toInt()).exec()
         val serverLog = pyroscope.logs

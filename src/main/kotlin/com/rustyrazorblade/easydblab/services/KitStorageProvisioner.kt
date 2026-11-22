@@ -4,14 +4,19 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
-import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
 import io.github.oshai.kotlinlogging.KotlinLogging
 
 private val log = KotlinLogging.logger {}
+
+/**
+ * The namespace the kits create their claims in. It is the owned default, not the cluster namespace
+ * `init --namespace` records: the kits move to the cluster namespace in issue 1094 PR 2, and until
+ * then a reopen filtered on the cluster namespace would find none of their Released volumes.
+ */
+private const val KIT_NAMESPACE = Constants.ContractDefaults.OWNED_NAMESPACE
 
 /**
  * The volumes one `kit-storage` step reserves for a kit.
@@ -119,7 +124,7 @@ class KitStorageProvisioner(
                     count = count,
                     storageSize = volumes.size,
                     storageClass = storageClass,
-                    namespace = InstallScope.of(state, ClusterContract.of(state)).namespace.value,
+                    namespace = KIT_NAMESPACE,
                     clusterId = state.clusterId,
                     volumeClaimTemplateName = volumes.volumeClaimTemplateName,
                     nodeType = volumes.nodeType,
@@ -141,7 +146,7 @@ class KitStorageProvisioner(
             k8sService
                 .reopenReleasedVolumes(
                     storageClass,
-                    InstallScope.of(state, ClusterContract.of(state)).namespace.value,
+                    KIT_NAMESPACE,
                 ).getOrThrow()
         if (reopened.isNotEmpty()) log.info { "Reopened Released volumes $reopened of $storageClass for $kit" }
     }

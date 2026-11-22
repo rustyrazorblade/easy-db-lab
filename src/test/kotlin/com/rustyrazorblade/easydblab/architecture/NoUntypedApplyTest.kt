@@ -30,8 +30,7 @@ class NoUntypedApplyTest {
                 .flatMap { file ->
                     val path = file.relativeTo(mainRoot).invariantSeparatorsPath
                     hits(file).map { (number, line) -> "$path:$number: $line" }
-                }
-                .toList()
+                }.toList()
 
         assertThat(offending).isEmpty()
     }

@@ -102,7 +102,7 @@ each (the per-node fan-out). The per-node steps name their pool as `${POOL}` (th
 `db`) and the label key as `easydblab/${KIT_NAME}`, so the node query finding `easydblab/tooling-qa`
 on the db nodes shows the step fields were interpolated on the real run. `start` installs podinfo with the values file on stdin (`--values -`, replicaCount 2) and
 `ui.message=tooling qa`, applies the kustomization, applies the three ConfigMaps, and both waits
-pass. `status` (the kit status command: `helm status` of the runtime release, then its pods) reports
+pass. `status` (the kit status command: `HelmService.releaseExists`, which runs `helm list -f '^<release>$' --all -q` for the runtime release, then lists its pods) reports
 `Running (2/2 pods ready)`. The node query lists all three db nodes, and each db node has the data
 directory.
 

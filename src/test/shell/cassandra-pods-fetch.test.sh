@@ -132,9 +132,20 @@ run_fetch
 check "another version's tree is kept, so a rollback is a cache hit" '[ -f "${WORK}/cache/sha256-${OTHER_SHA}/.complete" ]'
 
 reset
+mkdir -p "${WORK}/cache/.fetch-${SHA}.AbC123/extract" "${WORK}/cache/.fetch-${OTHER_SHA}.XyZ789"
+echo partial > "${WORK}/cache/.fetch-${SHA}.AbC123/tarball.tgz"
+run_fetch
+check "an interrupted fetch's work directories are removed at the next start" '[ "$status" -eq 0 ] && [ "$(ls -A "${WORK}/cache")" = "sha256-${SHA}" ]'
+
+mkdir -p "${WORK}/cache/.fetch-${SHA}.Left01"
+rm -f "${WORK}/curl.calls"
+run_fetch
+check "a cache hit removes them too, with no download" '[ "$status" -eq 0 ] && [ "$(calls)" -eq 0 ] && [ "$(ls -A "${WORK}/cache")" = "sha256-${SHA}" ]'
+
+reset
 PRESIGNED="https://bucket.s3.example/b.tgz?X-Amz-Expires=604800&X-Amz-Signature=abc"
 run_fetch EDL_TARBALL_URL="${PRESIGNED}" EDL_TARBALL_FALLBACK_URL="" STUB_FAIL_URLS="${PRESIGNED}" STUB_FAIL_CODE=403
-check "an expired presigned URL names the expiry and the fix" '[ "$status" -ne 0 ] && [[ "$output" == *"604800"* && "$output" == *"upgrade"* ]]'
+check "an expired presigned URL names the expiry and the fix" '[ "$status" -ne 0 ] && [[ "$output" == *"604800"* && "$output" == *"upgrade"* && "$output" == *"stop"*"start"* ]]'
 check "the error does not print the signature" '[[ "$output" != *"X-Amz-Signature=abc"* ]]'
 
 reset

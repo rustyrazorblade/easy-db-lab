@@ -6,7 +6,8 @@
 # rollback to an earlier version) reuses it. Otherwise the tarball is downloaded into a temporary
 # directory on the claim (from EDL_TARBALL_URL, then EDL_TARBALL_FALLBACK_URL), checked against
 # EDL_TARBALL_SHA256, extracted there, marked, and renamed into place: a failure at any step
-# leaves no tree under the final name. Older trees are never removed.
+# leaves no tree under the final name. Older trees are never removed; an interrupted fetch's
+# work directory (`.fetch-*`) is removed at the next start.
 #
 # POSIX sh: the runtime image runs it under /bin/sh. Tested by
 # src/test/shell/cassandra-pods-fetch.test.sh (./gradlew testCassandraPodsFetch).
@@ -32,6 +33,10 @@ case "${sha}" in
 esac
 [ "${#sha}" -eq 64 ] || fail "EDL_TARBALL_SHA256 '${sha}' is not 64 hex characters"
 
+# Work directories an interrupted fetch left (a killed container never runs its EXIT trap). The claim
+# is this pod's alone and its one fetch runs before Cassandra, so any work directory now is stale.
+rm -rf "${cache}"/.fetch-*
+
 tree="${cache}/sha256-${sha}"
 if [ -f "${tree}/.complete" ]; then
   echo "Cassandra $(shown "${url}") is cached at ${tree}."
@@ -53,7 +58,7 @@ if ! download "${url}"; then
       expires="${url#*X-Amz-Expires=}"
       expires="${expires%%&*}"
       [ -n "${fallback}" ] ||
-        fail "could not download $(shown "${url}") (${reason}). The presigned URL is valid for ${expires}s after the start or upgrade that signed it, and may have expired: run 'cassandra-pods upgrade' or 'cassandra-pods start' again to sign a new one."
+        fail "could not download $(shown "${url}") (${reason}). The presigned URL is valid for ${expires}s after the start or upgrade that signed it, and may have expired: run 'cassandra-pods upgrade' again, or 'cassandra-pods stop' then 'cassandra-pods start', to sign a new one."
       ;;
   esac
   [ -n "${fallback}" ] || fail "could not download $(shown "${url}"): ${reason}"

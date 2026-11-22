@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -70,6 +72,34 @@ class WriteConfigTest : BaseKoinTest() {
         assertThat(content).contains("test-cluster")
         assertThat(content).contains("10.0.1.1")
         configFile.delete()
+    }
+
+    @Test
+    fun `execute writes the common keys and the VM placement, exactly as before`() {
+        WriteConfig().execute()
+
+        val configFile = File(context.workingDirectory, "cassandra.patch.yaml")
+        val yaml = ObjectMapper(YAMLFactory()).readTree(configFile)
+        configFile.delete()
+
+        assertThat(yaml.fieldNames().asSequence().toSet()).containsExactlyInAnyOrder(
+            "cluster_name",
+            "num_tokens",
+            "seed_provider",
+            "hints_directory",
+            "data_file_directories",
+            "commitlog_directory",
+            "concurrent_reads",
+            "concurrent_writes",
+            "trickle_fsync",
+            "endpoint_snitch",
+        )
+        assertThat(yaml["num_tokens"].asInt()).isEqualTo(4)
+        assertThat(yaml["seed_provider"]["class_name"].asText()).isEqualTo("org.apache.cassandra.locator.SimpleSeedProvider")
+        assertThat(yaml["seed_provider"]["parameters"]["seeds"].asText()).isEqualTo("10.0.1.1")
+        assertThat(yaml["data_file_directories"].map { it.asText() }).containsExactly("/mnt/db1/cassandra/data")
+        assertThat(yaml["endpoint_snitch"].asText()).isEqualTo("Ec2Snitch")
+        assertThat(yaml["trickle_fsync"].asBoolean()).isTrue()
     }
 
     @Test

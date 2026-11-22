@@ -84,6 +84,7 @@ class KitRequirementTest : BaseKoinTest() {
         whenever(mockResolver.listTemplateFiles(source)).thenReturn(emptyList())
         whenever(mockResolver.readInstallYamlContent(source)).thenReturn(null)
         whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.nodeAllocatable(any())).thenReturn(Result.success(emptyList()))
     }
 
     /** A cluster whose only recorded host is the control node, so any pool comes from Kubernetes. */

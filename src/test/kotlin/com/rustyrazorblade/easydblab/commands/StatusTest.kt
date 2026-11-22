@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterStatus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
@@ -51,6 +52,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
@@ -94,7 +96,7 @@ class StatusTest : BaseKoinTest() {
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
-                single<ObjectStore> { S3ObjectStore(get(), get()) }
+                single<ObjectStore> { S3ObjectStore(get(), get(), RegionalS3Presigners(AnonymousCredentialsProvider.create())) }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
                 single { CommandFailureReporter(get(), emptyList()) }
                 // Real instance: the scanner only reads the filesystem, so faking it would

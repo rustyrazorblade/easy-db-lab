@@ -4,8 +4,19 @@
 
 ### This is automatically appended to the end of every cassandra.in.sh
 
+# Every value below that a VM hardcodes can be overridden from the environment, because the
+# cassandra-pods kit sources this same file in each pod, where none of the VM paths exist:
+#   ECL_AGENTS_LIB                      the agents library (VM: /usr/local/lib/...)
+#   EDL_CASSANDRA_BUILD                 the build label (VM: the target of /usr/local/cassandra/current)
+#   EDL_OTLP_ENDPOINT                   the collector (VM: http://localhost:4318)
+#   EDL_CASSANDRA_LOG_DIR               the log directory (VM: chosen by user, below)
+#   EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES  appended to the resource attributes set here, so a pod's
+#                                       host.name survives: -Dotel.resource.attributes overrides
+#                                       OTEL_RESOURCE_ATTRIBUTES rather than merging with it.
+# With none set (every VM) the JVM options are exactly what they were.
+
 # Agent and JDK helpers. Pure functions, unit tested in packer/cassandra/lib.
-ECL_AGENTS_LIB="/usr/local/lib/edl-cassandra-agents.sh"
+ECL_AGENTS_LIB="${ECL_AGENTS_LIB:-/usr/local/lib/edl-cassandra-agents.sh}"
 if [ -f "$ECL_AGENTS_LIB" ]; then
     # shellcheck disable=SC1090
     . "$ECL_AGENTS_LIB"
@@ -60,11 +71,17 @@ EDL_OTEL_JMX_CONFIG="${EDL_OTEL_JMX_CONFIG:-/etc/easy-db-lab/cassandra-jmx-rules
 # ReleaseVersion off the StorageService MBean is NOT used for this. It reports 5.0.9 against
 # 5.0.9-SNAPSHOT here, which separates stock from branch but collapses every branch build into one
 # value - two different branches under test would be indistinguishable.
-EDL_CASSANDRA_BUILD=$(basename "$(readlink -f /usr/local/cassandra/current 2>/dev/null)" 2>/dev/null)
-if [ -z "$EDL_CASSANDRA_BUILD" ]; then
-    EDL_CASSANDRA_BUILD="unknown"
-    echo "WARNING: could not read the target of /usr/local/cassandra/current;" >&2
-    echo "WARNING: this node reports cassandra_build=unknown and will not group with its variant." >&2
+if [ -z "${EDL_CASSANDRA_BUILD:-}" ]; then
+    EDL_CASSANDRA_BUILD=$(basename "$(readlink -f /usr/local/cassandra/current 2>/dev/null)" 2>/dev/null)
+    if [ -z "$EDL_CASSANDRA_BUILD" ]; then
+        EDL_CASSANDRA_BUILD="unknown"
+        echo "WARNING: could not read the target of /usr/local/cassandra/current;" >&2
+        echo "WARNING: this node reports cassandra_build=unknown and will not group with its variant." >&2
+    fi
+fi
+EDL_OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$(hostname),node_role=db,cassandra_build=${EDL_CASSANDRA_BUILD}"
+if [ -n "${EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES:-}" ]; then
+    EDL_OTEL_RESOURCE_ATTRIBUTES="${EDL_OTEL_RESOURCE_ATTRIBUTES},${EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES}"
 fi
 
 if [ -f "$EDL_OTEL_AGENT_JAR" ]; then
@@ -79,8 +96,8 @@ if [ -f "$EDL_OTEL_AGENT_JAR" ]; then
     edl_add_jvm_extra_opt \
         "-javaagent:${EDL_OTEL_AGENT_JAR}" \
         "-Dotel.service.name=cassandra" \
-        "-Dotel.resource.attributes=service.instance.id=$(hostname),node_role=db,cassandra_build=${EDL_CASSANDRA_BUILD}" \
-        "-Dotel.exporter.otlp.endpoint=http://localhost:4318" \
+        "-Dotel.resource.attributes=${EDL_OTEL_RESOURCE_ATTRIBUTES}" \
+        "-Dotel.exporter.otlp.endpoint=${EDL_OTLP_ENDPOINT:-http://localhost:4318}" \
         "-Dotel.metric.export.interval=5s" \
         "-Dotel.jmx.discovery.delay=5000"
 
@@ -150,7 +167,9 @@ if [ -n "${EDL_AXONOPS_AGENT:-}" ]; then
 fi
 
 # Set log directory based on user
-if [ "$(whoami)" = "cassandra" ]; then
+if [ -n "${EDL_CASSANDRA_LOG_DIR:-}" ]; then
+    CASSANDRA_LOG_DIR="$EDL_CASSANDRA_LOG_DIR"
+elif [ "$(whoami)" = "cassandra" ]; then
     CASSANDRA_LOG_DIR="/mnt/db1/cassandra/logs"
 else
     CASSANDRA_LOG_DIR="$HOME/logs"

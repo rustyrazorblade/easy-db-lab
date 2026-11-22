@@ -64,6 +64,16 @@ class CassandraBuildCatalog(
      */
     fun tarballUri(manifest: CassandraBuildManifest): String = uriOf(buildDir(manifest.name).resolve(manifest.tarball))
 
+    /**
+     * The build's tarball as a presigned `https` URL valid for [ttl], for a cassandra-pods pod: a
+     * pod off AWS has no instance profile to read `s3://` with. Its fetch does not depend on the URL
+     * ending in `.tar.gz`.
+     */
+    fun presignedTarballUrl(
+        manifest: CassandraBuildManifest,
+        ttl: java.time.Duration,
+    ): String = objectStore.presignedGetUrl(buildDir(manifest.name).resolve(manifest.tarball), ttl)
+
     /** [path] as the store spells it: the form nodes install a build from, and the one shown to the user. */
     fun uriOf(path: ClusterStoragePath): String = objectStore.uriOf(path)
 

@@ -1,3 +1,19 @@
+# The tarball URLs, apart from the pod template: the catalog resolver signs a new URL on every
+# start and upgrade, and a URL in the template would roll every pod each time. A pod reads the
+# current URLs when it starts, so one rescheduled after an upgrade gets the newly signed one.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cassandra-pods-artifact
+  namespace: default
+  labels:
+    app: cassandra-pods
+    easydblab/kit: cassandra-pods
+type: Opaque
+stringData:
+  EDL_TARBALL_URL: "@EDL_TARBALL_URL@"
+  EDL_TARBALL_FALLBACK_URL: "@EDL_TARBALL_FALLBACK_URL@"
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -11,8 +27,11 @@ metadata:
 spec:
   replicas: __CASSANDRA_NODES__
   serviceName: cassandra-pods-gossip
-  # Nodes join one at a time: Cassandra does not support concurrent bootstraps.
+  # Nodes join one at a time (Cassandra does not support concurrent bootstraps), and an upgrade
+  # restarts them one at a time, each waiting for the previous one to serve CQL again.
   podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
   selector:
     matchLabels:
       app: cassandra-pods
@@ -21,6 +40,11 @@ spec:
       labels:
         app: cassandra-pods
         easydblab/kit: cassandra-pods
+      annotations:
+        # The ConfigMap's content and the artifact (lib/apply-statefulset.sh fills it from the
+        # cassandra-artifact contributor), so an upgrade with a patch edit or a new tarball rolls
+        # the pods and one with nothing changed rolls nothing. start refuses a running kit.
+        easydblab/config-hash: "@EDL_CONFIG_HASH@"
     spec:
       terminationGracePeriodSeconds: 120
       nodeSelector: __DB_NODE_SELECTOR__
@@ -31,47 +55,113 @@ spec:
               labelSelector:
                 matchLabels:
                   app: cassandra-pods
-      # The OpenTelemetry Java agent comes from a pinned, multi-arch image, not from a host path,
-      # so this works on any node. The image is the one Kotlin uses (JavaAgent.OTEL).
+      # uid 999 is the cassandra user of the cassandra-runtime image (and of the AMI); fsGroup makes
+      # the claim writable by it. Every container meets Pod Security "restricted".
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
+        # The OpenTelemetry Java agent comes from a pinned, multi-arch image, not from a host path,
+        # so this works on any node. The image is the one Kotlin uses (JavaAgent.OTEL).
         - name: otel-agent
           image: "__OTEL_AGENT_IMAGE__"
           imagePullPolicy: IfNotPresent
           command: ["cp", "/javaagent.jar", "/agents/opentelemetry-javaagent.jar"]
+          resources: {} # @EDL_INIT_RESOURCES@
           securityContext:
-            runAsNonRoot: true
             runAsUser: 65532
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            seccompProfile:
-              type: RuntimeDefault
           volumeMounts:
             - name: java-agents
               mountPath: /agents
+        # Puts the tarball into the claim's cache, checked against its sha256; a cached tree is
+        # used with no network call.
+        - name: cassandra-fetch
+          image: "@EDL_RUNTIME_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/edl/config/fetch-tarball.sh"]
+          env:
+            # From the artifact Secret above, so a re-signed URL changes nothing in this template.
+            - name: EDL_TARBALL_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-pods-artifact
+                  key: EDL_TARBALL_URL
+            - name: EDL_TARBALL_FALLBACK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-pods-artifact
+                  key: EDL_TARBALL_FALLBACK_URL
+            - name: EDL_TARBALL_SHA256
+              value: "@EDL_TARBALL_SHA256@"
+            - name: EDL_CASSANDRA_BUILD
+              value: "@EDL_CASSANDRA_BUILD@"
+            - name: EDL_ARTIFACT_CACHE
+              value: /var/lib/cassandra/.edl/artifacts
+            - name: EDL_CASSANDRA_HOME
+              value: /var/lib/cassandra/.edl/artifacts/sha256-@EDL_TARBALL_SHA256@
+          resources: {} # @EDL_INIT_RESOURCES@
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+            - name: config
+              mountPath: /edl/config
+              readOnly: true
+        # Builds this pod's cassandra.yaml with the VM path's merge (tarball, workspace patch,
+        # placement, the pod's addresses), plus cassandra.in.sh and the rackdc file.
+        - name: cassandra-render
+          image: "@EDL_RUNTIME_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/edl/config/render-config.sh"]
+          env:
+            - name: EDL_CASSANDRA_HOME
+              value: /var/lib/cassandra/.edl/artifacts/sha256-@EDL_TARBALL_SHA256@
+            - name: CASSANDRA_CONF
+              value: /edl/conf
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          resources: {} # @EDL_INIT_RESOURCES@
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+              readOnly: true
+            - name: config
+              mountPath: /edl/config
+              readOnly: true
+            - name: conf
+              mountPath: /edl/conf
       containers:
         - name: cassandra
-          # start resolves --image (or cassandra:<--version>) and writes the resolved manifest.
-          image: "@RESOLVED_IMAGE@"
+          image: "@EDL_RUNTIME_IMAGE@"
           imagePullPolicy: IfNotPresent
-          # The image's entrypoint maps CASSANDRA_* variables onto cassandra.yaml, but not the
-          # native port, so it is set here before the entrypoint runs.
+          # cassandra-env.sh sizes the heap from the host's memory (free -m), not the container
+          # limit, so the heap is always set here. --heap, validated at start to fit inside
+          # --memory, wins; otherwise half the limit, leaving the rest for off-heap memory,
+          # metaspace and the agent. The young generation is a quarter of the heap, in MiB.
           command:
             - sh
             - -c
             - |
-              sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
-              # An image whose cassandra.yaml lacks the line (or comments it out) would keep 9042
-              # while the Service targets 30942, and only the readiness probe would ever show it.
-              if ! grep -q '^native_transport_port: 30942$' /etc/cassandra/cassandra.yaml; then
-                echo "ERROR: /etc/cassandra/cassandra.yaml has no 'native_transport_port:' line to set; expected 'native_transport_port: 30942' after the edit." >&2
-                exit 1
-              fi
-              # The image's cassandra-env.sh sizes the heap from the host's memory (free -m), not the
-              # container limit, so the heap is always set here. --heap, validated at start to fit
-              # inside --memory, wins; otherwise half the limit, leaving the rest for off-heap
-              # memory, metaspace and the agent. The young generation is a quarter of the heap, in
-              # MiB (a G heap would otherwise divide to 0G).
               if [ -n "$CASSANDRA_HEAP" ]; then
                 size="${CASSANDRA_HEAP%[GgMm]}"
                 case "$CASSANDRA_HEAP" in
@@ -84,16 +174,34 @@ spec:
               newsize=$((heap_mib / 4))
               [ "$newsize" -ge 1 ] || newsize=1
               export MAX_HEAP_SIZE="${heap_mib}M" HEAP_NEWSIZE="${newsize}M"
-              exec docker-entrypoint.sh cassandra -f
+              exec "$EDL_CASSANDRA_HOME/bin/cassandra" -f
           env:
-            - name: CASSANDRA_CLUSTER_NAME
-              value: "__CLUSTER_NAME__"
-            - name: CASSANDRA_DC
-              value: "__CASSANDRA_DC__"
-            - name: CASSANDRA_RACK
-              value: rack1
-            - name: CASSANDRA_ENDPOINT_SNITCH
-              value: GossipingPropertyFileSnitch
+            - name: EDL_TARBALL_SHA256
+              value: "@EDL_TARBALL_SHA256@"
+            - name: EDL_CASSANDRA_BUILD
+              value: "@EDL_CASSANDRA_BUILD@"
+            - name: EDL_CASSANDRA_HOME
+              value: /var/lib/cassandra/.edl/artifacts/sha256-@EDL_TARBALL_SHA256@
+            - name: CASSANDRA_HOME
+              value: /var/lib/cassandra/.edl/artifacts/sha256-@EDL_TARBALL_SHA256@
+            - name: CASSANDRA_CONF
+              value: /edl/conf
+            # The rendered cassandra.in.sh: the tarball's own, then the packer snippet, which reads
+            # the overrides below in place of the VM paths.
+            - name: CASSANDRA_INCLUDE
+              value: /edl/conf/cassandra.in.sh
+            - name: ECL_AGENTS_LIB
+              value: /edl/config/edl-cassandra-agents.sh
+            - name: EDL_OTEL_AGENT_JAR
+              value: /edl/agents/opentelemetry-javaagent.jar
+            - name: EDL_OTEL_JMX_CONFIG
+              value: /etc/edl-jmx/cassandra-jmx-rules.yaml
+            # The core collector Service on port 4318, its OTLP http/protobuf receiver and the
+            # agent's default protocol. The Service keeps the traffic on this pod's node.
+            - name: EDL_OTLP_ENDPOINT
+              value: "__OTEL_OTLP_HTTP_ENDPOINT__"
+            - name: EDL_CASSANDRA_LOG_DIR
+              value: /var/lib/cassandra/logs
             - name: CASSANDRA_HEAP
               value: "__CASSANDRA_HEAP__"
             # The container's own memory limit in MiB, for the default heap.
@@ -103,79 +211,54 @@ spec:
                   containerName: cassandra
                   resource: limits.memory
                   divisor: 1Mi
-            # Pod 0 is the seed, reached by its stable DNS name.
-            - name: CASSANDRA_SEEDS
-              value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
-            # HOST_IP must precede the variables that reference it.
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            # Clients dial the node: the node IP, and the native port is the NodePort value.
-            - name: CASSANDRA_BROADCAST_RPC_ADDRESS
-              value: "$(HOST_IP)"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # The flags mirror packer/cassandra/cassandra.in.sh. JVM_EXTRA_OPTS, not JVM_OPTS, so
-            # nodetool does not load the agent.
-            - name: JVM_EXTRA_OPTS
-              value: >-
-                -javaagent:/edl/agents/opentelemetry-javaagent.jar
-                -Dotel.jmx.config=/etc/edl-jmx/cassandra-jmx-rules.yaml
-                -Dotel.jmx.discovery.delay=5000
-                -Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true
-                -Dotel.instrumentation.runtime-telemetry.emit-experimental-telemetry=true
-            - name: OTEL_SERVICE_NAME
-              value: cassandra
             # host.name names the node, not the pod, so every signal matches the node-keyed
-            # dashboard filters. NODE_NAME and POD_NAME must precede this variable.
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "host.name=$(NODE_NAME),service.instance.id=$(POD_NAME),node_role=db,cassandra_build=@RESOLVED_BUILD@"
-            # The core collector Service on port 4318, its OTLP http/protobuf receiver and the
-            # agent's default protocol. The Service keeps the traffic on this pod's node.
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "__OTEL_OTLP_HTTP_ENDPOINT__"
-            - name: OTEL_METRIC_EXPORT_INTERVAL
-              value: "5000"
-          # Drain flushes memtables and stops accepting writes before SIGTERM, so stop then start
-          # replays little commit log. The timeout keeps it inside terminationGracePeriodSeconds
-          # (120), and `|| true` is acceptable only because the SIGTERM shutdown hook drains again
-          # right after: a failed or timed-out drain loses nothing.
+            # dashboard filters; the snippet keeps it through EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES.
+            # NODE_NAME must precede this variable.
+            - name: EDL_OTEL_EXTRA_RESOURCE_ATTRIBUTES
+              value: "host.name=$(NODE_NAME)"
+          # Drain flushes memtables and stops accepting writes before SIGTERM, so a restart replays
+          # little commit log. The timeout keeps it inside terminationGracePeriodSeconds (120), and
+          # `|| true` is acceptable only because the SIGTERM shutdown hook drains again right after.
           lifecycle:
             preStop:
               exec:
-                command: ["sh", "-c", "timeout 100 nodetool drain || true"]
+                command: ["sh", "-c", "timeout 100 \"$EDL_CASSANDRA_HOME/bin/nodetool\" drain || true"]
           ports:
             - name: cql
               containerPort: 30942
             - name: gossip
               containerPort: 7000
-          # Memory request equals limit, so the scheduler places the pod
-          # only on a node where it fits.
-          resources:
-            requests:
-              memory: "__CASSANDRA_MEMORY__"
-            limits:
-              memory: "__CASSANDRA_MEMORY__"
+          # Memory request equals limit, so the scheduler places the pod only on a node where it
+          # fits. CPU per GUARANTEED_PODS: request equals limit on owned nodes (with every init
+          # container's), so the pod is Guaranteed; elsewhere a request and no CPU limit.
+          resources: {} # @EDL_CASSANDRA_RESOURCES@
           readinessProbe:
             exec:
               command:
                 - sh
                 - -c
-                - nodetool statusbinary | grep -qx running
+                - '"$EDL_CASSANDRA_HOME/bin/nodetool" statusbinary | grep -qx running'
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 10
             failureThreshold: 60
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/cassandra
+            - name: conf
+              mountPath: /edl/conf
+              readOnly: true
+            - name: config
+              mountPath: /edl/config
+              readOnly: true
             - name: java-agents
               mountPath: /edl/agents
               readOnly: true
@@ -185,6 +268,11 @@ spec:
       volumes:
         - name: java-agents
           emptyDir: {}
+        - name: conf
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: cassandra-pods-config
         - name: jmx-rules
           configMap:
             name: cassandra-pods-jmx-rules

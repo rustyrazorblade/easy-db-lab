@@ -58,7 +58,14 @@ class KitInstallCommandTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 // One node matches every role selector, as on an AWS cluster with one node per role.
-                single { RoleNodes(mock<K8sService> { on { nodesMatching(any()) } doReturn Result.success(listOf("node0")) }) }
+                single {
+                    RoleNodes(
+                        mock<K8sService> {
+                            on { nodesMatching(any()) } doReturn Result.success(listOf("node0"))
+                            on { nodeAllocatable(any()) } doReturn Result.success(emptyList())
+                        },
+                    )
+                }
                 single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
                 single {

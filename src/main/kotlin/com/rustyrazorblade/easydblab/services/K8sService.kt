@@ -56,6 +56,9 @@ interface K8sManifestOperations {
 
     /** The names of the nodes that carry every one of [labels]; every node when [labels] is empty. */
     fun nodesMatching(labels: Map<String, String>): Result<List<String>>
+
+    /** What each node carrying every one of [labels] can give its pods; every node when [labels] is empty. */
+    fun nodeAllocatable(labels: Map<String, String>): Result<List<NodeAllocatable>>
 }
 
 /**

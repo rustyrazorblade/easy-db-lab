@@ -4,11 +4,13 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 
@@ -48,7 +50,10 @@ class TenantDirectoryIntegrationTest {
 
     @Test
     fun `the tenant directories under mimir are the tenants, with the home tenant added`() {
-        val tenants = TenantDirectory(S3ObjectStore(s3, EventBus())).list(ObservabilityStore(BUCKET, "lab"))
+        val tenants =
+            TenantDirectory(
+                S3ObjectStore(s3, EventBus(), RegionalS3Presigners(AnonymousCredentialsProvider.create())),
+            ).list(ObservabilityStore(BUCKET, "lab"))
 
         assertThat(tenants).isEqualTo(TenantSet("lab", listOf("acme", "lab", "zeta")))
     }

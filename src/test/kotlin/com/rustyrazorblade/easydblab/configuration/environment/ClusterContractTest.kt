@@ -282,6 +282,7 @@ class ClusterContractTest {
                     namespace = "default",
                     recordedDatacenter = "us-east-1",
                     clientNetworkOrigin = ClientNetworkOrigin.BuiltNetworks,
+                    guaranteedPods = true,
                 ),
             )
 
@@ -307,6 +308,7 @@ class ClusterContractTest {
                     namespace = "default",
                     recordedDatacenter = "dc1",
                     clientNetworkOrigin = ClientNetworkOrigin.Recorded,
+                    guaranteedPods = false,
                 ),
             )
 
@@ -332,6 +334,7 @@ class ClusterContractTest {
                     namespace = "default",
                     recordedDatacenter = "dc1",
                     clientNetworkOrigin = ClientNetworkOrigin.Recorded,
+                    guaranteedPods = false,
                 ),
             )
     }

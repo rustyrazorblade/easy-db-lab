@@ -20,7 +20,6 @@ import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import io.fabric8.kubernetes.client.dsl.ExecListener
-import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -172,17 +171,14 @@ class CassandraPodsKitIntegrationTest {
     /** The kit's manifests as `start` applies them: rendered, then the resolved image filled in. */
     private fun renderedKitObjects(): List<HasMetadata> {
         val args = mapOf("CASSANDRA_NODES" to "1")
-        return listOf("headless-service.yaml.template", "nodeport-service.yaml.template", "statefulset.yaml.template")
-            .flatMap { fixture.render(it, args) }
-            .map { obj ->
-                // Same fill-in apply-statefulset.sh does after the start check resolves the image.
-                val yaml =
-                    Serialization
-                        .asYaml(obj)
-                        .replace("@RESOLVED_IMAGE@", CASSANDRA_IMAGE)
-                        .replace("@RESOLVED_BUILD@", "5.0")
-                Serialization.unmarshal(yaml, HasMetadata::class.java)
-            }
+        // The same fill-in apply-statefulset.sh does for --image, after the start check resolves the image.
+        return listOf("headless-service.yaml.template", "nodeport-service.yaml.template").flatMap { fixture.render(it, args) } +
+            fixture.renderFilled(
+                "statefulset-image.yaml.template",
+                args,
+                strings = mapOf("RESOLVED_IMAGE" to CASSANDRA_IMAGE, "RESOLVED_BUILD" to "5.0"),
+                yaml = KitPodResources.LOCAL,
+            )
     }
 
     private fun start() {

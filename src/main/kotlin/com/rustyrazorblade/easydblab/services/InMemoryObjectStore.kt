@@ -168,4 +168,10 @@ class InMemoryObjectStore(
     override fun directoryExists(remotePath: ClusterStoragePath): Boolean = listFiles(remotePath, recursive = true).isNotEmpty()
 
     override fun uriOf(path: ClusterStoragePath): String = "mem://${path.bucket}/${path.getKey()}"
+
+    /** A fake signed URL naming the object and the TTL; nothing serves it. */
+    override fun presignedGetUrl(
+        path: ClusterStoragePath,
+        ttl: java.time.Duration,
+    ): String = "https://mem.invalid/${path.bucket}/${path.getKey()}?expires=${ttl.seconds}"
 }

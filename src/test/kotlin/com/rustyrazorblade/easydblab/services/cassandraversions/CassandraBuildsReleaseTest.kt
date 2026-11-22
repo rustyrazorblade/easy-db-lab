@@ -25,6 +25,24 @@ class CassandraBuildsReleaseTest {
     }
 
     @Test
+    fun `each build carries its tarball asset's GitHub digest`() {
+        val trunk = CassandraBuildsRelease.parse(json).single { it.ref == "trunk" }
+
+        assertThat(trunk.digest).matches("sha256:[0-9a-f]{64}")
+        assertThat(TarballDigests.github(trunk.digest, trunk.url).hex).isEqualTo(trunk.digest?.removePrefix("sha256:"))
+    }
+
+    @Test
+    fun `an asset with no digest gives a build with none, which resolution refuses`() {
+        val noDigest =
+            """
+            {"assets": [{"name": "apache-cassandra-trunk-bin.tar.gz", "browser_download_url": "https://h/t.tgz", "digest": null}]}
+            """.trimIndent()
+
+        assertThat(CassandraBuildsRelease.parse(noDigest).single().digest).isNull()
+    }
+
+    @Test
     fun `a manifest asset beside a tarball is linked to it, and a stray asset is ignored`() {
         val withManifest =
             """

@@ -100,6 +100,7 @@ class KitEndToEndTest : BaseKoinTest() {
     fun setup() {
         // One node matches every role selector, as on an AWS cluster with one node per role.
         whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("node0")))
+        whenever(mockK8sService.nodeAllocatable(any())).thenReturn(Result.success(emptyList()))
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory

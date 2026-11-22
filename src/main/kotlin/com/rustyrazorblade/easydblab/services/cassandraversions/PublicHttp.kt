@@ -5,7 +5,9 @@ import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.ResponseBody
 import java.io.IOException
+import java.io.InputStream
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +31,7 @@ class HttpStatusException(
 class PublicHttp(
     private val client: OkHttpClient = defaultClient(),
     private val retryConfig: RetryConfig = retryConfig(),
-) {
+) : ChecksumHttp {
     /**
      * The body at [url], or null when the server answers 404.
      *
@@ -37,12 +39,24 @@ class PublicHttp(
      * @throws TransientHttpStatusException when every attempt got a 5xx or 429
      * @throws HttpStatusException on any other non-success answer
      */
-    fun getOrNull(url: String): String? {
-        val retry = Retry.of("public-http", retryConfig)
-        return Retry.decorateCheckedSupplier(retry) { fetch(url) }.get()
-    }
+    override fun getOrNull(url: String): String? = withRetry { fetch(url) { body -> body.string() } }
 
-    private fun fetch(url: String): String? {
+    /**
+     * [read] applied to the body at [url] as a stream, or null when the server answers 404: for a
+     * download too large to hold as text. The same retries and failures as [getOrNull]; a retried
+     * attempt reads from the start again.
+     */
+    override fun <T> streamOrNull(
+        url: String,
+        read: (InputStream) -> T,
+    ): T? = withRetry { fetch(url) { body -> body.byteStream().use(read) } }
+
+    private fun <T> withRetry(call: () -> T?): T? = Retry.decorateCheckedSupplier(Retry.of("public-http", retryConfig)) { call() }.get()
+
+    private fun <T> fetch(
+        url: String,
+        read: (ResponseBody) -> T,
+    ): T? {
         val request =
             Request
                 .Builder()
@@ -52,7 +66,7 @@ class PublicHttp(
                 .build()
         return client.newCall(request).execute().use { response ->
             when {
-                response.isSuccessful -> response.body.string()
+                response.isSuccessful -> read(response.body)
                 response.code == Constants.HttpStatus.NOT_FOUND -> null
                 response.code == Constants.HttpStatus.TOO_MANY_REQUESTS || response.code >= Constants.HttpStatus.SERVER_ERROR_MIN ->
                     throw TransientHttpStatusException(url, response.code)

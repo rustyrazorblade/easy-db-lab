@@ -101,6 +101,44 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 If no typed steps are defined for a phase and a matching script exists in `bin/` (e.g.
 `bin/start.sh`), the script is executed instead.
 
+### Variable contributors
+
+A kit can name Kotlin contributors that compute variables and files before its steps run:
+
+```yaml
+contributors: [cassandra-artifact]
+```
+
+Each name must be a `KitVariableContributor` registered in Koin (`Constants.Kit.Contributors.ALL`);
+an unknown name makes the `kit.yaml` invalid. Before `start` and before every command declared under
+`commands:` (never `stop`, `uninstall` or the other phases), the runner calls each contributor in list
+order with the kit's resolved args, the cluster state and the kit directory. It writes the files the
+contributor returns into the kit directory and adds its variables to the environment, over the args
+but under the cluster-state variables, so a contributor never replaces a cluster value. A contributor
+that throws fails the command, with a `Kit.ContributorFailed` event, before any step runs. The
+built-in `cassandra-pods` kit's `cassandra-artifact` resolves the Cassandra tarball, the runtime
+image, the sizing defaults and the config hash this way.
+
+### Commands that record an arg
+
+A declared command can change an install arg for good, so a later `start` sees the new value:
+
+```yaml
+commands:
+  upgrade:
+    records: [CASSANDRA_VERSION, CASSANDRA_BUILD]
+    args:
+      - flag: --version
+        variable: CASSANDRA_VERSION
+      - flag: --build
+        variable: CASSANDRA_BUILD
+```
+
+Every `records` entry must be an install arg. When the command succeeds and was given a value for any
+of them, the runner rewrites each recorded arg it parsed in the kit's resolved args, an empty one
+included (an `upgrade --version` clears a recorded `--build`), and keeps every other arg. A failed
+command records nothing.
+
 ## Step Types
 
 All phases use the same set of typed steps.
@@ -539,9 +577,15 @@ Both images must be in their registry before a pod can load the agent.
 `JavaAgentImagesPublishedIntegrationTest` asks the registry for each `JavaAgent` image and fails
 for any image it does not have. The Pyroscope image is built from `docker/pyroscope-java-agent/` by
 the `publish-pyroscope-agent` job of `publish-container.yml`. That job runs on a tag push, after PR
-Checks pass on main, or by manual dispatch, so a branch that changes the agent version can publish
-the image before it merges. When you bump `Constants.PyroscopeJavaAgent.VERSION`, dispatch the
-workflow on that branch.
+Checks pass on main, or by manual dispatch, on main or on any other branch, so a branch that changes
+the agent version can publish its image before it merges. When you bump
+`Constants.PyroscopeJavaAgent.VERSION`, dispatch the workflow on that branch;
+`JavaAgentImagesPublishedIntegrationTest` fails for the new tag until you do.
+
+The `publish-cassandra-runtime` job is stricter: a dispatch pushes the runtime image only when it
+runs on main, and on any other branch it builds and checks the images but publishes nothing. Its
+integration tests build the image locally, so a branch that bumps the runtime revision does not
+need it published.
 
 An agent upgrade changes `PYROSCOPE_VERSION` and `PYROSCOPE_SHA256` in the Dockerfile together,
 and `Constants.PyroscopeJavaAgent.VERSION` to match. The build checks the downloaded jar against

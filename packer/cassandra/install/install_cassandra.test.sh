@@ -62,7 +62,7 @@ for expected in \
   "sudo mkdir -p /usr/local/cassandra" \
   "uv tool install cqlsh" \
   "sudo install -D -m 0644 /tmp/cassandra.in.sh /usr/local/share/easy-db-lab/cassandra.in.sh" \
-  "sudo install -D -m 0644 /tmp/edl-cassandra-agents.sh /usr/local/lib/edl-cassandra-agents.sh"; do
+  "sudo install -D -m 0644 /tmp/edl-cassandra-agents.sh /usr/local/lib/edl-cassandra-agents.sh" "sudo install -D -m 0644 /tmp/edl-cassandra-config.sh /usr/local/lib/edl-cassandra-config.sh"; do
   if grep -qxF "$expected" <<<"$calls"; then pass "runs: $expected"; else fail "did not run: $expected"; fi
 done
 

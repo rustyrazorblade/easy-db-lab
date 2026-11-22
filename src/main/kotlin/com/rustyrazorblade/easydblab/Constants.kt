@@ -582,6 +582,12 @@ object Constants {
         /** Prefix for all easy-db-lab S3 buckets */
         const val BUCKET_PREFIX = "easy-db-lab-"
 
+        /** The longest a SigV4 presigned URL may last, in days. */
+        const val MAX_PRESIGN_TTL_DAYS = 7L
+
+        /** The longest a SigV4 presigned URL may last. */
+        val MAX_PRESIGN_TTL: java.time.Duration = java.time.Duration.ofDays(MAX_PRESIGN_TTL_DAYS)
+
         /** Prefix for per-cluster data buckets */
         const val DATA_BUCKET_PREFIX = "easy-db-lab-data-"
 
@@ -1290,10 +1296,83 @@ object Constants {
                 "docker.io/pingwinator/sysbench@sha256:2e228d83c09be6c95b629015cb375ce0e78a95b4f3d9e6dd6ee304ffb95ced5f"
         }
 
+        /**
+         * The kit variable contributors a `kit.yaml` may name under `contributors:`. A name outside
+         * [ALL] fails when the kit is parsed; `KitVariableContributorBindingTest` keeps [ALL] equal to
+         * the contributors registered in Koin.
+         */
+        object Contributors {
+            /** Resolves the cassandra-pods kit's tarball, config patches and resource defaults. */
+            const val CASSANDRA_ARTIFACT = "cassandra-artifact"
+
+            val ALL: Set<String> = setOf(CASSANDRA_ARTIFACT)
+        }
+
         /** The `cassandra-pods` kit's CQL NodePort. The UN wait bound lives in `lib/wait-un.sh`. */
         object CassandraPods {
             /** NodePort and native transport port; no other kit uses it. */
             const val CQL_NODE_PORT = 30942
+
+            /**
+             * How long a catalog build's presigned tarball URL stays valid. It is the SigV4 maximum
+             * on purpose: the URL is only needed by a pod with a cold cache (a new node, or a pod
+             * rescheduled onto an empty claim), which can happen at any point in a cluster's life, and
+             * a longer life only widens how long such a pod can still start. Nothing is gained by a
+             * shorter one: the URL grants a read of one object, the operator's own build, and it sits
+             * in the kit's Secret on a throwaway cluster. A pod started later fails its fetch, naming
+             * the expiry; `upgrade` again, or `stop` then `start`, signs a new one. A URL signed with
+             * temporary credentials ends when they do, whichever comes first.
+             */
+            val PRESIGN_TTL: java.time.Duration = java.time.Duration.ofDays(S3.MAX_PRESIGN_TTL_DAYS)
+
+            /** Where on its claim a pod caches extracted tarballs, one `sha256-<hex>/` directory each. */
+            const val ARTIFACT_CACHE_ROOT = ".edl/artifacts"
+
+            /** The multi-arch JRE image from `docker/cassandra-runtime/`, tagged `<rev>-jre<N>`. */
+            const val RUNTIME_IMAGE_REPOSITORY = "ghcr.io/rustyrazorblade/cassandra-runtime"
+
+            /** The `cassandra-runtime` revision the kit runs; bump with the Dockerfile. */
+            const val RUNTIME_IMAGE_REVISION = "1"
+
+            /** The resolved artifact, as sourceable `KEY='value'` lines in the kit directory, for the scripts. */
+            const val ARTIFACT_FILE = "resolved-artifact.env"
+
+            /** The kit's placement patch in the kit directory, merged after the workspace `cassandra.patch.yaml`. */
+            const val PLACEMENT_FILE = "placement.patch.yaml"
+
+            /** The gossiping snitch's DC and rack, in the kit directory. */
+            const val RACKDC_FILE = "cassandra-rackdc.properties"
+
+            /** Every pod's rack until #1097 places pods per rack. */
+            const val RACK = "rack1"
+
+            /** The headless Service that gives each pod a stable DNS name; pod 0 through it is every pod's seed. */
+            const val GOSSIP_SERVICE = "cassandra-pods-gossip"
+
+            /** Pod 0, the seed, as the headless [GOSSIP_SERVICE] names it: `<pod>.<service>`. */
+            const val SEED_POD = "cassandra-pods-0"
+
+            /** `--memory` where pods are not Guaranteed: where the kit README says testing stopped. */
+            const val DEFAULT_MEMORY = "3Gi"
+
+            /** `--memory` on Guaranteed nodes, as a percentage of the smallest db node's allocatable memory. */
+            const val GUARANTEED_MEMORY_PERCENT = 75
+
+            /**
+             * Each init container's CPU on Guaranteed nodes, where requests must equal limits. The
+             * scheduler counts the largest init container, not their sum, beside the cassandra
+             * container, so this does not have to fit next to it.
+             */
+            const val INIT_CONTAINER_CPU = "1"
+
+            /** Each init container's memory on Guaranteed nodes; the fetch streams the tarball through curl and tar. */
+            const val INIT_CONTAINER_MEMORY = "512Mi"
+
+            /** The contributor's variable holding the cassandra container's resources, as JSON (YAML flow). */
+            const val CASSANDRA_RESOURCES_VARIABLE = "EDL_CASSANDRA_RESOURCES"
+
+            /** The contributor's variable holding every init container's resources, as JSON (YAML flow). */
+            const val INIT_RESOURCES_VARIABLE = "EDL_INIT_RESOURCES"
         }
 
         object Presto {
@@ -1733,6 +1812,27 @@ object Constants {
         const val DEFAULT_FLAMEGRAPH_FORMAT = "html"
     }
 
+    /** The values the cassandra.yaml patches carry (`configuration/cassandra/CassandraConfigPatch`). */
+    object CassandraConfig {
+        /** The token count `write-config` defaults to. */
+        const val DEFAULT_TOKENS = 4
+
+        const val CONCURRENT_READS = 64
+        const val CONCURRENT_WRITES = 64
+
+        const val SEED_PROVIDER_CLASS = "org.apache.cassandra.locator.SimpleSeedProvider"
+
+        /** A db node's data disk, mounted by the AMI. */
+        const val VM_DATA_ROOT = "/mnt/db1/cassandra"
+        const val VM_SNITCH = "Ec2Snitch"
+
+        /** A kit pod's claim. */
+        const val POD_DATA_ROOT = "/var/lib/cassandra"
+
+        /** The kit's snitch; the DC and rack come from `cassandra-rackdc.properties`. */
+        const val POD_SNITCH = "GossipingPropertyFileSnitch"
+    }
+
     // Cassandra node configuration
     object Cassandra {
         /** What to use for a Cassandra version switch or install where there are no AWS nodes to SSH into. */
@@ -1763,6 +1863,9 @@ object Constants {
 
         /** Profile subdirectory that caches the ASF and cassandra-builds lists. */
         const val SOURCE_CACHE_DIR = "cassandra-sources"
+
+        /** Read buffer for hashing a tarball download (`TarballDigests`). */
+        const val DIGEST_BUFFER_BYTES = 64 * 1024
 
         /** Node-side directory easy-db-lab writes its own configuration into. */
         const val NODE_CONFIG_DIR = "/etc/easy-db-lab"

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.PackagedExecutable
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.recordedProcess
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowableOfType
@@ -136,7 +137,7 @@ internal class LocalClusterToolingTest {
             assertThat(awaitExit(pid)).describedAs("the tool is still running").isTrue()
         } finally {
             // A tool left running by a failed assertion must not outlive the test.
-            pid?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+            killRecordedTool()
         }
     }
 
@@ -159,7 +160,7 @@ internal class LocalClusterToolingTest {
                 .doesNotContain("s3cret")
             pid?.let { assertThat(awaitExit(it)).describedAs("the tool is still running").isTrue() }
         } finally {
-            pid?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+            killRecordedTool()
         }
     }
 
@@ -171,7 +172,7 @@ internal class LocalClusterToolingTest {
 
         assertThatThrownBy { bounded.run(ClusterTool.KUBECTL, listOf("hang", "-"), stdin = "x".repeat(STDIN_BYTES), echo = false) }
             .isInstanceOf(ClusterToolTimedOutException::class.java)
-        recordedPid()?.let { pid -> ProcessHandle.of(pid).ifPresent { it.destroyForcibly() } }
+        killRecordedTool()
     }
 
     @Test
@@ -251,6 +252,14 @@ internal class LocalClusterToolingTest {
             ?.readText()
             ?.trim()
             ?.toLongOrNull()
+
+    /**
+     * Kills the `hang` stand-in if it is still running. Only the process that wrote `hang.pid` is
+     * signalled: once it has exited, another test's process may hold its PID.
+     */
+    private fun killRecordedTool() {
+        recordedProcess(File(workspace, "hang.pid"), "sleep $HANG_SECONDS")?.destroyForcibly()
+    }
 
     /** The pid the `hang` stand-in wrote before it became `sleep`, once it has written it. */
     private fun awaitPid(file: File): Long {

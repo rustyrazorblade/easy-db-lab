@@ -24,7 +24,6 @@ import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.dsl.ExecListener
-import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -169,16 +168,14 @@ class CassandraPodsAnywhereIntegrationTest {
 
     /** The kit's manifests as `start` applies them: rendered, then the resolved image filled in. */
     private fun renderedKitObjects(): List<HasMetadata> =
-        listOf("headless-service.yaml.template", "nodeport-service.yaml.template", "statefulset.yaml.template")
-            .flatMap { fixture.render(it, mapOf("CASSANDRA_NODES" to "1")) }
-            .map { obj ->
-                val yaml =
-                    Serialization
-                        .asYaml(obj)
-                        .replace("@RESOLVED_IMAGE@", CASSANDRA_IMAGE)
-                        .replace("@RESOLVED_BUILD@", "5.0")
-                Serialization.unmarshal(yaml, HasMetadata::class.java)
-            }
+        listOf("headless-service.yaml.template", "nodeport-service.yaml.template")
+            .flatMap { fixture.render(it, mapOf("CASSANDRA_NODES" to "1")) } +
+            fixture.renderFilled(
+                "statefulset-image.yaml.template",
+                mapOf("CASSANDRA_NODES" to "1"),
+                strings = mapOf("RESOLVED_IMAGE" to CASSANDRA_IMAGE, "RESOLVED_BUILD" to "5.0"),
+                yaml = KitPodResources.LOCAL,
+            )
 
     private fun stressService(): DefaultStressJobService {
         val provider = mock<K8sClientProvider>()

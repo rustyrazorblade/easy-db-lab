@@ -528,8 +528,12 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testPyroscopeAgentPublished",
+        "testCassandraRuntimePlatforms",
         "testKitShellLib",
         "testCassandraPodsStart",
+        "testCassandraPodsUpgrade",
+        "testCassandraPodsFetch",
+        "testCassandraPodsRender",
         "testClickhouseBenchmarkReport",
         "testClickhouseBenchmarkStart",
         "testClickhouseBenchmarkPrepare",
@@ -896,6 +900,15 @@ tasks.register<Exec>("testPyroscopeAgentPublished") {
     commandLine = listOf("bash", ".github/pyroscope-agent/image-published.test.sh")
 }
 
+// Unit-test the publish-cassandra-runtime job's check that a pushed tag holds both linux/amd64
+// and linux/arm64. docker is stubbed; no Docker, no network.
+tasks.register<Exec>("testCassandraRuntimePlatforms") {
+    group = "Verification"
+    description = "Unit-test the cassandra-runtime image platform check"
+    workingDir = file(".")
+    commandLine = listOf("bash", ".github/cassandra-runtime/platforms-present.test.sh")
+}
+
 // Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,
 // source-build guards, JDK selection). sudo/curl/git/dpkg are stubbed; no Docker, no network.
 tasks.register<Exec>("testCassandraInstallScript") {
@@ -972,6 +985,15 @@ tasks.register<Exec>("testCacheLib") {
     commandLine = listOf("bash", "packer/base/install/edl-cache-lib.test.sh")
 }
 
+// Unit-test the shared cassandra.yaml merge (edl-cassandra-config.sh) under a real /bin/sh, and
+// patch-config's contract with UpdateConfig: the success marker and every exit code. Uses the real yq.
+tasks.register<Exec>("testCassandraConfigMerge") {
+    group = "Verification"
+    description = "Unit-test the shared cassandra.yaml merge and patch-config"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/lib/edl-cassandra-config.test.sh")
+}
+
 tasks.register("testCassandraScripts") {
     group = "Verification"
     description = "Run all Cassandra shell script unit tests"
@@ -983,6 +1005,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraSjkGc",
         "testCassandraAgentSelection",
         "testCassandraAxonOpsAgentScript",
+        "testCassandraConfigMerge",
         "testCacheLib",
     )
 }
@@ -1300,6 +1323,13 @@ tasks.named<ProcessResources>("processResources") {
     from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
         into(kitResources)
     }
+    // The VM path's own config merge, agent helpers and cassandra.in.sh snippet, shipped to the
+    // pods in the cassandra-pods-config ConfigMap so both paths render and start Cassandra alike.
+    from("packer/cassandra") {
+        include("lib/edl-cassandra-config.sh", "lib/edl-cassandra-agents.sh", "cassandra.in.sh")
+        eachFile { path = "$kitResources/config/$name" }
+        includeEmptyDirs = false
+    }
 }
 
 tasks.withType<Test>().configureEach {
@@ -1310,10 +1340,33 @@ tasks.withType<Test>().configureEach {
     )
 }
 
+// The cassandra-pods kit's in-pod scripts, run under a real /bin/sh (dash where present): the
+// cassandra-fetch cache (curl stubbed) and the cassandra-render merge (the real yq).
+tasks.register<Exec>("testCassandraPodsFetch") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit's tarball fetch and cache"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/cassandra-pods-fetch.test.sh")
+}
+
+tasks.register<Exec>("testCassandraPodsRender") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit's config render"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/cassandra-pods-render.test.sh")
+}
+
 // Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.
 tasks.register<Exec>("testCassandraPodsStart") {
     group = "Verification"
     description = "Unit-test the cassandra-pods kit start check and UN wait"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-start.test.sh")
+}
+
+tasks.register<Exec>("testCassandraPodsUpgrade") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit upgrade command and its ConfigMap step"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-upgrade.test.sh")
 }

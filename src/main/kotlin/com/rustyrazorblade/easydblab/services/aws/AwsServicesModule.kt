@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Clients
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.providers.aws.S3BucketAdmin
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
@@ -101,6 +102,7 @@ val awsServicesModule =
             S3ObjectStore(
                 get<S3Client>(),
                 get<EventBus>(),
+                get<RegionalS3Presigners>(),
             )
         }
 

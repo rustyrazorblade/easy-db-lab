@@ -27,4 +27,6 @@ class RecordingManifests : K8sManifestOperations {
     ): Result<Unit> = error("not used")
 
     override fun nodesMatching(labels: Map<String, String>): Result<List<String>> = error("not used")
+
+    override fun nodeAllocatable(labels: Map<String, String>): Result<List<NodeAllocatable>> = error("not used")
 }

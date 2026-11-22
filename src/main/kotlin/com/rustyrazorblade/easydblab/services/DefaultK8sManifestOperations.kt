@@ -173,4 +173,16 @@ class DefaultK8sManifestOperations(
                     .map { it.metadata.name }
             }
         }
+
+    override fun nodeAllocatable(labels: Map<String, String>): Result<List<NodeAllocatable>> =
+        runCatching {
+            clientProvider.createClient().use { client ->
+                client
+                    .nodes()
+                    .withLabels(labels)
+                    .list()
+                    .items
+                    .map(NodeAllocatable::of)
+            }
+        }
 }

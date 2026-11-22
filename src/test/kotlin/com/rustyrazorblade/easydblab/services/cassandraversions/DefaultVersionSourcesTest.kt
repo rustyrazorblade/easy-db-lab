@@ -2,6 +2,10 @@ package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CassandraBuildManifest
+import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
+import com.rustyrazorblade.easydblab.services.InMemoryObjectStore
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -13,7 +17,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.component.get
-import org.mockito.kotlin.mock
 import java.io.File
 import java.time.Duration
 
@@ -35,6 +38,8 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
 
     /** URLs that answer 503 on every attempt. */
     private val unavailable = mutableSetOf<String>()
+
+    private val store = InMemoryObjectStore()
 
     private fun sources(): DefaultVersionSources {
         val client =
@@ -64,9 +69,9 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
         return DefaultVersionSources(
             profileDir = profileDir,
             profileBuildDir = File(profileDir, "cassandra_versions"),
-            catalog = mock(),
+            catalog = CassandraBuildCatalog(store, get(), user),
             bucketService = get(),
-            user = get(),
+            user = user,
             http = PublicHttp(client, PublicHttp.retryConfig(Duration.ZERO)),
         )
     }
@@ -124,6 +129,48 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
         assertThat(sources().cassandraBuildsManifest(build)).isNull()
         assertThat(requests).contains("https://example.test/manifest.json")
     }
+
+    @Test
+    fun `a catalog build presigns its own tarball for the TTL`() {
+        val build = manifest("5.1-20260905-a1b2c3d-jdk17")
+        CassandraBuildCatalog(store, get(), user).publish(build, File(profileDir, "t.tgz").apply { writeText("x") })
+
+        val url = sources().presignCatalogTarball(build.name, Duration.ofHours(2))
+
+        assertThat(url).isEqualTo("https://mem.invalid/acct-bucket/cassandra-builds/${build.name}/${build.tarball}?expires=7200")
+    }
+
+    @Test
+    fun `presigning a build the catalog lacks fails, naming the build`() {
+        assertThatThrownBy { sources().presignCatalogTarball("no-such-build", Duration.ofHours(1)) }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("The build catalog has no build named no-such-build")
+    }
+
+    private val user =
+        User(
+            email = "t@example.com",
+            region = "us-west-2",
+            keyName = "k",
+            awsProfile = "",
+            awsAccessKey = "a",
+            awsSecret = "s",
+        ).apply { s3Bucket = "acct-bucket" }
+
+    private fun manifest(name: String) =
+        CassandraBuildManifest(
+            name = name,
+            baseVersion = "5.1",
+            javaVersion = "17",
+            gitSha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+            gitShortSha = "a1b2c3d",
+            gitBranch = "trunk",
+            builtAt = "2026-09-05T12:00:00Z",
+            builtBy = "t@example.com",
+            tarball = "apache-cassandra-$name-bin.tar.gz",
+            tarballBytes = 1L,
+            tarballSha256 = "c".repeat(64),
+        )
 
     private companion object {
         const val SERVICE_UNAVAILABLE = 503

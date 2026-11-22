@@ -3,8 +3,10 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStoreListingContract
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import java.util.UUID
 
 /**
@@ -19,7 +21,7 @@ class S3ObjectStoreListingContractIntegrationTest : ObjectStoreListingContract()
 
     private val s3Client = SharedLocalStack.s3Client().also { SharedLocalStack.createBucketIfMissing(it, BUCKET) }
 
-    override val store: ObjectStore = S3ObjectStore(s3Client, EventBus())
+    override val store: ObjectStore = S3ObjectStore(s3Client, EventBus(), RegionalS3Presigners(AnonymousCredentialsProvider.create()))
 
     override fun freshRoot(): ClusterStoragePath = ClusterStoragePath.root(BUCKET).resolve("case-${UUID.randomUUID()}")
 }

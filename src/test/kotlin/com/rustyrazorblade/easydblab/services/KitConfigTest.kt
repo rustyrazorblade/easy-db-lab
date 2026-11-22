@@ -21,6 +21,31 @@ class KitConfigTest {
     }
 
     @Test
+    fun `a kit that names a contributor easy-db-lab does not have is refused, naming it`() {
+        assertThatThrownBy { parse("name: mydb\ncontributors: [no-such-thing]") }
+            .hasMessageContaining("no-such-thing")
+            .hasMessageContaining(Constants.Kit.Contributors.CASSANDRA_ARTIFACT)
+    }
+
+    @Test
+    fun `a command that records a variable that is not an install arg is refused`() {
+        val yaml =
+            """
+            name: mydb
+            args:
+              - flag: --version
+                variable: CASSANDRA_VERSION
+            commands:
+              upgrade:
+                records: [TARGET_VERSION]
+            """.trimIndent()
+
+        assertThatThrownBy { parse(yaml) }
+            .hasMessageContaining("upgrade")
+            .hasMessageContaining("TARGET_VERSION")
+    }
+
+    @Test
     fun `parses full config with all top-level fields`() {
         val yaml =
             """

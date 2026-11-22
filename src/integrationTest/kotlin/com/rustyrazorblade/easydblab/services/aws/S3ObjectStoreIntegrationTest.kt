@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.io.TempDir
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import software.amazon.awssdk.services.s3.S3Client
 import java.io.File
 import java.nio.file.Path
@@ -47,6 +49,7 @@ class S3ObjectStoreIntegrationTest {
                 s3Client,
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
+                RegionalS3Presigners(AnonymousCredentialsProvider.create()),
             )
     }
 

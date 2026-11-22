@@ -47,5 +47,18 @@ published tag. `.github/pyroscope-agent/image-published.sh` makes that decision:
 
 It is unit-tested with a stubbed `docker` by `image-published.test.sh` (`./gradlew testPyroscopeAgentPublished`, part of `testScripts`).
 
+## Publishing the Cassandra Runtime Image
+
+The `publish-cassandra-runtime` job in `publish-container.yml` builds
+`docker/cassandra-runtime/` once per JDK of its matrix (8, 11, 17, 21) for
+`linux/amd64` and `linux/arm64`, and pushes
+`ghcr.io/rustyrazorblade/cassandra-runtime:<revision>-jre<N>`. The revision is the
+Dockerfile's `RUNTIME_REVISION`, kept equal to
+`Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION` by `CassandraRuntimeImageTest`;
+a Dockerfile change bumps both. It runs on the same trusted refs as the Pyroscope job
+and skips a published tag with the same `image-published.sh`. After the push,
+`.github/cassandra-runtime/platforms-present.sh` fails the job when the tag lacks
+either platform (`./gradlew testCassandraRuntimePlatforms`, part of `testScripts`).
+
 Step outputs and event values reach `run:` scripts only through `env:`, never
 as `${{ }}` inside the script.

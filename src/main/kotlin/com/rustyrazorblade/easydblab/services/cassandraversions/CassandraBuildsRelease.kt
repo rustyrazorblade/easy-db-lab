@@ -12,12 +12,16 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * One branch build of the cassandra-builds `nightly` release: the tarball
  * `apache-cassandra-<ref>-bin.tar.gz`, and the manifest beside it when the release has one.
+ *
+ * @property digest the tarball asset's GitHub `digest` (`sha256:<hex>`), or null when GitHub gives none;
+ *   the cassandra-pods kit checks the download against it (`TarballDigests.github`)
  */
 @Serializable
 data class CassandraBuild(
     val ref: String,
     val url: String,
     val manifestUrl: String? = null,
+    val digest: String? = null,
 )
 
 /** The JDK fields of a cassandra-builds manifest (cassandra-builds#1). */
@@ -46,11 +50,12 @@ object CassandraBuildsRelease {
                 .mapNotNull { asset ->
                     val name = asset["name"]?.jsonPrimitive?.contentOrNull
                     val url = asset["browser_download_url"]?.jsonPrimitive?.contentOrNull
-                    if (name != null && url != null) name to url else null
-                }.toMap()
-        return assets
-            .mapNotNull { (name, url) -> refOf(name, TARBALL_SUFFIX)?.let { ref -> ref to url } }
-            .map { (ref, url) -> CassandraBuild(ref, url, assets["$PREFIX$ref$MANIFEST_SUFFIX"]) }
+                    val digest = (asset["digest"] as? JsonPrimitive)?.contentOrNull
+                    if (name != null && url != null) Asset(name, url, digest) else null
+                }.associateBy { it.name }
+        return assets.values
+            .mapNotNull { asset -> refOf(asset.name, TARBALL_SUFFIX)?.let { ref -> ref to asset } }
+            .map { (ref, asset) -> CassandraBuild(ref, asset.url, assets["$PREFIX$ref$MANIFEST_SUFFIX"]?.url, asset.digest) }
     }
 
     /** The JDK fields of a manifest. */
@@ -71,6 +76,12 @@ object CassandraBuildsRelease {
             }
         return raw.map { it.trim() }.filter { it.isNotEmpty() }
     }
+
+    private data class Asset(
+        val name: String,
+        val url: String,
+        val digest: String?,
+    )
 
     private fun refOf(
         assetName: String,

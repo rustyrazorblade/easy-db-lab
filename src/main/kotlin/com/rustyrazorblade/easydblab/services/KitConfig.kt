@@ -244,11 +244,17 @@ data class KitCapability(
  *
  * Unlike top-level [KitConfig.args] which are persisted at install time, command args are
  * ephemeral — they apply only to the current invocation and override install-time values.
+ *
+ * [records] names install-arg variables the command changes for good: after the command succeeds,
+ * each one it was given a value for is rewritten in `kit-resolved-args.env` ([ResolvedArgsFile]), so a
+ * later `start` sees it. A failed command records nothing. `cassandra-pods upgrade` records the
+ * version it applied this way.
  */
 @Serializable
 data class KitCommandSpec(
     val description: String = "",
     val args: List<KitArgSpec> = emptyList(),
+    val records: List<String> = emptyList(),
 ) {
     init {
         // The kit runner lays cluster-state variables over the environment, so a command arg
@@ -289,8 +295,23 @@ data class KitConfig(
     val capabilities: List<KitCapability> = emptyList(),
     val commands: Map<String, KitCommandSpec> = emptyMap(),
     val requires: List<NodeCapability> = emptyList(),
+    val contributors: List<String> = emptyList(),
 ) {
     init {
+        val unknown = contributors.firstOrNull { it !in Constants.Kit.Contributors.ALL }
+        require(unknown == null) {
+            "Kit '$name' names the contributor '$unknown', which easy-db-lab does not have; known: " +
+                Constants.Kit.Contributors.ALL
+                    .sorted()
+                    .joinToString(", ")
+        }
+        val installVariables = args.map { it.variable }.toSet()
+        commands.forEach { (command, spec) ->
+            val notInstallArg = spec.records.firstOrNull { it !in installVariables }
+            require(notInstallArg == null) {
+                "Kit command '$command' records $notInstallArg, which is not one of the kit's install args"
+            }
+        }
         // resolved-args.env stores one KEY=VALUE per line, so a newline-joined value would corrupt it.
         val repeatableInstallArg = args.firstOrNull { it.repeatable }
         require(repeatableInstallArg == null) {

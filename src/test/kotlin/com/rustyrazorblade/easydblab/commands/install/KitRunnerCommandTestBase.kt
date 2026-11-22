@@ -111,6 +111,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockK8sService.nodesMatching(any())).thenReturn(Result.success(listOf("node0")))
+        whenever(mockK8sService.nodeAllocatable(any())).thenReturn(Result.success(emptyList()))
         whenever(mockGrafanaClient.installDashboard(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockWorkloadStepExecutor.execute(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.register(any(), any())).thenReturn(Result.success(Unit))

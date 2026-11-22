@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.aws.RegionalS3Presigners
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.io.TempDir
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import java.io.File
@@ -38,7 +40,7 @@ class DocumentServiceIntegrationTest {
     fun setup() {
         s3Client = SharedLocalStack.s3Client()
         SharedLocalStack.createBucketIfMissing(s3Client, BUCKET)
-        objectStore = S3ObjectStore(s3Client, EventBus())
+        objectStore = S3ObjectStore(s3Client, EventBus(), RegionalS3Presigners(AnonymousCredentialsProvider.create()))
         service = DefaultDocumentService(objectStore)
     }
 

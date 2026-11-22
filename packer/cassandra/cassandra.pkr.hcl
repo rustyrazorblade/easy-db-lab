@@ -205,6 +205,12 @@ build {
     destination = "/tmp/edl-cassandra-agents.sh"
   }
 
+  # Sourced by patch-config: the cassandra.yaml merge it shares with the cassandra-pods kit.
+  provisioner "file" {
+    source = "lib/edl-cassandra-config.sh"
+    destination = "/tmp/edl-cassandra-config.sh"
+  }
+
   provisioner "shell" {
     environment_vars = [
       # we need this to be set because install_cassandra checks for it and exits if it's not there

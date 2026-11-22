@@ -14,12 +14,14 @@ private val log = KotlinLogging.logger {}
 
 /**
  * A build of the profile's build catalog, as the resolver needs it: where it is, the JDKs it runs
- * on, and [javaDefault], the JDK it was built with, which it runs on when no `--java` is given.
+ * on, [javaDefault], the JDK it was built with, which it runs on when no `--java` is given, and
+ * [tarballSha256], the manifest's hash of the tarball (blank when the manifest has none).
  */
 data class CatalogBuild(
     val url: String,
     val javaSupported: List<String>,
     val javaDefault: String? = null,
+    val tarballSha256: String = "",
 )
 
 /**
@@ -51,6 +53,15 @@ interface VersionSources {
 
     /** The names of the builds in the build catalog. */
     fun catalogBuildNames(): List<String>
+
+    /**
+     * An `https` URL the catalog build [name]'s tarball can be downloaded from with no credentials,
+     * for [ttl]: what a cassandra-pods pod, which may have no instance profile, fetches.
+     */
+    fun presignCatalogTarball(
+        name: String,
+        ttl: java.time.Duration,
+    ): String = throw VersionResolutionException("This version source cannot presign the catalog build $name.")
 
     /** The account's download cache. */
     fun downloadCacheRoot(): ClusterStoragePath
@@ -109,9 +120,17 @@ class DefaultVersionSources(
         build.manifestUrl?.let(::fetchOptional)?.let(CassandraBuildsRelease::parseManifest)
 
     override fun catalogBuild(name: String): CatalogBuild? =
-        catalog.find(name)?.let { CatalogBuild(catalog.tarballUri(it), it.supportedJdks(), it.javaVersion) }
+        catalog.find(name)?.let { CatalogBuild(catalog.tarballUri(it), it.supportedJdks(), it.javaVersion, it.tarballSha256) }
 
     override fun catalogBuildNames(): List<String> = catalog.list().map { it.name }
+
+    override fun presignCatalogTarball(
+        name: String,
+        ttl: java.time.Duration,
+    ): String {
+        val manifest = catalog.find(name) ?: throw VersionResolutionException("The build catalog has no build named $name.")
+        return catalog.presignedTarballUrl(manifest, ttl)
+    }
 
     override fun downloadCacheRoot(): ClusterStoragePath = ClusterStoragePath.downloadCacheRoot(bucketService.ensureAccountBucket(user))
 

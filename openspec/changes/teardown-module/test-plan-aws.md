@@ -12,15 +12,14 @@ sed -E 's/(vpc|subnet|sg|i|igw|rtb|nat|eni|rtbassoc)-[0-9a-f]+/<\1>/g'
 
 ## L1, a late subnet (R1)
 
-It runs once on `main`, as the control, and once on the branch.
+It runs once on `main`, as the control, and once on the branch.  Each runner step is a new shell, so no step holds a file descriptor for a later one: the answer comes from a file that a later step creates.
 
 1. `easy-db-lab init l1 --up --tag embark_offhours=off`.
-2. `mkfifo answer`, then `exec 3<>answer`, so the fifo has a writer before `down` starts and `down` never reads an early end of file.
-3. `easy-db-lab down <answer >down.log 2>&1 &`.
-4. Wait until `down.log` shows the confirmation prompt.
-5. Read the network: `jq -r .vpcId state.json`, and its block with `aws ec2 describe-vpcs --vpc-ids <vpc> --query 'Vpcs[0].CidrBlock' --profile easy-db-lab`.
-6. Create the late subnet in an unused /24 of the primary block.  `up` uses only the first three of the eight /19 subnets, so the first /24 of the eighth /19 is free: for `10.0.0.0/16` that is `10.0.224.0/24`.  Run `aws ec2 create-subnet --vpc-id <vpc> --cidr-block 10.0.224.0/24 --profile easy-db-lab`, and record its id.
-7. Answer the prompt: `echo yes >&3`, then `exec 3>&-`, and wait for `down` to exit.
+2. Start `down` as a background job whose stdin waits for a `go` file: `( until [ -f go ]; do sleep 2; done; echo yes ) | easy-db-lab down > down.log 2>&1`, run with the runner's background option.  The runner keeps the job and waits on its exit in step 6.
+3. Wait until `down.log` shows the confirmation prompt.
+4. Read the network: `jq -r .vpcId state.json`, and its block with `aws ec2 describe-vpcs --vpc-ids <vpc> --query 'Vpcs[0].CidrBlock' --profile easy-db-lab`.
+5. Create the late subnet in an unused /24 of the primary block.  `up` uses only the first three of the eight /19 subnets, so the first /24 of the eighth /19 is free: for `10.0.0.0/16` that is `10.0.224.0/24`.  Run `aws ec2 create-subnet --vpc-id <vpc> --cidr-block 10.0.224.0/24 --profile easy-db-lab`, and record its id.
+6. Answer the prompt: `touch go`.  The subshell writes `yes` and exits, and the runner waits for the background job to exit and records its exit code.
 
 | | on main (control) | on the branch |
 |---|---|---|

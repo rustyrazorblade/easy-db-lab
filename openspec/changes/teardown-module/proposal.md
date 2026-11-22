@@ -29,8 +29,8 @@ Reading the code turned up four more bugs.  This change fixes them all:
   - The step depends on that network's own result, not on the whole run.
   - The tail save runs under the same condition.
 - **`Down` keeps the flag parsing, the confirmation prompt and the tail-save gate.**  The prompt is `TeardownConfirmation`, renamed from `TeardownPlanner`.  `Down` fails through `CommandFailedException`, so the exit code is decided in one place.
-- **`plan` fails when the region the state recorded differs from the configured region**, before it discovers anything.
-- **`down --all` deletes only the empty data buckets of the clusters it planned**, not every empty data bucket in the account.
+- **`up` records the account id, and `plan` fails when the recorded region or account differs from the configured one**, before it discovers anything.  A state that records no account (written before this change) checks the region only.
+- **Only `down --all` deletes data buckets, and only the empty buckets of the clusters it planned**, not every empty data bucket in the account.  A plain `down` deletes none, as today.  A cluster with no data bucket is nothing to do and is not reported as kept.
 - **`LiveInfrastructureLookup` is removed.**  `init --clean` asks `ClusterTeardown.plan(CurrentCluster)` instead and emits no teardown event.
 - **New ArchUnit rules in `PackageBoundaryTest`:**
   - neutral teardown code names no AWS type;
@@ -47,7 +47,8 @@ Reading the code turned up four more bugs.  This change fixes them all:
 
 - `cluster-lifecycle`:
   - "Cluster Teardown" runs the pre-teardown save only for a teardown that includes the workspace's own cluster, and gains the scenario "A teardown of another network runs no save".  Its "Teardown of all clusters" scenario now deletes only the empty data buckets of the removed clusters.
-  - "Cluster Initialization": `init --clean` refuses when the recorded VPC is not found or the recorded region differs, instead of proceeding on a VPC "AWS shows gone".  "When the lookup itself fails, `init --clean` MUST fail and delete nothing" is kept.
+  - "Cluster Initialization": `init --clean` refuses when the recorded VPC is not found or the recorded region or account differs, instead of proceeding on a VPC "AWS shows gone".  "When the lookup itself fails, `init --clean` MUST fail and delete nothing" is kept.
+- `networking`: "SOCKS Proxy" and "SOCKS tunnel reconnects on its own" say every `down` stops the tunnel.  Now only a `down` that includes the workspace's own cluster stops it; any other `down` leaves it running.
 
 ## Impact
 
@@ -57,7 +58,8 @@ Reading the code turned up four more bugs.  This change fixes them all:
   - `services/LiveInfrastructureLookup.kt`, which is removed.
   - `services/aws/AwsInfrastructureService.kt`: the teardown half moves out, along with its EMR and OpenSearch dependencies.
   - `providers/aws/TeardownTypes.kt`, which is removed.
-  - `services/aws/DataBucketTeardown.kt`, which becomes `S3DataBucketTeardown`.
+  - `services/aws/DataBucketTeardown.kt`, which becomes `S3DataBucketTeardown`; `S3BucketAdmin.findDataBuckets` and `Event.Teardown.DataBucketDiscoveryFailed` are removed.
+  - `configuration/ClusterState.kt` (`InfrastructureState.accountId`) and `commands/Up.kt`, which records it.
   - `services/aws/EC2VpcService.kt`: planned associations and the retry policy.
   - `EMRService` and `OpenSearchService`, which get the subnet maps.
   - `proxy/SocksProxyService.kt`, which gets `unpublishPort`.
@@ -75,7 +77,7 @@ Reading the code turned up four more bugs.  This change fixes them all:
   - A declined prompt emits `CancelledByUser` only, not also `CompletedWithErrors(["Teardown cancelled by user"])`.  It still exits non-zero.
   - Under `--all`, a failure in another network no longer keeps the workspace's state pointing at its deleted VPC; `down` still exits non-zero.
   - A recorded VPC that AWS no longer has is shown in the preview as gone and must be confirmed; then `down` finishes the workspace step instead of failing.  `init --clean` refuses on it.
-  - A recorded region that differs from the configured one fails `down` and `init --clean`, and changes nothing.
+  - A recorded region or account that differs from the configured one fails `down` and `init --clean`, and changes nothing.
   - `down --all` no longer deletes the empty data bucket of a cluster it did not plan.
   - Under `--all`, the workspace step runs before the empty-bucket sweep.
 - **Docs:** `docs/reference/commands.md` (`down`), `providers/CLAUDE.md`, `services/CLAUDE.md`, `services/aws/CLAUDE.md` and `commands/CLAUDE.md`.

@@ -15,21 +15,28 @@ Each rule has a fixture in a test package the rule selects:
 
 The main scan uses `DoNotIncludeTests`, so the fixtures stay out of it.  `Init` keeps its other AWS dependencies, so the first rule does not cover `Init`; the second rule stops `Init` from resolving a scope of its own.
 
+### D7b. The bucket port
+
 `S3DataBucketTeardown` (renamed from `DataBucketTeardown`) implements the neutral `BucketTeardown` port:
 
 ```kotlin
 interface BucketTeardown {
-    fun stopMetrics(bucket: String): MetricsStop
-    fun deleteEmptyBuckets(names: List<String>): DataBucketSweep   // only the planned names; a non-empty bucket is kept
+    fun stopMetrics(state: ClusterState): MetricsStop                 // needs dataBucket and metricsConfigId()
+    fun deleteEmptyBuckets(clusterIds: List<String>): DataBucketSweep // the adapter builds each bucket name
 }
 ```
 
-`plan` lists `easy-db-lab-data-<clusterId>` for each planned network that has a `clusterId` and is not `GONE`.  The account-wide `findDataBuckets()` sweep is removed from `down`, so `down --all` no longer deletes the empty data bucket of a cluster it did not plan.  `MetricsStop` and `DataBucketSweep` move to the port file.
+- Neutral code passes cluster ids, never bucket names.  The S3 adapter builds `easy-db-lab-data-<clusterId>` (`Constants.S3.DATA_BUCKET_PREFIX`).
+- `plan` fills `Networks.sweepClusterIds` only for `AllTagged`, from each planned network that has a `clusterId` and is not `GONE` (D1).  A plain `down`, `down <vpc-id>` and `--packer` delete no bucket, as today.
+- `--all` deletes only the empty data buckets of the clusters it planned.  The account-wide `findDataBuckets()` sweep is removed, so `down --all` no longer deletes the empty data bucket of a cluster it did not plan.
+- A bucket S3 reports as missing (`NoSuchBucket`) is nothing to do: the adapter emits no `DataBucketDeleting` and no `DataBucketKept` for it, and it is in neither list of the sweep.  A cluster made before data buckets existed, or whose bucket the owner deleted, has none.  Any other S3 error keeps today's `DataBucketKept(bucket, reason)`.
+- Deleted with this change (task 1.3): `S3BucketAdmin.findDataBuckets` (the interface, the `AwsS3BucketService` implementation and their tests), `Event.Teardown.DataBucketDiscoveryFailed` and its line in `events/CLAUDE.md`.
+- `MetricsStop` and `DataBucketSweep` move to the port file.
 
 The VPC teardown retry becomes `VpcTeardownRetryPolicy(maxAttempts, baseInterval)`, a constructor parameter of `EC2VpcService` and `EC2SecurityGroupService` (like `pollInterval`).  Its default comes from the existing `Constants.Retry` values.  The retry stays; a test passes a short policy.
 
 Koin:
-- in `AwsServicesModule`: `single<InfrastructureTeardown> { AwsInfrastructureTeardown(...) }`, with `region()` from the same `User.region` the EC2 client is built with (`AwsClientsModule.kt:54`), and `factory<BucketTeardown> { S3DataBucketTeardown(...) }`;
+- in `AwsServicesModule`: `single<InfrastructureTeardown> { AwsInfrastructureTeardown(...) }`, with `location()` built from the same `User.region` the EC2 client is built with (`AwsClientsModule.kt:54`) and the account from `AccountIdentity`, and `factory<BucketTeardown> { S3DataBucketTeardown(...) }`;
 - in `ServicesModule`: `ClusterTeardown`, `WorkspaceTeardown` and `TeardownConfirmation`.
 
 `AwsInfrastructureService` loses `emrService`, `openSearchService` and `@Suppress("TooManyFunctions")`.  `Init` loses `infrastructureService`.  `EMRService.findClustersInVpc` and `OpenSearchService.findDomainsInVpc` are deleted (D3).
@@ -48,14 +55,20 @@ A later change needs a recorded "no network of ours" state, and a plan entry for
   - The per-network loop is in `ClusterTeardown.execute`, and `TeardownReport.results` already keeps one result per network, in plan order.
   - #398 must give phase 1 and that loop a dedicated, bounded executor.  Today phase 1 runs on the common ForkJoinPool (`AwsInfrastructureService.kt:592`), which blocking waits would starve.
   - #398 can start the other networks while the workspace saves its tail, if "a failed save removes nothing" is scoped to the workspace's network.
+  - Under #398, a throw marks the thrower and every network not yet started as `NotAttempted`, as the sequential loop does (D1); a network already running finishes and records its own result.
 - **#1171 (ByTags):** its `VpcOwnership` decision stays in `discover(ByTags)`.
 - **#1062 (multi-cloud):** the port is neutral and the adapter carries the provider name.  D8 names the state reshape that remains.
 
 ### D10. Scale
 
-One discovery per `down` instead of two.  One discovery of one VPC is `9 + E + D` calls: 7 EC2 calls, plus `ListClusters` and one `DescribeCluster` per active EMR cluster in the account, plus `ListDomainNames` and one `DescribeDomain` per OpenSearch domain.  Today a `down` makes `2 x (9 + E + D)`.
+One discovery per `down` instead of two.  One discovery of one named VPC is up to `10 + E + D` calls:
+- up to 8 EC2 calls: one `DescribeVpcs` for the name, tags, `ClusterId` and the `GONE` mapping (D3), 6 inventory describes, and the gateway-route `DescribeRouteTables` for a kept network only;
+- `ListClusters` and one `DescribeCluster` per active EMR cluster in the account;
+- `ListDomainNames` and one `DescribeDomain` per OpenSearch domain.
 
-For `--all` over K VPCs it was `2K x (9 + E + D)`.  It is now `6K + 3 + E + D`: one tag search that returns the ids, names and tags, 6 EC2 describes per VPC, and the EMR and OpenSearch maps fetched once.
+Today a `down` makes two discoveries, each with separate name and tag reads.
+
+For `--all` over K VPCs it is now `6K + 3 + E + D`: one tag search that returns the ids, names and tags (so no per-VPC `DescribeVpcs`), 6 inventory describes per VPC, and the EMR and OpenSearch maps fetched once.  Every `--all` network is tagged, so none needs the kept-network route describe.  The account id is read once per process (`AccountIdentity` caches it).
 
 `TerminateInstances` takes the whole instance list in one call.  At 100 nodes the plan holds about 110 ids, in memory only.  Execute stays sequential per network (#398).
 
@@ -75,8 +88,10 @@ A save usually finishes in a few minutes.  The total is the save plus the sum of
 
 - An `OWNED` network with a late resource now fails instead of deleting it (D4).  That is the fix, and a re-run finishes the teardown.
 - The pure move of about 500 lines into the adapter is large.  It lands as its own commit (task 2.1), and the moved tests keep their assertions.
-- A recorded region that differs from the client's now fails `plan` (D1).  Before, the lookup in the wrong region returned NotFound and could reset a live workspace.
+- A recorded region or account that differs from the client's now fails `plan` (D1).  Before, the lookup in the wrong region or account returned NotFound and could reset a live workspace.
+- A state written before this change records no account id, so its `down` skips the account check and checks the region only.  Such a workspace pointed at the wrong account with the right region can still hit the NotFound path; for its own recorded network that is now `GONE`, previewed and confirmed before any reset.  Clusters are ephemeral, so this lasts only until the next `up`.
 
 ## Owner decisions
 
-None yet.  Open questions are in the hand-back.  The working assumption for the late resource is D4.
+- **Account check (lead decision, round 3; the owner can override at approval):** `up` records the account id, `plan` checks it with the region, and a state with no recorded account skips the account check (D1, Risks).
+- Open questions are in the hand-back.  The working assumption for the late resource is D4.

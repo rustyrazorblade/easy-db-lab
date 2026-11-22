@@ -78,7 +78,7 @@ Rules for both phases:
 - **GIVEN** multiple clusters
 - **WHEN** the user tears down all clusters
 - **THEN** every tagged cluster VPC and its resources are removed
-- **AND** the data bucket of each cluster whose network was previewed and removed is deleted when it is empty, and kept with no expiry rule when it still holds objects
+- **AND** the data bucket of each cluster whose network was previewed and removed is deleted when it is empty, and kept with no expiry rule when it still holds objects; a cluster that has no data bucket is not reported as kept
 - **AND** no other cluster's data bucket is deleted
 
 #### Scenario: Teardown of all clusters finds a VPC with only the legacy marker
@@ -274,7 +274,7 @@ The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool w
 - **WHEN** the user runs `init --clean`
 - **THEN** the cleanup removes the wrappers, the marker, and the empty `bin/`, and `init` succeeds
 
-`init --clean` MUST ask AWS whether the workspace's cluster has live infrastructure before it deletes anything, because it deletes `state.json`, the only local record of the cluster's VPC. It finds the cluster the way `down` does: from the VPC ID in the cluster state, through the same discovery as `down --dry-run` (the whole VPC, or only the cluster's `ClusterId`-tagged resources when the VPC came from `init --vpc`). A VPC that still holds any resource counts as live. When the lookup itself fails, `init --clean` MUST fail and delete nothing. When AWS reports the recorded VPC as not found, or the recorded region differs from the configured one, `init --clean` MUST fail and delete nothing, because a VPC in another region or account may still be live.
+`init --clean` MUST ask AWS whether the workspace's cluster has live infrastructure before it deletes anything, because it deletes `state.json`, the only local record of the cluster's VPC. It finds the cluster the way `down` does: from the VPC ID in the cluster state, through the same discovery as `down --dry-run` (the whole VPC, or only the cluster's `ClusterId`-tagged resources when the VPC came from `init --vpc`). A VPC that still holds any resource counts as live. When the lookup itself fails, `init --clean` MUST fail and delete nothing. When AWS reports the recorded VPC as not found, or the recorded region or account differs from the configured one, `init --clean` MUST fail and delete nothing, because a VPC in another region or account may still be live.
 
 #### Scenario: init --clean refuses while the cluster has live infrastructure
 
@@ -289,8 +289,8 @@ The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool w
 - **WHEN** the user runs `init --clean`
 - **THEN** the cleanup runs and `init` proceeds as before
 
-#### Scenario: init --clean refuses when the recorded VPC is gone or in another region
+#### Scenario: init --clean refuses when the recorded VPC is gone or in another region or account
 
-- **GIVEN** a workspace whose recorded VPC AWS reports as not found, or whose recorded region is not the configured one
+- **GIVEN** a workspace whose recorded VPC AWS reports as not found, or whose recorded region or account is not the configured one
 - **WHEN** the user runs `init --clean`
-- **THEN** `init` fails, names the VPC and the regions, tells the user to run `down` first, and deletes nothing
+- **THEN** `init` fails, names the VPC and the mismatched region or account, tells the user to run `down` first, and deletes nothing

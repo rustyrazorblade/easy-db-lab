@@ -7,7 +7,7 @@
 # directory on the claim from EDL_TARBALL_URL and checked against EDL_TARBALL_SHA256; when that
 # download fails or does not match, EDL_TARBALL_FALLBACK_URL is tried the same way. It is then
 # extracted there, marked, and renamed into place: a failure at any step
-# leaves no tree under the final name. Older trees are never removed; an interrupted fetch's
+# leaves no complete tree under the final name. Older trees are never removed; an interrupted fetch's
 # work directory (`.fetch-*`) is removed at the next start.
 #
 # POSIX sh: the runtime image runs it under /bin/sh. Tested by
@@ -64,22 +64,31 @@ fetch_from() {
   fi
 }
 
+# expiry_hint: when the primary URL is presigned and could not be downloaded, the sentence naming its
+# lifetime and the fix; empty otherwise. A checksum mismatch is not an expired link.
+expiry_hint() {
+  case "${primary_failure}:${url}" in
+    download:*X-Amz-Expires=*)
+      expires="${url#*X-Amz-Expires=}"
+      expires="${expires%%&*}"
+      printf ' The presigned URL is valid for %ss after the start or upgrade that signed it, and may have expired: run %s again, or %s then %s, to sign a new one.' \
+        "${expires}" "'cassandra-pods upgrade'" "'cassandra-pods stop'" "'cassandra-pods start'"
+      ;;
+  esac
+}
+
 # The primary URL, then the fallback when the primary cannot be downloaded or fails its checksum.
 if ! fetch_from "${url}"; then
+  primary_failure="${failure}"
   if [ -z "${fallback}" ]; then
-    case "${failure}:${url}" in
-      download:*X-Amz-Expires=*)
-        expires="${url#*X-Amz-Expires=}"
-        expires="${expires%%&*}"
-        fail "${problem}. The presigned URL is valid for ${expires}s after the start or upgrade that signed it, and may have expired: run 'cassandra-pods upgrade' again, or 'cassandra-pods stop' then 'cassandra-pods start', to sign a new one."
-        ;;
-    esac
+    hint="$(expiry_hint)"
+    [ -z "${hint}" ] || fail "${problem}.${hint}"
     fail "${problem}; nothing was cached."
   fi
   first="${problem}"
   echo "${first}; trying $(shown "${fallback}")."
   fetch_from "${fallback}" ||
-    fail "the tarball could not be fetched from $(shown "${url}") or $(shown "${fallback}"): ${first}; ${problem}; nothing was cached."
+    fail "the tarball could not be fetched from $(shown "${url}") or $(shown "${fallback}"): ${first}; ${problem}; nothing was cached.$(expiry_hint)"
 fi
 
 mkdir "${work}/extract"
@@ -92,7 +101,9 @@ set -- "${work}/extract"/*
 [ -f "$1/conf/cassandra.yaml" ] ||
   fail "the tarball from $(shown "${url}") has no conf/cassandra.yaml; nothing was cached."
 touch "$1/.complete"
-# A tree without its marker (an older interrupted fetch) is replaced; the rename is atomic.
+# A tree without its marker (an older interrupted fetch) is removed, then the new one renamed into
+# place. The rename is atomic but the pair is not: a kill between them leaves no tree, and the next
+# start fetches again. A tree with `.complete` is never removed (it is a cache hit, above).
 rm -rf "${tree}"
 mv "$1" "${tree}"
 echo "Cassandra $(shown "${url}") is cached at ${tree}."

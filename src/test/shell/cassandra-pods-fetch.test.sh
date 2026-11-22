@@ -167,6 +167,12 @@ check "an expired presigned URL names the expiry and the fix" '[ "$status" -ne 0
 check "the error does not print the signature" '[[ "$output" != *"X-Amz-Signature=abc"* ]]'
 
 reset
+run_fetch EDL_TARBALL_URL="${PRESIGNED}" STUB_FAIL_URLS="${PRESIGNED} ${FALLBACK}" STUB_FAIL_CODE=403
+check "an expired presigned URL whose fallback also fails still names the expiry and the fix" \
+  '[ "$status" -ne 0 ] && [[ "$output" == *"604800"* && "$output" == *"upgrade"* && "$output" == *"${FALLBACK}"* ]]'
+check "the double failure does not print the signature" '[[ "$output" != *"X-Amz-Signature=abc"* ]]'
+
+reset
 run_fetch EDL_TARBALL_SHA256="not-a-hash"
 check "a malformed sha256 is refused before any download" '[ "$status" -ne 0 ] && [ "$(calls)" -eq 0 ]'
 

@@ -91,9 +91,10 @@ class DefaultHelmService(
         namespace: String,
     ): Boolean {
         // `-f` is a regular expression; the name is matched literally and whole, so `my.app` does
-        // not match `myxapp` and `app` does not match `myapp`.
+        // not match `myxapp` and `app` does not match `myapp`. `--all` lists every state: a release
+        // an interrupted install left pending still holds its name.
         val filter = "^${quoteMeta(release)}\$"
-        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", filter, "-q"), echo = false)
+        val output = tooling.run(ClusterTool.HELM, listOf("list", "-n", namespace, "-f", filter, "--all", "-q"), echo = false)
         return output.trim().isNotEmpty()
     }
 

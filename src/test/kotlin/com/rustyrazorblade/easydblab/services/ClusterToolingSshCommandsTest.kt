@@ -192,7 +192,7 @@ internal class ClusterToolingSshCommandsTest {
                     "releaseExists",
                     { _, h -> h.releaseExists("myapp", "default") },
                     listOf(
-                        "$k helm list -n default -f '^myapp\$' -q" to false,
+                        "$k helm list -n default -f '^myapp\$' --all -q" to false,
                     ),
                 ),
             )

@@ -16,9 +16,12 @@ import com.rustyrazorblade.easydblab.services.KitRuntime
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
@@ -152,19 +155,27 @@ class KitStatusCommandTest : BaseKoinTest() {
 
     /**
      * The helm lookup is how status learns there is nowhere to run helm (no control node) or that
-     * helm failed: either is Unknown with the cause, never Stopped, and no pod is looked up.
+     * helm failed: either is Unknown with the cause, never Stopped, and no pod is looked up. A
+     * failure with no message still names what failed, never `null`.
      */
-    @Test
-    fun `a failed helm release lookup is Unknown with the cause, not Stopped`() {
-        whenever(mockHelmService.releaseExists(any(), any()))
-            .thenThrow(IllegalStateException("No control node found. Please ensure the environment is running."))
+    @ParameterizedTest
+    @MethodSource("helmLookupFailures")
+    fun `a failed helm release lookup is Unknown with the cause, not Stopped`(case: HelmLookupFailure) {
+        // doAnswer, not thenThrow: the lookup declares no checked exception, and Mockito checks.
+        doAnswer { throw case.failure }.whenever(mockHelmService).releaseExists(any(), any())
 
         val output = runStatus(listOf(runningPod), KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "mydb"))
 
-        assertThat(output.trim()).isEqualTo(
-            "Status:    Unknown (helm query failed: No control node found. Please ensure the environment is running.)",
-        )
+        assertThat(output.trim()).isEqualTo("Status:    Unknown (helm query failed: ${case.shown})")
         verifyNoInteractions(mockKubeService)
+    }
+
+    /** A lookup failure and the cause status shows for it. */
+    class HelmLookupFailure(
+        val failure: RuntimeException,
+        val shown: String,
+    ) {
+        override fun toString() = failure.javaClass.simpleName + (failure.message?.let { " with a message" } ?: " with no message")
     }
 
     @Test
@@ -298,5 +309,17 @@ class KitStatusCommandTest : BaseKoinTest() {
             "http://10.0.1.2:8080",
             "http://10.0.1.3:8080",
         )
+    }
+
+    companion object {
+        @JvmStatic
+        fun helmLookupFailures() =
+            listOf(
+                HelmLookupFailure(
+                    IllegalStateException("No control node found. Please ensure the environment is running."),
+                    "No control node found. Please ensure the environment is running.",
+                ),
+                HelmLookupFailure(NullPointerException(), "java.lang.NullPointerException"),
+            )
     }
 }

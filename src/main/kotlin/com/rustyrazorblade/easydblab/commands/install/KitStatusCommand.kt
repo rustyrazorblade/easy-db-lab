@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.install
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.runCatchingException
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -73,7 +74,7 @@ class KitStatusCommand(
                 val exists =
                     runCatchingException { helmService.releaseExists(release = release, namespace = namespace) }.getOrElse { e ->
                         log.warn(e) { "Failed to look up helm release $release for kit $kitName" }
-                        return KitRunningState.Unknown("helm query failed: ${e.message}")
+                        return KitRunningState.Unknown("helm query failed: ${e.messageOrString()}")
                     }
                 if (!exists) return KitRunningState.Stopped
                 val podSelector = withKitName(runtime.selector, kitName).ifBlank { "app.kubernetes.io/instance=$release" }

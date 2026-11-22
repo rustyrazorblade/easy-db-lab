@@ -49,6 +49,20 @@ internal class HelmServiceTest {
     }
 
     /**
+     * `helm list` shows only deployed and failed releases unless asked for all. A release an
+     * interrupted install left `pending-install` still holds its name, so the lookup must list
+     * every state, or a re-run of `up` would try to install over it.
+     */
+    @Test
+    fun `releaseExists lists releases in every state, pending ones included`() {
+        val tooling = RecordingClusterTooling { "" }
+
+        DefaultHelmService(tooling).releaseExists("cilium", "kube-system")
+
+        assertThat(tooling.calls.single().args).contains("--all")
+    }
+
+    /**
      * Property over names holding every regex metacharacter helm's Go `regexp` knows: the `-f`
      * filter matches the name itself and nothing that differs from it only where a metacharacter
      * would have matched something else. Java's regex reads these escapes as Go's does.

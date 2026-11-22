@@ -17,6 +17,10 @@ interface CiliumService {
     /**
      * Installs Cilium in ENI IPAM native-routing mode.
      *
+     * The release probe runs through the cluster tooling seam, which reaches the control node
+     * recorded in state; `cilium install` itself runs on [controlHost]. They are the same host:
+     * `up` saves each placed host to state before the CNI step runs on it.
+     *
      * @param controlHost The control node, where the `cilium` CLI and kubeconfig live.
      * @param vpcCidr The VPC CIDR, marked directly routable so pod traffic inside it is not masqueraded.
      */

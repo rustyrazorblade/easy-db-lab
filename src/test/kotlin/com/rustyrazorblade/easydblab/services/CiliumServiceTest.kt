@@ -116,7 +116,11 @@ class CiliumServiceTest : BaseKoinTest() {
         makeService().install(controlHost, vpcCidr)
 
         assertThat(tooling.calls).containsExactly(
-            RecordingClusterTooling.Call(ClusterTool.HELM, listOf("list", "-n", "kube-system", "-f", "^cilium$", "-q"), echo = false),
+            RecordingClusterTooling.Call(
+                ClusterTool.HELM,
+                listOf("list", "-n", "kube-system", "-f", "^cilium$", "--all", "-q"),
+                echo = false,
+            ),
         )
         val commands = ciliumCommands()
         assertThat(commands.chartCommand).startsWith("KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} cilium install --version")

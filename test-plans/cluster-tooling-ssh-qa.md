@@ -50,6 +50,7 @@ Expect: three `UN` lines.
 ### 3. postgres: install, start, status, refused second start, upgrade, stop
 
 ```bash
+"$(dirname "$EDB")/bin/ssh" control0 'ls -A /tmp > ~/tmp-before.txt'
 $EDB kit install postgres
 $EDB postgres start
 $EDB postgres status
@@ -133,13 +134,15 @@ the namespace (`NotFound`, or `Terminating` for a short time).
 
 ### 8. No input files left on the control node
 
-Input travels over the SSH channel as stdin, so nothing is staged in `/tmp`.
+Input travels over the SSH channel as stdin, so nothing is staged in `/tmp`. Step 3 saved the
+`/tmp` listing before the first kit step; compare it with the listing now.
 
 ```bash
-"$(dirname "$EDB")/bin/ssh" control0 'ls /tmp | grep -c -i -e easydblab -e \.yaml$'
+"$(dirname "$EDB")/bin/ssh" control0 'ls -A /tmp | diff ~/tmp-before.txt - | grep "^>" || echo none-added'
 ```
 
-Expect: `0`.
+Expect: `none-added`. Any `>` line is a file the kit steps left in `/tmp`; a values file or a
+manifest there means input was staged instead of sent as stdin.
 
 ### 9. Grafana reachable
 

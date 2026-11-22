@@ -52,7 +52,10 @@ data class StepExecutionContext(
     val workspaceDir: File,
 ) {
     /** The cluster namespace, where a step that names no namespace acts. */
-    val namespace: String get() = InstallScope.of(clusterState, ClusterContract.of(clusterState)).namespace.value
+    val namespace: String get() = scope.namespace.value
+
+    /** The cluster's install scope: its namespace and the ownership labels of what it creates. */
+    val scope: InstallScope get() = InstallScope.of(clusterState, ClusterContract.of(clusterState))
 }
 
 /**
@@ -161,7 +164,8 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.Namespace -> {
-                    kubectlService.createNamespace(name = interp(step.name))
+                    // An operator's own namespace carries the cluster's labels too (design D7).
+                    kubectlService.createNamespace(name = interp(step.name), labels = ctx.scope.labels)
                 }
 
                 is InstallStep.Manifest -> {

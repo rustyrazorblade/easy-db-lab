@@ -27,7 +27,7 @@ import java.nio.file.Path
  * shown. The expected strings are the ones the services built themselves before the seam existed, so
  * AWS runs what it always ran. The only differences are the three the change names: the temporary input
  * file is `/tmp/easydblab-input-<uuid>.yaml` for manifests and helm values alike, `createNamespace`
- * is two calls instead of a shell pipe, and the kubectl `rm -f` of that file runs with `output = false`,
+ * applies a Namespace built in Kotlin instead of piping a dry run, and the kubectl `rm -f` of that file runs with `output = false`,
  * so the blank line that followed each apply is gone.
  */
 internal class ClusterToolingSshCommandsTest {
@@ -100,18 +100,15 @@ internal class ClusterToolingSshCommandsTest {
     }
 
     @Test
-    fun `createNamespace renders the namespace quietly, then applies it from an uploaded file`() {
-        val rendered = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: cache\n"
-        answers["$kubeconfig kubectl create namespace cache --dry-run=client -o yaml"] = rendered
+    fun `createNamespace applies the labelled namespace from an uploaded file`() {
         var uploaded: String? = null
         doAnswer { uploaded = Files.readString(it.getArgument<Path>(1)) }.whenever(remoteOps).upload(any(), any(), any(), any())
 
-        kubectl.createNamespace("cache")
+        kubectl.createNamespace("cache", mapOf("easydblab/cluster" to "c-1"))
 
         val path = uploadedPath()
-        assertThat(uploaded).isEqualTo(rendered)
+        assertThat(uploaded).contains("name: \"cache\"", "easydblab/cluster: \"c-1\"")
         assertThat(commands).containsExactly(
-            "$kubeconfig kubectl create namespace cache --dry-run=client -o yaml" to false,
             "$kubeconfig kubectl apply -f $path" to true,
             "rm -f $path" to false,
         )

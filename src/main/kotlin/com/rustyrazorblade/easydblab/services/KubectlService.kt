@@ -1,14 +1,19 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import io.fabric8.kubernetes.api.model.NamespaceBuilder
+import io.fabric8.kubernetes.client.utils.Serialization
 
 /** What the kit steps and commands ask of kubectl, wherever it runs; [DefaultKubectlService] runs it through [ClusterTooling]. */
 interface KubectlService {
     /**
-     * Creates namespace [name] if it is missing and leaves it alone otherwise: a client-side dry run
-     * renders the Namespace, and applying that output is what makes the call idempotent.
+     * Creates namespace [name] carrying [labels] if it is missing, and adds [labels] to it otherwise:
+     * applying the Namespace is what makes the call idempotent.
      */
-    fun createNamespace(name: String)
+    fun createNamespace(
+        name: String,
+        labels: Map<String, String>,
+    )
 
     fun applyUrl(url: String)
 
@@ -66,10 +71,18 @@ class DefaultKubectlService(
         tooling.run(ClusterTool.KUBECTL, APPLY_FROM_INPUT, stdin = yamlContent)
     }
 
-    override fun createNamespace(name: String) {
-        // The dry run's output is the manifest to apply, so it must not be echoed.
-        val manifest = tooling.run(ClusterTool.KUBECTL, listOf("create", "namespace", name, "--dry-run=client", "-o", "yaml"), echo = false)
-        tooling.run(ClusterTool.KUBECTL, APPLY_FROM_INPUT, stdin = manifest)
+    override fun createNamespace(
+        name: String,
+        labels: Map<String, String>,
+    ) {
+        val namespace =
+            NamespaceBuilder()
+                .withNewMetadata()
+                .withName(name)
+                .withLabels<String, String>(labels)
+                .endMetadata()
+                .build()
+        tooling.run(ClusterTool.KUBECTL, APPLY_FROM_INPUT, stdin = Serialization.asYaml(namespace))
     }
 
     override fun applyUrl(url: String) {

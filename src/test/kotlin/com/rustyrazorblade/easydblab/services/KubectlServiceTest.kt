@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.services.RecordingClusterTooling.Call
+import io.fabric8.kubernetes.api.model.Namespace
+import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -46,16 +48,16 @@ internal class KubectlServiceTest {
     }
 
     @Test
-    fun `createNamespace applies the dry run's output through input, with the dry run kept quiet`() {
-        val rendered = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: cache\n"
-        val tooling = RecordingClusterTooling { if (it.args.first() == "create") rendered else "" }
+    fun `createNamespace applies the namespace with its labels through input`() {
+        val tooling = RecordingClusterTooling()
 
-        DefaultKubectlService(tooling).createNamespace("cache")
+        DefaultKubectlService(tooling).createNamespace("cache", mapOf("easydblab/cluster" to "c-1"))
 
-        assertThat(tooling.calls).containsExactly(
-            kubectl("create", "namespace", "cache", "--dry-run=client", "-o", "yaml", echo = false),
-            kubectl("apply", "-f", "-", stdin = rendered),
-        )
+        val call = tooling.calls.single()
+        assertThat(call.args).containsExactly("apply", "-f", "-")
+        val namespace = Serialization.unmarshal(call.stdin, Namespace::class.java)
+        assertThat(namespace.metadata.name).isEqualTo("cache")
+        assertThat(namespace.metadata.labels).containsExactlyEntriesOf(mapOf("easydblab/cluster" to "c-1"))
     }
 
     @Test

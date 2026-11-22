@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.tenancy.OwnershipLabels
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -599,6 +600,17 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             executeInLabA(InstallStep.HelmUninstall(release = "op", namespace = "cnpg-system"))
 
             verify(helmService).uninstall(release = "op", namespace = "cnpg-system")
+        }
+
+        /** An operator's own namespace is the cluster's too, so a later sweep finds it (design D7). */
+        @Test
+        fun `a namespace step creates the namespace with the cluster's ownership labels`() {
+            executeInLabA(InstallStep.Namespace(name = "testdb-operator"))
+
+            verify(kubectlService).createNamespace(
+                name = "testdb-operator",
+                labels = OwnershipLabels.of(clusterState.clusterId),
+            )
         }
     }
 

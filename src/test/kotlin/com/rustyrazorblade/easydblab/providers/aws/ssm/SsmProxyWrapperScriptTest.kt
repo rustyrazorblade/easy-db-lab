@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws.ssm
 
+import com.rustyrazorblade.easydblab.recordedProcess
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -33,7 +34,7 @@ internal class SsmProxyWrapperScriptTest {
             writeText(
                 """
                 |#!/bin/sh
-                |sh -c 'trap "" TERM HUP; echo ${'$'}${'$'} > "${'$'}0/plugin.pid"; exec sleep 300' "${dir.absolutePath}" &
+                |sh -c 'trap "" TERM HUP; echo ${'$'}${'$'} > "${'$'}0/plugin.pid"; exec sleep $PLUGIN_SLEEP_SECONDS' "${dir.absolutePath}" &
                 |echo ${'$'}${'$'} > "${dir.absolutePath}/aws.pid"
                 |trap '' HUP
                 |wait
@@ -46,7 +47,10 @@ internal class SsmProxyWrapperScriptTest {
 
     @AfterEach
     fun cleanUp() {
-        listOf("aws.pid", "plugin.pid").mapNotNull { pid(it) }.forEach { ProcessHandle.of(it).ifPresent { h -> h.destroyForcibly() } }
+        // Only the stand-ins that wrote these records are signalled: once one has exited, another
+        // test's process may hold its PID.
+        recordedProcess(File(dir, "aws.pid"), File(dir, "aws").absolutePath)?.destroyForcibly()
+        recordedProcess(File(dir, "plugin.pid"), "sleep $PLUGIN_SLEEP_SECONDS")?.destroyForcibly()
         started.forEach { it.destroyForcibly() }
     }
 
@@ -154,5 +158,6 @@ internal class SsmProxyWrapperScriptTest {
     private companion object {
         const val LIMIT_SECONDS = 20L
         const val POLL_MS = 50L
+        const val PLUGIN_SLEEP_SECONDS = 300
     }
 }

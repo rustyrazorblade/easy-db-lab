@@ -52,6 +52,12 @@ class PyroscopeManifestBuilder(
         const val SERVER_IMAGE = "grafana/pyroscope:2.3.1"
         const val SERVER_PORT = 4040
 
+        /** The ConfigMap key of the server's config file. */
+        const val SERVER_CONFIG_KEY = "config.yaml"
+
+        /** The ConfigMap key of the ingest front's HAProxy config; the Service targets the front instead of [SERVER_PORT]. */
+        const val FRONT_CONFIG_KEY = "ingest-front.cfg"
+
         /** The server's data directory on the control node: the v2 metastore index and Raft state. */
         const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
 
@@ -184,7 +190,8 @@ class PyroscopeManifestBuilder(
             .build()
 
     /**
-     * Builds the Pyroscope server ConfigMap containing config.yaml.
+     * Builds the Pyroscope server ConfigMap: the server's config.yaml and the ingest front's
+     * HAProxy configuration ([FRONT_CONFIG_KEY]).
      */
     fun buildServerConfigMap(scope: InstallScope) =
         ConfigMapBuilder()
@@ -198,9 +205,28 @@ class PyroscopeManifestBuilder(
                 templateService
                     .fromString(storeBlocks.renderResource(PyroscopeManifestBuilder::class.java, "config.yaml"))
                     .substitute(),
-            ).build()
+            ).addToData(FRONT_CONFIG_KEY, buildFrontConfig())
+            .build()
 
-    /** The Pyroscope server Service on 4040; [publishing] puts it on [Constants.K8s.PYROSCOPE_NODE_PORT]. */
+    /**
+     * The ingest front's HAProxy configuration: it listens on [Constants.PyroscopeServer.FRONT_PORT]
+     * and forwards to the server on the pod's loopback, answering 503 for the 422 "service is
+     * unavailable" the server sends while it shuts down.
+     */
+    fun buildFrontConfig(): String =
+        templateService
+            .fromResource(PyroscopeManifestBuilder::class.java, FRONT_CONFIG_KEY)
+            .substitute(
+                mapOf(
+                    "FRONT_PORT" to Constants.PyroscopeServer.FRONT_PORT.toString(),
+                    "SERVER_PORT" to SERVER_PORT.toString(),
+                ),
+            )
+
+    /**
+     * The Pyroscope Service on 4040, sent to the ingest front; [publishing] puts it on
+     * [Constants.K8s.PYROSCOPE_NODE_PORT].
+     */
     fun buildServerService(
         scope: InstallScope,
         publishing: ServicePublishing = ServicePublishing.ClusterIp,
@@ -224,7 +250,7 @@ class PyroscopeManifestBuilder(
             .addNewPort()
             .withName("http")
             .withPort(SERVER_PORT)
-            .withNewTargetPort(SERVER_PORT)
+            .withNewTargetPort(Constants.PyroscopeServer.FRONT_PORT)
             .withProtocol("TCP")
             .endPort()
             .addToSelector("app.kubernetes.io/name", SERVER_APP_LABEL)
@@ -262,7 +288,7 @@ class PyroscopeManifestBuilder(
             .addToLabels("app.kubernetes.io/name", SERVER_APP_LABEL)
             .endMetadata()
             .withNewSpec()
-            .withContainers(buildServerContainer())
+            .withContainers(buildServerContainer(), buildFrontContainer())
             .addNewVolume()
             .withName("config")
             .withConfigMap(
@@ -282,14 +308,14 @@ class PyroscopeManifestBuilder(
         ContainerBuilder()
             .withName(SERVER_APP_LABEL)
             .withImage(SERVER_IMAGE)
-            .withArgs("-config.file=/etc/pyroscope/config.yaml")
+            .withArgs("-config.file=${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$SERVER_CONFIG_KEY")
             .addNewPort()
             .withContainerPort(SERVER_PORT)
             .withProtocol("TCP")
             .endPort()
             .addNewVolumeMount()
             .withName("config")
-            .withMountPath("/etc/pyroscope")
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
             .endVolumeMount()
             .addNewVolumeMount()
             .withName("data")
@@ -317,6 +343,45 @@ class PyroscopeManifestBuilder(
             .endHttpGet()
             .withPeriodSeconds(Constants.PyroscopeProbes.READINESS_PERIOD_SECONDS)
             .endReadinessProbe()
+            .build()
+
+    /**
+     * The ingest front: HAProxy on [Constants.PyroscopeServer.FRONT_PORT], reading [FRONT_CONFIG_KEY]
+     * from the server's ConfigMap. While the server container is down and the pod is up, the
+     * front's connection to it is refused and it answers 503, which every client retries too.
+     *
+     * Its readiness probe asks the front for `/ready`, which it passes through to the server, so a
+     * front that crashed or never bound its port takes the pod out of the Service instead of
+     * leaving pushes to a dead port. Its liveness probe is a TCP connect, so the kubelet restarts
+     * a front that stopped listening but never one whose server is only starting or stopping.
+     */
+    private fun buildFrontContainer(): Container =
+        ContainerBuilder()
+            .withName(Constants.PyroscopeServer.FRONT_NAME)
+            .withImage(Constants.PyroscopeServer.FRONT_IMAGE)
+            .withArgs("-f", "${Constants.PyroscopeServer.CONFIG_MOUNT_PATH}/$FRONT_CONFIG_KEY")
+            .addNewPort()
+            .withContainerPort(Constants.PyroscopeServer.FRONT_PORT)
+            .withProtocol("TCP")
+            .endPort()
+            .addNewVolumeMount()
+            .withName("config")
+            .withMountPath(Constants.PyroscopeServer.CONFIG_MOUNT_PATH)
+            .withReadOnly(true)
+            .endVolumeMount()
+            .withNewReadinessProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_READINESS_PERIOD_SECONDS)
+            .endReadinessProbe()
+            .withNewLivenessProbe()
+            .withNewTcpSocket()
+            .withNewPort(Constants.PyroscopeServer.FRONT_PORT)
+            .endTcpSocket()
+            .withPeriodSeconds(Constants.PyroscopeServer.FRONT_LIVENESS_PERIOD_SECONDS)
+            .endLivenessProbe()
             .build()
 
     /**

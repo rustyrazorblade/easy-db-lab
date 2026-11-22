@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.ServiceAccountCa
+import com.rustyrazorblade.easydblab.configuration.pyroscope.CpuSampleJfr
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
@@ -51,7 +52,6 @@ import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import jdk.jfr.Recording
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -79,7 +79,6 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -139,7 +138,6 @@ class PortableObservabilityPlacementIntegrationTest {
         /** A process on a node's own network, as the db-node reconciler and a stress pod run. */
         private const val CURL_IMAGE = "curlimages/curl:8.11.1"
         private const val PROFILED_SERVICE = "portable-hostnet"
-        private const val PROFILE_SPIN_MILLIS = 1_500L
         private const val PROFILE_ARRIVAL_SECONDS = 180L
         private const val POLL_MILLIS = 2_000L
 
@@ -169,6 +167,7 @@ class PortableObservabilityPlacementIntegrationTest {
                         LokiManifestBuilder.IMAGE,
                         TempoManifestBuilder.IMAGE,
                         PyroscopeManifestBuilder.SERVER_IMAGE,
+                        Constants.PyroscopeServer.FRONT_IMAGE,
                         Constants.Grafana.Documents.SIGV4_PROXY_IMAGE,
                         Constants.Grafana.Documents.WEB_SERVER_IMAGE,
                         LOCAL_PATH_PROVISIONER_IMAGE,
@@ -258,23 +257,28 @@ class PortableObservabilityPlacementIntegrationTest {
             ).map(::toLocalStack)
     }
 
-    /** [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack. */
+    /**
+     * [resource], with a backend configuration's S3 endpoint and credentials pointed at LocalStack.
+     * Only the backend's own config file is edited: the Pyroscope ConfigMap also carries the ingest
+     * front's HAProxy config, which names no S3 endpoint and runs as rendered.
+     */
     private fun toLocalStack(resource: HasMetadata): HasMetadata {
         if (resource !is ConfigMap) return resource
-        val edit: ((String) -> String)? =
+        val edit: Pair<String, (String) -> String>? =
             when (resource.metadata.name) {
-                "mimir-config" -> ObservabilityBackends::mimirConfig
-                "loki-config" -> ObservabilityBackends::lokiConfig
-                "tempo-config" -> ObservabilityBackends::tempoConfig
-                "pyroscope-config" -> ::pyroscopeConfig
+                "mimir-config" -> MimirManifestBuilder.CONFIG_FILE to ObservabilityBackends::mimirConfig
+                "loki-config" -> LokiManifestBuilder.CONFIG_FILE to ObservabilityBackends::lokiConfig
+                "tempo-config" -> TempoManifestBuilder.CONFIG_FILE to ObservabilityBackends::tempoConfig
+                "pyroscope-config" -> PyroscopeManifestBuilder.SERVER_CONFIG_KEY to ::pyroscopeConfig
                 else -> null
             }
         return when (edit) {
             null -> resource
-            else ->
-                ConfigMapBuilder(resource)
-                    .withData<String, String>(resource.data.mapValues { (_, content) -> inCluster(edit(content)) })
-                    .build()
+            else -> {
+                val (key, rewrite) = edit
+                val content = checkNotNull(resource.data[key]) { "${resource.metadata.name} has no $key" }
+                ConfigMapBuilder(resource).addToData(key, inCluster(rewrite(content))).build()
+            }
         }
     }
 
@@ -524,7 +528,7 @@ class PortableObservabilityPlacementIntegrationTest {
     @Order(7)
     fun `a host-network pod posts a JFR to the Pyroscope Service and the profile is read back under the tenant`() {
         ready("pyroscope")
-        client.resource(jfrConfigMap(recordJfr())).serverSideApply()
+        client.resource(jfrConfigMap(CpuSampleJfr.bytes())).serverSideApply()
         val job = client.resource(hostNetworkSender()).create()
 
         val done =
@@ -813,28 +817,6 @@ class PortableObservabilityPlacementIntegrationTest {
     }
 
     private val nodeHttp: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(EXEC_TIMEOUT_SECONDS)).build()
-
-    /** A real JFR recording of this JVM spinning, so the chunk has CPU samples to parse. */
-    private fun recordJfr(): ByteArray {
-        val file = Files.createTempFile("portable", ".jfr")
-        try {
-            Recording().use { recording ->
-                recording.enable("jdk.ExecutionSample").withPeriod(Duration.ofMillis(10))
-                recording.start()
-                val end = System.currentTimeMillis() + PROFILE_SPIN_MILLIS
-                var sink = 0.0
-                while (System.currentTimeMillis() < end) {
-                    sink += Math.sqrt(sink + 1)
-                }
-                recording.stop()
-                recording.dump(file)
-                check(sink > 0)
-            }
-            return Files.readAllBytes(file)
-        } finally {
-            Files.deleteIfExists(file)
-        }
-    }
 
     private fun jfrConfigMap(jfr: ByteArray): ConfigMap =
         ConfigMapBuilder()

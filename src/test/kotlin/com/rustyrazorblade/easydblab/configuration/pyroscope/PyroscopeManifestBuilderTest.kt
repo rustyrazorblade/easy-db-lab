@@ -5,9 +5,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -91,7 +95,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
             builder
                 .buildServerDeployment(TestScopes.EC2)
                 .spec.template.spec.containers
-                .single()
+                .single { it.image == PyroscopeManifestBuilder.SERVER_IMAGE }
         val startup = container.startupProbe
 
         assertThat(startup).isNotNull
@@ -165,6 +169,126 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "segment_writer", "lifecycler", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
+    }
+
+    @Test
+    fun `the Service sends every client to the ingest front, which forwards to the server on the pod's loopback`() {
+        val port =
+            builder
+                .buildServerService(TestScopes.EC2)
+                .spec.ports
+                .single()
+        val front =
+            builder
+                .buildServerDeployment(TestScopes.EC2)
+                .spec.template.spec.containers
+                .single { it.image == Constants.PyroscopeServer.FRONT_IMAGE }
+        val frontConfig = builder.buildFrontConfig().lines().map { it.trim() }
+
+        assertThat(port.port).isEqualTo(PyroscopeManifestBuilder.SERVER_PORT)
+        assertThat(port.targetPort.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(front.ports.map { it.containerPort }).containsExactly(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(frontConfig).contains(
+            "bind :${Constants.PyroscopeServer.FRONT_PORT}",
+            "server pyroscope 127.0.0.1:${PyroscopeManifestBuilder.SERVER_PORT}",
+        )
+        assertThat(front.args.last()).endsWith("/${PyroscopeManifestBuilder.FRONT_CONFIG_KEY}")
+        assertThat(builder.buildServerConfigMap(TestScopes.EC2).data).containsKey(PyroscopeManifestBuilder.FRONT_CONFIG_KEY)
+    }
+
+    @Test
+    fun `the front rewrites only the shutdown 422, and its image is pinned by digest`() {
+        val rules =
+            builder
+                .buildFrontConfig()
+                .lines()
+                .map { it.trim() }
+                .filter { it.startsWith("http-response") }
+
+        assertThat(rules).containsExactly(
+            "http-response wait-for-body time 1s if { status 422 }",
+            "http-response set-status 503 if { status 422 } { res.body -m reg $SHUTDOWN_REFUSAL_PATTERN }",
+        )
+        assertThat(Constants.PyroscopeServer.FRONT_IMAGE).matches("haproxy:[0-9.]+-alpine@sha256:[0-9a-f]{64}")
+    }
+
+    /**
+     * HAProxy runs `http-response` rules in order, and `res.body` holds only what has been buffered
+     * so far, so a `set-status` rule ahead of the `wait-for-body` would match against a partial
+     * body and could let the shutdown 422 through.
+     */
+    @Test
+    fun `the front buffers a 422's body before it matches the refusal against it`() {
+        val lines = builder.buildFrontConfig().lines().map { it.trim() }
+        val waitForBody = lines.indexOfFirst { it.startsWith("http-response wait-for-body") }
+        val setStatus = lines.indexOfFirst { it.startsWith("http-response set-status") }
+
+        assertThat(waitForBody).describedAs("the wait-for-body rule").isNotNegative()
+        assertThat(setStatus).describedAs("the set-status rule").isGreaterThan(waitForBody)
+    }
+
+    @Test
+    fun `the front's refusal pattern matches only Pyroscope's shutdown body, not the phrase elsewhere in a 422`() {
+        val rule =
+            builder
+                .buildFrontConfig()
+                .lines()
+                .map { it.trim() }
+                .single { it.startsWith("http-response set-status 503") }
+        // HAProxy's `-m reg` is a POSIX extended regex; Java's matches these patterns the same way.
+        val pattern = Regex(rule.substringAfter("-m reg '").substringBeforeLast("' }").replace("[[:space:]]", "\\s"))
+        val shutdown =
+            """{"code":"unknown","message":"pushing IngestInput-pprof failed push series with index 0 and id  failed: """ +
+                """unknown: rpc error: code = Unavailable desc = service is unavailable"}"""
+        val parseError = """{"code":"invalid_argument","message":"failed to parse profile: frame service is unavailable in stack"}"""
+        val laterPhrase = """{"code":"unknown","message":"rpc error: code = Unavailable desc = service is unavailable; and then more"}"""
+
+        assertThat(pattern.containsMatchIn(shutdown)).describedAs("Pyroscope's shutdown refusal").isTrue()
+        assertThat(pattern.containsMatchIn("$shutdown\n")).describedAs("the refusal with a trailing newline").isTrue()
+        assertThat(pattern.containsMatchIn(parseError)).describedAs("a parse error naming the phrase").isFalse()
+        assertThat(pattern.containsMatchIn(laterPhrase)).describedAs("the gRPC error not at the body's end").isFalse()
+    }
+
+    @Test
+    fun `a change to the front's config rolls the server pod`() {
+        fun hashWith(frontConfig: String): String? {
+            val resources =
+                builder.buildServerResources(TestScopes.EC2).map { resource ->
+                    if (resource is ConfigMap && PyroscopeManifestBuilder.FRONT_CONFIG_KEY in resource.data.orEmpty()) {
+                        ConfigMapBuilder(resource).addToData(PyroscopeManifestBuilder.FRONT_CONFIG_KEY, frontConfig).build()
+                    } else {
+                        resource
+                    }
+                }
+            return ConfigHashAnnotator
+                .annotate(resources)
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
+        }
+        val rendered = builder.buildFrontConfig()
+
+        assertThat(hashWith(rendered)).isEqualTo(hashWith(rendered))
+        assertThat(hashWith("$rendered\n# changed\n")).isNotEqualTo(hashWith(rendered))
+    }
+
+    @Test
+    fun `the rendered front config has no placeholder left`() {
+        assertThat(Regex("__[A-Z_]+__").findAll(builder.buildFrontConfig()).map { it.value }.toList()).isEmpty()
+    }
+
+    @Test
+    fun `a front that is down takes the pod out of the Service, and a starting server never restarts it`() {
+        val front =
+            builder
+                .buildServerDeployment(TestScopes.EC2)
+                .spec.template.spec.containers
+                .single { it.name == Constants.PyroscopeServer.FRONT_NAME }
+
+        assertThat(front.readinessProbe.httpGet.path).isEqualTo("/ready")
+        assertThat(front.readinessProbe.httpGet.port.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
+        assertThat(front.livenessProbe.httpGet).describedAs("liveness must not follow the server's /ready").isNull()
+        assertThat(front.livenessProbe.tcpSocket.port.intVal).isEqualTo(Constants.PyroscopeServer.FRONT_PORT)
     }
 
     @Test
@@ -254,3 +378,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(tenant.key).isEqualTo("tenant")
     }
 }
+
+/** The front's match for Pyroscope's shutdown refusal: the wrapped gRPC error that ends its JSON body. */
+private const val SHUTDOWN_REFUSAL_PATTERN =
+    "'rpc error: code = Unavailable desc = service is unavailable\"}[[:space:]]*\$'"

@@ -275,6 +275,31 @@ object ObservabilityBackends {
         return id
     }
 
+    /**
+     * Starts the pod's ingest front (HAProxy, [Constants.PyroscopeServer.FRONT_IMAGE]) with the
+     * rendered [config] in the network namespace of the running, ready [pyroscope], as the pod runs
+     * it beside the server, and waits until it answers `/ready` on
+     * [Constants.PyroscopeServer.FRONT_PORT]. Returns the front's container id; the caller removes it.
+     */
+    fun startPyroscopeFront(
+        pyroscope: GenericContainer<*>,
+        config: String,
+    ): String {
+        val path = "/usr/local/etc/haproxy/${PyroscopeManifestBuilder.FRONT_CONFIG_KEY}"
+        val id =
+            startInNamespaceOf(pyroscope.containerId, Constants.PyroscopeServer.FRONT_IMAGE, path, config) {
+                withCmd("haproxy", "-f", path)
+            }
+        val url = "${baseUrl(pyroscope, Constants.PyroscopeServer.FRONT_PORT)}/ready"
+        val deadline = System.nanoTime() + STARTUP.toNanos()
+        while (System.nanoTime() < deadline) {
+            val ready = runCatching { send(HttpRequest.newBuilder(URI(url)).GET().build()).statusCode() == HTTP_OK }
+            if (ready.getOrDefault(false)) return id
+            Thread.sleep(READY_POLL.toMillis())
+        }
+        error("the Pyroscope ingest front did not answer /ready within $STARTUP")
+    }
+
     /** A wait strategy that returns as soon as the container is running, for a caller that polls itself. */
     private object ContainerStarted : AbstractWaitStrategy() {
         override fun waitUntilReady() = Unit
@@ -323,7 +348,7 @@ object ObservabilityBackends {
                 }
             }.withCopyToContainer(Transferable.of(config), PYROSCOPE_CONFIG)
             .withCommand(PYROSCOPE_ARGS)
-            .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT)
+            .withExposedPorts(PyroscopeManifestBuilder.SERVER_PORT, Constants.PyroscopeServer.FRONT_PORT)
 
     /**
      * Starts Tempo with [config] on the Docker volume [volume] (its WAL, the control node's

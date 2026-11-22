@@ -58,6 +58,10 @@ echo "$url" >> "${STUB_DIR}/curl.calls"
 case " ${STUB_FAIL_URLS:-} " in
   *" $url "*) echo "curl: (22) The requested URL returned error: ${STUB_FAIL_CODE:-404}" >&2; exit 22 ;;
 esac
+# A URL in $STUB_CORRUPT_URLS answers 200 with bytes that are not the tarball (a bad mirror).
+case " ${STUB_CORRUPT_URLS:-} " in
+  *" $url "*) echo "not the tarball" > "$out"; exit 0 ;;
+esac
 cp "${STUB_DIR}/tarball.tgz" "$out"
 STUB
 # tar: a tar that writes part of the tree and then fails, as a killed or full-disk extract does.
@@ -130,6 +134,20 @@ mkdir -p "${WORK}/cache/sha256-${OTHER_SHA}"
 touch "${WORK}/cache/sha256-${OTHER_SHA}/.complete"
 run_fetch
 check "another version's tree is kept, so a rollback is a cache hit" '[ -f "${WORK}/cache/sha256-${OTHER_SHA}/.complete" ]'
+
+reset
+run_fetch STUB_CORRUPT_URLS="${URL}"
+check "a primary download that fails its checksum falls back" '[ "$status" -eq 0 ] && [ "$(calls)" -eq 2 ] && [ -f "${WORK}/cache/sha256-${SHA}/.complete" ]'
+check "the fallback is announced, naming the mismatch" '[[ "$output" == *"${FALLBACK}"* && "$output" == *"sha256"* ]]'
+
+reset
+run_fetch STUB_CORRUPT_URLS="${URL} ${FALLBACK}"
+check "both downloads failing the checksum fails, naming both URLs" '[ "$status" -ne 0 ] && [[ "$output" == *"${URL}"* && "$output" == *"${FALLBACK}"* && "$output" == *"${SHA}"* ]]'
+check "a double mismatch caches nothing" '[ -z "$(ls -A "${WORK}/cache" 2>/dev/null)" ]'
+
+reset
+run_fetch STUB_CORRUPT_URLS="${URL}" EDL_TARBALL_FALLBACK_URL=""
+check "a mismatch with no fallback fails at once" '[ "$status" -ne 0 ] && [ "$(calls)" -eq 1 ] && [[ "$output" == *"${SHA}"* ]]'
 
 reset
 mkdir -p "${WORK}/cache/.fetch-${SHA}.AbC123/extract" "${WORK}/cache/.fetch-${OTHER_SHA}.XyZ789"

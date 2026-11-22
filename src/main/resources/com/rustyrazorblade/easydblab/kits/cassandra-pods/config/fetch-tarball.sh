@@ -4,8 +4,9 @@
 #
 # A tree with its `.complete` marker is used as it is, with no network call, so a restart (or a
 # rollback to an earlier version) reuses it. Otherwise the tarball is downloaded into a temporary
-# directory on the claim (from EDL_TARBALL_URL, then EDL_TARBALL_FALLBACK_URL), checked against
-# EDL_TARBALL_SHA256, extracted there, marked, and renamed into place: a failure at any step
+# directory on the claim from EDL_TARBALL_URL and checked against EDL_TARBALL_SHA256; when that
+# download fails or does not match, EDL_TARBALL_FALLBACK_URL is tried the same way. It is then
+# extracted there, marked, and renamed into place: a failure at any step
 # leaves no tree under the final name. Older trees are never removed; an interrupted fetch's
 # work directory (`.fetch-*`) is removed at the next start.
 #
@@ -47,29 +48,39 @@ mkdir -p "${cache}"
 work="$(mktemp -d "${cache}/.fetch-${sha}.XXXXXX")"
 trap 'rm -rf "${work}"' EXIT
 
-download() {
-  curl -fsSL --retry 3 --connect-timeout 30 -o "${work}/tarball.tgz" "$1" 2> "${work}/curl.err"
+# fetch_from <url>: downloads <url> into the work directory and checks its sha256. On failure it
+# sets `problem` to what went wrong and `failure` to `download` or `checksum`, and returns 1.
+fetch_from() {
+  if ! curl -fsSL --retry 3 --connect-timeout 30 -o "${work}/tarball.tgz" "$1" 2> "${work}/curl.err"; then
+    failure=download
+    problem="could not download $(shown "$1"): $(cat "${work}/curl.err")"
+    return 1
+  fi
+  actual="$(sha256sum "${work}/tarball.tgz" | cut -d' ' -f1)"
+  if [ "${actual}" != "${sha}" ]; then
+    failure=checksum
+    problem="the tarball from $(shown "$1") has sha256 ${actual}, not the expected ${sha}"
+    return 1
+  fi
 }
 
-if ! download "${url}"; then
-  reason="$(cat "${work}/curl.err")"
-  case "${url}" in
-    *X-Amz-Expires=*)
-      expires="${url#*X-Amz-Expires=}"
-      expires="${expires%%&*}"
-      [ -n "${fallback}" ] ||
-        fail "could not download $(shown "${url}") (${reason}). The presigned URL is valid for ${expires}s after the start or upgrade that signed it, and may have expired: run 'cassandra-pods upgrade' again, or 'cassandra-pods stop' then 'cassandra-pods start', to sign a new one."
-      ;;
-  esac
-  [ -n "${fallback}" ] || fail "could not download $(shown "${url}"): ${reason}"
-  echo "Could not download $(shown "${url}") (${reason}); trying $(shown "${fallback}")."
-  download "${fallback}" ||
-    fail "could not download the tarball from $(shown "${url}") or $(shown "${fallback}"): $(cat "${work}/curl.err")"
+# The primary URL, then the fallback when the primary cannot be downloaded or fails its checksum.
+if ! fetch_from "${url}"; then
+  if [ -z "${fallback}" ]; then
+    case "${failure}:${url}" in
+      download:*X-Amz-Expires=*)
+        expires="${url#*X-Amz-Expires=}"
+        expires="${expires%%&*}"
+        fail "${problem}. The presigned URL is valid for ${expires}s after the start or upgrade that signed it, and may have expired: run 'cassandra-pods upgrade' again, or 'cassandra-pods stop' then 'cassandra-pods start', to sign a new one."
+        ;;
+    esac
+    fail "${problem}; nothing was cached."
+  fi
+  first="${problem}"
+  echo "${first}; trying $(shown "${fallback}")."
+  fetch_from "${fallback}" ||
+    fail "the tarball could not be fetched from $(shown "${url}") or $(shown "${fallback}"): ${first}; ${problem}; nothing was cached."
 fi
-
-actual="$(sha256sum "${work}/tarball.tgz" | cut -d' ' -f1)"
-[ "${actual}" = "${sha}" ] ||
-  fail "the tarball from $(shown "${url}") has sha256 ${actual}, not the expected ${sha}; nothing was cached."
 
 mkdir "${work}/extract"
 tar -xzf "${work}/tarball.tgz" -C "${work}/extract" ||

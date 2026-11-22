@@ -1316,8 +1316,14 @@ object Constants {
             const val CQL_NODE_PORT = 30942
 
             /**
-             * How long a catalog build's presigned tarball URL stays valid. A pod with a cold cache
-             * started after this fails its fetch, naming the expiry; `upgrade` or `start` signs a new one.
+             * How long a catalog build's presigned tarball URL stays valid. It is the SigV4 maximum
+             * on purpose: the URL is only needed by a pod with a cold cache (a new node, or a pod
+             * rescheduled onto an empty claim), which can happen at any point in a cluster's life, and
+             * a longer life only widens how long such a pod can still start. Nothing is gained by a
+             * shorter one: the URL grants a read of one object, the operator's own build, and it sits
+             * in the kit's Secret on a throwaway cluster. A pod started later fails its fetch, naming
+             * the expiry; `upgrade` again, or `stop` then `start`, signs a new one. A URL signed with
+             * temporary credentials ends when they do, whichever comes first.
              */
             val PRESIGN_TTL: java.time.Duration = java.time.Duration.ofDays(S3.MAX_PRESIGN_TTL_DAYS)
 

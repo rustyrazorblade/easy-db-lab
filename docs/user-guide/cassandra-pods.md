@@ -46,7 +46,9 @@ Guaranteed QoS class and the node to itself. Elsewhere the pod requests `--cpus`
 Each pod runs the tarball on the `cassandra-runtime` image for its JDK. The first start of a version
 downloads the tarball onto the pod's data volume, checks its sha256, and keeps it there; a restart,
 or a later start of the same version, uses the kept copy and needs no network. Older versions are
-kept too, so switching back is fast.
+kept too, so switching back is fast. The kept trees build up under `/var/lib/cassandra/.edl/artifacts`
+on each data volume, one per version that pod has run, and nothing removes them: that is by design. They
+go with the volume when you uninstall the kit.
 
 `cassandra.yaml` is built as on the AMI path: the tarball's own file, then your workspace's
 `cassandra.patch.yaml` (edit it to change any setting), then the pod's placement (seeds, directories,
@@ -56,7 +58,8 @@ reaches running pods through `upgrade` with the version they already run (for ex
 `upgrade --version 5.0.6`). That restarts them one at a time and keeps their data; an `upgrade` with
 nothing changed restarts nothing. `stop` then `start` applies it too, with every pod down at once.
 
-A catalog build's download link is valid for 7 days. A pod scheduled later onto a node with no kept
+A catalog build's download link is valid for 7 days, the longest S3 allows, because only a pod with no
+kept copy needs it and that can happen at any time in a cluster's life. A pod scheduled later onto a node with no kept
 copy fails its download with a message naming the expiry; run `upgrade` again, or `stop` then `start`, for a new link.
 
 Inside a tarball pod, `nodetool` and `cqlsh` are not on `PATH`; run them from the cached tree:

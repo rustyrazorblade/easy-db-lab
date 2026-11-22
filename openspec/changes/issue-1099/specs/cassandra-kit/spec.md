@@ -88,12 +88,12 @@ The image `ghcr.io/rustyrazorblade/cassandra-runtime` SHALL be published for bot
 ### Requirement: Tarball cached on the claim by checksum
 A `cassandra-fetch` init container SHALL look for `/var/lib/cassandra/.edl/artifacts/sha256-<hex>/.complete`, where `<hex>` is `EDL_TARBALL_SHA256`. When that marker exists, it SHALL make no network call. Otherwise it SHALL:
 
-1. download `EDL_TARBALL_URL`, or `EDL_TARBALL_FALLBACK_URL` when the first fails, into a temporary directory on the claim;
-2. check the download's sha256;
+1. download `EDL_TARBALL_URL` into a temporary directory on the claim and check its sha256;
+2. when that download fails or its sha256 does not match, do the same with `EDL_TARBALL_FALLBACK_URL`;
 3. extract it;
 4. move the tree into `sha256-<hex>/` and write `.complete` with an atomic rename.
 
-A sha256 mismatch SHALL fail the container with a message naming the expected and the actual hash, and SHALL leave no `sha256-<hex>/` directory. A tree with no `.complete` SHALL never be used. Nothing SHALL change a cached tree after `.complete` is written. Older cached versions SHALL be kept. An expired presigned URL SHALL fail with a message naming the expiry and saying to run `upgrade` again (or `stop` then `start`) to sign a new one.
+A sha256 mismatch with no fallback left SHALL fail the container with a message naming the expected and the actual hash, and every URL tried, and SHALL leave no `sha256-<hex>/` directory. A tree with no `.complete` SHALL never be used. Nothing SHALL change a cached tree after `.complete` is written. Older cached versions SHALL be kept. An expired presigned URL SHALL fail with a message naming the expiry and saying to run `upgrade` again (or `stop` then `start`) to sign a new one.
 
 #### Scenario: Cache hit makes no download
 - **WHEN** a pod starts and `sha256-<hex>/.complete` for its `EDL_TARBALL_SHA256` is already on its claim
@@ -103,8 +103,12 @@ A sha256 mismatch SHALL fail the container with a message naming the expected an
 - **WHEN** the kit has run once, is stopped, and is started again with the same sha256 but the tarball URL pointing at an unreachable host
 - **THEN** every pod reaches UN
 
+#### Scenario: Primary checksum mismatch falls back
+- **WHEN** the tarball from `EDL_TARBALL_URL` downloads but its sha256 differs from `EDL_TARBALL_SHA256`, and `EDL_TARBALL_FALLBACK_URL` is set
+- **THEN** `cassandra-fetch` downloads the fallback, checks it, and caches it when it matches
+
 #### Scenario: Checksum mismatch
-- **WHEN** the downloaded tarball's sha256 differs from `EDL_TARBALL_SHA256`
+- **WHEN** the downloaded tarball's sha256 differs from `EDL_TARBALL_SHA256` (and so does the fallback's, or there is none)
 - **THEN** `cassandra-fetch` exits non-zero with a message naming both hashes
 - **AND** no `sha256-<hex>/` directory exists on the claim
 

@@ -58,7 +58,7 @@ native_transport_port: 30942
 seed_provider:
   class_name: "org.apache.cassandra.locator.SimpleSeedProvider"
   parameters:
-    seeds: "cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local"
+    seeds: "cassandra-pods-0.cassandra-pods-gossip.default.svc"
 EOF
 printf 'dc=east\nrack=rack1\n' > "${WORK}/config/cassandra-rackdc.properties"
 
@@ -92,7 +92,7 @@ check "the tarball's keys the patches leave alone are kept" '[ "$(value .concurr
 check "the common patch replaces the tarball's values" '[ "$(value .cluster_name)" = lab ] && [ "$(value .num_tokens)" = 4 ]'
 check "the user's tuning reaches the pod" '[ "$(value .concurrent_reads)" = 128 ]'
 check "placement wins over the VM keys in the workspace patch" \
-  '[ "$(value .endpoint_snitch)" = GossipingPropertyFileSnitch ] && [ "$(value ".data_file_directories[0]")" = /var/lib/cassandra/data ] && [ "$(value ".seed_provider.parameters.seeds")" = cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local ]'
+  '[ "$(value .endpoint_snitch)" = GossipingPropertyFileSnitch ] && [ "$(value ".data_file_directories[0]")" = /var/lib/cassandra/data ] && [ "$(value ".seed_provider.parameters.seeds")" = cassandra-pods-0.cassandra-pods-gossip.default.svc ]'
 check "the native port is the NodePort value" '[ "$(value .native_transport_port)" = 30942 ]'
 check "the pod listens on its own IP" '[ "$(value .listen_address)" = 10.42.0.7 ] && [ "$(value .rpc_address)" = 10.42.0.7 ]'
 check "clients are told the node IP" '[ "$(value .broadcast_rpc_address)" = 192.168.1.5 ]'

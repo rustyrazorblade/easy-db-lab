@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Applies the kit's StatefulSet, filled in from what this start (or upgrade) resolved:
-#   - with --image: statefulset-image.yaml, from resolved-image.env (written by check-start.sh);
+#   - with --image: statefulset-image.yaml, from resolved-image.env (written by check-start.sh)
+#     and the contributor's EDL_SEED_DNS (pod 0 in the cluster namespace);
 #   - otherwise: statefulset.yaml, the tarball path, from the cassandra-artifact contributor's
 #     EDL_* variables (the artifact, the runtime image and the config hash). It also holds the
 #     cassandra-pods-artifact Secret with the URLs, so a re-signed URL leaves the pod template alone.
@@ -44,7 +45,8 @@ if [ -n "${CASSANDRA_IMAGE:-}" ]; then
   [ -f resolved-image.env ] || fail "ERROR: resolved-image.env is missing; the start check did not run."
   . ./resolved-image.env
   template=statefulset-image.yaml
-  quoted+=(RESOLVED_IMAGE RESOLVED_BUILD)
+  require EDL_SEED_DNS
+  quoted+=(RESOLVED_IMAGE RESOLVED_BUILD EDL_SEED_DNS)
 else
   template=statefulset.yaml
   for name in EDL_TARBALL_URL EDL_TARBALL_SHA256 EDL_CASSANDRA_BUILD EDL_RUNTIME_IMAGE EDL_CONFIG_HASH; do

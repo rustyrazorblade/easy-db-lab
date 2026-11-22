@@ -109,7 +109,7 @@ spec:
                   divisor: 1Mi
             # Pod 0 is the seed, reached by its stable DNS name.
             - name: CASSANDRA_SEEDS
-              value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
+              value: "@EDL_SEED_DNS@"
             # HOST_IP must precede the variables that reference it.
             - name: HOST_IP
               valueFrom:

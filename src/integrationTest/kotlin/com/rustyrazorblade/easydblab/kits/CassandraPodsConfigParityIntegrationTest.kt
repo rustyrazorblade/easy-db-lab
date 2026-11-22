@@ -76,7 +76,7 @@ class CassandraPodsConfigParityIntegrationTest {
     private fun render(): Pair<String, String> {
         val common = CassandraConfigPatch.common(CLUSTER, Constants.CassandraConfig.DEFAULT_TOKENS)
         val vmPlacement = CassandraConfigPatch.placement(CassandraPlacement.Vm(seedIps = listOf(NODE_IP)))
-        val podPlacement = CassandraConfigPatch.placement(CassandraPlacement.Pods(seedDns = Constants.Kit.CassandraPods.SEED_DNS))
+        val podPlacement = CassandraConfigPatch.placement(CassandraPlacement.Pods(seedDns = SEED_DNS))
         val vmAddresses = "listen_address: $NODE_IP\nrpc_address: $NODE_IP\nbroadcast_rpc_address: $NODE_IP\n"
 
         GenericContainer(DockerImageName.parse(runtimeImage))
@@ -128,6 +128,7 @@ class CassandraPodsConfigParityIntegrationTest {
         const val CLUSTER = "parity"
         const val CONFIG = "/tmp/edl-config"
         const val NODE_IP = "10.0.1.10"
+        const val SEED_DNS = "cassandra-pods-0.cassandra-pods-gossip.lab-a.svc"
         const val POD_IP = "10.42.0.7"
 
         /**

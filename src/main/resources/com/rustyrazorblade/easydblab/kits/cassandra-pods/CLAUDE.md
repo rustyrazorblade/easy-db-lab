@@ -41,6 +41,7 @@ Two paths, chosen by `--image`:
   rollout and UN. `upgrade.sh` records `CASSANDRA_VERSION`, `CASSANDRA_BUILD` and `CASSANDRA_JAVA` in
   `kit-resolved-args.env` right after the apply, before the wait, so a timed-out rollout still leaves
   them naming what the StatefulSet runs; the runner records them again on success (`records:`).
+- The seed is pod 0 through the headless `cassandra-pods-gossip` Service in the cluster namespace (`<pod>.<service>.<namespace>.svc`, built by the contributor with `ServiceDns`): in the placement patch on the tarball path, as `EDL_SEED_DNS` on the `--image` path. The rest of the kit (its `namespace: default` fields and `--namespace default` in the scripts) moves to the cluster namespace with the other kits in #1094 PR 2.
 - Clients dial the node: each pod sets `broadcast_rpc_address` to `status.hostIP` and its native
   port to the NodePort value 30942, and the NodePort Service uses `externalTrafficPolicy: Local`.
   Every address a driver reads from `system.peers_v2` therefore reaches the pod on that node.

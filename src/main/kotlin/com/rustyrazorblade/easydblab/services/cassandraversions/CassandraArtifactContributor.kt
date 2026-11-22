@@ -2,8 +2,11 @@ package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ServiceDns
 import com.rustyrazorblade.easydblab.configuration.cassandra.CassandraConfigPatch
 import com.rustyrazorblade.easydblab.configuration.cassandra.CassandraPlacement
+import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
+import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.KitContribution
@@ -26,6 +29,7 @@ import java.security.MessageDigest
  *   workspace has none, as off AWS), the pods' placement patch and `cassandra-rackdc.properties`.
  * - The sizing defaults: `CASSANDRA_MEMORY` and `CASSANDRA_CPUS` when not given, from the smallest
  *   db node and whether pods are Guaranteed (design D8).
+ * - The seed: pod 0 in the cluster namespace, in the placement patch and, for `--image`, as `EDL_SEED_DNS`.
  */
 class CassandraArtifactContributor(
     private val tarballs: CassandraTarballResolver,
@@ -46,7 +50,8 @@ class CassandraArtifactContributor(
                 "cassandra-builds tarball on the cassandra-runtime image. Pass one of them."
         }
         val sizing = sizing(args, roleNodes.placement(state))
-        if (image != null) return KitContribution(variables = sizing)
+        val seedDns = seedDns(state)
+        if (image != null) return KitContribution(variables = sizing + (SEED_DNS to seedDns))
 
         val java = args.value(JAVA)
         val artifact =
@@ -63,7 +68,7 @@ class CassandraArtifactContributor(
             ),
         )
         val artifactVariables = artifactVariables(artifact)
-        val configFiles = configFiles(args, state, kitDir)
+        val configFiles = configFiles(args, state, kitDir, seedDns)
         return KitContribution(
             variables = artifactVariables + sizing + (CONFIG_HASH to configHash(artifactVariables, configFiles, kitDir)),
             files = configFiles + (Constants.Kit.CassandraPods.ARTIFACT_FILE to envFile(artifactVariables)),
@@ -104,6 +109,15 @@ class CassandraArtifactContributor(
             "EDL_RUNTIME_IMAGE" to "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REPOSITORY}:${runtimeTag(artifact)}",
         )
 
+    /**
+     * Pod 0 through the headless gossip Service in the cluster namespace (`init --namespace`, else the
+     * environment default), so the seed follows the namespace the pods run in.
+     */
+    private fun seedDns(state: ClusterState): String {
+        val scope = InstallScope.of(state, ClusterContract.of(state))
+        return "${Constants.Kit.CassandraPods.SEED_POD}.${ServiceDns(scope.namespace).host(Constants.Kit.CassandraPods.GOSSIP_SERVICE)}"
+    }
+
     /** The `cassandra-runtime` tag of the artifact's JDK. */
     private fun runtimeTag(artifact: TarballArtifact): String = "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION}-jre${artifact.java}"
 
@@ -111,6 +125,7 @@ class CassandraArtifactContributor(
         args: Map<String, String>,
         state: ClusterState,
         kitDir: File,
+        seedDns: String,
     ): Map<String, String> {
         val workspacePatch = File(kitDir.absoluteFile.parentFile, Constants.ConfigPaths.CASSANDRA_PATCH_FILE)
         val common =
@@ -118,7 +133,7 @@ class CassandraArtifactContributor(
                 true -> workspacePatch.readText()
                 false -> CassandraConfigPatch.common(state.name, Constants.CassandraConfig.DEFAULT_TOKENS).toYaml() + "\n"
             }
-        val placement = CassandraConfigPatch.placement(CassandraPlacement.Pods(seedDns = Constants.Kit.CassandraPods.SEED_DNS))
+        val placement = CassandraConfigPatch.placement(CassandraPlacement.Pods(seedDns = seedDns))
         val dc = args.value(DC) ?: DEFAULT_DC
         return mapOf(
             Constants.ConfigPaths.CASSANDRA_PATCH_FILE to common,
@@ -177,6 +192,9 @@ class CassandraArtifactContributor(
         const val DEFAULT_DC = "dc1"
         const val PERCENT = 100
         const val CONFIG_HASH = "EDL_CONFIG_HASH"
+
+        // The --image path's `CASSANDRA_SEEDS`; the tarball path carries the seed in its placement patch.
+        const val SEED_DNS = "EDL_SEED_DNS"
         const val CONFIG_HASH_LENGTH = 16
         const val CONFIG_DIR = "config"
         val URL_VARIABLES = setOf("EDL_TARBALL_URL", "EDL_TARBALL_FALLBACK_URL")

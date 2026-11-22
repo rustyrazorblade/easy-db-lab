@@ -64,6 +64,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
             "CASSANDRA_IMAGE" to "ghcr.io/example/cassandra:sha-abc",
             "EDL_CASSANDRA_RESOURCES" to guaranteed,
             "EDL_INIT_RESOURCES" to guaranteedInit,
+            "EDL_SEED_DNS" to SEED,
         ) + overrides
 
     private var applies = 0
@@ -423,7 +424,7 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(env.getValue("CASSANDRA_DC").value).isEqualTo("dc1")
         assertThat(env.getValue("CASSANDRA_RACK").value).isEqualTo(Constants.Kit.CassandraPods.RACK)
         assertThat(env.getValue("CASSANDRA_ENDPOINT_SNITCH").value).isEqualTo("GossipingPropertyFileSnitch")
-        assertThat(env.getValue("CASSANDRA_SEEDS").value).isEqualTo(Constants.Kit.CassandraPods.SEED_DNS)
+        assertThat(env.getValue("CASSANDRA_SEEDS").value).isEqualTo(SEED)
         assertThat(env.getValue("JVM_EXTRA_OPTS").value).contains(JavaAgentDelivery.flag(JavaAgent.OTEL))
         assertThat(env.getValue("OTEL_EXPORTER_OTLP_ENDPOINT").value).isEqualTo("http://otel-collector.default.svc:4318")
     }
@@ -498,7 +499,8 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(headless.spec.clusterIP).isEqualTo("None")
         assertThat(headless.spec.publishNotReadyAddresses).isTrue()
         assertThat(sts.spec.serviceName).isEqualTo(headless.metadata.name)
-        assertThat(Constants.Kit.CassandraPods.SEED_DNS).startsWith("${sts.metadata.name}-0.${headless.metadata.name}.")
+        assertThat(headless.metadata.name).isEqualTo(Constants.Kit.CassandraPods.GOSSIP_SERVICE)
+        assertThat("${sts.metadata.name}-0").isEqualTo(Constants.Kit.CassandraPods.SEED_POD)
     }
 
     @ParameterizedTest
@@ -656,5 +658,6 @@ class CassandraPodsKitTest : BaseKoinTest() {
     private companion object {
         const val TARBALL_TEMPLATE = "statefulset.yaml.template"
         const val IMAGE_TEMPLATE = "statefulset-image.yaml.template"
+        const val SEED = "cassandra-pods-0.cassandra-pods-gossip.lab-a.svc"
     }
 }

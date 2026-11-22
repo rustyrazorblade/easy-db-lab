@@ -1346,8 +1346,11 @@ object Constants {
             /** Every pod's rack until #1097 places pods per rack. */
             const val RACK = "rack1"
 
-            /** Pod 0's stable name through the headless gossip Service: the seed of every pod. */
-            const val SEED_DNS = "cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local"
+            /** The headless Service that gives each pod a stable DNS name; pod 0 through it is every pod's seed. */
+            const val GOSSIP_SERVICE = "cassandra-pods-gossip"
+
+            /** Pod 0, the seed, as the headless [GOSSIP_SERVICE] names it: `<pod>.<service>`. */
+            const val SEED_POD = "cassandra-pods-0"
 
             /** `--memory` where pods are not Guaranteed: where the kit README says testing stopped. */
             const val DEFAULT_MEMORY = "3Gi"

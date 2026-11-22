@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -261,11 +262,24 @@ class CassandraArtifactContributorTest {
         val placement = contribute().files.getValue(Constants.Kit.CassandraPods.PLACEMENT_FILE)
 
         assertThat(placement).contains(
-            "cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local",
+            "cassandra-pods-0.cassandra-pods-gossip.default.svc",
             "/var/lib/cassandra/data",
             "GossipingPropertyFileSnitch",
             "native_transport_port: 30942",
         )
+    }
+
+    /** The seed follows `init --namespace`: pod 0 through the headless Service in the cluster namespace, on both paths: the tarball path's placement patch, and the --image path's `CASSANDRA_SEEDS`. */
+    @Test
+    fun `the seed is pod 0 in the cluster namespace, in the placement patch and the --image seed`() {
+        val inLabA = owned.copy(initConfig = InitConfig(namespace = "lab-a"))
+        val seed = "cassandra-pods-0.cassandra-pods-gossip.lab-a.svc"
+
+        val tarball = contribute(state = inLabA)
+        val image = contribute(args("CASSANDRA_IMAGE" to "x:y"), state = inLabA)
+
+        assertThat(tarball.files.getValue(Constants.Kit.CassandraPods.PLACEMENT_FILE)).contains("seeds: \"$seed\"")
+        assertThat(image.variables).containsEntry("EDL_SEED_DNS", seed)
     }
 
     @Test

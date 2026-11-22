@@ -177,9 +177,10 @@ RESOURCES='{"requests":{"cpu":"2","memory":"3Gi"},"limits":{"memory":"3Gi"}}'
 # templates; sets rc and out. The --image path applies statefulset-image.yaml, the tarball path statefulset.yaml.
 run_apply() {
   rm -f "${WORK}/applied.yaml"
-  printf 'image: "@RESOLVED_IMAGE@"\nbuild: "@RESOLVED_BUILD@"\nresources: {} # @EDL_CASSANDRA_RESOURCES@\n' > "${WORK}/kit/statefulset-image.yaml"
+  printf 'image: "@RESOLVED_IMAGE@"\nbuild: "@RESOLVED_BUILD@"\nseeds: "@EDL_SEED_DNS@"\nresources: {} # @EDL_CASSANDRA_RESOURCES@\n' > "${WORK}/kit/statefulset-image.yaml"
   printf 'url: "@EDL_TARBALL_URL@"\nfallback: "@EDL_TARBALL_FALLBACK_URL@"\nhash: "@EDL_CONFIG_HASH@"\nresources: {} # @EDL_CASSANDRA_RESOURCES@\ninit: {} # @EDL_INIT_RESOURCES@\n' > "${WORK}/kit/statefulset.yaml"
   (cd "${WORK}/kit" && env PATH="${WORK}/stubs:${PATH}" EDL_CASSANDRA_RESOURCES="${RESOURCES}" EDL_INIT_RESOURCES='{}' \
+    EDL_SEED_DNS=cassandra-pods-0.cassandra-pods-gossip.lab-a.svc \
     "$@" "${BASH}" lib/apply-statefulset.sh) > "${WORK}/out" 2>&1
   rc=$?
   out="$(cat "${WORK}/out")"
@@ -195,6 +196,14 @@ run_apply CASSANDRA_IMAGE=x
 [ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 grep -qxF 'image: "a&b|c\\d"' "${WORK}/applied.yaml" || fail "image not literal: $(cat "${WORK}/applied.yaml")"
 grep -qxF 'build: "x&y"' "${WORK}/applied.yaml" || fail "build not literal"
+grep -qxF 'seeds: "cassandra-pods-0.cassandra-pods-gossip.lab-a.svc"' "${WORK}/applied.yaml" || fail "seed not applied"
+
+begin "the --image path with no contributed seed applies nothing, naming it"
+printf "RESOLVED_IMAGE='cassandra:5.0'\nRESOLVED_BUILD='5.0'\n" > "${WORK}/kit/resolved-image.env"
+run_apply CASSANDRA_IMAGE=x EDL_SEED_DNS=
+[ "${rc}" -ne 0 ] || fail "exit 0"
+case "${out}" in *EDL_SEED_DNS*) ;; *) fail "message: ${out}" ;; esac
+[ ! -f "${WORK}/applied.yaml" ] || fail "kubectl apply ran"
 
 begin "apply-statefulset puts the contributed resources in as YAML, not as a string"
 printf "RESOLVED_IMAGE='cassandra:5.0'\nRESOLVED_BUILD='5.0'\n" > "${WORK}/kit/resolved-image.env"

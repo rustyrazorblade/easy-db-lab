@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.events
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
@@ -77,6 +78,34 @@ sealed interface Event {
 
     @Serializable
     sealed interface Cassandra : Event {
+        /**
+         * The tarball a cassandra-pods `start` or `upgrade` resolved, before any resource exists:
+         * the [build] its pods run, the [sha256] they cache it under, where it comes from
+         * ([source]) and the `cassandra-runtime` tag of its JDK ([runtimeTag]).
+         */
+        @Serializable
+        @SerialName("Cassandra.TarballResolved")
+        data class TarballResolved(
+            val build: String,
+            val sha256: String,
+            val source: CassandraSource,
+            val runtimeTag: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Cassandra $build (${source.name}, sha256 $sha256) on cassandra-runtime:$runtimeTag"
+        }
+
+        /**
+         * The tarball at [url] is being downloaded whole, because its source publishes only a
+         * sha512 and the pods need its sha256. It can take a while. [url] holds no credential.
+         */
+        @Serializable
+        @SerialName("Cassandra.TarballDigestDownloading")
+        data class TarballDigestDownloading(
+            val url: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Downloading $url to compute its sha256 (only a sha512 is published)..."
+        }
+
         @Serializable
         @SerialName("Cassandra.Starting")
         data class Starting(

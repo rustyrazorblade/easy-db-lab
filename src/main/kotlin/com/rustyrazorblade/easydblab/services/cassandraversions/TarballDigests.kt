@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import java.io.InputStream
 import java.security.MessageDigest
 
@@ -33,6 +35,7 @@ interface ChecksumHttp {
  */
 class TarballDigests(
     private val http: ChecksumHttp,
+    private val eventBus: EventBus,
 ) {
     /** The sha256 of the ASF tarball of [release], from the CDN or else the archive. */
     fun asf(release: String): Sha256 {
@@ -48,6 +51,7 @@ class TarballDigests(
     /** The tarball at [url], checked against its published `.sha512`, as a sha256; null when there is no `.sha512`. */
     private fun fromSha512(url: String): Sha256? {
         val expected = http.getOrNull("$url.sha512")?.let(::firstWord)?.lowercase() ?: return null
+        eventBus.emit(Event.Cassandra.TarballDigestDownloading(url))
         val (sha512, sha256) =
             http.streamOrNull(url, ::digests)
                 ?: throw VersionResolutionException("The Cassandra tarball $url could not be downloaded to compute its sha256.")

@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.cassandra.CassandraConfigPatch
 import com.rustyrazorblade.easydblab.configuration.cassandra.CassandraPlacement
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.KitContribution
 import com.rustyrazorblade.easydblab.services.KitPlacementVariables
 import com.rustyrazorblade.easydblab.services.KitVariableContributor
@@ -18,7 +20,8 @@ import java.security.MessageDigest
  *
  * - The artifact: `--version` or `--build` (and `--java`) resolved by [CassandraTarballResolver] to
  *   the `EDL_TARBALL_*` variables, `EDL_CASSANDRA_BUILD` and the `cassandra-runtime` tag of the JDK,
- *   also written to [Constants.Kit.CassandraPods.ARTIFACT_FILE]. `--image` skips all of it.
+ *   also written to [Constants.Kit.CassandraPods.ARTIFACT_FILE]. It reports what it resolved as
+ *   [Event.Cassandra.TarballResolved], so `start` names what it runs as `upgrade` names from and to. `--image` skips all of it.
  * - The config inputs: the workspace `cassandra.patch.yaml` (or the common patch where the
  *   workspace has none, as off AWS), the pods' placement patch and `cassandra-rackdc.properties`.
  * - The sizing defaults: `CASSANDRA_MEMORY` and `CASSANDRA_CPUS` when not given, from the smallest
@@ -27,6 +30,7 @@ import java.security.MessageDigest
 class CassandraArtifactContributor(
     private val tarballs: CassandraTarballResolver,
     private val roleNodes: RoleNodes,
+    private val eventBus: EventBus,
 ) : KitVariableContributor {
     override val name = Constants.Kit.Contributors.CASSANDRA_ARTIFACT
 
@@ -50,6 +54,14 @@ class CassandraArtifactContributor(
                 null -> tarballs.resolveVersion(args.value(VERSION) ?: DEFAULT_VERSION, java, state)
                 else -> tarballs.resolveBuild(build, java)
             }
+        eventBus.emit(
+            Event.Cassandra.TarballResolved(
+                build = artifact.build,
+                sha256 = artifact.sha256.hex,
+                source = artifact.source,
+                runtimeTag = runtimeTag(artifact),
+            ),
+        )
         val artifactVariables = artifactVariables(artifact)
         val configFiles = configFiles(args, state, kitDir)
         return KitContribution(
@@ -89,10 +101,11 @@ class CassandraArtifactContributor(
             "EDL_TARBALL_FALLBACK_URL" to artifact.fallbackUrl.orEmpty(),
             "EDL_TARBALL_SHA256" to artifact.sha256.hex,
             "EDL_CASSANDRA_BUILD" to artifact.build,
-            "EDL_RUNTIME_IMAGE" to
-                "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REPOSITORY}:${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION}" +
-                "-jre${artifact.java}",
+            "EDL_RUNTIME_IMAGE" to "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REPOSITORY}:${runtimeTag(artifact)}",
         )
+
+    /** The `cassandra-runtime` tag of the artifact's JDK. */
+    private fun runtimeTag(artifact: TarballArtifact): String = "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION}-jre${artifact.java}"
 
     private fun configFiles(
         args: Map<String, String>,

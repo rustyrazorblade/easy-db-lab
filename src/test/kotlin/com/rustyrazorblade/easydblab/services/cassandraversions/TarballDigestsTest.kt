@@ -1,5 +1,9 @@
 package com.rustyrazorblade.easydblab.services.cassandraversions
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -22,6 +26,20 @@ class TarballDigestsTest {
     private val release = "5.0.6"
     private val cdn = AsfReleases.downloadUrl(release)
     private val archive = AsfReleases.archiveUrl(release)
+
+    private val events = mutableListOf<Event>()
+    private val bus =
+        EventBus().apply {
+            addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+        }
 
     /** Text and bodies by URL; every other URL answers 404. Records every streamed download. */
     private class FakeHttp(
@@ -64,7 +82,7 @@ class TarballDigestsTest {
     fun `an ASF sha256 file in either form gives its hash without downloading the tarball`(form: String) {
         val http = FakeHttp(texts = mapOf("$cdn.sha256" to form.format(sha256)))
 
-        assertThat(TarballDigests(http).asf(release)).isEqualTo(Sha256(sha256))
+        assertThat(TarballDigests(http, bus).asf(release)).isEqualTo(Sha256(sha256))
         assertThat(http.streamed).isEmpty()
     }
 
@@ -72,14 +90,54 @@ class TarballDigestsTest {
     fun `the archive's sha256 is used when the CDN has none`() {
         val http = FakeHttp(texts = mapOf("$archive.sha256" to sha256))
 
-        assertThat(TarballDigests(http).asf(release)).isEqualTo(Sha256(sha256))
+        assertThat(TarballDigests(http, bus).asf(release)).isEqualTo(Sha256(sha256))
     }
 
     @Test
     fun `with only a sha512 published, one download is checked against it and its sha256 is computed`() {
         val http = FakeHttp(texts = mapOf("$cdn.sha512" to "$sha512  apache-cassandra-5.0.6-bin.tar.gz"), bodies = mapOf(cdn to tarball))
 
-        assertThat(TarballDigests(http).asf(release)).isEqualTo(Sha256(sha256))
+        assertThat(TarballDigests(http, bus).asf(release)).isEqualTo(Sha256(sha256))
+        assertThat(http.streamed).containsExactly(cdn)
+    }
+
+    /** Streaming a whole tarball takes a while; the operator is told before it starts, and which URL. */
+    @Test
+    fun `computing a sha256 from the download says it is downloading, naming the URL, before it streams`() {
+        val http = FakeHttp(texts = mapOf("$cdn.sha512" to sha512), bodies = mapOf(cdn to tarball))
+
+        TarballDigests(http, bus).asf(release)
+
+        assertThat(events.filterIsInstance<Event.Cassandra.TarballDigestDownloading>().single().url).isEqualTo(cdn)
+    }
+
+    @Test
+    fun `a published sha256 downloads nothing and says nothing`() {
+        TarballDigests(FakeHttp(texts = mapOf("$cdn.sha256" to sha256)), bus).asf(release)
+
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `an uppercase published sha512 matches the download`() {
+        val http = FakeHttp(texts = mapOf("$cdn.sha512" to sha512.uppercase()), bodies = mapOf(cdn to tarball))
+
+        assertThat(TarballDigests(http, bus).asf(release)).isEqualTo(Sha256(sha256))
+    }
+
+    /** The sha512 named the CDN's tarball; trying the archive's instead would check a file against another's hash. */
+    @Test
+    fun `with only a sha512 published and the tarball 404, it fails without falling through to the archive`() {
+        val http =
+            FakeHttp(
+                texts = mapOf("$cdn.sha512" to sha512, "$archive.sha512" to sha512),
+                bodies = mapOf(archive to tarball),
+            )
+
+        assertThatThrownBy { TarballDigests(http, bus).asf(release) }
+            .isInstanceOf(VersionResolutionException::class.java)
+            .hasMessageContaining("could not be downloaded to compute its sha256")
+            .hasMessageContaining(cdn)
         assertThat(http.streamed).containsExactly(cdn)
     }
 
@@ -88,7 +146,7 @@ class TarballDigestsTest {
         val wrong = "0".repeat(128)
         val http = FakeHttp(texts = mapOf("$cdn.sha512" to wrong), bodies = mapOf(cdn to tarball))
 
-        assertThatThrownBy { TarballDigests(http).asf(release) }
+        assertThatThrownBy { TarballDigests(http, bus).asf(release) }
             .isInstanceOf(VersionResolutionException::class.java)
             .hasMessageContaining(wrong)
             .hasMessageContaining(sha512)
@@ -97,7 +155,7 @@ class TarballDigestsTest {
 
     @Test
     fun `an ASF release with no sha256 and no sha512 fails, naming the tarball URL`() {
-        assertThatThrownBy { TarballDigests(FakeHttp()).asf(release) }
+        assertThatThrownBy { TarballDigests(FakeHttp(), bus).asf(release) }
             .isInstanceOf(VersionResolutionException::class.java)
             .hasMessageContaining(cdn)
     }
@@ -106,7 +164,7 @@ class TarballDigestsTest {
     fun `a malformed sha256 file is not a digest`() {
         val http = FakeHttp(texts = mapOf("$cdn.sha256" to "<html>Not Found</html>"))
 
-        assertThatThrownBy { TarballDigests(http).asf(release) }.isInstanceOf(VersionResolutionException::class.java)
+        assertThatThrownBy { TarballDigests(http, bus).asf(release) }.isInstanceOf(VersionResolutionException::class.java)
     }
 
     @Test

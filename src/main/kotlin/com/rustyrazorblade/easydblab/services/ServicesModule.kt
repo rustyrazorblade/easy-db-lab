@@ -290,7 +290,7 @@ val servicesModule =
         }
         single { CassandraVersionResolver(get()) }
         // The cassandra-pods kit's tarball: the same resolver, plus the sha256 from each source
-        single { CassandraTarballResolver(get(), get(), TarballDigests(PublicHttp())) }
+        single { CassandraTarballResolver(get(), get(), TarballDigests(PublicHttp(), get())) }
         // Kit variable contributors, by the name a kit.yaml lists (Constants.Kit.Contributors)
         factoryOf(::CassandraArtifactContributor) bind KitVariableContributor::class
         // The one install path of cassandra install, cassandra use and the node restorer

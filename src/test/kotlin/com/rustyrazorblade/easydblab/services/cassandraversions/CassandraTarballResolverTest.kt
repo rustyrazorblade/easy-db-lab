@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.InstalledVersion
 import com.rustyrazorblade.easydblab.configuration.NodeState
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.S3Uri
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -82,7 +83,13 @@ class CassandraTarballResolverTest {
     private fun resolver(
         sources: Sources,
         releaseLines: ReleaseLines = ReleaseLines.load(),
-    ) = CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(Http()), Duration.ofHours(3), releaseLines)
+    ) = CassandraTarballResolver(
+        CassandraVersionResolver(sources),
+        sources,
+        TarballDigests(Http(), EventBus()),
+        Duration.ofHours(3),
+        releaseLines,
+    )
 
     private fun nightly(ref: String) = CassandraBuild(ref, "https://gh/$ref.tgz", digest = "sha256:$nightlySha")
 

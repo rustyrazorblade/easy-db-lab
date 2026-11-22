@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.services.cassandraversions
 
+import com.rustyrazorblade.easydblab.configuration.CassandraSource
+
 /**
  * A tarball's sha256, as 64 lowercase hex characters: the key a pod caches the extracted tree under
  * and the hash its fetch checks the download against. Checked on construction, so a value that is
@@ -29,7 +31,7 @@ value class Sha256(
 /**
  * The Cassandra tarball a cassandra-pods pod runs, resolved by the CLI before any resource exists:
  * where to download it, what it must hash to, the build label its metrics carry, and the JDK
- * (which picks the `cassandra-runtime` image tag).
+ * (which picks the `cassandra-runtime` image tag), and the [source] it was resolved from.
  */
 data class TarballArtifact(
     val url: String,
@@ -37,4 +39,5 @@ data class TarballArtifact(
     val sha256: Sha256,
     val build: String,
     val java: String,
+    val source: CassandraSource,
 )

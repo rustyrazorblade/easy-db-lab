@@ -63,6 +63,7 @@ class CassandraTarballResolver(
             sha256 = TarballDigests.github(build.digest, build.url),
             build = ref,
             java = chooseJava(ref, java, supported),
+            source = CassandraSource.CASSANDRA_BUILDS,
         )
     }
 
@@ -75,6 +76,7 @@ class CassandraTarballResolver(
             sha256 = digests.asf(release),
             build = release,
             java = spec.java,
+            source = CassandraSource.ASF,
         )
     }
 
@@ -87,6 +89,7 @@ class CassandraTarballResolver(
             sha256 = sha256,
             build = spec.name,
             java = spec.java,
+            source = CassandraSource.BUILD_CATALOG,
         )
     }
 

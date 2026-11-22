@@ -1,9 +1,14 @@
 package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CassandraSource
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStoragePath
 import com.rustyrazorblade.easydblab.configuration.environment.Environment
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitContribution
 import com.rustyrazorblade.easydblab.services.NodeAllocatable
@@ -37,6 +42,19 @@ class CassandraArtifactContributorTest {
     private lateinit var kitDir: File
 
     private val k8s: K8sService = mock()
+    private val events = mutableListOf<Event>()
+    private val bus =
+        EventBus().apply {
+            addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+        }
 
     /** The ASF line 5.0 and whatever cassandra-builds builds a test gives; records which source was read. */
     private class Sources(
@@ -98,8 +116,9 @@ class CassandraArtifactContributorTest {
 
     private fun contributor(sources: Sources = Sources()) =
         CassandraArtifactContributor(
-            CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(Http()), Duration.ofHours(3)),
+            CassandraTarballResolver(CassandraVersionResolver(sources), sources, TarballDigests(Http(), bus), Duration.ofHours(3)),
             RoleNodes(k8s),
+            bus,
         )
 
     private val owned = ClusterState(name = "lab", environment = Environment.Ec2K3s)
@@ -141,6 +160,36 @@ class CassandraArtifactContributorTest {
                     "${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REPOSITORY}:${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION}-jre17",
             ),
         )
+    }
+
+    /** `start` says what it is about to run, as `upgrade` says what it rolls from and to. */
+    @Test
+    fun `the resolved build, its sha256, source and runtime tag are reported as one event`() {
+        contribute(args("CASSANDRA_JAVA" to "11"))
+
+        val resolved = events.filterIsInstance<Event.Cassandra.TarballResolved>().single()
+        assertThat(resolved.build).isEqualTo("5.0.6")
+        assertThat(resolved.sha256).isEqualTo(asfSha)
+        assertThat(resolved.source).isEqualTo(CassandraSource.ASF)
+        assertThat(resolved.runtimeTag).isEqualTo("${Constants.Kit.CassandraPods.RUNTIME_IMAGE_REVISION}-jre11")
+    }
+
+    @Test
+    fun `a cassandra-builds build is reported with its source`() {
+        val sources = Sources(nightly = listOf(CassandraBuild("5.0-HEAD", "https://gh/5.0-HEAD.tgz", digest = "sha256:$nightlySha")))
+
+        contribute(args("CASSANDRA_BUILD" to "5.0-HEAD"), sources = sources)
+
+        val resolved = events.filterIsInstance<Event.Cassandra.TarballResolved>().single()
+        assertThat(resolved.source).isEqualTo(CassandraSource.CASSANDRA_BUILDS)
+        assertThat(resolved.build).isEqualTo("5.0-HEAD")
+    }
+
+    @Test
+    fun `an --image start resolves no tarball and reports none`() {
+        contribute(args("CASSANDRA_IMAGE" to "ghcr.io/x/cassandra:sha-abc"))
+
+        assertThat(events.filterIsInstance<Event.Cassandra.TarballResolved>()).isEmpty()
     }
 
     @Test

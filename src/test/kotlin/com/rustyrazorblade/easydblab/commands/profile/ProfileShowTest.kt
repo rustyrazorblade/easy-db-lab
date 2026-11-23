@@ -81,6 +81,7 @@ class ProfileShowTest {
         private fun flag(enabled: Boolean) = if (enabled) "ENABLED" else "DISABLED"
     }
 
+    /** Control: leave the destination line out of the report; the `destination` pattern fails. */
     @Test
     fun `report names the profile, its directory, its file, the destination and every visible setting`() {
         val report = reportFor(profile())
@@ -96,6 +97,7 @@ class ProfileShowTest {
             .containsPattern("sshTransport\\s+direct")
     }
 
+    /** Control: print the access key secret masked by SetupProfile.maskValue; the `****` check fails. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("credentialForms")
     fun `credentials show their form and never a secret`(
@@ -110,6 +112,7 @@ class ProfileShowTest {
         assertThat(report).doesNotContain("****")
     }
 
+    /** Control: show a feature enabled when its block exists; the half-set rows fail. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("featureBlocks")
     fun `feature flags follow the block rules`(
@@ -127,11 +130,13 @@ class ProfileShowTest {
             .containsPattern("Tailscale\\s+${flag(tailscaleEnabled)}")
     }
 
+    /** Control: print the transport's enum name; the line reads `Ssm` and the pattern fails. */
     @Test
     fun `SSH transport reads ssm once the profile selects it`() {
         assertThat(reportFor(profile(sshTransport = SshTransport.Ssm))).containsPattern("sshTransport\\s+ssm")
     }
 
+    /** Control: drop the setup hint from the missing report; the test fails. */
     @Test
     fun `a missing profile reports it as not configured and names profile setup`() {
         val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Missing)
@@ -143,6 +148,7 @@ class ProfileShowTest {
             .contains("easy-db-lab profile setup")
     }
 
+    /** Control: name settings.yaml in the unreadable report; the path check fails. */
     @Test
     fun `an unreadable profile names profile yaml and profile setup`() {
         val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Unreadable)

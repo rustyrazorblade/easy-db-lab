@@ -11,6 +11,8 @@ import java.util.stream.Stream
  * setup path (the key pair, IAM roles, bucket and Packer VPC may be missing). The full table is
  * the contract: a profile counts as set up only when it can authenticate AND holds the AWS
  * resources every cluster needs.
+ *
+ * Control: drop the account bucket from `isFullySetUp`; the rows with no bucket report set up and fail.
  */
 class ProfileCompletenessTest {
     companion object {

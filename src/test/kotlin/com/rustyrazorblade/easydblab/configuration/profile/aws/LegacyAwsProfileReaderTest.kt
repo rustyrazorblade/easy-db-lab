@@ -22,6 +22,7 @@ import org.junit.jupiter.params.provider.MethodSource
 class LegacyAwsProfileReaderTest {
     private val reader = LegacyAwsProfileReader()
 
+    /** Control: read the bucket from `bucket` instead of `s3Bucket`; every row with a bucket fails. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("migrations")
     fun `earlier file maps to the profile it describes`(
@@ -31,6 +32,7 @@ class LegacyAwsProfileReaderTest {
         assertThat(reader.migrate(legacyFixture(fixture))).isEqualTo(expected)
     }
 
+    /** Control: treat a blank `awsProfile` as credentials; the neither row reports true and fails. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("migrations")
     fun `an earlier file holds credentials exactly when it migrates to a profile`(
@@ -40,6 +42,7 @@ class LegacyAwsProfileReaderTest {
         assertThat(reader.holdsCredentials(legacyFixture(fixture))).isEqualTo(expected != null)
     }
 
+    /** Control: read `isTailscaleEnabled` from the file; the half rows come out enabled and fail. */
     @ParameterizedTest(name = "{0}")
     @CsvSource("half-tailscale", "half-axonops", "aws-profile", "full")
     fun `a written getter key never enables a feature`(fixture: String) {
@@ -50,6 +53,7 @@ class LegacyAwsProfileReaderTest {
         assertThat(profile.isAxonOpsEnabled).isEqualTo(fixture == "full")
     }
 
+    /** Control: fall back to direct for an unknown transport; nothing is thrown and the test fails. */
     @Test
     fun `an unknown ssh transport fails naming the value and the choices`() {
         assertThatThrownBy { reader.migrate(legacyFixture("bad-transport")) }
@@ -58,6 +62,7 @@ class LegacyAwsProfileReaderTest {
             .hasMessageContaining("direct, ssm")
     }
 
+    /** Control: require the transport key; the conversion throws and the test fails. */
     @Test
     fun `an earlier file with no transport key reads as direct`() {
         val values = legacyFixture("aws-profile") - "sshTransport"

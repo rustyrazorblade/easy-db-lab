@@ -45,6 +45,7 @@ class ProfileStoreTest {
     private val profileFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
     private val legacyFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
 
+    /** Control: drop `tailscale` from the encoded profile; the rows with a Tailscale block fail. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("profiles")
     fun `round trip keeps every field`(
@@ -55,6 +56,7 @@ class ProfileStoreTest {
         assertThat(store().load()).describedAs(name).isEqualTo(profile)
     }
 
+    /** Control: rename the `accountBucket` key; every golden comparison fails. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("profiles")
     fun `the file format matches its golden file`(
@@ -73,12 +75,14 @@ class ProfileStoreTest {
         assertThat(written).isEqualTo(golden.readText())
     }
 
+    /** Control: skip setting 0600 on the temp file; it keeps the umask mode and the test fails. */
     @Test
     fun `save writes owner only permissions`() {
         store().replace(profile(ssoProfile))
         assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(profileFile.toPath()))).isEqualTo("rw-------")
     }
 
+    /** Control: turn strict mode on in the kaml configuration; the load fails. */
     @Test
     fun `unknown keys are ignored`() {
         store().replace(profile(ssoProfile))
@@ -88,6 +92,7 @@ class ProfileStoreTest {
         assertThat(store().load()).isEqualTo(profile(ssoProfile))
     }
 
+    /** Control: drop the type from the error message; the assertion on the name fails. */
     @Test
     fun `unknown destination type fails naming the type`() {
         store().replace(profile(ssoProfile))
@@ -98,6 +103,7 @@ class ProfileStoreTest {
             .hasMessageContaining("aws")
     }
 
+    /** Control: make loadForSetup decode the profile; it throws and setup gets nothing. */
     @ParameterizedTest
     @ValueSource(strings = ["legacy/bad-transport.yaml:settings.yaml", "current/bad-transport.yaml:profile.yaml"])
     fun `unknown ssh transport fails load naming value and choices, and setup still gets every value`(spec: String) {
@@ -117,6 +123,7 @@ class ProfileStoreTest {
         assertThat(setup).containsEntry("tailscaleClientSecret", "fixture-ts-secret")
     }
 
+    /** Control: keep the parser's exception as the cause; its message quotes the line and the test fails. */
     @Test
     fun `parse error message holds no file text`() {
         store().replace(profile(accessKey))
@@ -136,6 +143,7 @@ class ProfileStoreTest {
             })
     }
 
+    /** Control: keep the parser's exception as the cause; its message quotes the value and the test fails. */
     @Test
     fun `a field with the wrong form fails without its value`() {
         store().replace(profile(accessKey))
@@ -156,6 +164,7 @@ class ProfileStoreTest {
             })
     }
 
+    /** Control: rewrite settings.yaml after conversion; the byte comparison fails. */
     @ParameterizedTest
     @ValueSource(strings = ["aws-profile", "access-key", "both", "half-tailscale", "half-axonops", "full"])
     fun `earlier file is converted into profile yaml and left byte identical`(fixture: String) {
@@ -174,6 +183,7 @@ class ProfileStoreTest {
         assertThat(store().load()).isEqualTo(loaded)
     }
 
+    /** Control: print a notice when converting; the captured stdout is not empty. */
     @Test
     fun `migration prints nothing`() {
         legacy("full")
@@ -188,6 +198,7 @@ class ProfileStoreTest {
         assertThat(captured.toString()).isEmpty()
     }
 
+    /** Control: make isSetup true whenever settings.yaml exists; this fails. */
     @Test
     fun `earlier file without credentials is not set up`() {
         legacy("neither")
@@ -196,6 +207,7 @@ class ProfileStoreTest {
         assertThat(profileFile).doesNotExist()
     }
 
+    /** Control: return a default profile when no file exists; isSetup is true and the test fails. */
     @Test
     fun `no file is not set up and setup gets nothing`() {
         assertThat(store().isSetup()).isFalse()
@@ -203,6 +215,7 @@ class ProfileStoreTest {
         assertThatThrownBy { store().load() }.hasMessageContaining("profile setup")
     }
 
+    /** Control: write profile.yaml in place instead of by rename; a concurrent load reads a partial file and fails. */
     @Test
     fun `concurrent first loads agree`() {
         legacy("full")
@@ -226,6 +239,7 @@ class ProfileStoreTest {
         }
     }
 
+    /** Control: make update write back the profile loaded before the lock; one field is lost. */
     @Test
     fun `two stores saving different fields keep both`() {
         store().replace(profile(ssoProfile).withAws { it.copy(keyName = "", accountBucket = "") })
@@ -242,6 +256,7 @@ class ProfileStoreTest {
         assertThat((stale.destination as AwsDestination).accountBucket).isEmpty()
     }
 
+    /** Control: drop the file lock and keep only a per-store lock; concurrent read-modify-writes lose changes. */
     @Test
     fun `concurrent updates from many threads keep every change`() {
         store().replace(profile(ssoProfile))

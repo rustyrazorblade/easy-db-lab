@@ -78,7 +78,7 @@ pyroscope-agent = "2.3.0"
 
 # Gradle Plugins
 shadow = "9.4.1"
-versions = "0.54.0"
+versions = "0.67.0"
 ktlint = "14.2.0"
 detekt = "1.23.8"
 kover = "0.9.8"

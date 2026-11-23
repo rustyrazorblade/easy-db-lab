@@ -23,7 +23,9 @@ and the Jackson reader; one account bucket per profile.
 
 Non-goals: any destination other than AWS; the gate for unfinished destinations (it lands with the
 first such destination, because nothing needs gating yet); recording a target in `state.json`;
-changing the AWS prompts, validation or resource steps.
+changing the AWS prompts, validation or resource steps; CPU architecture and container images (the
+plan's Phase 5f runs the observability stack and kits natively on arm64; Cassandra container images
+and arm64 Cassandra belong to the later Cassandra-operator feature).
 
 ## Decisions
 

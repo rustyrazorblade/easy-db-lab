@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
@@ -26,14 +26,13 @@ import java.util.concurrent.CompletableFuture
  */
 class UpWorkspace(
     private val configService: ClusterConfigurationService,
-    private val user: User,
     private val state: ClusterStateWriter,
     private val directory: File,
     private val writeConfig: () -> Unit,
 ) {
     /** Writes every workspace file for the hosts known now. */
     fun write() {
-        state.read { configService.writeAllConfigurationFiles(directory.toPath(), it, user).getOrThrow() }
+        state.read { configService.writeAllConfigurationFiles(directory.toPath(), it).getOrThrow() }
         writeConfig()
     }
 }
@@ -96,7 +95,7 @@ class SocksRoute(
  * times.
  */
 class TailnetRoute(
-    private val user: User,
+    private val profile: ProfileAccess,
     private val eventBus: EventBus,
     private val probe: TcpReachabilityProbe,
     private val retryInterval: Duration,
@@ -106,7 +105,8 @@ class TailnetRoute(
 ) {
     /** Starts Tailscale on [control] if configured, then waits for the route to it. */
     fun connect(control: ClusterHost) {
-        if (user.tailscaleClientId.isNotBlank() && user.tailscaleClientSecret.isNotBlank()) start()
+        if (profile.current().isTailscaleEnabled) start()
+
         awaitRoute(control)
     }
 

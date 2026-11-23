@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.commands.spark
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.EMRProvisioningService
 import com.rustyrazorblade.easydblab.services.aws.EmrClusterProvisioningConfig
@@ -39,7 +39,7 @@ class SparkInit : PicoBaseCommand() {
     }
 
     private val emrProvisioningService: EMRProvisioningService by inject()
-    private val user: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
 
     @Option(
         names = ["--master.instance.type"],
@@ -102,7 +102,7 @@ class SparkInit : PicoBaseCommand() {
                     releaseLabel = releaseLabel,
                     subnetId = infrastructure.subnetIds.first(),
                     securityGroupId = securityGroupId,
-                    keyName = user.keyName,
+                    keyName = awsDestination.current().keyName,
                     clusterState = state,
                     tags = tags,
                 ),

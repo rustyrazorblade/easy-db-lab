@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.Down
@@ -12,8 +13,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -58,11 +58,9 @@ import java.rmi.RemoteException
 class CommandExecutorTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockBackupRestoreService: BackupRestoreService
-    private lateinit var mockUserConfigProvider: UserConfigProvider
     private lateinit var mockDockerClientProvider: DockerClientProvider
     private lateinit var mockResourceManager: ResourceManager
     private lateinit var mockSocksProxyService: SocksProxyService
-    private lateinit var mockUserConfig: User
     private lateinit var proxyAvailability: ProxyAvailability
     private lateinit var commandExecutor: DefaultCommandExecutor
 
@@ -74,11 +72,9 @@ class CommandExecutorTest : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<BackupRestoreService> { mockBackupRestoreService }
-                single<UserConfigProvider> { mockUserConfigProvider }
                 single<DockerClientProvider> { mockDockerClientProvider }
                 single<ResourceManager> { mockResourceManager }
                 single<SocksProxyService> { mockSocksProxyService }
-                single<User> { mockUserConfig }
                 single { CommandFailureReporter(eventBus, listOf(DockerErrorHandler())) }
             },
         )
@@ -104,37 +100,81 @@ class CommandExecutorTest : BaseKoinTest() {
         executionOrder.clear()
         mockClusterStateManager = mock()
         mockBackupRestoreService = mock()
-        mockUserConfigProvider = mock()
         mockDockerClientProvider = mock()
         mockResourceManager = mock()
         mockSocksProxyService = mock()
-        mockUserConfig = mock()
         proxyAvailability = DefaultProxyAvailability()
 
-        // Default: profile is already set up
-        whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
+        commandExecutor = executorWith(ProfileSetupCommandProvider { error("profile setup must not run here") })
+    }
 
-        commandExecutor =
-            DefaultCommandExecutor(
-                context = context,
-                clusterStateManager = mockClusterStateManager,
-                requirementCheckDeps =
-                    RequirementCheckDeps(
-                        userConfigProvider = mockUserConfigProvider,
-                        dockerClientProvider = mockDockerClientProvider,
-                    ),
-                resourceManager = mockResourceManager,
-                eventBus = eventBus,
-                proxyPreflight =
-                    ProxyPreflight(
-                        mockClusterStateManager,
-                        mockSocksProxyService,
-                        WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
-                        context.workingDirectory,
-                    ),
-                proxyAvailability = proxyAvailability,
-                profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
-            )
+    /** An executor over the real test profile store, running [profileSetup] when a profile is not set up. */
+    private fun executorWith(profileSetup: ProfileSetupCommandProvider) =
+        DefaultCommandExecutor(
+            context = context,
+            clusterStateManager = mockClusterStateManager,
+            requirementCheckDeps =
+                RequirementCheckDeps(
+                    profileStore = profileStore,
+                    dockerClientProvider = mockDockerClientProvider,
+                ),
+            resourceManager = mockResourceManager,
+            eventBus = eventBus,
+            proxyPreflight =
+                ProxyPreflight(
+                    mockClusterStateManager,
+                    mockSocksProxyService,
+                    WorkspaceShellTools(ToolWrapperInstaller(), EnvScriptWriter(DirectSshRoute(22))),
+                    context.workingDirectory,
+                ),
+            proxyAvailability = proxyAvailability,
+            profileSetupProvider = profileSetup,
+        )
+
+    private val profileStore: ProfileStore get() = getKoin().get()
+
+    /** Thrown by the stand-in setup command; an Error, so the executor's failure reporting lets it out. */
+    private class SetupRan : Error("profile setup ran")
+
+    private fun earlierFile(content: String) {
+        profileStore.file.delete()
+        profileStore.legacyFile.writeText(content)
+    }
+
+    // ========== PROFILE REQUIREMENT TESTS ==========
+
+    /**
+     * An earlier release's file without credentials is not a set-up profile: a profile-requiring
+     * command runs setup first instead of failing later on a missing credential.
+     *
+     * Control: make isSetup true whenever either file exists; the command runs and SetupRan is not thrown.
+     */
+    @Test
+    fun `profile required command runs setup for an earlier file without credentials`() {
+        earlierFile("email: someone@example.com\nregion: us-west-2\nawsProfile: \"\"\nawsAccessKey: \"\"\nawsSecret: \"\"\n")
+        val executor = executorWith(ProfileSetupCommandProvider { TestCommand { throw SetupRan() } })
+
+        assertThatThrownBy { executor.execute { ProfileRequiringCommand { executionOrder.add("command") } } }
+            .isInstanceOf(SetupRan::class.java)
+        assertThat(executionOrder).isEmpty()
+    }
+
+    /**
+     * An earlier release's file that holds credentials is set up: the command runs, and its first
+     * read converts the file.
+     *
+     * Control: make isSetup check only profile.yaml; setup runs and SetupRan is thrown.
+     */
+    @Test
+    fun `profile required command runs directly for an earlier file with credentials`() {
+        earlierFile("email: someone@example.com\nregion: us-west-2\nawsProfile: lab\n")
+        val executor = executorWith(ProfileSetupCommandProvider { TestCommand { throw SetupRan() } })
+
+        val exitCode = executor.execute { ProfileRequiringCommand { executionOrder.add(profileStore.load().email) } }
+
+        assertThat(exitCode).isZero()
+        assertThat(executionOrder).containsExactly("someone@example.com")
+        assertThat(profileStore.file).exists()
     }
 
     // ========== EXECUTE IMMEDIATE TESTS ==========
@@ -796,6 +836,17 @@ class CommandExecutorTest : BaseKoinTest() {
     /** Simple test command that executes a provided action */
     @Command(name = "test-command")
     inner class TestCommand(
+        private val action: () -> Unit = {},
+    ) : PicoBaseCommand() {
+        override fun execute() {
+            action()
+        }
+    }
+
+    /** Test command carrying [RequireProfileSetup], otherwise identical to [TestCommand]. */
+    @RequireProfileSetup
+    @Command(name = "profile-requiring-command")
+    inner class ProfileRequiringCommand(
         private val action: () -> Unit = {},
     ) : PicoBaseCommand() {
         override fun execute() {

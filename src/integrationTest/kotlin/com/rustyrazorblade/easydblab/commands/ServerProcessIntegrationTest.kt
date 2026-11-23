@@ -2,8 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.CliProcess
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.TestProfiles
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import org.assertj.core.api.Assertions.assertThat
@@ -29,8 +28,7 @@ class ServerProcessIntegrationTest {
     fun `the server prints the REST URLs, serves no sse endpoint and writes no mcp json`() {
         val workspace = File(root, "workspace").apply { mkdirs() }
         val userDir = File(root, "user")
-        UserConfigProvider(File(userDir, "profiles/default").apply { mkdirs() })
-            .saveUserConfig(User("test@example.com", "us-west-2", "key", "", "access", "secret"))
+        TestProfiles.storeWith(File(userDir, "profiles/default").apply { mkdirs() })
         val output = File(root, "out.log")
         val process =
             CliProcess.start(

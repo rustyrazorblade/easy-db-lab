@@ -2,15 +2,13 @@ package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.EasyDBLabCommand
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -21,8 +19,6 @@ import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
 import picocli.CommandLine
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -42,15 +38,6 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     private val stdout = ByteArrayOutputStream()
     private val originalOut = System.out
 
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                // Rebuilt on resolution rather than at module construction, so a test can point the
-                // context at another profile first.
-                single { UserConfigProvider(get<Context>().profileDir) }
-            },
-        )
-
     @BeforeEach
     fun captureStdout() {
         System.setOut(PrintStream(stdout))
@@ -64,7 +51,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
 
     private fun rootCommandLine() = CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory())
 
-    private fun settingsFile(profileDir: File) = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
+    private fun profileFile(profileDir: File) = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
 
     @Test
     fun `profile group exposes show and setup`() {
@@ -170,10 +157,8 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         // this is that value's path through the command.
         context.profile = "staging"
         context.profileDir = File(context.profilesDir, "staging").apply { mkdirs() }
-        context.yaml.writeValue(
-            settingsFile(context.profileDir),
-            userWith(email = "staging-user@example.com"),
-        )
+        // The core store binding is resolved on first use, so it is built over the staging directory.
+        TestProfiles.storeWith(context.profileDir, TestProfiles.profile(email = "staging-user@example.com"))
 
         getKoin().get<ProfileShow>().execute()
 
@@ -184,10 +169,10 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     }
 
     @Test
-    fun `profile show reports a truncated settings file instead of throwing`() {
-        // User has six constructor parameters with no defaults, so a file missing one of them
-        // fails deserialization. The command must report that, not surface the Jackson error.
-        settingsFile(context.profileDir).writeText("email: partial@example.com\n")
+    fun `profile show reports a truncated profile file instead of throwing`() {
+        // A profile needs a destination, so a file holding only the email fails to decode. The
+        // command must report that, not surface the decoder's exception.
+        profileFile(context.profileDir).writeText("email: partial@example.com\n")
 
         assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
 
@@ -195,16 +180,6 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         assertThat(output).contains("could not be read")
         assertThat(output).contains("easy-db-lab profile setup")
         assertThat(output).doesNotContain("Exception")
-        assertThat(output).doesNotContain("com.fasterxml.jackson")
+        assertThat(output).doesNotContain("kaml")
     }
-
-    private fun userWith(email: String) =
-        User(
-            email = email,
-            region = "eu-west-1",
-            keyName = "staging-key",
-            awsProfile = "staging-aws",
-            awsAccessKey = "",
-            awsSecret = "",
-        )
 }

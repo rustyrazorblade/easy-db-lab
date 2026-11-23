@@ -2,7 +2,10 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.AwsKeyName
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
@@ -33,47 +36,52 @@ private val log = KotlinLogging.logger {}
  * Creates the EC2 key pair that gives the operator SSH access to the cluster's instances, and
  * saves its private key into the profile directory.
  *
- * Lives in `services/aws` so profile setup and `User` need no EC2 types: profile setup passes the
- * region and credentials it collected, and this service builds the EC2 client for them with its
- * [AWSClientFactory] and closes it. A permission failure is classified by the same [errorHandler]
- * that reports every other command failure.
+ * Lives in `services/aws` so profile setup and the profile model need no EC2 types: profile setup
+ * passes the region and credentials it collected, and this service builds the EC2 client for them
+ * with its [AWSClientFactory] and closes it. A permission failure is classified by the same
+ * [errorHandler] that reports every other command failure.
+ *
+ * It saves the key pair it creates into the profile itself, through [profileStore]'s `update`, so a
+ * later step of the same command reads the new key name from the profile as saved.
+ *
+ * @param profileStore the active profile: where `secret.pem` and the key name are saved, and the file
+ *   a user edits to clear a key pair that no longer exists
  */
 class AwsKeyPairService(
     private val eventBus: EventBus,
     private val clientFactory: AWSClientFactory,
     private val errorHandler: ProviderErrorHandler,
-    private val profileSettingsFile: File,
+    private val profileStore: ProfileStore,
 ) {
     private companion object {
         const val OWNER_ONLY = "rw-------"
     }
 
     /**
-     * Creates a key pair with the credentials the user just entered: the named AWS [awsProfile]
-     * when it is not empty, otherwise the static [accessKey] and [secret].
+     * Creates a key pair in [region] with the [credentials] the user just entered, writes its
+     * private key into the profile directory, and saves its name as the profile's `keyName`.
      *
      * @return the key pair's name
      * @throws CommandFailedException when EC2 denies the call; the missing policies were already shown
      */
     fun generate(
-        profileDir: File,
         region: String,
-        awsProfile: String,
-        accessKey: String,
-        secret: String,
+        credentials: AwsCredentials,
     ): AwsKeyName {
         // This method built the client, so it closes it; the overload below never closes a client it was given.
-        return ec2Client(region, awsProfile, accessKey, secret).use { generate(profileDir, it) }
+        val keyName = ec2Client(region, credentials).use { generate(profileStore.profileDir, it) }
+        profileStore.update { profile -> profile.withAws { it.copy(keyName = keyName) } }
+        return keyName
     }
 
     /**
-     * Gives the profile's existing key pair every marker tag it lacks, with the [user]'s
+     * Gives the profile's existing key pair every marker tag it lacks, with the [destination]'s
      * credentials. A key pair created before the `easy_db_lab` key existed carries only the legacy
      * one. Does nothing when the profile has no key pair yet.
      */
-    fun ensureMarkerTags(user: User) {
-        if (user.keyName.isBlank()) return
-        ec2Client(user.region, user.awsProfile, user.awsAccessKey, user.awsSecret).use { ensureMarkerTags(user.keyName, it) }
+    fun ensureMarkerTags(destination: AwsDestination) {
+        if (destination.keyName.isBlank()) return
+        ec2Client(destination.location.region, destination.credentials).use { ensureMarkerTags(destination.keyName, it) }
     }
 
     /**
@@ -98,7 +106,7 @@ class AwsKeyPairService(
                 if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_KEY_PAIR_NOT_FOUND) throw e
                 throw ConfigurationException(
                     "The key pair $keyName named in the profile does not exist in this region. " +
-                        "Clear keyName in ${profileSettingsFile.absolutePath}, then run `profile setup` to create a new one.",
+                        "Clear keyName in ${profileStore.file.absolutePath}, then run `profile setup` to create a new one.",
                     e,
                 )
             }
@@ -126,17 +134,14 @@ class AwsKeyPairService(
         log.info { "Added the missing marker tags to key pair $keyName" }
     }
 
-    /** An EC2 client for the named AWS [awsProfile] when it is not empty, otherwise the static [accessKey] and [secret]. */
+    /** An EC2 client in [region] for the profile's credential form. */
     private fun ec2Client(
         region: String,
-        awsProfile: String,
-        accessKey: String,
-        secret: String,
+        credentials: AwsCredentials,
     ): Ec2Client =
-        if (awsProfile.isNotEmpty()) {
-            clientFactory.createEc2ClientWithProfile(awsProfile, region)
-        } else {
-            clientFactory.createEc2Client(accessKey, secret, region)
+        when (credentials) {
+            is AwsCredentials.AwsProfile -> clientFactory.createEc2ClientWithProfile(credentials.name, region)
+            is AwsCredentials.AccessKey -> clientFactory.createEc2Client(credentials.accessKeyId, credentials.secretAccessKey, region)
         }
 
     /**

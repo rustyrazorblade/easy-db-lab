@@ -2,36 +2,40 @@ package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.Destination
+import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import java.io.IOException
 
 /**
- * The three states the active profile's `settings.yaml` can be in.
+ * The three states the active profile can be in.
  *
- * A sum type rather than a nullable [User], because "absent" and "present but undeserializable"
- * produce different reports and a `User?` cannot tell them apart. [User] has six constructor
- * parameters with no defaults, so a hand-edited or truncated file throws during deserialization
- * instead of yielding a partial object.
+ * A sum type rather than a nullable [Profile], because "absent" and "present but undecodable"
+ * produce different reports and a `Profile?` cannot tell them apart.
  */
 sealed interface ProfileSettings {
-    /** `settings.yaml` exists and deserialized into a [User]. */
+    /** The profile file exists and decoded into a [Profile]. */
     data class Loaded(
-        val user: User,
+        val profile: Profile,
     ) : ProfileSettings
 
-    /** `settings.yaml` does not exist: the profile has never been set up. */
+    /** No profile is saved: the profile has never been set up. */
     data object Missing : ProfileSettings
 
-    /** `settings.yaml` exists but could not be deserialized. */
+    /** A profile file exists but could not be decoded. */
     data object Unreadable : ProfileSettings
 }
 
 /**
- * Reports the active profile: its name, its directory, and the settings it holds.
+ * Reports the active profile: its name, its directory, its file `profile.yaml`, its destination and
+ * the settings it holds.
+ *
+ * When only the `settings.yaml` of an earlier release exists, the store's load converts it into
+ * `profile.yaml`, as any command would, and leaves `settings.yaml` as it was.
  *
  * Carries no requirement annotation on purpose. `CommandExecutor.checkRequirements()` responds to
  * `@RequireProfileSetup` by running profile setup and exiting, which would replace this command's
@@ -50,28 +54,22 @@ sealed interface ProfileSettings {
     mixinStandardHelpOptions = true,
 )
 class ProfileShow : PicoBaseCommand() {
-    private val userConfigProvider: UserConfigProvider by inject()
+    private val profileStore: ProfileStore by inject()
 
     override fun execute() {
         val settings =
-            if (!userConfigProvider.isSetup()) {
+            if (!profileStore.isSetup()) {
                 ProfileSettings.Missing
             } else {
                 try {
-                    ProfileSettings.Loaded(userConfigProvider.getUserConfig())
+                    ProfileSettings.Loaded(profileStore.load())
                 } catch (e: IllegalStateException) {
-                    unreadable(e)
-                } catch (e: IOException) {
-                    unreadable(e)
+                    log.warn { "Could not read the profile ${context.profile}: ${e::class.simpleName}" }
+                    ProfileSettings.Unreadable
                 }
             }
 
         println(buildReport(context.profile, context.profileDir.absolutePath, settings))
-    }
-
-    private fun unreadable(e: Exception): ProfileSettings {
-        log.warn { "Could not deserialize settings for profile ${context.profile}: ${e::class.simpleName}" }
-        return ProfileSettings.Unreadable
     }
 
     companion object {
@@ -83,8 +81,8 @@ class ProfileShow : PicoBaseCommand() {
          * Renders the whole report as one string.
          *
          * Deliberately does not call any masking helper. `SetupProfile.maskValue()` renders a
-         * secret as its first character followed by asterisks, which is still a leak; secrets are
-         * reported here only as `ENABLED` / `DISABLED` flags.
+         * secret as its first character followed by asterisks, which is still a leak; credentials
+         * are reported only by their form, and the feature blocks only as `ENABLED` / `DISABLED`.
          */
         fun buildReport(
             profileName: String,
@@ -95,11 +93,12 @@ class ProfileShow : PicoBaseCommand() {
                 """
                 |Profile:   $profileName
                 |Directory: $profileDir
+                |File:      $profileDir/${Constants.ConfigPaths.PROFILE_FILE}
                 """.trimMargin()
 
             val body =
                 when (settings) {
-                    is ProfileSettings.Loaded -> settingsBlock(settings.user)
+                    is ProfileSettings.Loaded -> settingsBlock(settings.profile)
                     ProfileSettings.Missing ->
                         """
                         |This profile is not configured.
@@ -108,7 +107,7 @@ class ProfileShow : PicoBaseCommand() {
                     ProfileSettings.Unreadable ->
                         """
                         |This profile is configured but could not be read:
-                        |  $profileDir/${Constants.ConfigPaths.PROFILE_SETTINGS_FILE}
+                        |  $profileDir/${Constants.ConfigPaths.PROFILE_FILE}
                         |$SETUP_HINT
                         """.trimMargin()
                 }
@@ -116,18 +115,34 @@ class ProfileShow : PicoBaseCommand() {
             return "$header\n\n$body"
         }
 
-        private fun settingsBlock(user: User): String =
+        private fun settingsBlock(profile: Profile): String =
             """
-            |  email       ${orNotSet(user.email)}
-            |  region      ${orNotSet(user.region)}
-            |  keyName     ${orNotSet(user.keyName)}
-            |  awsProfile  ${orNotSet(user.awsProfile)}
-            |  s3Bucket    ${orNotSet(user.s3Bucket)}
+            |  email          ${orNotSet(profile.email)}
+            |  destination    ${profile.destination.displayName}
+            |${destinationBlock(profile.destination)}
             |
-            |  AxonOps     ${flag(user.isAxonOpsEnabled())}
-            |  Tailscale   ${flag(user.isTailscaleEnabled())}
-            |  SSH         ${user.sshTransport.configValue}
+            |  AxonOps        ${flag(profile.isAxonOpsEnabled)}
+            |  Tailscale      ${flag(profile.isTailscaleEnabled)}
             """.trimMargin()
+
+        private fun destinationBlock(destination: Destination): String =
+            when (destination) {
+                is AwsDestination ->
+                    """
+                    |  region         ${orNotSet(destination.location.region)}
+                    |  credentials    ${credentialsForm(destination.credentials)}
+                    |  keyName        ${orNotSet(destination.keyName)}
+                    |  accountBucket  ${orNotSet(destination.accountBucket)}
+                    |  sshTransport   ${destination.sshTransport.configValue}
+                    """.trimMargin()
+                else -> "  type           ${destination.kind}"
+            }
+
+        private fun credentialsForm(credentials: AwsCredentials): String =
+            when (credentials) {
+                is AwsCredentials.AwsProfile -> "${AwsCredentials.AwsProfile.TYPE} ${orNotSet(credentials.name)}"
+                is AwsCredentials.AccessKey -> AwsCredentials.AccessKey.TYPE
+            }
 
         private fun flag(enabled: Boolean): String = if (enabled) "ENABLED" else "DISABLED"
 

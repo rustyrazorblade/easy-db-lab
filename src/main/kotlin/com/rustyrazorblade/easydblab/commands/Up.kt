@@ -15,8 +15,9 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeGroup
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.nodeGroups
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
@@ -110,7 +111,8 @@ class Up(
     private val random: Random = Random.Default,
     private val timing: BringUpTiming = BringUpTiming(),
 ) : PicoBaseCommand() {
-    private val userConfig: User by inject()
+    private val profile: ProfileAccess by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val accountBucketSetup: AccountBucketSetup by inject()
     private val keyPairService: AwsKeyPairService by inject()
     private val openSearchService: OpenSearchService by inject()
@@ -179,7 +181,7 @@ class Up(
 
         accountBucketSetup.prepare(workingState)
         // A key pair from before the easy_db_lab marker existed gains it here; the instances launch with it.
-        keyPairService.ensureMarkerTags(userConfig)
+        keyPairService.ensureMarkerTags(awsDestination.current())
         documentService.rebuildIndex(workingState)
         finish(bringUp(initConfig))
     }
@@ -216,7 +218,6 @@ class Up(
         workspace =
             UpWorkspace(
                 clusterConfigurationService,
-                userConfig,
                 writer,
                 context.workingDirectory,
             ) { runNested(commandExecutor, WriteConfig()) }
@@ -270,7 +271,7 @@ class Up(
                 NetworkMode.Tailscale if noSetup -> { _ -> }
                 NetworkMode.Tailscale ->
                     TailnetRoute(
-                        userConfig,
+                        profile,
                         eventBus,
                         tcpReachabilityProbe,
                         tailnetRetryInterval,
@@ -310,7 +311,7 @@ class Up(
         if (result.wasReplaced(FIRST_DATABASE_NODE)) EnvironmentRepush(nodeSetupService, hostOperationsService).push(reachable)
         UpPostSteps(podNetworkTuning, k8sStorage, observabilityStackService, ciliumInstallAnnotator, eventBus)
             .run(control, localTelemetry = workingState.initConfig?.telemetryRedirect == null)
-        if (userConfig.isAxonOpsEnabled()) configureAxonOps(result)
+        if (profile.current().isAxonOpsEnabled) configureAxonOps(result)
     }
 
     /** AxonOps on the database nodes; when some failed, only on the ones that are Ready. */
@@ -321,7 +322,15 @@ class Up(
             if (ready.isEmpty()) return
             command.hosts.hostList = ready.sorted().joinToString(",")
         }
-        eventBus.emit(Event.Provision.AxonOpsSetup(userConfig.axonOpsOrg))
+        eventBus.emit(
+            Event.Provision.AxonOpsSetup(
+                profile
+                    .current()
+                    .axonOps
+                    ?.org
+                    .orEmpty(),
+            ),
+        )
         runNested(commandExecutor, command)
     }
 
@@ -518,7 +527,7 @@ class Up(
             subnetIds = subnetIds,
             tags = baseTags,
             clusterName = initConfig.name,
-            userConfig = userConfig,
+            keyName = awsDestination.current().keyName,
         )
     }
 
@@ -646,7 +655,7 @@ class Up(
         it.updateInfrastructure(
             InfrastructureState(
                 vpcId = vpcId,
-                region = userConfig.region,
+                region = awsDestination.current().location.region,
                 subnetIds = vpcInfra.subnetIds,
                 securityGroupId = vpcInfra.securityGroupId,
                 internetGatewayId = vpcInfra.internetGatewayId,

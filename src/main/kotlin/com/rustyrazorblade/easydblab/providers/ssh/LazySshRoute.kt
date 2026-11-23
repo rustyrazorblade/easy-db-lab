@@ -6,7 +6,8 @@ import java.time.Duration
 /**
  * An [SshRoute] that picks its transport the first time something uses it.
  *
- * The transport comes from the profile's `settings.yaml`. `profile setup` is the command that
+ * The transport comes from the profile's `profile.yaml`. `profile setup` is the command that
+
  * writes that file, yet Koin builds the services it needs, the SOCKS proxy among them, before the
  * command runs. A route that read the profile when it was built made `profile setup` fail on a
  * profile that did not exist yet. Deferring the read to the first use lets setup start; any

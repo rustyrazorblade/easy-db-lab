@@ -43,7 +43,7 @@ import com.rustyrazorblade.easydblab.commands.socks.Socks
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -222,8 +222,8 @@ class CommandLineParser : KoinComponent {
 
         // Show profile setup hint if no command was provided and profile not configured
         if (isHelpRequested(input)) {
-            val userConfigProvider: UserConfigProvider by inject()
-            if (!userConfigProvider.isSetup()) {
+            val profileStore: ProfileStore by inject()
+            if (!profileStore.isSetup()) {
                 eventBus.emit(Event.Command.ProfileNotConfigured)
             }
         }

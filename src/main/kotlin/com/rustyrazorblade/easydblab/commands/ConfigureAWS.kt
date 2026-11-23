@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import org.koin.core.component.inject
@@ -17,10 +16,9 @@ import picocli.CommandLine.Command
 )
 class ConfigureAWS : PicoBaseCommand() {
     private val awsResourceSetupService: AWSResourceSetupService by inject()
-    private val userConfig: User by inject()
 
     override fun execute() {
-        awsResourceSetupService.ensureAWSResources(userConfig)
+        awsResourceSetupService.ensureAWSResources()
         eventBus.emit(Event.Setup.AwsConfigured)
     }
 }

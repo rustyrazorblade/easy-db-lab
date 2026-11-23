@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
@@ -105,7 +104,6 @@ class DefaultBackupRestoreService(
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val clusterConfigurationService: ClusterConfigurationService,
-    private val user: User,
 ) : BackupRestoreService {
     override fun restoreFromVpc(
         vpcId: VpcId,
@@ -180,7 +178,7 @@ class DefaultBackupRestoreService(
 
             // A restored workspace is used as it is, without `up`, so it needs the sshConfig, env.sh,
             // tool wrappers and network mode that `up` would have written.
-            clusterConfigurationService.writeSshAndEnvironmentFiles(Path.of(workingDirectory), restoredState, user)
+            clusterConfigurationService.writeSshAndEnvironmentFiles(Path.of(workingDirectory), restoredState)
 
             VpcRestoreResult(restoredState, result)
         }

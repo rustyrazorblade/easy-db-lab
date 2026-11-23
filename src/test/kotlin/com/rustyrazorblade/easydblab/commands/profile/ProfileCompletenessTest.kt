@@ -7,7 +7,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import java.util.stream.Stream
 
 /**
- * Decides whether `profile setup` takes the update path (nothing left to create) or the full
+ * Decides, from the flat setup values either profile file gives, whether `profile setup` takes the update path (nothing left to create) or the full
  * setup path (the key pair, IAM roles, bucket and Packer VPC may be missing). The full table is
  * the contract: a profile counts as set up only when it can authenticate AND holds the AWS
  * resources every cluster needs.
@@ -22,7 +22,7 @@ class ProfileCompletenessTest {
             secret: String? = null,
             keyName: String? = "easy-db-lab-key",
             s3Bucket: String? = "easy-db-lab-bucket",
-        ): Map<String, Any> =
+        ): Map<String, String> =
             listOf(
                 "email" to email,
                 "region" to region,
@@ -46,7 +46,10 @@ class ProfileCompletenessTest {
                 Arguments.of("no email", profile(email = null), false),
                 Arguments.of("no region", profile(region = null), false),
                 Arguments.of("no way to authenticate", profile(awsProfile = ""), false),
-                Arguments.of("empty profile", emptyMap<String, Any>(), false),
+                Arguments.of("blank email", profile(email = ""), false),
+                Arguments.of("blank region", profile(region = ""), false),
+                Arguments.of("access key without its secret", profile(awsProfile = "", accessKey = "AKIA", secret = ""), false),
+                Arguments.of("empty profile", emptyMap<String, String>(), false),
             )
     }
 
@@ -54,9 +57,9 @@ class ProfileCompletenessTest {
     @MethodSource("cases")
     fun `a profile counts as set up only with credentials, a key pair and a bucket`(
         description: String,
-        config: Map<String, Any>,
+        config: Map<String, String>,
         expected: Boolean,
     ) {
-        assertThat(SetupProfile.isFullySetUp(config)).describedAs(description).isEqualTo(expected)
+        assertThat(SetupProfile.isFullySetUp(SetupProfile.profileFrom(config))).describedAs(description).isEqualTo(expected)
     }
 }

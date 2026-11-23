@@ -2,8 +2,9 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
@@ -51,12 +52,16 @@ class AwsS3BucketService(
 ) : S3BucketAdmin,
     KoinComponent {
     private val eventBus: EventBus by inject()
-    private val userConfigProvider: UserConfigProvider by inject()
+    private val profileStore: ProfileStore by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val context: Context by inject()
 
     /**
-     * Ensures the account-level S3 bucket exists and is recorded in the user config, creating it
-     * if [User.s3Bucket] is blank. Idempotent: returns the existing bucket name if already set.
+     * Ensures the account-level S3 bucket exists and is recorded in the profile, creating it when
+     * the saved profile names none. Idempotent: returns the saved bucket name if already set.
+     *
+     * It reads the profile as saved now, never a copy taken earlier, so two operations of one
+     * command (or of two commands) that each need the bucket create only one.
      *
      * This lets profiles that predate (or never completed) bucket setup migrate automatically —
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
@@ -65,22 +70,20 @@ class AwsS3BucketService(
      * It reads nothing from S3 for a bucket already set, because path resolution calls it often.
      * The setup paths add a missing marker tag with [ensureMarkerTags].
      */
-    fun ensureAccountBucket(user: User): String {
-        if (user.s3Bucket.isNotBlank()) return user.s3Bucket
-        return createAccountBucket(user)
-    }
+    fun ensureAccountBucket(): String = awsDestination.current().accountBucket.ifBlank { createAccountBucket() }
 
     /**
      * [ensureAccountBucket], then [ensureMarkerTags] on a bucket the profile already named. A
      * bucket made by this call already carries every marker, so it is not read back.
      */
-    fun ensureMarkedAccountBucket(user: User): String {
-        if (user.s3Bucket.isBlank()) return createAccountBucket(user)
-        ensureMarkerTags(user.s3Bucket)
-        return user.s3Bucket
+    fun ensureMarkedAccountBucket(): String {
+        val saved = awsDestination.current().accountBucket
+        if (saved.isBlank()) return createAccountBucket()
+        ensureMarkerTags(saved)
+        return saved
     }
 
-    private fun createAccountBucket(user: User): String {
+    private fun createAccountBucket(): String {
         eventBus.emit(Event.Setup.S3BucketCreating)
         val bucketName = "easy-db-lab-${UUID.randomUUID()}"
         createBucket(bucketName)
@@ -89,11 +92,10 @@ class AwsS3BucketService(
             bucketName,
             mapOf(
                 Constants.S3.PROFILE_TAG_KEY to context.profile,
-                Constants.S3.OWNER_TAG_KEY to user.email,
+                Constants.S3.OWNER_TAG_KEY to profileStore.load().email,
             ) + Constants.Vpc.MARKER_TAGS,
         )
-        user.s3Bucket = bucketName
-        userConfigProvider.saveUserConfig(user)
+        profileStore.update { profile -> profile.withAws { it.copy(accountBucket = bucketName) } }
         eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
         return bucketName
     }

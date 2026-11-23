@@ -43,10 +43,17 @@ Report the active profile: its name, its directory, and the settings it holds.
 easy-db-lab profile show
 ```
 
-Reads only the profile directory, so it runs from anywhere — no cluster workspace needed. Secret
-values are never printed: AxonOps and Tailscale are reported as `ENABLED` or `DISABLED`, and the
-AWS access key and secret are not shown at all.
-The SSH transport (`direct` or `ssm`) is shown as-is.
+Reads only the profile directory, so it runs from anywhere — no cluster workspace needed. It prints
+the profile name, its directory and file (`profile.yaml`), then `email`, `destination`, and the
+destination's settings: `region`, `credentials`, `keyName`, `accountBucket` and `sshTransport`
+(`direct` or `ssm`). AxonOps and Tailscale follow, as `ENABLED` or `DISABLED`.
+
+Secret values are never printed. `credentials` shows only the form: `aws-profile <name>`, or
+`access-key` with neither the key nor the secret.
+
+A profile made by an earlier release (`settings.yaml` only) is converted to `profile.yaml` when
+`profile show` reads it, as by any other command; `settings.yaml` is left unchanged.
+
 
 The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` when that is unset:
 
@@ -54,7 +61,7 @@ The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` whe
 EASY_DB_LAB_PROFILE=staging easy-db-lab profile show
 ```
 
-If the profile has no `settings.yaml`, the command says so and points at `easy-db-lab profile
+If the profile is not set up (no `profile.yaml`, and no earlier `settings.yaml` holding credentials), the command says so and points at `easy-db-lab profile
 setup`. If the file is present but unreadable, it reports that instead, naming the file.
 
 ### profile setup

@@ -1,0 +1,16 @@
+---
+email: "someone@example.com"
+region: "us-west-2"
+keyName: "easy-db-lab-fixture-key"
+awsProfile: "fixture-sso"
+awsAccessKey: ""
+awsSecret: ""
+axonOpsOrg: "fixture-org"
+axonOpsKey: "fixture-axonops-key"
+tailscaleClientId: "fixture-ts-id"
+tailscaleClientSecret: "fixture-ts-secret"
+tailscaleTag: "tag:fixture"
+s3Bucket: "easy-db-lab-fixture-bucket"
+sshTransport: "carrier-pigeon"
+isTailscaleEnabled: true
+isAxonOpsEnabled: true

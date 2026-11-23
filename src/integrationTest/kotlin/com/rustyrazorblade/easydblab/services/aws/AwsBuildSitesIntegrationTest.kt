@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.Ec2BuilderInstances
 import com.rustyrazorblade.easydblab.providers.ssh.OpenSshPublicKey
@@ -95,8 +96,7 @@ class AwsBuildSitesIntegrationTest {
                 object : ExternalIpService {
                     override fun getExternalIpAddress(): String = "203.0.113.10"
                 },
-            profileRegion = profileRegion,
-            profileKeyName = PROFILE_KEY,
+            profile = TestProfiles.awsAccessOf(TestProfiles.profile(region = profileRegion, keyName = PROFILE_KEY)),
             profileKeyFile = keyFile,
         )
     }

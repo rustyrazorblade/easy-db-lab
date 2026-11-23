@@ -66,7 +66,6 @@ class DefaultVersionSourcesTest : BaseKoinTest() {
             profileBuildDir = File(profileDir, "cassandra_versions"),
             catalog = mock(),
             bucketService = get(),
-            user = get(),
             http = PublicHttp(client, PublicHttp.retryConfig(Duration.ZERO)),
         )
     }

@@ -1,8 +1,9 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.di.commandsModule
 import com.rustyrazorblade.easydblab.di.configurationModule
 import com.rustyrazorblade.easydblab.di.prompterModule
@@ -126,10 +127,12 @@ object TestModules {
             // served by one pod, so a test of a NodePort-only kit needs no cluster binding.
             single { KitEndpointHost.of { get<K8sReadOperations>() } }
 
-            // Provide UserConfigProvider
-            single {
-                val context = get<Context>()
-                UserConfigProvider(context.profileDir)
+            // The real store over the test profile directory, which TestContextFactory seeded with
+            // TestProfiles.profile(). Change the profile with replace or update, never a Koin override.
+            single { TestProfiles.store(get<Context>().profileDir) }
+            single<ProfileAccess> {
+                val store = get<ProfileStore>()
+                ProfileAccess { store.load() }
             }
 
             // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
@@ -220,19 +223,8 @@ object TestModules {
      */
     fun testAWSModule() =
         module {
-            // Mock User configuration for AWS
-            single {
-                User(
-                    email = "test@example.com",
-                    region = "us-west-2",
-                    keyName = "test-key",
-                    awsProfile = "",
-                    awsAccessKey = "test-access-key",
-                    awsSecret = "test-secret",
-                    axonOpsOrg = "",
-                    axonOpsKey = "",
-                )
-            }
+            // The AWS destination, read at each use from the real test profile store
+            single<AwsDestinationAccess> { AwsDestinationAccess.from(get<ProfileAccess>()) }
 
             // Mock individual AWS SDK clients
             single { mock<IamClient>() }
@@ -293,14 +285,7 @@ object TestModules {
             // that has never run `cassandra build` actually looks like.
             single { mock<CassandraBuildCatalog>() }
 
-            factory {
-                AwsKeyPairService(
-                    get(),
-                    get(),
-                    AwsErrorHandler(),
-                    File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE),
-                )
-            }
+            factory { AwsKeyPairService(get(), get(), AwsErrorHandler(), get<ProfileStore>()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

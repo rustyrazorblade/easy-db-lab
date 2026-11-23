@@ -110,6 +110,23 @@ class PackageBoundaryTest {
     }
 
     /**
+     * The profile model and its store name no destination type, so a second destination adds its own
+     * package beside `aws` without changing them.
+     *
+     * Control: import `AwsDestination` in `ProfileStore`; the rule fails naming it.
+     */
+    @Test
+    fun `the profile core does not depend on the AWS destination`() {
+        noClasses()
+            .that()
+            .resideInAPackage("$root.configuration.profile")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("$root.configuration.profile.aws..")
+            .check(mainClasses)
+    }
+
+    /**
      * ArchUnit's dependency rule misses an SDK type that appears only in a `catch` clause, so this
      * reads each code unit's try-catch blocks. The message names the method, the SDK type and where.
      */

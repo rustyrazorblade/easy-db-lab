@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -56,8 +58,17 @@ class AwsKeyPairServiceTest {
             )
         }
     private val ec2: Ec2Client = mock()
-    private val settingsFile = File("/profiles/lab/settings.yaml")
-    private val service = AwsKeyPairService(eventBus, mock(), AwsErrorHandler(), settingsFile)
+
+    /** The profile directory of the store the service saves a new key name into. */
+    @TempDir
+    lateinit var storeDir: File
+
+    private val profileStore by lazy {
+        TestProfiles.storeWith(storeDir, TestProfiles.profile(keyName = "", credentials = AwsCredentials.AwsProfile("lab")))
+    }
+    private val service by lazy { serviceWith(mock()) }
+
+    private fun serviceWith(factory: AWSClientFactory) = AwsKeyPairService(eventBus, factory, AwsErrorHandler(), profileStore)
 
     @Test
     fun `the private key is saved owner-only and the tagged key name returned`(
@@ -148,7 +159,7 @@ class AwsKeyPairServiceTest {
         assertThatThrownBy { service.ensureMarkerTags("lab-key", ec2) }
             .isInstanceOf(ConfigurationException::class.java)
             .hasMessageContaining("lab-key")
-            .hasMessageContaining("/profiles/lab/settings.yaml")
+            .hasMessageContaining(File(storeDir, "profile.yaml").absolutePath)
             .hasCause(notFound)
     }
 
@@ -168,9 +179,7 @@ class AwsKeyPairServiceTest {
     @Test
     fun `a profile with no key pair yet asks EC2 nothing`() {
         val factory: AWSClientFactory = mock()
-        val user = User("a@b.c", "us-west-2", keyName = "", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
-
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).ensureMarkerTags(user)
+        serviceWith(factory).ensureMarkerTags(profileStore.load().aws)
 
         verify(factory, never()).createEc2ClientWithProfile(any(), any())
     }
@@ -180,9 +189,9 @@ class AwsKeyPairServiceTest {
         val factory: AWSClientFactory = mock()
         whenever(factory.createEc2ClientWithProfile("lab", "us-west-2")).thenReturn(ec2)
         existingKeyPair("easy_cass_lab" to "1")
-        val user = User("a@b.c", "us-west-2", keyName = "lab-key", awsProfile = "lab", awsAccessKey = "", awsSecret = "")
+        val destination = profileStore.load().aws.copy(keyName = "lab-key")
 
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).ensureMarkerTags(user)
+        serviceWith(factory).ensureMarkerTags(destination)
 
         verify(ec2).createTags(any<CreateTagsRequest>())
         verify(ec2).close()
@@ -296,33 +305,43 @@ class AwsKeyPairServiceTest {
         assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
     }
 
+    /**
+     * The key pair the service makes from the profile's credentials lands in the store's directory,
+     * and its name is saved into profile.yaml, so the next read sees it.
+     *
+     * Control: skip the profileStore.update in generate; the saved key name stays blank.
+     */
     @Test
-    fun `a client the service built from a profile is closed after success`(
-        @TempDir profileDir: File,
-    ) {
+    fun `a key pair made from a named profile is saved to profile yaml and its client closed`() {
         val factory: AWSClientFactory = mock()
         whenever(factory.createEc2ClientWithProfile("lab", "us-west-2")).thenReturn(ec2)
         whenever(ec2.createKeyPair(any<CreateKeyPairRequest>()))
             .thenReturn(CreateKeyPairResponse.builder().keyMaterial("K").build())
 
-        AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).generate(profileDir, "us-west-2", "lab", "", "")
+        val keyName = serviceWith(factory).generate("us-west-2", AwsCredentials.AwsProfile("lab"))
 
+        assertThat(
+            TestProfiles
+                .store(storeDir)
+                .load()
+                .aws.keyName,
+        ).isEqualTo(keyName).startsWith("easy-db-lab-")
+        assertThat(File(storeDir, "secret.pem").readText()).isEqualTo("K")
         verify(ec2).close()
     }
 
     @Test
-    fun `a client the service built from static keys is closed after failure`(
-        @TempDir profileDir: File,
-    ) {
+    fun `a client the service built from static keys is closed after failure and nothing is saved`() {
         val factory: AWSClientFactory = mock()
         whenever(factory.createEc2Client("key", "secret", "us-west-2")).thenReturn(ec2)
         whenever(ec2.createKeyPair(any<CreateKeyPairRequest>())).thenThrow(RuntimeException("boom"))
 
         assertThatThrownBy {
-            AwsKeyPairService(eventBus, factory, AwsErrorHandler(), settingsFile).generate(profileDir, "us-west-2", "", "key", "secret")
+            serviceWith(factory).generate("us-west-2", AwsCredentials.AccessKey("key", "secret"))
         }.hasMessage("boom")
 
         verify(ec2).close()
+        assertThat(profileStore.load().aws.keyName).isEmpty()
     }
 
     @Test

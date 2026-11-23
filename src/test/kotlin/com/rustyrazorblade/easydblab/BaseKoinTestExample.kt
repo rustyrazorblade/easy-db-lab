@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.StsAccountIdentity
@@ -24,7 +25,7 @@ class BaseKoinTestExample :
     // Inject dependencies that should be available from core modules
     private val accountIdentity: AccountIdentity by inject()
     private val iamClient: IamClient by inject()
-    private val user: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val outputHandler: OutputHandler by inject()
 
     @Test
@@ -32,13 +33,14 @@ class BaseKoinTestExample :
         // Verify that all core dependencies are injected
         assertThat(accountIdentity).isNotNull()
         assertThat(iamClient).isNotNull()
-        assertThat(user).isNotNull()
         assertThat(outputHandler).isNotNull()
 
-        // Verify user has expected test values
-        assertThat(user.email).isEqualTo("test@example.com")
-        assertThat(user.region).isEqualTo("us-west-2")
-        assertThat(user.awsAccessKey).isEqualTo("test-access-key")
+        // The destination is read from the profile.yaml the test context wrote
+        val destination = awsDestination.current()
+        assertThat(destination.location.region).isEqualTo(TestProfiles.REGION)
+        assertThat(destination.credentials).isEqualTo(
+            AwsCredentials.AccessKey(TestProfiles.ACCESS_KEY_ID, TestProfiles.SECRET_ACCESS_KEY),
+        )
     }
 
     @Test

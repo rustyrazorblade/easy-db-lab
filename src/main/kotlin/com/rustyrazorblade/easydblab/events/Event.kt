@@ -5661,6 +5661,18 @@ sealed interface Event {
             override fun toDisplayString(): String = "Profile '$profileName' is already configured."
         }
 
+        /**
+         * A new profile's destination is fixed. A profile has exactly one destination, so it is
+         * chosen once, when the profile is created; an existing profile never emits this.
+         */
+        @Serializable
+        @SerialName("Setup.DestinationSelected")
+        data class DestinationSelected(
+            val destination: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Destination: $destination"
+        }
+
         @Serializable
         @SerialName("Setup.UpdatePrompt")
         data object UpdatePrompt : Setup {

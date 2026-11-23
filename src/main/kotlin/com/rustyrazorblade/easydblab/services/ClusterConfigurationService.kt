@@ -5,8 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.AxonOpsWorkbenchConfig
 import com.rustyrazorblade.easydblab.configuration.ClusterConfigWriter
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
@@ -34,13 +34,11 @@ interface ClusterConfigurationService {
      *
      * @param workingDirectory Directory to write configuration files to
      * @param clusterState Current cluster state with host information
-     * @param userConfig User configuration with SSH key path and region
      * @return Result indicating success or failure with error details
      */
     fun writeAllConfigurationFiles(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit>
 
     /**
@@ -49,12 +47,10 @@ interface ClusterConfigurationService {
      *
      * @param workingDirectory Directory to write configuration files to
      * @param clusterState Current cluster state with host information
-     * @param userConfig User configuration with SSH key path
      */
     fun writeSshAndEnvironmentFiles(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     )
 
     /**
@@ -66,14 +62,13 @@ interface ClusterConfigurationService {
      * - CASSANDRA_EASY_STRESS_DEFAULT_DC
      *
      * @param workingDirectory Directory to write configuration file to
-     * @param clusterState Current cluster state with host and datacenter info
-     * @param userConfig User configuration with fallback region
+     * @param clusterState Current cluster state with host and datacenter info; the profile's region
+     *   is the datacenter when the state has none
      * @return Result indicating success or failure
      */
     fun writeStressEnvironmentVariables(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit>
 
     /**
@@ -81,26 +76,26 @@ interface ClusterConfigurationService {
      *
      * @param workingDirectory Directory to write configuration file to
      * @param clusterState Current cluster state with host information
-     * @param userConfig User configuration with SSH key path
      * @return Result indicating success or failure
      */
     fun writeAxonOpsWorkbenchConfig(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit>
 }
 
 /**
  * Default implementation of ClusterConfigurationService.
  *
- * @property userConfigProvider Provider for user configuration including SSH key path
+ * @property profileStore the profile store, which names the profile's SSH key
+ * @property awsDestination the profile's AWS destination, read when the stress file needs the region
  * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
  * @property envScript builds the `ProxyCommand`s for `sshConfig` and writes `env.sh`, so both route alike
  * @property workspaceShellTools writes the tool wrappers, `env.sh` and the network mode
  */
 class DefaultClusterConfigurationService(
-    private val userConfigProvider: UserConfigProvider,
+    private val profileStore: ProfileStore,
+    private val awsDestination: AwsDestinationAccess,
     private val eventBus: EventBus,
     private val sshRoute: SshRoute,
     private val envScript: EnvScriptWriter = EnvScriptWriter(sshRoute),
@@ -114,20 +109,18 @@ class DefaultClusterConfigurationService(
     override fun writeAllConfigurationFiles(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit> =
         runCatching {
-            writeSshAndEnvironmentFiles(workingDirectory, clusterState, userConfig)
-            writeStressEnvironmentVariables(workingDirectory, clusterState, userConfig).getOrThrow()
-            writeAxonOpsWorkbenchConfig(workingDirectory, clusterState, userConfig).getOrThrow()
+            writeSshAndEnvironmentFiles(workingDirectory, clusterState)
+            writeStressEnvironmentVariables(workingDirectory, clusterState).getOrThrow()
+            writeAxonOpsWorkbenchConfig(workingDirectory, clusterState).getOrThrow()
         }
 
     override fun writeSshAndEnvironmentFiles(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ) {
-        val sshKeyPath = userConfigProvider.sshKeyPath
+        val sshKeyPath = profileStore.sshKeyPath
         // Built before the file is opened, so a host that cannot be routed fails the write instead of
         // leaving a half-written sshConfig behind.
         val proxyCommands = envScript.proxyCommandsFor(clusterState.hosts)
@@ -150,7 +143,6 @@ class DefaultClusterConfigurationService(
     override fun writeStressEnvironmentVariables(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit> =
         runCatching {
             val cassandraHosts = clusterState.getHosts(ServerType.Cassandra)
@@ -160,7 +152,7 @@ class DefaultClusterConfigurationService(
             }
 
             val cassandraHost = cassandraHosts.first().private
-            val datacenter = clusterState.initConfig?.region ?: userConfig.region
+            val datacenter = clusterState.initConfig?.region ?: awsDestination.current().location.region
 
             val stressEnvFile = resolveInWorkspaceForWrite(workingDirectory.toFile(), Constants.Workspace.STRESS_ENV_FILE)
             stressEnvFile.bufferedWriter().use { writer ->
@@ -178,7 +170,6 @@ class DefaultClusterConfigurationService(
     override fun writeAxonOpsWorkbenchConfig(
         workingDirectory: Path,
         clusterState: ClusterState,
-        userConfig: User,
     ): Result<Unit> =
         runCatching {
             val cassandraHosts = clusterState.getHosts(ServerType.Cassandra)
@@ -191,7 +182,7 @@ class DefaultClusterConfigurationService(
             val config =
                 AxonOpsWorkbenchConfig.create(
                     host = cassandra0,
-                    sshKeyPath = userConfigProvider.sshKeyPath,
+                    sshKeyPath = profileStore.sshKeyPath,
                     clusterName = DEFAULT_CLUSTER_NAME,
                 )
             val configFile = resolveInWorkspaceForWrite(workingDirectory.toFile(), Constants.Workspace.AXONOPS_CONFIG_FILE)

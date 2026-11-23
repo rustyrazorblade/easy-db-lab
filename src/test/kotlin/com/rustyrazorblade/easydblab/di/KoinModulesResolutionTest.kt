@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.di
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.ContextFactory
 import com.rustyrazorblade.easydblab.Docker
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.containers.PackerImage
 import com.rustyrazorblade.easydblab.events.RedisConfiguration
 import com.rustyrazorblade.easydblab.events.RedisEndpoint
@@ -54,18 +54,10 @@ class KoinModulesResolutionTest {
     private fun externalPortsModule() =
         module {
             val contextFactory = ContextFactory(File(tempDir, "home"), File(tempDir, "workspace"))
+            // The production store binding reads this profile; only its directory is the test's.
+            TestProfiles.storeWith(contextFactory.getDefault().profileDir)
             single { contextFactory }
             single<Context> { contextFactory.getDefault() }
-            single {
-                User(
-                    email = "test@example.com",
-                    region = "us-west-2",
-                    keyName = "test-key",
-                    awsProfile = "",
-                    awsAccessKey = "test-access-key",
-                    awsSecret = "test-secret",
-                )
-            }
             single<RedisConfiguration> { RedisConfiguration.NotConfigured }
             // The publisher pings Redis on construction; a mock stands in with the endpoint it reports.
             single<RedisPublisher> { mock { on { endpoint } doReturn RedisEndpoint.parse("redis://localhost:6379/events") } }

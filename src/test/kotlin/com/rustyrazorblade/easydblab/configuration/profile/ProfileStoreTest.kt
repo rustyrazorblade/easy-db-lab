@@ -1,0 +1,306 @@
+package com.rustyrazorblade.easydblab.configuration.profile
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.SshTransport
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsLocation
+import com.rustyrazorblade.easydblab.configuration.profile.aws.LegacyAwsProfileReader
+import com.rustyrazorblade.easydblab.configuration.profile.aws.LegacyAwsProfileReaderTest
+import com.rustyrazorblade.easydblab.configuration.profile.aws.awsProfileSerializers
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
+import org.junit.jupiter.params.provider.ValueSource
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.PrintStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+/**
+ * The profile store over a real profile directory: the file format, the silent conversion of the
+ * earlier file, locked saves and redacted errors.
+ */
+class ProfileStoreTest {
+    @TempDir
+    lateinit var profileDir: File
+
+    private fun store() = ProfileStore(profileDir, awsProfileSerializers, LegacyAwsProfileReader())
+
+    private fun legacy(name: String) {
+        val resource = "/com/rustyrazorblade/easydblab/configuration/profile/legacy/$name.yaml"
+        File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
+            .writeBytes(checkNotNull(javaClass.getResource(resource)).readBytes())
+    }
+
+    private val profileFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
+    private val legacyFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("profiles")
+    fun `round trip keeps every field`(
+        name: String,
+        profile: Profile,
+    ) {
+        store().replace(profile)
+        assertThat(store().load()).describedAs(name).isEqualTo(profile)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("profiles")
+    fun `the file format matches its golden file`(
+        name: String,
+        profile: Profile,
+    ) {
+        store().replace(profile)
+        val written = profileFile.readText()
+        if (System.getenv("UPDATE_GOLDEN") == "1") {
+            val dir = Path.of("src/test/resources", GOLDEN_DIR)
+            Files.createDirectories(dir)
+            Files.writeString(dir.resolve("$name.yaml"), written)
+            return
+        }
+        val golden = checkNotNull(javaClass.getResource("/$GOLDEN_DIR/$name.yaml")) { "missing golden file for $name" }
+        assertThat(written).isEqualTo(golden.readText())
+    }
+
+    @Test
+    fun `save writes owner only permissions`() {
+        store().replace(profile(ssoProfile))
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(profileFile.toPath()))).isEqualTo("rw-------")
+    }
+
+    @Test
+    fun `unknown keys are ignored`() {
+        store().replace(profile(ssoProfile))
+        profileFile.writeText(
+            profileFile.readText().replace("destination:", "futureSetting: 7\ndestination:\n  futureNested: x"),
+        )
+        assertThat(store().load()).isEqualTo(profile(ssoProfile))
+    }
+
+    @Test
+    fun `unknown destination type fails naming the type`() {
+        store().replace(profile(ssoProfile))
+        profileFile.writeText(profileFile.readText().replace("type: \"aws\"", "type: \"gcp\""))
+        assertThatThrownBy { store().load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'gcp'")
+            .hasMessageContaining("aws")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["legacy/bad-transport.yaml:settings.yaml", "current/bad-transport.yaml:profile.yaml"])
+    fun `unknown ssh transport fails load naming value and choices, and setup still gets every value`(spec: String) {
+        val (resource, target) = spec.split(":")
+        File(profileDir, target).writeBytes(checkNotNull(javaClass.getResource("$FIXTURES/$resource")).readBytes())
+
+        assertThat(store().isSetup()).isTrue()
+        assertThatThrownBy { store().load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'carrier-pigeon'")
+            .hasMessageContaining("direct, ssm")
+        val setup = store().loadForSetup()
+        assertThat(setup).containsEntry("sshTransport", "carrier-pigeon")
+        assertThat(setup).containsEntry("region", "us-west-2")
+        assertThat(setup).containsEntry("awsProfile", "fixture-sso")
+        assertThat(setup).containsEntry("s3Bucket", "easy-db-lab-fixture-bucket")
+        assertThat(setup).containsEntry("tailscaleClientSecret", "fixture-ts-secret")
+    }
+
+    @Test
+    fun `parse error message holds no file text`() {
+        store().replace(profile(accessKey))
+        profileFile.writeText(
+            profileFile.readText().replace("secretAccessKey: \"fixture-secret-value\"", "secretAccessKey: [fixture-secret-value"),
+        )
+        assertThatThrownBy { store().load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(profileFile.path)
+            .satisfies({ assertThat(it.message).doesNotContain("fixture-secret-value") })
+            .satisfies({
+                assertThat(
+                    generateSequence(it) { e -> e.cause }.joinToString { e ->
+                        e.message.orEmpty()
+                    },
+                ).doesNotContain("fixture-secret-value")
+            })
+    }
+
+    @Test
+    fun `a field with the wrong form fails without its value`() {
+        store().replace(profile(accessKey))
+        profileFile.writeText(
+            profileFile.readText().replace(
+                "secretAccessKey: \"fixture-secret-value\"",
+                "secretAccessKey:\n      nested: fixture-secret-value",
+            ),
+        )
+        assertThatThrownBy { store().load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .satisfies({
+                assertThat(
+                    generateSequence(it) { e -> e.cause }.joinToString { e ->
+                        e.message.orEmpty()
+                    },
+                ).doesNotContain("fixture-secret-value")
+            })
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["aws-profile", "access-key", "both", "half-tailscale", "half-axonops", "full"])
+    fun `earlier file is converted into profile yaml and left byte identical`(fixture: String) {
+        legacy(fixture)
+        val before = legacyFile.readBytes()
+
+        val loaded = store().load()
+
+        assertThat(legacyFile.readBytes()).isEqualTo(before)
+        assertThat(profileFile).exists()
+        assertThat(loaded).isEqualTo(LegacyAwsProfileReader().migrate(LegacyAwsProfileReaderTest.legacyFixture(fixture)))
+        // Setup's flat view of the converted file is the earlier file's view, for the keys a profile keeps.
+        assertThat(LegacyAwsProfileReader().migrate(store().loadForSetup())).isEqualTo(loaded)
+        // The converted file is what the next command reads, even with the earlier file gone.
+        legacyFile.delete()
+        assertThat(store().load()).isEqualTo(loaded)
+    }
+
+    @Test
+    fun `migration prints nothing`() {
+        legacy("full")
+        val captured = ByteArrayOutputStream()
+        val original = System.out
+        System.setOut(PrintStream(captured, true))
+        try {
+            store().load()
+        } finally {
+            System.setOut(original)
+        }
+        assertThat(captured.toString()).isEmpty()
+    }
+
+    @Test
+    fun `earlier file without credentials is not set up`() {
+        legacy("neither")
+        assertThat(store().isSetup()).isFalse()
+        assertThat(store().loadForSetup()).containsEntry("email", "someone@example.com").containsEntry("region", "us-west-2")
+        assertThat(profileFile).doesNotExist()
+    }
+
+    @Test
+    fun `no file is not set up and setup gets nothing`() {
+        assertThat(store().isSetup()).isFalse()
+        assertThat(store().loadForSetup()).isEmpty()
+        assertThatThrownBy { store().load() }.hasMessageContaining("profile setup")
+    }
+
+    @Test
+    fun `concurrent first loads agree`() {
+        legacy("full")
+        val threads = 8
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(threads)
+        try {
+            val results =
+                (1..threads).map {
+                    pool.submit<Profile> {
+                        start.await()
+                        store().load()
+                    }
+                }
+            start.countDown()
+            val loaded = results.map { it.get(30, TimeUnit.SECONDS) }
+            assertThat(loaded.toSet()).hasSize(1)
+            assertThat(store().load()).isEqualTo(loaded.first())
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `two stores saving different fields keep both`() {
+        store().replace(profile(ssoProfile).withAws { it.copy(keyName = "", accountBucket = "") })
+        val first = store()
+        val second = store()
+        val stale = first.load()
+
+        second.update { it.withAws { aws -> aws.copy(accountBucket = "new-bucket") } }
+        first.update { it.withAws { aws -> aws.copy(keyName = "new-key") } }
+
+        val saved = store().load().destination as AwsDestination
+        assertThat(saved.keyName).isEqualTo("new-key")
+        assertThat(saved.accountBucket).isEqualTo("new-bucket")
+        assertThat((stale.destination as AwsDestination).accountBucket).isEmpty()
+    }
+
+    @Test
+    fun `concurrent updates from many threads keep every change`() {
+        store().replace(profile(ssoProfile))
+        val threads = 16
+        val pool = Executors.newFixedThreadPool(threads)
+        try {
+            (1..threads)
+                .map { n -> pool.submit { store().update { it.copy(email = it.email + ",$n") } } }
+                .forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+        assertThat(
+            store()
+                .load()
+                .email
+                .split(",")
+                .drop(1)
+                .map { it.toInt() },
+        ).containsExactlyInAnyOrderElementsOf(1..threads)
+    }
+
+    companion object {
+        private const val GOLDEN_DIR = "com/rustyrazorblade/easydblab/configuration/profile/golden"
+        private const val FIXTURES = "/com/rustyrazorblade/easydblab/configuration/profile"
+        private val ssoProfile = AwsCredentials.AwsProfile("fixture-sso")
+        private val accessKey = AwsCredentials.AccessKey("AKIAFIXTUREKEY", "fixture-secret-value")
+
+        private fun profile(
+            credentials: AwsCredentials,
+            tailscale: Tailscale? = null,
+            axonOps: AxonOps? = null,
+        ) = Profile(
+            email = "someone@example.com",
+            destination =
+                AwsDestination(
+                    AwsLocation("us-west-2"),
+                    credentials,
+                    "easy-db-lab-fixture-key",
+                    "easy-db-lab-fixture-bucket",
+                    SshTransport.Ssm,
+                ),
+            tailscale = tailscale,
+            axonOps = axonOps,
+        )
+
+        private fun Profile.withAws(change: (AwsDestination) -> AwsDestination) = copy(destination = change(destination as AwsDestination))
+
+        @JvmStatic
+        fun profiles(): List<Arguments> {
+            val tailscale = Tailscale("fixture-ts-id", "fixture-ts-secret", "tag:fixture")
+            val axonOps = AxonOps("fixture-org", "fixture-axonops-key")
+            return listOf(
+                Arguments.of("aws-profile-bare", profile(ssoProfile)),
+                Arguments.of("aws-profile-blocks", profile(ssoProfile, tailscale, axonOps)),
+                Arguments.of("access-key-bare", profile(accessKey)),
+                Arguments.of("access-key-blocks", profile(accessKey, tailscale, axonOps)),
+                Arguments.of("half-blocks", profile(ssoProfile, Tailscale("fixture-ts-id", ""), AxonOps("", "fixture-axonops-key"))),
+            )
+        }
+    }
+}

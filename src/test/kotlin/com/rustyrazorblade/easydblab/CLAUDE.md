@@ -26,13 +26,12 @@ All tests that need dependency injection should extend `BaseKoinTest`. It provid
 | `AccountIdentity`, `IamRoles`, `AwsS3BucketService` | Real adapters over mocked STS, IAM and S3 clients |
 | `IamClient`, `S3Client`, `StsClient` | Mockito mocks |
 | `AWSClientFactory`, `AMIValidator` | Mockito mocks |
-| `User` | Test user (region: "us-west-2", email: "test@example.com") |
 | `OutputHandler` | `BufferedOutputHandler` (captures output) |
 | `SSHConnectionProvider` | Mock with `MockSSHClient` |
 | `RemoteOperationsService` | Mock with no-op implementations |
 | `Context`, `ContextFactory` | Test context with temp directories |
 | `ClusterStateManager` | Real, from the production `configurationModule`, over the test context's workspace |
-| `UserConfigProvider` | From test context |
+| `ProfileStore`, `ProfileAccess`, `AwsDestinationAccess` | Real store over the test context's profile directory, seeded with `TestProfiles.profile()` (region "us-west-2", email "test@example.com"); the accessors read it at use. Change the profile with `replace` or `update`, never a Koin override |
 | `CommandExecutor` | Pass-through implementation |
 
 ### Adding Test-Specific Mocks
@@ -151,6 +150,7 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 ├── TestModules.kt           # Test module factory methods
 ├── TestPrompter.kt          # User input simulation
 ├── TestContextFactory.kt    # Test Context creation
+├── TestProfiles.kt          # The test profile, real profile stores and fixed accessors
 ├── assertions/              # Custom AssertJ assertions
 ├── commands/                # Command tests (mirrors main)
 ├── configuration/           # Configuration tests

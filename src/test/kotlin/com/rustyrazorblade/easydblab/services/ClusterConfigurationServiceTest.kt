@@ -1,13 +1,14 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
@@ -27,8 +28,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,7 +36,7 @@ import java.nio.file.Path
  * Tests for ClusterConfigurationService.
  */
 class ClusterConfigurationServiceTest {
-    private lateinit var userConfigProvider: UserConfigProvider
+    private lateinit var profileStore: ProfileStore
     private lateinit var service: ClusterConfigurationService
     private lateinit var eventBus: EventBus
     private val capturedEvents = mutableListOf<EventEnvelope>()
@@ -49,13 +48,9 @@ class ClusterConfigurationServiceTest {
     @TempDir
     lateinit var outsideDir: File
 
-    companion object {
-        const val TEST_SSH_KEY_PATH = "/path/to/key"
-    }
-
     @BeforeEach
     fun setup() {
-        userConfigProvider = mock()
+        profileStore = TestProfiles.storeWith(File(tempDir.toFile(), "profile"))
         capturedEvents.clear()
         eventBus = EventBus()
         eventBus.addListener(
@@ -67,13 +62,7 @@ class ClusterConfigurationServiceTest {
                 override fun close() = Unit
             },
         )
-        whenever(userConfigProvider.sshKeyPath).thenReturn(TEST_SSH_KEY_PATH)
-        service =
-            DefaultClusterConfigurationService(
-                userConfigProvider,
-                eventBus,
-                DirectSshRoute(22),
-            )
+        service = serviceOver(profileStore)
     }
 
     private val ssmRoute =
@@ -88,7 +77,11 @@ class ClusterConfigurationServiceTest {
         )
 
     /** A service whose hosts are routed over SSM, as under a profile with the `ssm` transport. */
-    private val ssmService by lazy { DefaultClusterConfigurationService(userConfigProvider, eventBus, ssmRoute) }
+    private val ssmService by lazy { DefaultClusterConfigurationService(profileStore, accessOf(profileStore), eventBus, ssmRoute) }
+
+    private fun accessOf(store: ProfileStore) = AwsDestinationAccess.from { store.load() }
+
+    private fun serviceOver(store: ProfileStore) = DefaultClusterConfigurationService(store, accessOf(store), eventBus, DirectSshRoute(22))
 
     @AfterEach
     fun closeRoute() = ssmRoute.close()
@@ -98,9 +91,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should write all configuration files successfully`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            val result = service.writeAllConfigurationFiles(tempDir, clusterState, userConfig)
+            val result = service.writeAllConfigurationFiles(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             assertThat(File(tempDir.toFile(), "sshConfig")).exists()
@@ -122,7 +114,7 @@ class ClusterConfigurationServiceTest {
             val link = File(tempDir.toFile(), name).toPath()
             Files.createSymbolicLink(link, outsideFile.toPath())
 
-            val result = service.writeAllConfigurationFiles(tempDir, createClusterState(), createUserConfig())
+            val result = service.writeAllConfigurationFiles(tempDir, createClusterState())
 
             assertThat(result.isSuccess).isTrue()
             assertThat(outsideFile).hasContent("owner")
@@ -134,9 +126,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should handle empty Cassandra hosts gracefully`() {
             val clusterState = createClusterState(cassandraHosts = emptyList())
-            val userConfig = createUserConfig()
 
-            val result = service.writeAllConfigurationFiles(tempDir, clusterState, userConfig)
+            val result = service.writeAllConfigurationFiles(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             // SSH and env files should still be created
@@ -151,7 +142,7 @@ class ClusterConfigurationServiceTest {
         fun `on a Tailscale cluster it writes the wrappers and an env file that says Tailscale and has no port`() {
             val clusterState = createClusterState().copy(networkMode = NetworkMode.Tailscale)
 
-            service.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+            service.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(networkMode = NetworkMode.Tailscale, tunnel = null))
             val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
@@ -165,7 +156,7 @@ class ClusterConfigurationServiceTest {
         fun `on a SOCKS cluster it records that the cluster is not Tailscale and keeps a recorded port`() {
             ProxyEnvFile(tempDir.toFile()).recordTunnel(41234, ProcessHandle.current().pid())
 
-            service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(networkMode = NetworkMode.Socks), createUserConfig())
+            service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(networkMode = NetworkMode.Socks))
 
             assertThat(
                 ProxyEnvFile(tempDir.toFile()).read(),
@@ -176,24 +167,22 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should create sshConfig file`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeSshAndEnvironmentFiles(tempDir, clusterState, userConfig)
+            service.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             val sshConfig = File(tempDir.toFile(), "sshConfig")
             assertThat(sshConfig).exists()
             val content = sshConfig.readText()
             assertThat(content).contains("StrictHostKeyChecking=no")
             assertThat(content).contains("User ubuntu")
-            assertThat(content).contains("IdentityFile $TEST_SSH_KEY_PATH")
+            assertThat(content).contains("IdentityFile ${profileStore.sshKeyPath}")
         }
 
         @Test
         fun `should include host aliases in sshConfig`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeSshAndEnvironmentFiles(tempDir, clusterState, userConfig)
+            service.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             val sshConfig = File(tempDir.toFile(), "sshConfig")
             val content = sshConfig.readText()
@@ -204,9 +193,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should create env file with cluster metadata`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeSshAndEnvironmentFiles(tempDir, clusterState, userConfig)
+            service.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             val envFile = File(tempDir.toFile(), "env.sh")
             assertThat(envFile).exists()
@@ -221,7 +209,7 @@ class ClusterConfigurationServiceTest {
                     controlHosts = listOf(ClusterHost("2.2.2.2", "10.0.0.2", "control0", "us-west-2a", "i-control")),
                 )
 
-            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             val lines = File(tempDir.toFile(), "sshConfig").readLines()
             assertThat(hostBlock(lines, "db0")).containsExactly("Host db0", " Hostname 1.1.1.1", proxyLine("i-12345"))
@@ -230,7 +218,7 @@ class ClusterConfigurationServiceTest {
 
         @Test
         fun `the env sh fallback config routes hosts the same way as sshConfig`() {
-            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState())
 
             assertThat(File(tempDir.toFile(), "env.sh").readLines()).contains(proxyLine("i-12345"))
         }
@@ -242,7 +230,7 @@ class ClusterConfigurationServiceTest {
                     controlHosts = listOf(ClusterHost("2.2.2.2", "10.0.0.2", "control0", "us-west-2a", "i-control")),
                 )
 
-            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState)
 
             val sshConfig = File(tempDir.toFile(), "sshConfig").readLines()
             val envScript = File(tempDir.toFile(), "env.sh").readLines()
@@ -257,7 +245,7 @@ class ClusterConfigurationServiceTest {
 
         @Test
         fun `a direct route leaves hosts without a ProxyCommand`() {
-            service.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+            service.writeSshAndEnvironmentFiles(tempDir, createClusterState())
 
             assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ProxyCommand")
             assertThat(File(tempDir.toFile(), "env.sh").readText()).doesNotContain("ProxyCommand")
@@ -271,7 +259,7 @@ class ClusterConfigurationServiceTest {
                 )
 
             assertThatThrownBy {
-                ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+                ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState)
             }.isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("db0")
             assertThat(File(tempDir.toFile(), "sshConfig")).doesNotExist()
@@ -293,9 +281,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should create environment file with Cassandra host`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            val result = service.writeStressEnvironmentVariables(tempDir, clusterState, userConfig)
+            val result = service.writeStressEnvironmentVariables(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             val envFile = File(tempDir.toFile(), "environment.sh")
@@ -309,9 +296,8 @@ class ClusterConfigurationServiceTest {
             val initConfig =
                 createInitConfig(region = "eu-west-1")
             val clusterState = createClusterState(initConfig = initConfig)
-            val userConfig = createUserConfig()
 
-            service.writeStressEnvironmentVariables(tempDir, clusterState, userConfig)
+            service.writeStressEnvironmentVariables(tempDir, clusterState)
 
             val envFile = File(tempDir.toFile(), "environment.sh")
             val content = envFile.readText()
@@ -319,11 +305,11 @@ class ClusterConfigurationServiceTest {
         }
 
         @Test
-        fun `should fallback to userConfig region when initConfig not available`() {
+        fun `should fallback to the profile region when initConfig not available`() {
             val clusterState = createClusterState(initConfig = null)
-            val userConfig = createUserConfig(region = "ap-southeast-1")
+            profileStore.replace(TestProfiles.profile(region = "ap-southeast-1"))
 
-            service.writeStressEnvironmentVariables(tempDir, clusterState, userConfig)
+            service.writeStressEnvironmentVariables(tempDir, clusterState)
 
             val envFile = File(tempDir.toFile(), "environment.sh")
             val content = envFile.readText()
@@ -333,9 +319,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should skip writing when no Cassandra hosts`() {
             val clusterState = createClusterState(cassandraHosts = emptyList())
-            val userConfig = createUserConfig()
 
-            val result = service.writeStressEnvironmentVariables(tempDir, clusterState, userConfig)
+            val result = service.writeStressEnvironmentVariables(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             val envFile = File(tempDir.toFile(), "environment.sh")
@@ -345,9 +330,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should set prometheus port to 0`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeStressEnvironmentVariables(tempDir, clusterState, userConfig)
+            service.writeStressEnvironmentVariables(tempDir, clusterState)
 
             val envFile = File(tempDir.toFile(), "environment.sh")
             val content = envFile.readText()
@@ -360,9 +344,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should create JSON config file`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            val result = service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
+            val result = service.writeAxonOpsWorkbenchConfig(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             val configFile = File(tempDir.toFile(), "axonops-workbench.json")
@@ -372,9 +355,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should include Cassandra host information`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
+            service.writeAxonOpsWorkbenchConfig(tempDir, clusterState)
 
             val configFile = File(tempDir.toFile(), "axonops-workbench.json")
             val content = configFile.readText()
@@ -387,11 +369,10 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should include SSH key path`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
-            val customKeyPath = "/custom/key/path"
-            whenever(userConfigProvider.sshKeyPath).thenReturn(customKeyPath)
+            val otherStore = TestProfiles.storeWith(File(outsideDir, "other-profile"))
+            val customKeyPath = otherStore.sshKeyPath
 
-            service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
+            serviceOver(otherStore).writeAxonOpsWorkbenchConfig(tempDir, clusterState)
 
             val configFile = File(tempDir.toFile(), "axonops-workbench.json")
             val content = configFile.readText()
@@ -401,9 +382,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should output message on success`() {
             val clusterState = createClusterState()
-            val userConfig = createUserConfig()
 
-            service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
+            service.writeAxonOpsWorkbenchConfig(tempDir, clusterState)
 
             assertThat(capturedEvents.map { it.event.toDisplayString() })
                 .anyMatch { it.contains("AxonOps Workbench configuration written") }
@@ -412,9 +392,8 @@ class ClusterConfigurationServiceTest {
         @Test
         fun `should skip writing when no Cassandra hosts`() {
             val clusterState = createClusterState(cassandraHosts = emptyList())
-            val userConfig = createUserConfig()
 
-            val result = service.writeAxonOpsWorkbenchConfig(tempDir, clusterState, userConfig)
+            val result = service.writeAxonOpsWorkbenchConfig(tempDir, clusterState)
 
             assertThat(result.isSuccess).isTrue()
             val configFile = File(tempDir.toFile(), "axonops-workbench.json")
@@ -476,18 +455,5 @@ class ClusterConfigurationServiceTest {
             ebsThroughput = 0,
             controlInstances = 0,
             controlInstanceType = "m5.large",
-        )
-
-    /**
-     * Helper to create User config for testing.
-     */
-    private fun createUserConfig(region: String = "us-west-2"): User =
-        User(
-            awsAccessKey = "test-access-key",
-            awsSecret = "test-secret",
-            region = region,
-            email = "test@example.com",
-            keyName = "test-key",
-            awsProfile = "",
         )
 }

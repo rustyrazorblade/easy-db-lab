@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 
 /**
  * The profile's account bucket and key pair outlive every cluster, so ones made before the
@@ -12,14 +12,15 @@ import com.rustyrazorblade.easydblab.configuration.User
 class ProfileResourceMarkers(
     private val s3BucketService: AwsS3BucketService,
     private val keyPairService: AwsKeyPairService,
+    private val destination: AwsDestinationAccess,
 ) {
     /**
      * Ensures the account bucket exists, gives it and the profile's key pair any marker tag they
      * lack, and returns the bucket name.
      */
-    fun ensureAccountBucketAndKeyPair(user: User): String {
-        val bucket = s3BucketService.ensureMarkedAccountBucket(user)
-        keyPairService.ensureMarkerTags(user)
+    fun ensureAccountBucketAndKeyPair(): String {
+        val bucket = s3BucketService.ensureMarkedAccountBucket()
+        keyPairService.ensureMarkerTags(destination.current())
         return bucket
     }
 }

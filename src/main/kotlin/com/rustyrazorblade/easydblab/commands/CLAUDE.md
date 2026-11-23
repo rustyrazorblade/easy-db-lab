@@ -120,7 +120,7 @@ class MyCommand(context: Context) : PicoBaseCommand(context) {
 
 ### 3. Use Annotations
 
-- `@RequireProfileSetup` - Require AWS profile configuration
+- `@RequireProfileSetup` - Require a set-up profile (see Annotations below)
 - `@RequireSSHKey` - Require SSH key to be available
 
 ### 4. Register in CommandLineParser
@@ -174,7 +174,7 @@ If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for ev
 
 ## Annotations
 
-- `@RequireProfileSetup` — require AWS profile configuration before execution
+- `@RequireProfileSetup` — require a set-up profile before execution: `ProfileStore.isSetup()`, true when `profile.yaml` exists or an earlier release's `settings.yaml` holds credentials (the first load converts it). Otherwise `DefaultCommandExecutor` runs `profile setup`, asks the user to rerun the command, and exits. Read profile values at use through `ProfileAccess` / `AwsDestinationAccess`, never a Koin-bound snapshot.
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
 - `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via

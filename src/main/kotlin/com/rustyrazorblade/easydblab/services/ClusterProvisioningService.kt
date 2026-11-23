@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.onException
@@ -81,7 +81,7 @@ fun InstanceProvisioningConfig.replacementLaunches(): Map<ServerType, InstanceCr
 /** The network, key and tags every launch of [InstanceProvisioningConfig] shares. */
 fun InstanceProvisioningConfig.toInfrastructureContext() =
     InfrastructureContext(
-        keyName = userConfig.keyName,
+        keyName = keyName,
         securityGroupId = securityGroupId,
         subnetIds = subnetIds,
         tags = tags,
@@ -111,7 +111,7 @@ data class ProvisioningResult(
  * @property subnetIds Available subnet IDs
  * @property tags Tags to apply to instances
  * @property clusterName Name of the cluster
- * @property userConfig User configuration with key name
+ * @property keyName the profile's key pair, which every instance launches with
  */
 data class InstanceProvisioningConfig(
     val specs: List<InstanceSpec>,
@@ -119,7 +119,7 @@ data class InstanceProvisioningConfig(
     val subnetIds: List<String>,
     val tags: Map<String, String>,
     val clusterName: String,
-    val userConfig: User,
+    val keyName: String,
 )
 
 /**
@@ -221,7 +221,7 @@ class DefaultClusterProvisioningService(
     private val emrProvisioningService: EMRProvisioningService,
     private val openSearchService: OpenSearchService,
     private val accountIdentity: AccountIdentity,
-    private val user: User,
+    private val awsDestination: AwsDestinationAccess,
     private val eventBus: EventBus,
 ) : ClusterProvisioningService {
     companion object {
@@ -330,7 +330,7 @@ class DefaultClusterProvisioningService(
                             releaseLabel = servicesConfig.initConfig.sparkReleaseLabel,
                             subnetId = servicesConfig.subnetId,
                             securityGroupId = servicesConfig.securityGroupId,
-                            keyName = instanceConfig.userConfig.keyName,
+                            keyName = instanceConfig.keyName,
                             clusterState = servicesConfig.clusterState,
                             tags = servicesConfig.tags,
                         ),
@@ -410,7 +410,7 @@ class DefaultClusterProvisioningService(
                 subnetId = subnetId,
                 securityGroupIds = listOf(securityGroupId),
                 accountId = accountIdentity.getAccountId(),
-                region = user.region,
+                region = awsDestination.current().location.region,
                 tags = tags,
             )
 

@@ -6,7 +6,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -373,9 +374,8 @@ class InitTest : BaseKoinTest() {
             noTailscale: Boolean,
             expected: NetworkMode,
         ) {
-            getKoin().get<User>().apply {
-                tailscaleClientId = if (credentials) "ts-client-id" else ""
-                tailscaleClientSecret = if (credentials) "ts-client-secret" else ""
+            getKoin().get<ProfileStore>().update {
+                it.copy(tailscale = if (credentials) Tailscale("ts-client-id", "ts-client-secret") else null)
             }
             val command = Init()
             command.clean = true

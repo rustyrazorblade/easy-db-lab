@@ -3,9 +3,11 @@ package com.rustyrazorblade.easydblab.di
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -65,15 +67,10 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
                     com.rustyrazorblade.easydblab.TestContextFactory
                         .createTestContext(tempDir)
                 }
-                single {
-                    User(
-                        email = "t@example.com",
-                        region = "us-west-2",
-                        keyName = "k",
-                        awsProfile = "",
-                        awsAccessKey = "a",
-                        awsSecret = "s",
-                    )
+                single { TestProfiles.store(get<Context>().profileDir) }
+                single<ProfileAccess> {
+                    val store = get<ProfileStore>()
+                    ProfileAccess { store.load() }
                 }
                 single<ObjectStore> { mock() }
                 single<LokiQueryService> { mock() }

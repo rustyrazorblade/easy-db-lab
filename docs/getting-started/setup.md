@@ -66,8 +66,38 @@ During setup, the following AWS resources are created:
 Your profile is saved to:
 
 ```
-~/.easy-db-lab/profiles/default/settings.yaml
+~/.easy-db-lab/profiles/default/profile.yaml
 ```
+
+The file is readable only by you (mode 0600). A profile has one destination: where its clusters
+run. Setup prints `Destination: AWS` when it creates a profile; AWS is the only destination today.
+
+```yaml
+email: "you@example.com"
+destination:
+  type: "aws"
+  location:
+    region: "us-west-2"
+  credentials:
+    type: "aws-profile"      # or "access-key", with accessKeyId and secretAccessKey
+    name: "my-sso-profile"
+  keyName: "easy-db-lab-..."
+  accountBucket: "easy-db-lab-..."
+  sshTransport: "direct"     # or "ssm"
+tailscale:                   # optional
+  clientId: "..."
+  clientSecret: "..."
+  tag: "tag:easy-db-lab"
+axonOps:                     # optional
+  org: "..."
+  key: "..."
+```
+
+A profile made by an earlier release is stored in `settings.yaml`. The first command that reads it
+converts it to `profile.yaml` without asking and without output. `settings.yaml` is left in place
+and never changed, so an earlier release can still read it; changes made after the conversion are
+saved only to `profile.yaml`.
+
 
 ```admonish tip
 Use a different profile by setting `EASY_DB_LAB_PROFILE` environment variable before running setup.

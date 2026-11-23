@@ -7,7 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -332,20 +333,7 @@ class TailscaleStartTest : BaseKoinTest() {
     inner class UserConfigCredentials {
         @Test
         fun `execute uses user config credentials when CLI not provided`() {
-            val userWithTailscale =
-                User(
-                    email = "test@example.com",
-                    region = "us-west-2",
-                    keyName = "test-key",
-                    awsProfile = "",
-                    awsAccessKey = "test-access-key",
-                    awsSecret = "test-secret",
-                    axonOpsOrg = "",
-                    axonOpsKey = "",
-                    tailscaleClientId = "config-client-id",
-                    tailscaleClientSecret = "config-client-secret",
-                )
-            getKoin().declare(userWithTailscale)
+            getKoin().get<ProfileStore>().update { it.copy(tailscale = Tailscale("config-client-id", "config-client-secret")) }
 
             whenever(mockTailscaleService.generateAuthKey(any(), any(), any()))
                 .thenReturn(TailscaleAuthKey(key = "auth-key", id = "key-id"))

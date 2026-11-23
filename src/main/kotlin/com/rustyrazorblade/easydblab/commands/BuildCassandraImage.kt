@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.containers.Packer
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.ProfileResourceMarkers
@@ -26,19 +26,19 @@ class BuildCassandraImage : PicoBaseCommand() {
 
     private val awsResourceSetupService: AWSResourceSetupService by inject()
     private val profileResourceMarkers: ProfileResourceMarkers by inject()
-    private val userConfig: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
 
     override fun execute() {
-        // Populate buildArgs from userConfig if not overridden by command-line args
+        // The profile region unless the command line names another
         if (buildArgs.region.isBlank()) {
-            buildArgs.region = userConfig.region
+            buildArgs.region = awsDestination.current().location.region
         }
 
         // Ensure AWS infrastructure (IAM roles, S3) exists first
-        awsResourceSetupService.ensureAWSResources(userConfig)
+        awsResourceSetupService.ensureAWSResources()
         // Ensure the account bucket exists so the S3 build cache is active (migrates old profiles),
         // and give it and the key pair any marker tag they lack
-        profileResourceMarkers.ensureAccountBucketAndKeyPair(userConfig)
+        profileResourceMarkers.ensureAccountBucketAndKeyPair()
 
         // The packer network is ensured by the build itself, in the build region (see Packer).
         val packer = Packer(context, "cassandra")

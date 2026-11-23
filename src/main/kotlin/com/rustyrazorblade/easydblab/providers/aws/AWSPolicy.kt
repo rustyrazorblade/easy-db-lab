@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Policy
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.toJson
 import org.apache.commons.text.StringSubstitutor
 
@@ -127,7 +126,7 @@ sealed class AWSPolicy {
 
                 return policyData.map { (fileName, policyName) ->
                     val policyStream =
-                        User::class.java.getResourceAsStream("/com/rustyrazorblade/easydblab/$fileName")
+                        Policy::class.java.getResourceAsStream("/com/rustyrazorblade/easydblab/$fileName")
                     val policyContent =
                         policyStream?.bufferedReader()?.use { it.readText() }
                             ?: error("Unable to load IAM policy template: $fileName")

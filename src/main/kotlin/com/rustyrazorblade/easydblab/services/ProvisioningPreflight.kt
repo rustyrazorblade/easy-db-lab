@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 
@@ -16,7 +16,7 @@ class ProvisioningPreflight(
     private val localTailscaleClient: LocalTailscaleClient,
     private val eventBus: EventBus,
     private val localSsmTooling: LocalSsmTooling,
-    private val userConfig: User,
+    private val awsDestination: AwsDestinationAccess,
 ) {
     /** Fails when [state] or its [initConfig] cannot produce a cluster this machine can reach. */
     fun verify(
@@ -62,7 +62,7 @@ class ProvisioningPreflight(
      * instances were running, as an SSH readiness timeout that says nothing about SSM.
      */
     private fun verifyLocalSsmTooling() {
-        if (userConfig.sshTransport != SshTransport.Ssm) return
+        if (awsDestination.current().sshTransport != SshTransport.Ssm) return
 
         val faults = localSsmTooling.faults()
         if (faults.isEmpty()) return

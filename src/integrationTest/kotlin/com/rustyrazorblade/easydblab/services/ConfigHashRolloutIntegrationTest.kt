@@ -2,12 +2,12 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
@@ -69,7 +69,7 @@ class ConfigHashRolloutIntegrationTest {
     private lateinit var otel: OtelManifestBuilder
     private lateinit var otelSync: OtelSyncService
     private lateinit var stateManager: ClusterStateManager
-    private lateinit var user: User
+    private val awsDestination = TestProfiles.awsAccessOf(TestProfiles.profile(keyName = ""))
 
     @BeforeAll
     fun setup() {
@@ -84,22 +84,20 @@ class ConfigHashRolloutIntegrationTest {
         whenever(stateManager.load()).thenReturn(
             ClusterState(name = "test", s3Bucket = "acct-bucket"),
         )
-        user =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        val templateService = TemplateService(stateManager, user)
+        val templateService = TemplateService(stateManager, awsDestination)
         tempo = TempoManifestBuilder(templateService)
         pyroscope = PyroscopeManifestBuilder(templateService)
         otel = OtelManifestBuilder(templateService)
         val k8sService = DefaultK8sService(clientProvider, EventBus())
         otelSync =
-            DefaultOtelSyncService(clientProvider, k8sService, otel, stateManager, user, ConfigChangeReport(k8sService, EventBus()))
+            DefaultOtelSyncService(
+                clientProvider,
+                k8sService,
+                otel,
+                stateManager,
+                awsDestination,
+                ConfigChangeReport(k8sService, EventBus()),
+            )
     }
 
     @AfterAll
@@ -309,7 +307,14 @@ class ConfigHashRolloutIntegrationTest {
      */
     private fun deployCollectorStage(): List<Event.Grafana.WorkloadConfigCompared> {
         val scrapeConfigs = otel.listWorkloadScrapeConfigs(client)
-        val resources = CollectorResources.build(otel, controlHost, stateManager.load(), user.region, scrapeConfigs)
+        val resources =
+            CollectorResources.build(
+                otel,
+                controlHost,
+                stateManager.load(),
+                awsDestination.current().location.region,
+                scrapeConfigs,
+            )
         val emitted = mutableListOf<Event.Grafana.WorkloadConfigCompared>()
         ConfigChangeReport(namespaces, recordingEventBus(emitted)).report(resources, Constants.K8s.NAMESPACE)
         resources.forEach { manifests.applyResource(it).getOrThrow() }

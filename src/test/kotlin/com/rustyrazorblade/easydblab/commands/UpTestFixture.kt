@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -13,7 +14,9 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -268,7 +271,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single<AccountCapacity> { FakeAccountCapacity().also { accountCapacity = it } }
             single { LaunchCapacityPreflight(get(), get()) }
-            single { AccountBucketSetup(get(), get(), get(), get(), get()) }
+            single { AccountBucketSetup(get(), get(), get(), get()) }
         }
 
     /** The cluster side of `up`: K8s, the nested commands, the stack, Tailscale and SSH. */
@@ -485,7 +488,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         // `init` wrote the workspace state before `up` runs.
         clusterStateManager.replace(happyState())
 
-        whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
+        whenever(mockS3BucketService.ensureAccountBucket()).thenReturn("easy-db-lab-test-bucket")
 
         whenever(mockVpcService.createVpc(any(), any(), any())).thenReturn("vpc-123")
 
@@ -506,7 +509,7 @@ abstract class UpTestFixture : BaseKoinTest() {
 
         launching(happyHosts())
 
-        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
+        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any()))
             .thenReturn(Result.success(Unit))
 
         whenever(mockK3sClusterService.startServer(any(), any(), anyOrNull(), any())).thenReturn(K3sServer(K3S_URL, "token"))
@@ -563,7 +566,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     /**
      * A ClusterState with everything `up` needs already present, and Tailscale marked active
      * so [Up.startProxyIfNeeded] and [Up.startTailscaleIfConfigured]'s inner body are both
-     * skipped (the test User has blank Tailscale credentials) — keeping the happy-path fixture
+     * skipped (the test profile has no Tailscale block) — keeping the happy-path fixture
      * from needing to model the SOCKS tunnel at all.
      */
     protected fun happyState(
@@ -587,19 +590,8 @@ abstract class UpTestFixture : BaseKoinTest() {
                 ),
         )
 
-    protected fun tailscaleUser(): User =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
-            keyName = "test-key",
-            awsProfile = "",
-            awsAccessKey = "test-access-key",
-            awsSecret = "test-secret",
-            axonOpsOrg = "",
-            axonOpsKey = "",
-            tailscaleClientId = "tailscale-client-id",
-            tailscaleClientSecret = "tailscale-client-secret",
-        )
+    protected fun tailscaleProfile(): Profile =
+        TestProfiles.profile(tailscale = Tailscale("tailscale-client-id", "tailscale-client-secret"))
 
     /**
      * Constructs an [Up] with a zero tailnet retry interval and the bring-up's short test timing
@@ -615,8 +607,9 @@ abstract class UpTestFixture : BaseKoinTest() {
         this.onSave = onSave
     }
 
-    protected fun overrideUser(user: User) {
+    /** Saves [profile] as the active profile and the happy-path cluster state; `up` reads both at use. */
+    protected fun useProfile(profile: Profile) {
         clusterStateManager.replace(happyState())
-        getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
+        getKoin().get<ProfileStore>().replace(profile)
     }
 }

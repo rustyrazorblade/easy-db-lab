@@ -8,7 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -69,11 +69,11 @@ interface CommandExecutor {
 /**
  * Dependencies for requirement checking during command execution.
  *
- * @property userConfigProvider Provides user configuration state
+ * @property profileStore the profile store: whether the profile is set up, and its SSH key
  * @property dockerClientProvider Provides Docker client for availability checks
  */
 data class RequirementCheckDeps(
-    val userConfigProvider: UserConfigProvider,
+    val profileStore: ProfileStore,
     val dockerClientProvider: DockerClientProvider,
 )
 
@@ -246,7 +246,7 @@ class DefaultCommandExecutor(
 
         // Check if the command requires profile setup
         if (annotations.any { it is RequireProfileSetup }) {
-            if (!requirementCheckDeps.userConfigProvider.isSetup()) {
+            if (!requirementCheckDeps.profileStore.isSetup()) {
                 // Run setup command with full lifecycle
                 executeWithLifecycle(profileSetupProvider.create())
 
@@ -272,7 +272,7 @@ class DefaultCommandExecutor(
         // Check if the command requires an SSH key
         if (annotations.any { it is RequireSSHKey }) {
             if (!checkSSHKeyAvailability()) {
-                eventBus.emit(Event.Command.SshKeyMissing(requirementCheckDeps.userConfigProvider.sshKeyPath))
+                eventBus.emit(Event.Command.SshKeyMissing(requirementCheckDeps.profileStore.sshKeyPath))
                 exitProcess(1)
             }
         }
@@ -356,7 +356,9 @@ class DefaultCommandExecutor(
             dockerClient.listImages("", "")
         }.onFailure { e -> log.error(e) { "Docker availability check failed" } }.isSuccess
 
-    private fun checkSSHKeyAvailability(): Boolean = File(requirementCheckDeps.userConfigProvider.sshKeyPath).exists()
+    private fun checkSSHKeyAvailability(): Boolean =
+        File(requirementCheckDeps.profileStore.sshKeyPath)
+            .exists()
 
     /**
      * Handles VPC state reconstruction from environment variable.

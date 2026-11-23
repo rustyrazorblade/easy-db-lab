@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.containers.BuildSites
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
@@ -163,20 +163,20 @@ val awsServicesModule =
             )
         }
 
-        // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
+        // Creates the EC2 key pair profile setup needs and saves its name into the profile
         factory {
             AwsKeyPairService(
                 get(),
                 get(),
                 get<AwsErrorHandler>(),
-                File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE),
+                get<ProfileStore>(),
             )
         }
-        factory { ProfileResourceMarkers(get(), get()) }
+
+        factory { ProfileResourceMarkers(get(), get(), get()) }
 
         // Where an AMI build runs: the packer network, key pair and builders in the build's own region
         factory<BuildSites> {
-            val user = get<User>()
             val regionalEc2 = get<RegionalEc2Clients>()
             val eventBus = get<EventBus>()
             val emrService = get<EMRService>()
@@ -186,8 +186,7 @@ val awsServicesModule =
                 infrastructureFor = { vpcService -> AwsInfrastructureService(vpcService, emrService, openSearchService, eventBus) },
                 eventBus = eventBus,
                 externalIpService = get(),
-                profileRegion = user.region,
-                profileKeyName = user.keyName,
+                profile = get(),
                 profileKeyFile = File(get<Context>().profileDir, Constants.ConfigPaths.PROFILE_SSH_KEY_FILE),
             )
         }
@@ -201,5 +200,5 @@ val awsServicesModule =
                 leaseIn = CompactorLeaseReader.fromS3(regionalS3::forRegion),
             )
         }
-        factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
+        factory { AccountBucketSetup(get(), get(), get(), get()) }
     }

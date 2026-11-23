@@ -5,7 +5,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmProxyWrapper
@@ -94,19 +95,15 @@ internal class SshRouteBindingTest : BaseKoinTest() {
 
     @Test
     fun `the route can be built before the profile exists and fails only when it is used`() {
-        getKoin().loadModules(
-            listOf(module { single<User> { error("User configuration file not found") } }),
-            allowOverride = true,
-        )
+        getKoin().get<ProfileStore>().file.delete()
 
         val route = getKoin().get<SshRoute>()
 
         assertThatThrownBy { route.proxyCommand(host) }
-            .hasStackTraceContaining("User configuration file not found")
+            .hasStackTraceContaining("No profile found")
     }
 
     private fun useTransport(transport: SshTransport) {
-        val user = getKoin().get<User>().copy(sshTransport = transport)
-        getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
+        getKoin().get<ProfileStore>().update { profile -> profile.withAws { it.copy(sshTransport = transport) } }
     }
 }

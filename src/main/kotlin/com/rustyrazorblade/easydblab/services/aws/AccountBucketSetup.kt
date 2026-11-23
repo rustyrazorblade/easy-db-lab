@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -14,7 +13,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  */
 class AccountBucketSetup(
     private val s3BucketService: AwsS3BucketService,
-    private val userConfig: User,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val awsResourceSetup: AWSResourceSetupService,
@@ -47,7 +45,7 @@ class AccountBucketSetup(
         }
 
         // Ensure-or-create the account bucket (migrates profiles that never had one saved)
-        val accountBucket = s3BucketService.ensureAccountBucket(userConfig)
+        val accountBucket = s3BucketService.ensureAccountBucket()
 
         // Configure account-level bucket
         eventBus.emit(Event.S3.BucketUsing(accountBucket))

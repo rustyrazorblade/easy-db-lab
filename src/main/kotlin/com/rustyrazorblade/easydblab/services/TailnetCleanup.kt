@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
@@ -55,7 +55,7 @@ sealed interface AuthKeyRemoval {
  */
 class TailnetCleanup(
     private val tailscaleService: TailscaleService,
-    private val user: User,
+    private val profile: ProfileAccess,
     private val eventBus: EventBus,
 ) {
     private val log = KotlinLogging.logger {}
@@ -68,8 +68,9 @@ class TailnetCleanup(
     fun removeDevice(deviceId: String?): DeviceRemoval {
         if (deviceId.isNullOrBlank()) return DeviceRemoval.NoneRecorded
 
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
+        val tailscale = profile.current().tailscale
+        val clientId = tailscale?.clientId.orEmpty()
+        val clientSecret = tailscale?.clientSecret.orEmpty()
         if (clientId.isBlank() || clientSecret.isBlank()) {
             return DeviceRemoval.Failed(
                 "Tailscale device $deviceId (the control node) was not removed from the tailnet: " +
@@ -98,8 +99,10 @@ class TailnetCleanup(
             return AuthKeyRemoval.NoneRecorded
         }
 
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
+        val tailscale = profile.current().tailscale
+        val clientId = tailscale?.clientId.orEmpty()
+        val clientSecret = tailscale?.clientSecret.orEmpty()
+
         if (clientId.isBlank() || clientSecret.isBlank()) {
             log.warn { "Tailscale OAuth credentials not configured, cannot delete auth key $keyId" }
             return AuthKeyRemoval.NoCredentials(keyId)

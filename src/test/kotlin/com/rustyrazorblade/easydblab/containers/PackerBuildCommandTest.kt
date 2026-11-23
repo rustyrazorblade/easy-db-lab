@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.containers
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsLocation
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -24,15 +26,12 @@ class PackerBuildCommandTest {
         val TEMPLATES = listOf("packer/base/base.pkr.hcl", "packer/cassandra/cassandra.pkr.hcl")
     }
 
-    private fun user(transport: SshTransport) =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
+    private fun destination(transport: SshTransport) =
+        AwsDestination(
+            location = AwsLocation("us-west-2"),
+            credentials = AwsCredentials.AccessKey("AKIA", "secret"),
             keyName = "lab-key",
-            awsProfile = "",
-            awsAccessKey = "AKIA",
-            awsSecret = "secret",
-            s3Bucket = "easy-db-lab-bucket",
+            accountBucket = "easy-db-lab-bucket",
             sshTransport = transport,
         )
 
@@ -41,7 +40,7 @@ class PackerBuildCommandTest {
     private fun command(
         transport: SshTransport,
         releaseVersion: String? = null,
-    ) = Packer.buildCommand(build, Arch.AMD64, user(transport), "easy-db-lab-build-$BUILD_ID", releaseVersion)
+    ) = Packer.buildCommand(build, Arch.AMD64, destination(transport), "easy-db-lab-build-$BUILD_ID", releaseVersion)
 
     /** The variable names a command passes, from its `-var key=value` pairs. */
     private fun varNames(command: List<String>): Set<String> =

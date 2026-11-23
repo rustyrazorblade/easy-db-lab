@@ -1,0 +1,11 @@
+email: "someone@example.com"
+destination:
+  type: "aws"
+  location:
+    region: "us-west-2"
+  credentials:
+    type: "aws-profile"
+    name: "fixture-sso"
+  keyName: "easy-db-lab-fixture-key"
+  accountBucket: "easy-db-lab-fixture-bucket"
+  sshTransport: "ssm"

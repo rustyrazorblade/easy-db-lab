@@ -6,7 +6,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.sshModule
@@ -71,10 +72,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
 
     @Test
     fun `the tunnel service is built before the profile exists, so profile setup can start`() {
-        getKoin().loadModules(
-            listOf(module { single<User> { error("User configuration file not found") } }),
-            allowOverride = true,
-        )
+        getKoin().get<ProfileStore>().file.delete()
 
         assertThat(getKoin().get<SocksProxyService>()).isNotNull()
     }
@@ -99,8 +97,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
         open: Boolean,
         afterSave: () -> Unit = {},
     ): String {
-        val user = getKoin().get<User>().copy(sshTransport = transport)
-        getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
+        getKoin().get<ProfileStore>().update { profile -> profile.withAws { it.copy(sshTransport = transport) } }
         val service = getKoin().get<SocksProxyService>() as ProcessSocksProxyService
         getKoin().get<ClusterStateManager>().replace(
             ClusterState(name = "test-cluster", initConfig = InitConfig(open = open)),

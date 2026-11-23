@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
@@ -31,7 +31,7 @@ import picocli.CommandLine.Option
 class OpenSearchStart : PicoBaseCommand() {
     private val log = KotlinLogging.logger {}
     private val openSearchService: OpenSearchService by inject()
-    private val user: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
 
     @Option(
         names = ["--instance-type"],
@@ -109,7 +109,7 @@ class OpenSearchStart : PicoBaseCommand() {
         subnetId = subnetId,
         securityGroupIds = listOf(securityGroupId),
         accountId = openSearchService.getAccountId(),
-        region = user.region,
+        region = awsDestination.current().location.region,
         tags =
             Constants.Vpc.MARKER_TAGS + (Constants.Vpc.CLUSTER_ID_TAG_KEY to clusterState.clusterId),
     )

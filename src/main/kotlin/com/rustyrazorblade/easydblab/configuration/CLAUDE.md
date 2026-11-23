@@ -156,11 +156,41 @@ val result = template.substitute()  // uses context variables
 val result = template.substitute(mapOf("EXTRA" to "value"))  // extra vars override context
 ```
 
-## User Configuration
+## Profile (`profile/`)
 
-- **`User`** — data class with AWS credentials, region, key pair, Tailscale config, S3 bucket
-- **`UserConfigProvider`** — persists to `${profileDir}/settings.yaml` with caching
-- SSH key always at `${profileDir}/secret.pem`
+A profile records who owns the clusters, exactly one destination they run in, and the optional
+feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization through kaml, mode
+0600); the SSH key is always `${profileDir}/secret.pem`.
+
+- **`Profile`** — `email`, `destination`, and the optional `tailscale` (`Tailscale`: `clientId`,
+  `clientSecret`, `tag`) and `axonOps` (`AxonOps`: `org`, `key`) blocks. A block may be half set; it
+  is kept so setup can prefill it, and `isTailscaleEnabled` / `isAxonOpsEnabled` need both values.
+- **`Destination`** — open interface (`kind`, `displayName`), so each destination type can register
+  its own subclass for the `type` key. Only `profile/aws/AwsDestination` exists: `location`
+  (`AwsLocation(region)`), `credentials` (sealed `AwsCredentials`: `aws-profile` with `name`, or
+  `access-key` with `accessKeyId` and `secretAccessKey`), `keyName`, `accountBucket` and
+  `sshTransport`. `Profile.aws` returns it and fails naming the type for another destination;
+  `Profile.withAws {}` changes it inside a store `update`.
+- **`ProfileStore`** — the only reader and writer of the profile files. It takes the
+  `SerializersModule` (`awsProfileSerializers`) and the `LegacyProfileReader`
+  (`LegacyAwsProfileReader`) from its constructor, so it names no AWS type.
+  - `load()` reads the file every call; nothing is cached.
+  - `update(change)` is a read-modify-write under a process `ReentrantLock` plus a `FileChannel`
+    lock on `profile.yaml.lock`, written by an atomic rename, so two commands that save different
+    fields keep both. `replace(profile)` is for setup's first save.
+  - `loadForSetup()` gives setup flat keys (`region`, `awsProfile`, `keyName`, `s3Bucket`,
+    `sshTransport`, ...) for either file, so a value that does not parse reaches setup to be asked again.
+  - A parse error names the file and where parsing stopped, never the file's text (it holds secrets).
+- **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
+  `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.
+  `isSetup()` is true when `profile.yaml` exists, or `settings.yaml` exists and holds credentials.
+- **Read at use** — Koin binds `ProfileStore`, `ProfileAccess` and `AwsDestinationAccess`, never a
+  profile value. A service holds the accessor and calls `.current()` where it uses a value, so a key
+  pair or bucket saved later in the same process (setup, then the AMI build) is the one it sees.
+  `AwsKeyPairService` and `AwsS3BucketService` save the new key name and bucket through `update`.
+  The AWS SDK region and credentials provider are the one exception: they are read once, when the
+  clients are first resolved, because they do not change within a process.
+
 
 ## Other Configuration Classes
 

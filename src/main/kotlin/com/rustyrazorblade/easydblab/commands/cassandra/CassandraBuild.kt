@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CassandraBuildService
@@ -31,7 +31,7 @@ import java.io.File
 class CassandraBuild : PicoBaseCommand() {
     private val buildService: CassandraBuildService by inject()
     private val catalog: CassandraBuildCatalog by inject()
-    private val userConfig: User by inject()
+    private val profile: ProfileAccess by inject()
 
     @Parameters(
         index = "0",
@@ -75,7 +75,7 @@ class CassandraBuild : PicoBaseCommand() {
                     jira = jira.ifBlank { null },
                     label = label.ifBlank { null },
                     antFlags = antFlags.ifBlank { null },
-                    builtBy = userConfig.email,
+                    builtBy = profile.current().email,
                 ),
             )
 

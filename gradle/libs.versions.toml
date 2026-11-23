@@ -47,7 +47,7 @@ docker-java = "3.7.1"
 okhttp = "5.4.0"
 
 # Apache
-sshd = "2.19.0"
+sshd = "2.20.1"
 commons-io = "2.22.0"
 commons-text = "1.15.0"
 

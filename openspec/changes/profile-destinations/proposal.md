@@ -46,13 +46,19 @@ None.
 ## Impact
 
 - `configuration/User.kt`, `configuration/UserConfigProvider.kt`: replaced by `configuration/profile/`
-  (`Profile`, `Destination`, `AwsDestination`, `AwsLocation`, `AwsCredentials`, `ProfileStore`,
-  `LegacyProfileMigration`).
-- `di/ContextModule.kt` binds `ProfileStore` and `Profile`; `providers/aws/AwsClientsModule.kt` binds
-  `AwsDestination` and builds the region and credentials from it.
+  (`Profile`, `Destination`, `ProfileStore`, `ProfileAccess`, `LegacyProfileReader`) and its AWS
+  package (`AwsDestination`, `AwsLocation`, `AwsCredentials`, `AwsDestinationAccess`,
+  `awsProfileSerializers`, `LegacyAwsProfileReader`).
+- `di/ContextModule.kt` builds `ProfileStore` from the AWS serializers and reader and binds
+  `ProfileAccess`; `providers/aws/AwsClientsModule.kt` binds `AwsDestinationAccess` and builds the
+  region and credentials from it.  No profile value is bound as a snapshot.
 - `commands/profile/SetupProfile.kt`, `commands/profile/ProfileShow.kt`, `commands/Init.kt`
   (`InitConfig.fromInit`), `services/CommandExecutor.kt` (setup check), `containers/Packer.kt`,
-  `services/ClusterProvisioningService.kt`, and every other reader of a `User` field.
+  `services/ClusterProvisioningService.kt`, `services/aws/AwsServicesModule.kt` (`AwsBuildSites`),
+  `commands/observability/CompactorStatus.kt`, `commands/spark/SparkInit.kt`, and every other reader
+  of a `User` field; bucket and key readers read the profile at each use.
+- Text naming `settings.yaml` as the file to edit: `AwsKeyPairService.kt:101`, `LazySshRoute.kt:9`,
+  the `ProfileShow` KDoc.
 - `services/aws/AwsS3BucketService.kt`, `services/aws/AwsKeyPairService.kt`: read and save through
   `ProfileStore`.  `services/CassandraBuildCatalog.kt`, `services/cassandraversions/VersionSources.kt`
   stop holding a profile value.

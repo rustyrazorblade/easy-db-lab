@@ -59,6 +59,13 @@ and SHALL be readable by its owner only.
 - **THEN** loading fails with an error naming the bad value and the valid choices
 - **AND** profile setup reports the bad value, keeps the file's other values, and asks for the transport again
 
+#### Scenario: Current-format file with an unrecognized SSH transport
+
+- **GIVEN** a profile whose current-format file has an SSH transport that is neither `direct` nor `ssm`
+- **WHEN** any command loads the profile
+- **THEN** loading fails with an error naming the bad value and the valid choices
+- **AND** profile setup reports the bad value, keeps the file's other values, and asks for the transport again
+
 #### Scenario: A half-configured optional feature stays off and keeps its value
 
 - **GIVEN** an earlier file that sets the Tailscale client id but not its secret
@@ -67,10 +74,23 @@ and SHALL be readable by its owner only.
 
 ### Requirement: One account bucket per profile
 
-Every operation that needs the profile's account bucket SHALL read the bucket name from the saved
-profile at the time it runs.  When the profile names no bucket, the first such operation SHALL create
-one and save it to the profile, and every later operation in the same or another command SHALL use
-that bucket.
+Every operation that needs the profile's account bucket or key pair name SHALL read it from the saved
+profile at the time it runs, including operations that started before the value was saved.  When the
+profile names no bucket, the first such operation SHALL create one and save it to the profile, and
+every later operation in the same or another command SHALL use that bucket.  A save SHALL change only
+the setting it names and keep every value another command saved.
+
+#### Scenario: A bucket created during setup is used by the image build in the same run
+
+- **GIVEN** a new profile that names no account bucket and no key pair
+- **WHEN** profile setup creates the key pair and the bucket and then builds the machine image
+- **THEN** the image build uses that bucket and that key pair
+
+#### Scenario: Two commands saving different settings keep both
+
+- **GIVEN** two commands running at once on one profile
+- **WHEN** one saves a new key pair name and the other saves a new account bucket
+- **THEN** the saved profile holds both values
 
 #### Scenario: Two operations in one command share one new bucket
 

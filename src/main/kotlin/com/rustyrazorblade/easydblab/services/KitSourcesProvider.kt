@@ -4,8 +4,10 @@ import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Context
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
@@ -53,11 +55,19 @@ class KitSourcesProvider(
         if (!configFile.exists()) return KitSourcesConfig()
         return try {
             yaml.decodeFromString(KitSourcesConfig.serializer(), configFile.readText())
-        } catch (e: Exception) {
-            log.warn { "Failed to read $configFile: ${e.message}. Using empty kit sources." }
-            println("Warning: could not read kit-sources.yaml: ${e.message}")
-            KitSourcesConfig()
+        } catch (e: IOException) {
+            unreadable(e)
+        } catch (e: SerializationException) {
+            // kaml's YamlException, for malformed YAML or a missing field, is a SerializationException.
+            unreadable(e)
         }
+    }
+
+    /** Reports a kit-sources.yaml that could not be read or parsed and falls back to no sources. */
+    private fun unreadable(e: Exception): KitSourcesConfig {
+        log.warn { "Failed to read $configFile: ${e.message}. Using empty kit sources." }
+        println("Warning: could not read kit-sources.yaml: ${e.message}")
+        return KitSourcesConfig()
     }
 
     /** Saves the config to kit-sources.yaml atomically via a temp-file rename. */

@@ -2,9 +2,11 @@ package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientException
 import java.io.IOException
 import java.nio.file.Path
 
@@ -49,10 +51,9 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
             } catch (e: IOException) {
                 throw IOException("Cannot read the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
             }
+        // The parser fails with whatever its YAML and JSON libraries throw, so any exception is a parse failure.
         val config =
-            try {
-                Config.fromKubeconfig(kubeconfigContent)
-            } catch (e: RuntimeException) {
+            runCatchingException { Config.fromKubeconfig(kubeconfigContent) }.getOrElse { e ->
                 // The parser's message quotes the start of the text it could not read, and a kubeconfig holds
                 // client keys and tokens: name the path and the kind of failure, never the message or the cause.
                 error("The kubeconfig at $kubeconfigPath could not be parsed (${e.javaClass.simpleName})")
@@ -67,7 +68,8 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
             KubernetesClientBuilder()
                 .withConfig(config)
                 .build()
-        } catch (e: RuntimeException) {
+        } catch (e: KubernetesClientException) {
+            // fabric8 reports every failure to build a client (the HTTP client, the TLS material) as this one type.
             throw IllegalStateException("A Kubernetes client could not be built from the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
         }
     }

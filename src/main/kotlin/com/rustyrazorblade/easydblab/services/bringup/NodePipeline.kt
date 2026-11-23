@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.messageOrString
 import com.rustyrazorblade.easydblab.runCatchingException
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.Instant
@@ -37,11 +38,7 @@ internal class NodePipeline(
 
     /** Brings the node up and returns how it ended. */
     fun run(): NodeEnd =
-        try {
-            bringUp(first, replacements = 0)
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: RuntimeException) {
+        runCatchingInterruptibly { bringUp(first, replacements = 0) }.getOrElse { e ->
             // A fault in the coordinator itself, not a step: the node fails, the others go on.
             log.error(e) { "$alias's pipeline failed" }
             val (host, replacements) = onInstance

@@ -59,11 +59,9 @@ object K3sDiagnostics {
         namespace: String,
         wait: () -> T,
     ): T =
-        try {
-            wait()
-        } catch (e: AssertionError) {
-            throw AssertionError("${e.message}\n${clusterDiagnostics(client, namespace)}", e)
-        } catch (e: Exception) {
+        // A failed assertion or any exception from the wait gets the diagnostics; any other Error passes through.
+        runCatching(wait).getOrElse { e ->
+            if (e !is AssertionError && e !is Exception) throw e
             throw AssertionError("${e.message}\n${clusterDiagnostics(client, namespace)}", e)
         }
 }

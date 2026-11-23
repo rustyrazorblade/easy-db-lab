@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -10,6 +11,17 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** A script for one fake call: it may throw, block, or end the instance; it gets the host and the attempt, from 1. */
 typealias FakeCall = (host: ClusterHost, attempt: Int) -> Unit
+
+/**
+ * The kinds of fault a test throws outside any step. Kotlin code may throw a checked exception as
+ * freely as an unchecked one, so the bring-up must treat both the same way.
+ */
+enum class FaultKind(
+    val make: (message: String) -> Exception,
+) {
+    UNCHECKED(::IllegalStateException),
+    CHECKED(::IOException),
+}
 
 /**
  * The provider's view of each instance for the bring-up tests: every watched instance runs at
@@ -23,8 +35,12 @@ class FakeInstanceTracker(
     val held: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
     val started = AtomicBoolean(false)
 
-    override fun watch(instanceId: String): InstanceWatch =
-        watches.computeIfAbsent(instanceId) { id ->
+    /** Runs before each watch; a test throws from it to fault a pipeline outside any step. */
+    @Volatile var failWatch: (instanceId: String) -> Unit = {}
+
+    override fun watch(instanceId: String): InstanceWatch {
+        failWatch(instanceId)
+        return watches.computeIfAbsent(instanceId) { id ->
             InstanceWatch(id).also {
                 if (id !in held) {
                     it.markRunning(addresses(id))
@@ -32,6 +48,7 @@ class FakeInstanceTracker(
                 }
             }
         }
+    }
 
     /** The instance IDs a pipeline watched, and those it stopped watching. */
     val watched: Set<String> get() = watches.keys.toSet()

@@ -31,7 +31,7 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         val allUnresolved = mutableListOf<String>()
         val writtenNames = mutableListOf<String>()
 
-        try {
+        runCatching {
             for (entry in resolver.listTemplateFiles(source)) {
                 val isTemplate = entry.name.endsWith(".template")
                 val outputName = if (isTemplate) entry.name.removeSuffix(".template") else entry.name
@@ -76,12 +76,11 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
             check(tempDir.renameTo(outputDir)) {
                 "Failed to rename scaffold to ${outputDir.absolutePath}"
             }
-        } catch (e: Throwable) {
+        }.onFailure { e ->
             // A failed install must not leave its scaffold behind. A cleanup that fails too is
             // attached to e, so the user still sees what stopped the install.
             tempDir.deleteAfterFailure(e)
-            throw e
-        }
+        }.getOrThrow()
 
         for (name in writtenNames) {
             println("  Written: ${File(outputDir, name).path}")
@@ -164,11 +163,11 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
      * overridden by the POSTGRES_PORT variable. The set of well-known defaults matches
      * the port values used in the extensions.yaml registry.
      */
-    private fun isDefaultPostgresPort(port: Int): Boolean = port in setOf(30432, 30433, 30434)
+    private fun isDefaultPostgresPort(port: Int): Boolean = port in Constants.Kit.DEFAULT_POSTGRES_NODE_PORTS
 
     /**
      * Returns true if [port] is a well-known metrics NodePort default that may be
      * overridden by the METRICS_PORT variable.
      */
-    private fun isDefaultMetricsPort(port: Int): Boolean = port in setOf(30987, 30988, 30989)
+    private fun isDefaultMetricsPort(port: Int): Boolean = port in Constants.Kit.DEFAULT_METRICS_NODE_PORTS
 }

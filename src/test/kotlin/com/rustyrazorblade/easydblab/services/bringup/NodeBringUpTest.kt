@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
@@ -173,6 +174,21 @@ class NodeBringUpTest {
         assertThat(end.replacements).isEqualTo(1)
         assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
         assertThat(h.eventsOf<Event.Provision.NodeFailed>().single().instanceId).isEqualTo("i-db1-1")
+    }
+
+    /** A fault outside any step fails only its own node, whether it is a checked exception or not. */
+    @ParameterizedTest
+    @EnumSource(FaultKind::class)
+    fun `a fault of either kind outside any step fails only its node`(kind: FaultKind) {
+        val h = harness(dbs = 2)
+        h.plane.failWatch = { alias -> if (alias == "db1") throw kind.make("watch refused") }
+
+        val result = h.run()
+
+        val end = result.nodes.getValue("db1") as NodeEnd.Failed
+        assertThat(end.reason).isEqualTo("watch refused")
+        assertThat(result.nodes.getValue("db0")).isInstanceOf(NodeEnd.Ready::class.java)
+        assertThat(h.eventsOf<Event.Provision.NodeFailed>().map { it.alias }).containsExactly("db1")
     }
 
     @Test

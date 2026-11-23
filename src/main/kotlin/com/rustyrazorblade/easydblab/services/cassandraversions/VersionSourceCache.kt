@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.cassandraversions
 
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.KSerializer
@@ -7,7 +8,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.io.IOException
 import java.time.Instant
 
 /**
@@ -65,16 +65,13 @@ class VersionSourceCache<T>(
     ): Cached<T> {
         val onDisk = read()
         if (onDisk != null && !refresh) return onDisk
-        return try {
+        // The fetch is an HTTP call and a parse, and either can fail any way; an interrupt still stops it.
+        return runCatchingInterruptibly {
             val value = fetch()
             val fetchedAt = clock()
             file.writeTextAtomically(JSON.encodeToString(fileSerializer, CacheFile(fetchedAt.toEpochMilli(), value)))
             Cached(value, fetchedAt, stale = false)
-        } catch (e: IOException) {
-            onDisk?.copy(stale = true) ?: throw unavailable(e)
-        } catch (e: RuntimeException) {
-            onDisk?.copy(stale = true) ?: throw unavailable(e)
-        }
+        }.getOrElse { e -> onDisk?.copy(stale = true) ?: throw unavailable(e) }
     }
 
     private fun unavailable(cause: Throwable) =

@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DefaultDockerClientProvider
+import com.rustyrazorblade.easydblab.runCatchingException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -71,17 +72,15 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         val watcherFailure = AtomicReference<Throwable>()
         val watcher =
             thread(isDaemon = true) {
-                try {
+                runCatchingException {
                     while (!seenRunning.get() && !Thread.currentThread().isInterrupted) {
                         if (containersRunning(marker).any { it.state == "running" }) seenRunning.set(true)
                         Thread.sleep(POLL_MILLIS)
                     }
-                } catch (_: InterruptedException) {
-                    // The wait ended; the test stops watching.
-                } catch (e: Exception) {
-                    // An interrupt can surface wrapped (an InterruptedIOException cause); only a
-                    // failure while still watching is the watcher's own.
-                    if (!Thread.currentThread().isInterrupted) watcherFailure.set(e)
+                }.onFailure { e ->
+                    // An interrupt means the wait ended, and it can surface wrapped (an InterruptedIOException
+                    // cause); only a failure while still watching is the watcher's own.
+                    if (e !is InterruptedException && !Thread.currentThread().isInterrupted) watcherFailure.set(e)
                 }
             }
 

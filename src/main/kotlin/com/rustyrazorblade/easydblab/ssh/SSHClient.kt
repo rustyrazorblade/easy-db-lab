@@ -468,14 +468,8 @@ class SSHClient(
      * @return true if the session is open and authenticated, false otherwise
      */
     override fun isSessionOpen(): Boolean =
-        operationLock.withLock {
-            return@withLock try {
-                session.isOpen && session.isAuthenticated
-            } catch (e: Exception) {
-                log.debug(e) { "Error checking session status for $remoteAddress" }
-                false
-            }
-        }
+        // Both are reads of the session's own state flags; neither does I/O or throws.
+        operationLock.withLock { session.isOpen && session.isAuthenticated }
 
     /**
      * Stop the SSH client and clean up all resources

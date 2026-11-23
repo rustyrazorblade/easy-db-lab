@@ -187,7 +187,7 @@ myService.start(host).onSuccess {
 1. **Use Result Types**: Never throw exceptions directly - wrap operations in `runCatching {}`
 2. **Log Appropriately**: Use `log.info` for successful operations, `log.debug` for status checks
 3. **Test Thoroughly**: Test both success and failure scenarios
-4. **Name the failures you handle**: A `catch` names the exception types its body can throw; never `catch (e: Exception)` and never `@Suppress("TooGenericExceptionCaught")`. A boundary that must turn any failure into a report or fallback uses `runCatchingException { }` (in `Throwables.kt`), which captures an `Exception` and still rethrows a JVM `Error`.
+4. **Name the failures you handle**: A `catch` names the exception types its body can throw; never `catch (e: Exception)` and never `@Suppress("TooGenericExceptionCaught")`. A boundary that must turn any failure into a report or fallback uses `runCatchingException { }` (in `Throwables.kt`), which captures an `Exception` and still rethrows a JVM `Error`. detekt's `TooGenericExceptionCaught` is active and enforces this everywhere, tests included.
 5. **Document Custom Behavior**: Clearly document any overridden methods or custom logic
 
 ## Cassandra Versions (`cassandraversions/`)

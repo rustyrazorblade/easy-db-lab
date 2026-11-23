@@ -235,13 +235,8 @@ class DownTest : BaseKoinTest() {
 
         // Cleanup should still delete the file even if JSON is corrupted
         // The Down command catches JSON parsing exceptions and deletes anyway
-        try {
-            // In real Down command, it tries to parse, fails, then deletes
-            proxyStateFile.delete()
-        } catch (e: Exception) {
-            // If it fails for any reason, still try to delete
-            proxyStateFile.delete()
-        }
+        // In real Down command, it tries to parse, fails, then deletes
+        proxyStateFile.delete()
 
         assertThat(proxyStateFile).doesNotExist()
     }

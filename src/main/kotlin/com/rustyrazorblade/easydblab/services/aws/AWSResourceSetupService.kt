@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
+import com.rustyrazorblade.easydblab.onException
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.AccountIdentity
 import com.rustyrazorblade.easydblab.providers.aws.IamRoles
@@ -181,7 +182,8 @@ class AWSResourceSetupService(
      * Creates all 3 IAM roles and instance profiles with wildcard S3 policy.
      */
     private fun createIAMResources(roleName: String) {
-        try {
+        // Every failure is reported by its kind, then propagates unchanged; an Error is not reported.
+        runCatching {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
             iamRoles.createRoleWithS3Policy(roleName)
             instanceRolePolicies.apply(roleName)
@@ -194,10 +196,7 @@ class AWSResourceSetupService(
             // EMR EC2 role (for Spark clusters)
             iamRoles.createEMREC2Role()
             eventBus.emit(Event.AwsSetup.EmrEc2RoleReady(Constants.AWS.Roles.EMR_EC2_ROLE))
-        } catch (e: Exception) {
-            emitIamError(e)
-            throw e
-        }
+        }.onException(::emitIamError).getOrThrow()
     }
 
     private fun emitIamError(e: Exception) {

@@ -1,6 +1,6 @@
 [versions]
 # Kotlin
-kotlin = "2.4.10"
+kotlin = "2.4.21"
 
 # Logging
 logback = "1.6.5"

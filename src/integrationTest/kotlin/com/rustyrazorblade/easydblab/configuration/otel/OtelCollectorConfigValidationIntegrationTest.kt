@@ -15,6 +15,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.testcontainers.containers.ContainerLaunchException
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import org.testcontainers.images.builder.Transferable
@@ -103,7 +104,8 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
 
         try {
             collector.start()
-        } catch (e: Exception) {
+        } catch (e: ContainerLaunchException) {
+            // GenericContainer.start reports every failed start, a non-zero exit included, as this type.
             throw AssertionError("collector rejected the $variant configuration:\n${collector.logs}", e)
         }
 

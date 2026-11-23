@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.io.UncheckedIOException
@@ -130,7 +131,7 @@ class NodeReplacer(
         if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted before its instance was terminated")
         var phase = Phase.TERMINATE
         var launched: ClusterHost? = null
-        return try {
+        return runCatchingInterruptibly<Outcome> {
             fleet.terminate(old.instanceId)
             phase = Phase.VERIFY
             fleet.verifyReplacement(serverType, ordinal)
@@ -140,8 +141,8 @@ class NodeReplacer(
             record(serverType, host)
             eventBus.emit(Event.Provision.NodeReplaced(old.alias, old.instanceId, host.instanceId, host.privateIp))
             Outcome.Replaced(host, replacement)
-        } catch (e: RuntimeException) {
-            // An SDK call cut short by an interrupt surfaces as a RuntimeException; the interrupt wins.
+        }.getOrElse { e ->
+            // An SDK call cut short by an interrupt surfaces as an unchecked exception; the interrupt wins.
             if (Thread.interrupted()) throw InterruptedException("replacing ${old.alias} was interrupted at ${phase.wireName}")
             log.warn(e) { "Replacing ${old.alias} failed at ${phase.wireName}" }
             val kept = phase == Phase.TERMINATE
@@ -155,7 +156,7 @@ class NodeReplacer(
         }
     }
 
-    /** Saves [host] in the state; a failed save is unchecked, so the replacement reports it like any failed phase. */
+    /** Saves [host] in the state; a failed save is reported like any failed phase. */
     private fun record(
         serverType: ServerType,
         host: ClusterHost,

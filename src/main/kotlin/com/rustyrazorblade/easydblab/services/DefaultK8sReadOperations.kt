@@ -12,6 +12,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 /**
  * Default implementation of [K8sReadOperations] using the Fabric8 Kubernetes Client.
@@ -204,7 +205,7 @@ private fun Node.toKubernetesNode(): KubernetesNode {
 private fun parseK8sTimestamp(timestamp: String): OffsetDateTime =
     try {
         OffsetDateTime.parse(timestamp, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-    } catch (_: Exception) {
+    } catch (_: DateTimeParseException) {
         // Fallback for timestamps without offset (e.g., "2024-01-15T10:30:00Z")
         OffsetDateTime.parse(timestamp)
     }

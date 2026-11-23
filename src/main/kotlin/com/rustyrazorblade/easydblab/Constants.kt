@@ -1172,6 +1172,17 @@ object Constants {
     object Kit {
         const val CONFIG_FILE = "kit.yaml"
 
+        private const val POSTGRES_NODE_PORT_FIRST = 30432
+        private const val POSTGRES_NODE_PORT_LAST = 30434
+        private const val METRICS_NODE_PORT_FIRST = 30987
+        private const val METRICS_NODE_PORT_LAST = 30989
+
+        /** The postgres NodePorts the extensions registry's kits use; POSTGRES_PORT may replace any of them. */
+        val DEFAULT_POSTGRES_NODE_PORTS = POSTGRES_NODE_PORT_FIRST..POSTGRES_NODE_PORT_LAST
+
+        /** The metrics NodePorts the extensions registry's kits use; METRICS_PORT may replace any of them. */
+        val DEFAULT_METRICS_NODE_PORTS = METRICS_NODE_PORT_FIRST..METRICS_NODE_PORT_LAST
+
         // Lifecycle phase names
         const val PHASE_INSTALL = "install"
         const val PHASE_START = "start"

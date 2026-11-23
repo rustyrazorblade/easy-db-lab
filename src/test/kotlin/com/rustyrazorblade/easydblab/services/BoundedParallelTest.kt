@@ -30,16 +30,12 @@ class BoundedParallelTest {
         val returned = AtomicReference<List<Result<Unit>>?>()
         val caller =
             Thread {
-                try {
-                    returned.set(
-                        BoundedParallel(maxConcurrency = 2).map(listOf(1, 2, 3)) {
-                            started.countDown()
-                            Thread.sleep(TimeUnit.MINUTES.toMillis(BLOCK_MINUTES))
-                        },
-                    )
-                } catch (e: Throwable) {
-                    thrown.set(e)
-                }
+                runCatching {
+                    BoundedParallel(maxConcurrency = 2).map(listOf(1, 2, 3)) {
+                        started.countDown()
+                        Thread.sleep(TimeUnit.MINUTES.toMillis(BLOCK_MINUTES))
+                    }
+                }.onSuccess(returned::set).onFailure(thrown::set)
             }
         caller.start()
         assertThat(started.await(WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()

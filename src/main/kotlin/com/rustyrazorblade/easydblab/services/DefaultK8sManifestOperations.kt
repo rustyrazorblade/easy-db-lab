@@ -112,7 +112,8 @@ class DefaultK8sManifestOperations(
                         .resource(resource)
                         .forceConflicts()
                         .serverSideApply()
-                } catch (e: Exception) {
+                } catch (e: KubernetesClientException) {
+                    // The API server's refusal of an immutable field change; fabric8 reports every API answer as this type.
                     if (requiresDeleteAndRecreate(e)) {
                         log.info { "$kind/$name has immutable field conflict, deleting and re-creating" }
                         client.resource(resource).delete()
@@ -133,7 +134,7 @@ class DefaultK8sManifestOperations(
      * This happens when immutable fields are changed (e.g., StatefulSet volumeClaimTemplates,
      * Deployment strategy type).
      */
-    private fun requiresDeleteAndRecreate(e: Exception): Boolean {
+    private fun requiresDeleteAndRecreate(e: KubernetesClientException): Boolean {
         val msg = e.message ?: return false
         // Strategy type conflict (e.g., RollingUpdate → Recreate)
         if (msg.contains("rollingUpdate") && msg.contains("Recreate")) return true

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.ssh
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.output.NodeStream
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.Closeable
 import java.time.Duration
@@ -94,11 +95,8 @@ class OffThreadOutputSink(
     }
 
     private fun handOver(item: Item.Line) {
-        try {
-            sink.line(item.stream, item.text)
-        } catch (e: RuntimeException) {
-            log.warn(e) { "Could not print a line of remote output" }
-        }
+        runCatchingException { sink.line(item.stream, item.text) }
+            .onFailure { log.warn(it) { "Could not print a line of remote output" } }
     }
 
     /** One queued line, or the end of the command's output. */

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
@@ -150,6 +151,19 @@ class NodeReplacerTest {
         assertThat(outcome.oldInstanceKept).isTrue()
         assertThat(fleet.calls).containsExactly("terminate i-old1")
         assertThat(events.filterIsInstance<Event.Provision.NodeReplaceFailed>().single().phase).isEqualTo("terminate")
+    }
+
+    /** A provider call may fail with a checked exception too; it is a failed phase like any other. */
+    @ParameterizedTest
+    @EnumSource(FaultKind::class)
+    fun `a terminate that fails with either kind of exception keeps the old instance`(kind: FaultKind) {
+        fleet.onTerminate = { throw kind.make("terminate refused") }
+
+        val outcome = replacer().replace(ServerType.Cassandra, host(1), failure) as NodeReplacer.Outcome.NotReplaced
+
+        assertThat(outcome.oldInstanceKept).isTrue()
+        assertThat(outcome.reason).contains("failed at terminate: terminate refused")
+        assertThat(fleet.calls).containsExactly("terminate i-old1")
     }
 
     @Test

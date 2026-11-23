@@ -14,6 +14,5 @@
     <ID>LoopWithTooManyJumpStatements:CommandLineParser.kt$CommandLineParser$for</ID>
     <ID>LoopWithTooManyJumpStatements:DefaultK8sNamespaceOperations.kt$DefaultK8sNamespaceOperations$while</ID>
     <ID>SpreadOperator:DefaultK8sPodOperations.kt$DefaultK8sPodOperations$(*command.toTypedArray())</ID>
-    <ID>UnusedPrivateMember:K8sServiceIntegrationTest.kt$K8sServiceIntegrationTest$private fun assertStatefulSetExists(name: String)</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.SerializationException
 import java.io.File
+import java.io.IOException
 
 /**
  * Resolves the SQL endpoint details of a target kit into TARGET_* environment variables.
@@ -67,9 +69,13 @@ class DefaultKitEndpointResolver(
         val kitConfig =
             try {
                 installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText())
-            } catch (e: Exception) {
-                log.warn(e) { "Failed to parse kit.yaml for '${targetKitDir.name}' — no TARGET_* vars injected" }
-                return emptyMap()
+            } catch (e: IOException) {
+                return unparseable(targetKitDir, e)
+            } catch (e: SerializationException) {
+                return unparseable(targetKitDir, e)
+            } catch (e: IllegalArgumentException) {
+                // KitConfig's own checks, run as it is decoded.
+                return unparseable(targetKitDir, e)
             }
 
         val sqlCap = kitConfig.capabilities.firstOrNull { it.type == "sql" }
@@ -89,6 +95,15 @@ class DefaultKitEndpointResolver(
                         }
                 }
             }.toMap()
+    }
+
+    /** Logs a target kit.yaml that could not be read or decoded; such a kit injects no TARGET_* vars. */
+    private fun unparseable(
+        targetKitDir: File,
+        e: Exception,
+    ): Map<String, String> {
+        log.warn(e) { "Failed to parse kit.yaml for '${targetKitDir.name}' — no TARGET_* vars injected" }
+        return emptyMap()
     }
 
     /**

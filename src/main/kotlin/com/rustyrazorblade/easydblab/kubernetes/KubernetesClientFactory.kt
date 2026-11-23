@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.kubernetes
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.reason
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
@@ -49,10 +50,9 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
             } catch (e: IOException) {
                 throw IOException("Cannot read the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
             }
+        // The parser fails with whatever its YAML and JSON libraries throw, so any exception is a parse failure.
         val config =
-            try {
-                Config.fromKubeconfig(kubeconfigContent)
-            } catch (e: RuntimeException) {
+            runCatchingException { Config.fromKubeconfig(kubeconfigContent) }.getOrElse { e ->
                 // The parser's message quotes the start of the text it could not read, and a kubeconfig holds
                 // client keys and tokens: name the path and the kind of failure, never the message or the cause.
                 error("The kubeconfig at $kubeconfigPath could not be parsed (${e.javaClass.simpleName})")
@@ -63,11 +63,13 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
         }
         config.applyClusterClientTimeouts()
 
-        return try {
+        // fabric8 wraps only a checked failure in KubernetesClientException; an unchecked one from the proxy,
+        // the TLS material or the HTTP client factory comes out as it was thrown, so every exception is caught.
+        return runCatchingException {
             KubernetesClientBuilder()
                 .withConfig(config)
                 .build()
-        } catch (e: RuntimeException) {
+        }.getOrElse { e ->
             throw IllegalStateException("A Kubernetes client could not be built from the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
         }
     }

@@ -8,6 +8,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import java.io.File
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
@@ -169,6 +171,28 @@ class ControlNodeFailureBringUpTest {
 
         assertThat(h.eventsOf<Event.Provision.ControlNodeFailed>().single().outputTail)
             .containsExactly("stderr: k3s: bad flag", "control-plane attempt 2", "stderr: k3s: bad flag")
+    }
+
+    /**
+     * A fault outside the control node's steps fails the control node, whether it is a checked
+     * exception or not: one that escaped would leave every node waiting for the workspace, and
+     * `run` would never return.
+     */
+    @ParameterizedTest
+    @EnumSource(FaultKind::class)
+    fun `a fault of either kind outside the control steps fails the control node`(kind: FaultKind) {
+        val h = harness(dbs = 2)
+        h.tracker.failWatch = { id -> if (id == h.control.instanceId) throw kind.make("tracker refused") }
+
+        assertThat(h.runInBackground())
+            .failsWithin(BringUpHarness.WAIT)
+            .withThrowableOfType(ExecutionException::class.java)
+            .havingCause()
+            .isInstanceOfSatisfying(ControlNodeFailedException::class.java) {
+                assertThat(it.alias).isEqualTo("control0")
+                assertThat(it.step).isEqualTo("control-pipeline")
+                assertThat(it.reason).isEqualTo("tracker refused")
+            }
     }
 
     private companion object {

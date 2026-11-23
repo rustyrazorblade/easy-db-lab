@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -41,6 +40,7 @@ import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.dsl.base.PatchContext
 import io.fabric8.kubernetes.client.dsl.base.PatchType
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization
@@ -482,13 +482,6 @@ class K8sServiceIntegrationTest {
     @Order(24)
     fun `createLocalPersistentVolumes recycles stale PVs via service layer`() {
         val storageOps = createStorageOperations()
-        val testHost =
-            ClusterHost(
-                publicIp = "unused",
-                privateIp = "unused",
-                alias = "test",
-                availabilityZone = "us-west-2a",
-            )
         val config =
             PersistentVolumeConfig(
                 dbName = "recycletest",
@@ -840,7 +833,7 @@ class K8sServiceIntegrationTest {
         for (resource in resources) {
             try {
                 client.resource(resource).forceConflicts().serverSideApply()
-            } catch (e: Exception) {
+            } catch (e: KubernetesClientException) {
                 throw AssertionError(
                     "Failed to apply ${resource.kind}/${resource.metadata?.name}: ${e.message}",
                     e,
@@ -984,9 +977,6 @@ class K8sServiceIntegrationTest {
             "PV '$pvName' did not reach phase '$expectedPhase' within ${timeoutSeconds}s. Phase: ${pv?.status?.phase}",
         )
     }
-
-    private val testHost =
-        ClusterHost(publicIp = "unused", privateIp = "unused", alias = "test", availabilityZone = "us-west-2a")
 
     private fun labelNode(
         nodeName: String,

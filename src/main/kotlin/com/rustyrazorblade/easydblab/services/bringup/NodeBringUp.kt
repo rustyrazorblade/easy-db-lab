@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventContext
 import com.rustyrazorblade.easydblab.messageOrString
+import com.rustyrazorblade.easydblab.runCatchingInterruptibly
 import java.time.Clock
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
@@ -133,16 +134,18 @@ class NodeBringUp(
             if (!controlStarted.complete(Unit)) return
             controlTask =
                 submit(host.alias) {
-                    try {
+                    runCatchingInterruptibly {
                         ControlPipeline(run, host) { reason -> controlFailed(ControlNodeFailedException(host.alias, HEALTH, reason)) }
                             .run()
-                        controlDone.complete(Unit)
-                    } catch (e: ControlNodeFailedException) {
-                        controlFailed(e)
-                    } catch (e: RuntimeException) {
-                        // A fault outside any step still fails the control node, or the coordinator would wait forever.
-                        controlFailed(ControlNodeFailedException(host.alias, CONTROL, e.messageOrString()))
-                    }
+                    }.fold(
+                        { controlDone.complete(Unit) },
+                        { e ->
+                            // A fault outside any step still fails the control node, or the coordinator would wait forever.
+                            controlFailed(
+                                e as? ControlNodeFailedException ?: ControlNodeFailedException(host.alias, CONTROL, e.messageOrString()),
+                            )
+                        },
+                    )
                 }
         }
 

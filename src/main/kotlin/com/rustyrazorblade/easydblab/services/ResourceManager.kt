@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.runCatchingException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -41,12 +42,10 @@ class DefaultResourceManager : ResourceManager {
         log.debug { "Closing ${resources.size} registered resources" }
         while (true) {
             val resource = resources.poll() ?: break
-            try {
-                log.debug { "Closing resource: ${resource::class.simpleName}" }
-                resource.close()
-            } catch (e: Exception) {
-                log.warn(e) { "Error closing resource: ${resource::class.simpleName}" }
-            }
+            // AutoCloseable.close may throw any Exception; one that fails must not stop the others closing.
+            log.debug { "Closing resource: ${resource::class.simpleName}" }
+            runCatchingException { resource.close() }
+                .onFailure { log.warn(it) { "Error closing resource: ${resource::class.simpleName}" } }
         }
     }
 }

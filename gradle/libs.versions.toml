@@ -52,7 +52,7 @@ commons-io = "2.22.0"
 commons-text = "1.15.0"
 
 # Cassandra
-cassandra-driver = "4.19.2"
+cassandra-driver = "4.19.4"
 
 # Redis
 jedis = "7.5.3"

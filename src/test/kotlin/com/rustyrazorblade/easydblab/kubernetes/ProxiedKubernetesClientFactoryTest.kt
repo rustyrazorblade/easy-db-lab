@@ -85,6 +85,18 @@ class ProxiedKubernetesClientFactoryTest {
     }
 
     @Test
+    fun `a client that cannot be built fails naming the kubeconfig path`() {
+        // A port no socket can use: fabric8 rejects the proxy address while it builds the client.
+        System.setProperty(Constants.Proxy.PORT_PROPERTY, "99999")
+        val kubeconfig = writeKubeconfig()
+
+        assertThatThrownBy { ProxiedKubernetesClientFactory().createClient(kubeconfig).close() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("could not be built from the kubeconfig at $kubeconfig")
+            .hasCauseInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
     fun `httpsProxy is set to socks5 when the proxy port is published`() {
         System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
         val factory = ProxiedKubernetesClientFactory()

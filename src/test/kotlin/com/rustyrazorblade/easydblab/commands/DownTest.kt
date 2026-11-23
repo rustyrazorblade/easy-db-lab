@@ -223,25 +223,6 @@ class DownTest : BaseKoinTest() {
     }
 
     @Test
-    fun `Down command should clean up proxy state with corrupted JSON`(
-        @TempDir tempDir: File,
-    ) {
-        val proxyStateFile = File(tempDir, ".socks5-proxy-state")
-
-        // Write corrupted JSON
-        proxyStateFile.writeText("{ invalid json")
-
-        assertThat(proxyStateFile).exists()
-
-        // Cleanup should still delete the file even if JSON is corrupted
-        // The Down command catches JSON parsing exceptions and deletes anyway
-        // In real Down command, it tries to parse, fails, then deletes
-        proxyStateFile.delete()
-
-        assertThat(proxyStateFile).doesNotExist()
-    }
-
-    @Test
     fun `Down command should clear tailscaleAuthKeyId when marking DOWN`(
         @TempDir tempDir: File,
     ) {

@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.runCatchingException
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
-import io.fabric8.kubernetes.client.KubernetesClientException
 import java.io.IOException
 import java.nio.file.Path
 
@@ -64,12 +63,13 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
         }
         config.applyClusterClientTimeouts()
 
-        return try {
+        // fabric8 wraps only a checked failure in KubernetesClientException; an unchecked one from the proxy,
+        // the TLS material or the HTTP client factory comes out as it was thrown, so every exception is caught.
+        return runCatchingException {
             KubernetesClientBuilder()
                 .withConfig(config)
                 .build()
-        } catch (e: KubernetesClientException) {
-            // fabric8 reports every failure to build a client (the HTTP client, the TLS material) as this one type.
+        }.getOrElse { e ->
             throw IllegalStateException("A Kubernetes client could not be built from the kubeconfig at $kubeconfigPath: ${e.reason()}", e)
         }
     }

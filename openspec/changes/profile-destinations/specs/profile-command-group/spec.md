@@ -60,3 +60,25 @@ command would silently skip would be worse than no report at all.
 - **GIVEN** either the Tailscale client id or client secret is empty or blank
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the output reports Tailscale as `DISABLED`
+
+### Requirement: `profile show` reports an unconfigured profile
+`profile show` SHALL report, when the active profile has neither a current-format profile file nor an
+earlier-format `settings.yaml`, that the profile is not configured and name
+`easy-db-lab profile setup`. It SHALL NOT launch the interactive setup flow and SHALL NOT throw.
+
+#### Scenario: No profile file reports not-configured
+- **GIVEN** the active profile has no profile file in either format
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI prints that the profile is not configured and names `easy-db-lab profile setup`
+- **AND** the interactive setup flow does not run and no exception is raised
+
+### Requirement: `profile show` reports a malformed profile
+When the active profile's file exists but cannot be read, `profile show` SHALL report the profile as
+present but unreadable, naming the file path and `easy-db-lab profile setup`. It SHALL NOT surface a
+raw deserialization error or any text from the file.
+
+#### Scenario: Truncated profile file is reported, not thrown
+- **GIVEN** the active profile's current-format file exists but omits a field that has no default
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI reports the profile as present but unreadable and names the file path and `easy-db-lab profile setup`
+- **AND** no raw deserialization error is shown

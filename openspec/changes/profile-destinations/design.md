@@ -1,168 +1,191 @@
 ## Context
 
-- The profile file is `~/.easy-db-lab/profiles/<name>/settings.yaml`; the name comes from
-  `EASY_DB_LAB_PROFILE` (`Context.kt:51`), default `default`.
-- `User` (`configuration/User.kt:14-33`) is a flat Jackson data class with AWS fields only.
-  `UserConfigProvider` (`configuration/UserConfigProvider.kt`) loads it, caches it, redacts parse
-  errors, and saves a `Map` without an atomic write.
+- The profile is `~/.easy-db-lab/profiles/<name>/settings.yaml`; the name comes from
+  `EASY_DB_LAB_PROFILE` (`Context.kt:51`), the root from `EASY_DB_LAB_USER_DIR` (`Constants.kt:457`).
+- `User` (`configuration/User.kt:14-33`) is a flat Jackson class with AWS fields only; five fields
+  have no default.  `UserConfigProvider` (`configuration/UserConfigProvider.kt`) loads, caches,
+  redacts parse errors, and saves without an atomic write.  `isSetup()` is "file exists" (`:45`).
 - `di/ContextModule.kt` binds `User` from `getUserConfig()`.  `AwsClientsModule.kt:54-67` builds the
   region and the credentials provider from it.
-- `SetupProfile` (`commands/profile/SetupProfile.kt`, 673 lines) collects and saves a `Map`.
-- The owner's plan (`plan.md` of the multi-cloud plan, sections 4 and 5) fixes the destinations:
-  `aws`, `aws-eks`, `gcp`, `azure`, `k8s`.  This change ships `aws` only.
+- `AwsS3BucketService.ensureAccountBucket(user)` (`:68-97`) is idempotent only because
+  `createAccountBucket` sets `user.s3Bucket` on the shared singleton that `VersionSources` (`:68`) and
+  `CassandraBuildCatalog` also hold.
+- `SetupProfile` (`commands/profile/SetupProfile.kt`) collects and saves a `Map`; on a bad saved value
+  it recovers through `loadExistingUser` on the raw map (`:93`).
+- The multi-cloud plan (`plan.md` section 4) fixes the destination types: `aws`, `k8s`, `aws-eks`,
+  `gcp`, `azure`.  This change ships `aws` only.
 
 ## Goals / Non-Goals
 
-Goals:
-- One profile, one destination, recorded in the file.
-- A file format that the later destinations extend without another migration.
-- A silent, one-time migration of every existing profile.
-- Remove `User` and the Jackson profile reader.
+Goals: one profile, one destination, recorded in the file; a format the later destinations extend
+without a second migration; a silent migration that leaves the earlier file untouched; remove `User`
+and the Jackson reader; one account bucket per profile.
 
-Non-goals:
-- Any destination other than AWS.  The gate variable for unfinished destinations lands with the
-  first such destination (Phase 5), not here, because there is nothing to gate yet.
-- Recording the target in `state.json` (Phase 4).
-- Changing the AWS prompts, validation or resource steps.
+Non-goals: any destination other than AWS; the gate for unfinished destinations (it lands with the
+first such destination, because nothing needs gating yet); recording a target in `state.json`;
+changing the AWS prompts, validation or resource steps.
 
 ## Decisions
 
-### D1. The file format
+### D1. A new file
 
 ```yaml
 email: someone@example.com
 destination:
   type: aws
-  region: us-west-2
+  location:
+    region: us-west-2
   credentials:
     type: aws-profile        # or: access-key, with accessKeyId and secretAccessKey
     name: my-sso-profile
   keyName: easy-db-lab-...
   accountBucket: easy-db-lab-...
   sshTransport: direct
-tailscale:                   # absent when not configured
+tailscale:                   # absent when the earlier file never set it
   clientId: ...
   clientSecret: ...
   tag: tag:easy-db-lab
-axonOps:                     # absent when not configured
+axonOps:
   org: ...
   key: ...
 ```
 
-- kotlinx.serialization with kaml (already a dependency, `build.gradle.kts:236`).  The sealed
-  `Destination` and `AwsCredentials` use the `type` property as the class discriminator.
-- Unknown keys are ignored, so a field added later does not break an older build's read.
-- `tailscale` and `axonOps` are nullable blocks.  "Enabled" is "the block is present with non-blank
-  values", replacing `User.isTailscaleEnabled()` and `User.isAxonOpsEnabled()` with the same rules.
-- `sshTransport` keeps its values `direct` and `ssm`.  An unknown value fails the load and names the
-  bad value and the choices, as the spec requires today.
-- Written with `File.writeTextAtomically` (`AtomicFileWrite.kt`), then set to mode 0600.
+- The file is `profiles/<name>/profile.yaml`.  `settings.yaml` is never written or deleted.  Builds
+  from earlier releases (other agents' worktrees, a cluster already up) keep reading `settings.yaml`.
+- kaml (already a dependency, `build.gradle.kts:236`) with property-style polymorphism on `type`.
+  Unknown keys are ignored.  Written with `File.writeTextAtomically`, then mode 0600.
+- `sshTransport` keeps `direct` and `ssm`; an unknown value fails the load and names the value and
+  the choices.
+- Alternative rejected: rewrite `settings.yaml` in place.  Builds on main fail on a file without a
+  top-level `region`, and their `isSetup()` passes, so `down` from such a build would fail mid-run.
+- Alternative rejected: keep the flat file and add `destination: aws`.  Later destinations would add
+  flat fields that a reader could not tell apart.
 
-Alternatives:
-- Keep the flat file and add `destination: aws`.  Rejected: each later destination would add its own
-  flat fields, and a reader could not tell which fields apply.
-- One file per destination type.  Rejected: a profile has one destination; two files invite two.
+### D2. The model
 
-### D2. The model and its owner
-
-- `configuration/profile/Profile.kt`: `Profile(email, destination, tailscale, axonOps)`,
-  `sealed interface Destination` with `Destination.Aws`, `sealed interface AwsCredentials` with
-  `AwsProfile(name)` and `AccessKey(accessKeyId, secretAccessKey)`.
-- `configuration/profile/ProfileStore.kt` replaces `UserConfigProvider`: `isSetup()`, `load()`
-  (cached), `loadForSetup()` (a partial read that setup prefills from), `save(Profile)`, `clearCache()`.
-- Koin binds `ProfileStore`, `Profile` (from `load()`), and `Destination.Aws`
-  (`get<Profile>().destination as? Destination.Aws ?: error`).  AWS code injects `Destination.Aws`,
-  so no AWS class learns about other destinations.
-- No new port.  `Destination` is data with one variant now; it is a file-format decision, not a seam.
-  `ProfileStore` has one adapter and is a concrete class.
+- `configuration/profile/`: `Profile(email, destination, tailscale, axonOps)`; `interface Destination`
+  (open, `@Serializable` polymorphic) with `AwsDestination(location: AwsLocation, credentials:
+  AwsCredentials, keyName, accountBucket, sshTransport)`; `AwsLocation(region)`; sealed
+  `AwsCredentials` with `AwsProfile(name)` and `AccessKey(accessKeyId, secretAccessKey)` (sealed is
+  fine here: both variants are AWS and stay together).
+- `Destination` is open, not sealed, so that each later target module registers its own subclass in a
+  `SerializersModule` (a sealed type cannot span Gradle modules).  Phase 1 has one registration,
+  `AwsDestination`, in `ProfileStore`'s serializer module.  Phase 5 moves registration to each plugin.
+- `Tailscale(clientId, clientSecret, tag)`, `AxonOps(org, key)`.  `enabled` is "both values
+  non-blank", the same rule as `User.isTailscaleEnabled()` / `isAxonOpsEnabled()` today.
+- `ProfileStore` is a concrete class, not a port.  It replaces `UserConfigProvider`:
+  - `isSetup()`: `profile.yaml` exists, or `settings.yaml` exists and its raw map holds credentials.
+  - `load()`: cached `Profile` (D3 for the earlier file).
+  - `loadForSetup()`: a raw map from whichever file exists, which setup prefills from and which lets
+    setup recover from a bad saved value.
+  - `save(profile)`: writes `profile.yaml`, updates the cache.
+- Koin: `ContextModule` binds `ProfileStore` and `Profile`.  The AWS Koin module binds `AwsDestination`
+  (a cast of `Profile.destination` that fails naming the destination type).  The cast lives in the
+  AWS module, never in core.
 
 ### D3. Migration
 
-- `LegacyProfileMigration.migrate(map): Profile?` is a pure function over the decoded YAML map.
-- It runs when the file has no `destination` key.  Mapping:
-  - `region`, `keyName`, `sshTransport` copy into `Destination.Aws`; `s3Bucket` becomes `accountBucket`.
-  - `awsProfile` non-blank gives `AwsProfile(awsProfile)`; otherwise non-blank `awsAccessKey` and
-    `awsSecret` give `AccessKey`.  Neither gives `null`: the file is not migrated and reads as not
-    set up, and `profile setup` prefills from it.
-  - `tailscaleClientId`/`tailscaleClientSecret`/`tailscaleTag` become `tailscale` when both id and
-    secret are non-blank.  `axonOpsOrg`/`axonOpsKey` become `axonOps` when both are non-blank.
-    A half-set pair is dropped; today it already reads as disabled.
-  - Other keys (for example `sshKeyPath`) are dropped.
-- `ProfileStore.load()` writes the migrated profile back atomically, then returns it.  It prints
-  nothing and emits no event (a debug log line only).  Two processes migrating at once write the same
-  bytes; the atomic rename makes either result whole.
-- The earlier format is read once, by a plain kaml `YamlMap` walk.  No Jackson.
+- `LegacyProfileMigration.migrate(map): Profile?` is a pure function over the raw YAML map.
+- It runs in `load()` when `profile.yaml` does not exist and `settings.yaml` does.  Mapping:
+  - `region` to `location.region`; `keyName`, `sshTransport` copied; `s3Bucket` to `accountBucket`.
+  - A non-blank `awsProfile` gives `AwsProfile`; otherwise non-blank `awsAccessKey` and `awsSecret`
+    give `AccessKey`; neither gives `null` (not set up).
+  - The Tailscale fields become a `tailscale` block when either the id or the secret is non-blank,
+    keeping a blank partner; the same for AxonOps.  A half-set block stays disabled and setup prefills it.
+  - `isTailscaleEnabled`, `isAxonOpsEnabled` (getter keys written by Jackson) and `sshKeyPath` are
+    ignored.
+- `load()` writes `profile.yaml`, then returns.  No output, no event; one debug log line.  Two
+  processes migrating at once write the same bytes through an atomic rename.
+- The earlier file is read as a raw kaml `YamlMap`.  No Jackson.
 
-### D4. Setup
+### D4. Account bucket
 
-- `SetupProfile` works on `Profile` and `Destination.Aws` instead of a `Map`.  Its phases and its
-  events are kept.  One new event, `Event.Setup.DestinationSelected(destination: String)`, is emitted
-  when a new profile's destination is fixed; the console prints `Destination: AWS`.
-- A new profile with one available destination does not prompt for it.  With an existing profile,
-  setup reviews that destination only.  Choosing a second destination means another profile name.
+- `AwsS3BucketService.ensureAccountBucket()` and `ensureMarkedAccountBucket()` take no profile
+  argument.  They read `profileStore.load()`; when `accountBucket` is blank they create the bucket and
+  `save(profile with accountBucket)`, which updates the store's cache.  `VersionSources` and
+  `CassandraBuildCatalog` stop holding a profile value and call `ensureAccountBucket()`.
+- `AwsKeyPairService` saves `keyName` the same way.
+
+### D5. Setup
+
+- `SetupProfile` works on `Profile` and `AwsDestination`; its phases and events are kept.
+  `Event.Setup.DestinationSelected(destination: String)` is emitted when a new profile's destination
+  is fixed; the console prints `Destination: AWS`.
+- New profile with one available destination: no prompt.  Existing profile: review that destination
+  only.  Choosing another destination means another profile name.
 - `isFullySetUp` reads the typed profile: email, region, credentials, keyName, accountBucket.
 
-### D5. `profile show`
+### D6. `profile show`
 
-- Prints the profile name and directory, `email`, `destination`, then the destination's fields:
-  `region`, `credentials` (`aws-profile <name>` or `access-key`, never the key or secret),
-  `keyName`, `accountBucket`, `sshTransport`, then AxonOps and Tailscale as `ENABLED`/`DISABLED`.
-- Loading a legacy file from `profile show` migrates it, like every other load.
+- Prints the profile name, directory and file (`profile.yaml`), `email`, `destination`, then
+  `region`, `credentials` (`aws-profile <name>` or `access-key`, never the key or secret), `keyName`,
+  `accountBucket`, `sshTransport`, then AxonOps and Tailscale as `ENABLED`/`DISABLED`.
+- When only `settings.yaml` exists, `profile show` loads it like any command, which migrates it.
 
 ## Provider neutrality
 
-- The neutral parts are `Profile`, the `destination` key, `ProfileStore` and the migration entry
-  point.  The AWS fields are only in `Destination.Aws` and `AwsCredentials`.
-- AWS classes depend on `Destination.Aws`, not on `Profile`, so the move of AWS code to its own Gradle
-  module (Phase 3) takes `Destination.Aws` with it and leaves `Profile` in `:target-api`.
-- `PackageBoundaryTest` is unchanged: the profile model holds no AWS SDK type.
+- Neutral: `Profile`, `Destination`, the `destination`/`location` keys, `ProfileStore`, the migration
+  entry point.  AWS: `AwsDestination`, `AwsLocation`, `AwsCredentials`.  When AWS code moves to its
+  own module (plan Phase 3), those three move with it and register through the serializer module;
+  `Profile`, `Destination` and `ProfileStore` stay in the neutral module.  This compiles because
+  `Destination` is open.
+- No AWS SDK type enters the profile model; `PackageBoundaryTest` is unchanged.
 
 ## Risks / Trade-offs
 
-- After the merge, the first new build to load a profile rewrites it, and an older build then fails
-  to read that profile.  Accepted: the lead merges when few agents run and tells them to rebase.
-- About 150 call sites change in one PR.  The change is mechanical; the field renames are listed in
-  tasks.md.
+- After the migration, a write by an older build (a new key pair or bucket) goes to `settings.yaml`
+  and new builds do not see it.  Accepted: it needs an old build to create account resources after a
+  new build migrated the profile; re-running `profile setup` on the new build repairs it.
+- About 150 call sites change.  The change is mechanical; the renames are listed in tasks.md.
 
 ## Test plan
 
-Unit tier (`src/test`, runs in CI).  Each test has a control: break the named check, see the test
-fail, revert.
+Unit tier (`src/test`, CI).  Each test has a control: break the named check, see it fail, revert.
+Setup and store tests use a real `ProfileStore` on `@TempDir` and assert on the decoded file, never a
+`verify(...)` of a saved object (that replaces the mock-echo at `SetupProfileTest.kt:410,422`).
 
-- `ProfileStoreTest.round trip keeps every field` (both credential forms, with and without
-  Tailscale and AxonOps).  Control: drop `accountBucket` from the save.
+- `ProfileStoreTest.round trip keeps every field` (both credential forms, with and without the blocks).
+  Control: drop `accountBucket` from the save.
 - `ProfileStoreTest.save writes owner-only permissions`.  Control: remove the chmod.
-- `ProfileStoreTest.unknown keys are ignored`.  Control: set `ignoreUnknownKeys = false`.
-- `ProfileStoreTest.unknown ssh transport fails naming value and choices`.  Control: default the
-  transport instead of failing.
+- `ProfileStoreTest.unknown keys are ignored`.  Control: `ignoreUnknownKeys = false`.
+- `ProfileStoreTest.unknown destination type fails naming the type`.  Control: default to AWS.
+- `ProfileStoreTest.unknown ssh transport fails naming value and choices`.  Control: default it.
 - `ProfileStoreTest.parse error message holds no file text` (a secret in a broken file).  Control:
   include the decoder message.
 - `LegacyProfileMigrationTest`: `aws profile name maps to AwsProfile`, `access key maps to AccessKey`,
-  `profile name wins over keys`, `no credentials returns null`, `half tailscale pair is dropped`,
-  `half axonops pair is dropped`, `s3Bucket becomes accountBucket`.  Controls: swap the precedence;
-  map a half pair; skip the bucket rename.
-- `ProfileStoreTest.legacy file is rewritten in the new format on first load` (fixture: a real
-  settings.yaml from main, secrets replaced).  Asserts the file now has `destination` and reloads
-  equal.  Control: skip the write-back.
-- `ProfileStoreTest.migration prints nothing` (captures stdout and the event bus).  Control: add a
-  print.
-- `ProfileStoreTest.legacy file without credentials reads as not set up`.  Control: migrate with
-  empty credentials.
+  `profile name wins over keys`, `no credentials returns null`, `half tailscale pair is kept and
+  disabled`, `half axonops pair is kept and disabled`, `isTailscaleEnabled true does not enable
+  tailscale`, `s3Bucket becomes accountBucket`.  Controls: swap the precedence; drop a half pair; read
+  the getter key; skip the rename.  Fixtures are written by main's `UserConfigProvider.saveUserConfig`
+  from `User` fixtures (generated once on main and checked in), not by hand.
+- `ProfileStoreTest.earlier file is converted into profile yaml and left byte-identical`.  Control:
+  write the result to `settings.yaml`.
+- `ProfileStoreTest.migration prints nothing` (captures stdout and the event bus).  Control: add a print.
+- `ProfileStoreTest.earlier file without credentials is not set up`.  Control: `isSetup` = exists.
+- `ProfileStoreTest.earlier file with a bad transport is set up, fails load naming the value, and
+  loadForSetup returns its map`.  Control: fail `isSetup` instead.
+- `ProfileStoreTest.concurrent first loads agree` (two threads, one earlier file; both results equal
+  the migrated profile and the file parses).  Control: write without the atomic rename.
+- `CommandExecutorTest.profile required command runs setup for an earlier file without credentials`
+  (real store on `@TempDir`).  Control: `isSetup` = exists.
+- `AwsS3BucketServiceTest.two ensures with one stale profile create one bucket`.  Control: read the
+  bucket from an injected `AwsDestination`.
 - `SetupProfileTest.new profile with one destination does not ask for it and emits
   DestinationSelected`.  Control: prompt anyway.
-- `SetupProfileTest.existing profile is reviewed without a destination prompt`.
-- `SetupProfileTest.interrupted legacy profile prefills setup` (the incomplete-profile scenario).
-- `ProfileShowTest` (existing, updated): destination and fields shown; no secret appears, for both
-  credential forms; flags follow the block rules.  Control: print the access key id.
-- `AwsClientsModuleTest.credentials provider follows the credential form`.  Control: always build
-  the static provider.
+- `SetupProfileTest.existing profile is reviewed without a destination prompt`.  Control: prompt.
+- `SetupProfileTest.interrupted earlier profile prefills setup`.  Control: prefill from an empty map.
+- `ProfileShowTest` (updated): destination and fields shown; no secret appears for either credential
+  form; flags follow the block rules.  Control: print the access key id.
+- `AwsClientsModuleTest.credentials provider follows the credential form`.  Control: always static.
 
-Integration tier: none.  No container is involved.
+Integration tier (CI): `SetupProfileIntegrationTest` (LocalStack) drops its `UserConfigProvider` mock
+(lines 51, 86), uses a real `ProfileStore` on `@TempDir`, and asserts that bucket creation writes
+`accountBucket` to `profile.yaml`.  Control: skip the save.
 
-Real AWS (before ready, `requires-aws`):
-- Copy the default profile's `settings.yaml` aside (the legacy fixture, kept off the repo).  Run the
-  branch build's `profile show`: the file migrates, and the output matches the old values.  Then a
-  3-node `init`/`up`/`down` with `embark_offhours=off` on the default profile.  No other profile is
-  created (owner rule).
-- Restore the copied legacy file at the end, so builds from `main` (other agents) keep reading it
-  until this change merges.
+Real AWS (before ready, `requires-aws`).  Copy `~/.easy-db-lab` to a temporary directory and run the
+branch build with `EASY_DB_LAB_USER_DIR` set to it.  This is extra isolation; the safety comes from D1
+(the earlier file is never written).  The default profile name is used; no profile is created.
+- `profile show`: `profile.yaml` appears, values match `settings.yaml`.
+- `profile setup` on the review path: STS validation and marker tags run; the saved file keeps every value.
+- 3-node `init`/`up`/`down` with `embark_offhours=off`.
+- `settings.yaml` in the copy is byte-identical before and after (`cmp`).

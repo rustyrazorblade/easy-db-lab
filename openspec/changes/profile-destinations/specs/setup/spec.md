@@ -27,34 +27,57 @@ option SHALL pick or override the destination; a different destination needs a d
 
 ### Requirement: Earlier profile files migrate silently
 
-A profile file written in the earlier flat format SHALL be converted to the current format, and
-rewritten in place, the first time any command loads it.  The conversion SHALL print nothing and
-SHALL keep every setting the earlier file held: email, region, key pair name, account bucket, SSH
-transport, the AWS credentials (an AWS CLI profile name, or an access key and secret), and the
-Tailscale and AxonOps settings.  When the earlier file names both an AWS CLI profile and an access
-key, the AWS CLI profile SHALL be kept.
+The first command that loads a profile SHALL convert an earlier flat-format file, when the profile has
+no file in the current format, into a new file in the current format.
+The conversion SHALL print nothing.  It SHALL keep every setting the earlier file held: email,
+region, key pair name, account bucket, SSH transport, the AWS credentials (an AWS CLI profile name,
+or an access key and secret), and the Tailscale and AxonOps values.  When the earlier file names both
+an AWS CLI profile and an access key, the AWS CLI profile SHALL be kept.
 
-A file the conversion rewrites SHALL be replaced whole, never left half written, and SHALL be
-readable by its owner only.
+The conversion SHALL NOT write, move or delete the earlier file, so a build from an earlier release
+keeps working on the same profile.  The new file SHALL be written whole, never left half written,
+and SHALL be readable by its owner only.
 
 #### Scenario: Earlier file is converted on first load
 
-- **GIVEN** a profile file in the earlier flat format with email, region, key pair, bucket and an AWS CLI profile name
+- **GIVEN** a profile with only an earlier-format file holding email, region, key pair, bucket and an AWS CLI profile name
 - **WHEN** the user runs any command that loads the profile
 - **THEN** the command runs with those settings and prints nothing about the conversion
-- **AND** the file on disk is now in the current format and holds the same settings
+- **AND** a current-format file now exists and holds the same settings
+- **AND** the earlier file is unchanged, byte for byte
 
 #### Scenario: Earlier file with no credentials is not converted
 
-- **GIVEN** a profile file in the earlier format that holds neither an AWS CLI profile name nor an access key and secret
+- **GIVEN** a profile with only an earlier-format file that holds neither an AWS CLI profile name nor an access key and secret
 - **WHEN** the user runs a command that requires a profile
 - **THEN** the profile reads as not set up and profile setup runs, prefilled with the values the file holds
 
-#### Scenario: A half-configured optional feature stays off
+#### Scenario: Earlier file with an unrecognized SSH transport
+
+- **GIVEN** a profile with only an earlier-format file whose saved SSH transport is neither `direct` nor `ssm`
+- **WHEN** any command loads the profile
+- **THEN** loading fails with an error naming the bad value and the valid choices
+- **AND** profile setup reports the bad value, keeps the file's other values, and asks for the transport again
+
+#### Scenario: A half-configured optional feature stays off and keeps its value
 
 - **GIVEN** an earlier file that sets the Tailscale client id but not its secret
 - **WHEN** the profile is converted
-- **THEN** the converted profile has Tailscale disabled, as the earlier file did
+- **THEN** the converted profile keeps the client id and has Tailscale disabled, as the earlier file did
+
+### Requirement: One account bucket per profile
+
+Every operation that needs the profile's account bucket SHALL read the bucket name from the saved
+profile at the time it runs.  When the profile names no bucket, the first such operation SHALL create
+one and save it to the profile, and every later operation in the same or another command SHALL use
+that bucket.
+
+#### Scenario: Two operations in one command share one new bucket
+
+- **GIVEN** a profile that names no account bucket
+- **WHEN** one command runs two operations that each need the account bucket
+- **THEN** exactly one bucket is created
+- **AND** the profile names that bucket
 
 ## MODIFIED Requirements
 

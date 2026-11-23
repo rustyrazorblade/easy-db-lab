@@ -102,7 +102,6 @@ class TailnetCleanup(
         val tailscale = profile.current().tailscale
         val clientId = tailscale?.clientId.orEmpty()
         val clientSecret = tailscale?.clientSecret.orEmpty()
-
         if (clientId.isBlank() || clientSecret.isBlank()) {
             log.warn { "Tailscale OAuth credentials not configured, cannot delete auth key $keyId" }
             return AuthKeyRemoval.NoCredentials(keyId)

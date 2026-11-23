@@ -32,7 +32,6 @@ class TemplateService(
     fun buildContextVariables(): Map<String, String> {
         val state = clusterStateManager.load()
         val region = state.initConfig?.region ?: awsDestination.current().location.region
-
         val controlHost = state.getControlHost()
         val store = ObservabilityStore(state.s3Bucket.orEmpty(), state.tenant())
         return mapOf(

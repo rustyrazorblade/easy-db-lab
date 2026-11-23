@@ -106,7 +106,6 @@ class TailnetRoute(
     /** Starts Tailscale on [control] if configured, then waits for the route to it. */
     fun connect(control: ClusterHost) {
         if (profile.current().isTailscaleEnabled) start()
-
         awaitRoute(control)
     }
 

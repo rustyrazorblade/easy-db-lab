@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -133,6 +134,28 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         assertThat(second).isEqualTo(first)
         verify(mockS3Client).createBucket(any<CreateBucketRequest>())
         assertThat(get<ProfileStore>().load().aws.accountBucket).isEqualTo(first)
+    }
+
+    /**
+     * Another command can save its bucket while this one is creating its own; the saved bucket wins,
+     * so every later command uses the one bucket the profile names.
+     *
+     * Control: save this call's bucket without reading the saved one inside `update`; the profile
+     * names this call's bucket and the other command's is orphaned.
+     */
+    @Test
+    fun `a bucket another command saved while this one created its own is kept`() {
+        val store = get<ProfileStore>()
+        store.replace(TestProfiles.profile(accountBucket = ""))
+        whenever(mockS3Client.createBucket(any<CreateBucketRequest>())).thenAnswer {
+            store.update { profile -> profile.withAws { it.copy(accountBucket = "easy-db-lab-saved-first") } }
+            null
+        }
+
+        val bucket = service.ensureAccountBucket()
+
+        assertThat(bucket).isEqualTo("easy-db-lab-saved-first")
+        assertThat(store.load().aws.accountBucket).isEqualTo("easy-db-lab-saved-first")
     }
 
     private fun s3Tags(vararg tags: Pair<String, String>) =

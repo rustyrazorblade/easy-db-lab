@@ -145,15 +145,16 @@ class Packer(
     }
 
     /**
-     * The `packer build` arguments for [build] with the profile as it is saved now, so a bucket that
-     * setup created after this Packer was made is the one the build uses.
+     * The destination a build starts with, read as saved now, not when this Packer was made: setup
+     * creates the key pair and bucket, then builds the image in the same process.
      */
-    internal fun buildCommand(
-        build: PackerBuild,
-        arch: Arch,
-        keyPairName: String,
-        releaseVersion: String?,
-    ): List<String> = buildCommand(build, arch, awsDestination.current(), keyPairName, releaseVersion)
+    internal fun destinationForBuild(): AwsDestination {
+        val destination = awsDestination.current()
+        require(destination.keyName.isNotEmpty() && secretKeyFile.exists()) {
+            "AWS keypair not configured (key: '${destination.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
+        }
+        return destination
+    }
 
     fun build(
         name: String,
@@ -171,12 +172,7 @@ class Packer(
     ) {
         require(name.isNotBlank()) { "Build name cannot be blank" }
         require(region.isNotBlank()) { "Build region cannot be blank" }
-        // Read when the build starts, not when this Packer was made: setup creates the key pair and
-        // bucket, then builds the image in the same process.
-        val destination = awsDestination.current()
-        require(destination.keyName.isNotEmpty() && secretKeyFile.exists()) {
-            "AWS keypair not configured (key: '${destination.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
-        }
+        val destination = destinationForBuild()
 
         val build =
             PackerBuild(
@@ -193,7 +189,7 @@ class Packer(
         val outcome =
             inBuildRegion(build, buildSites, regionalRemote) { site, remote ->
                 // A release build uses the release version as the image version and makes the AMI public.
-                val command = buildCommand(build, arch, site.keyPairName, releaseVersion)
+                val command = buildCommand(build, arch, destination, site.keyPairName, releaseVersion)
                 runAttempts(build, site, remote) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
             }
         when (outcome) {

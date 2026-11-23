@@ -16,6 +16,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.modules.SerializersModule
 import java.io.File
+import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardOpenOption
@@ -172,6 +173,10 @@ class ProfileStore(
             throw unreadable(source, "line ${e.line}, column ${e.column}", reason(e), cause = null)
         } catch (e: SerializationException) {
             throw unreadable(source, null, "a value has the wrong type or form", cause = null)
+        } catch (e: IOException) {
+            // A file the user cannot read (permissions, a directory in its place). The message names
+            // only the path and the reason, never the file's text.
+            throw unreadable(source, null, "the file cannot be read (${e::class.simpleName})", cause = e)
         } catch (e: IllegalArgumentException) {
             // Only a plain IllegalArgumentException is ours (a failed `require`, such as an unknown SSH
             // transport, which names the bad choice and the valid ones). A subclass such as
@@ -219,9 +224,13 @@ class ProfileStore(
     private fun <T> locked(block: () -> T): T =
         localLock.withLock {
             profileDir.mkdirs()
-            FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-                channel.lock().use { block() }
-            }
+            val channel =
+                try {
+                    FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+                } catch (e: IOException) {
+                    throw IllegalStateException("Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
+                }
+            channel.use { it.lock().use { block() } }
         }
 
     private companion object {

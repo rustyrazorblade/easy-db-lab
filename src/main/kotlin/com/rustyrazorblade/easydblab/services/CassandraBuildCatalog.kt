@@ -68,8 +68,5 @@ class CassandraBuildCatalog(
      * Ensures the account bucket exists before handing back its builds prefix, so `cassandra build`
      * works on a profile that has never provisioned a cluster.
      */
-    private fun root(): ClusterS3Path =
-        ClusterS3Path.cassandraBuildsRoot(
-            bucketService.ensureAccountBucket(),
-        )
+    private fun root(): ClusterS3Path = ClusterS3Path.cassandraBuildsRoot(bucketService.ensureAccountBucket())
 }

@@ -148,10 +148,10 @@ class ProfileShowTest {
             .contains("easy-db-lab profile setup")
     }
 
-    /** Control: name settings.yaml in the unreadable report; the path check fails. */
+    /** Control: print the profile directory instead of the failing file's path; the path check fails. */
     @Test
     fun `an unreadable profile names profile yaml and profile setup`() {
-        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Unreadable)
+        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Unreadable("$PROFILE_DIR/profile.yaml"))
 
         assertThat(report)
             .contains("could not be read:\n  $PROFILE_DIR/profile.yaml")

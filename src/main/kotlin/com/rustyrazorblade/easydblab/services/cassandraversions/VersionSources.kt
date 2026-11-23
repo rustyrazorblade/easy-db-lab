@@ -108,10 +108,7 @@ class DefaultVersionSources(
 
     override fun catalogBuildNames(): List<String> = catalog.list().map { it.name }
 
-    override fun downloadCacheRoot(): ClusterS3Path =
-        ClusterS3Path.downloadCacheRoot(
-            bucketService.ensureAccountBucket(),
-        )
+    override fun downloadCacheRoot(): ClusterS3Path = ClusterS3Path.downloadCacheRoot(bucketService.ensureAccountBucket())
 
     private fun fetchOptional(url: String): String? =
         try {

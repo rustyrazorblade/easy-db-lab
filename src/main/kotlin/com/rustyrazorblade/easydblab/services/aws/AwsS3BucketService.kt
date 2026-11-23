@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
 import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -60,8 +61,9 @@ class AwsS3BucketService(
      * Ensures the account-level S3 bucket exists and is recorded in the profile, creating it when
      * the saved profile names none. Idempotent: returns the saved bucket name if already set.
      *
-     * It reads the profile as saved now, never a copy taken earlier, so two operations of one
-     * command (or of two commands) that each need the bucket create only one.
+     * It reads the profile as saved now, never a copy taken earlier, so a later call in the same
+     * command creates no second bucket. Two commands that both find no bucket at once can each
+     * create one; the save keeps whichever was saved first, and every later command uses it.
      *
      * This lets profiles that predate (or never completed) bucket setup migrate automatically —
      * `up` and the AMI build path call this so the bucket (and the S3 build cache it backs) come
@@ -95,9 +97,15 @@ class AwsS3BucketService(
                 Constants.S3.OWNER_TAG_KEY to profileStore.load().email,
             ) + Constants.Vpc.MARKER_TAGS,
         )
-        profileStore.update { profile -> profile.withAws { it.copy(accountBucket = bucketName) } }
-        eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
-        return bucketName
+        // Another command may have saved its bucket while this one was creating; the saved one wins,
+        // so every command uses the bucket the profile names.
+        val saved =
+            profileStore
+                .update { profile -> profile.withAws { it.copy(accountBucket = it.accountBucket.ifBlank { bucketName }) } }
+                .aws
+                .accountBucket
+        if (saved == bucketName) eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
+        return saved
     }
 
     override fun createBucket(bucketName: String): String {

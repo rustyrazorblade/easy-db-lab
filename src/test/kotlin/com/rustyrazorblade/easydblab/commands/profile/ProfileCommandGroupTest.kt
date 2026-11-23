@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -25,6 +26,8 @@ import java.io.File
 import java.io.PrintStream
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Lifecycle-level guards for the `profile` command group.
@@ -181,5 +184,39 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         assertThat(output).contains("easy-db-lab profile setup")
         assertThat(output).doesNotContain("Exception")
         assertThat(output).doesNotContain("kaml")
+    }
+
+    /**
+     * With only an earlier release's file, and that file broken, the report names the file that
+     * failed, not a `profile.yaml` that does not exist.
+     *
+     * Control: name `profile.yaml` in every unreadable report; the path check fails.
+     */
+    @Test
+    fun `profile show names the earlier file when it is the one that cannot be read`() {
+        val store = getKoin().get<ProfileStore>()
+        store.file.delete()
+        store.legacyFile.writeText("awsProfile: [broken\n")
+
+        getKoin().get<ProfileShow>().execute()
+
+        val output = stdout.toString()
+        assertThat(output).contains("could not be read:\n  ${store.legacyFile.absolutePath}")
+        assertThat(output).doesNotContain("could not be read:\n  ${store.file.absolutePath}")
+    }
+
+    /**
+     * A profile file the user cannot read is reported like an undecodable one.
+     *
+     * Control: catch only IllegalStateException in the command; the AccessDeniedException escapes.
+     */
+    @Test
+    fun `profile show reports a profile file it has no permission to read`() {
+        val store = getKoin().get<ProfileStore>()
+        Files.setPosixFilePermissions(store.file.toPath(), PosixFilePermissions.fromString("---------"))
+
+        assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
+
+        assertThat(stdout.toString()).contains("could not be read:\n  ${store.file.absolutePath}")
     }
 }

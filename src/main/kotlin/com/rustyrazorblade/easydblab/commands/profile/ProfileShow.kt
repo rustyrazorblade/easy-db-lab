@@ -26,8 +26,10 @@ sealed interface ProfileSettings {
     /** No profile is saved: the profile has never been set up. */
     data object Missing : ProfileSettings
 
-    /** A profile file exists but could not be decoded. */
-    data object Unreadable : ProfileSettings
+    /** A profile file exists but could not be read or decoded; [path] is the file that failed. */
+    data class Unreadable(
+        val path: String,
+    ) : ProfileSettings
 }
 
 /**
@@ -65,7 +67,9 @@ class ProfileShow : PicoBaseCommand() {
                     ProfileSettings.Loaded(profileStore.load())
                 } catch (e: IllegalStateException) {
                     log.warn { "Could not read the profile ${context.profile}: ${e::class.simpleName}" }
-                    ProfileSettings.Unreadable
+                    // With no profile.yaml, the load failed converting the earlier file.
+                    val failed = profileStore.file.takeIf { it.exists() } ?: profileStore.legacyFile
+                    ProfileSettings.Unreadable(failed.absolutePath)
                 }
             }
 
@@ -104,10 +108,10 @@ class ProfileShow : PicoBaseCommand() {
                         |This profile is not configured.
                         |$SETUP_HINT
                         """.trimMargin()
-                    ProfileSettings.Unreadable ->
+                    is ProfileSettings.Unreadable ->
                         """
                         |This profile is configured but could not be read:
-                        |  $profileDir/${Constants.ConfigPaths.PROFILE_FILE}
+                        |  ${settings.path}
                         |$SETUP_HINT
                         """.trimMargin()
                 }

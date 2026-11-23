@@ -356,9 +356,7 @@ class DefaultCommandExecutor(
             dockerClient.listImages("", "")
         }.onFailure { e -> log.error(e) { "Docker availability check failed" } }.isSuccess
 
-    private fun checkSSHKeyAvailability(): Boolean =
-        File(requirementCheckDeps.profileStore.sshKeyPath)
-            .exists()
+    private fun checkSSHKeyAvailability(): Boolean = File(requirementCheckDeps.profileStore.sshKeyPath).exists()
 
     /**
      * Handles VPC state reconstruction from environment variable.

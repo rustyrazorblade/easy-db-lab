@@ -118,7 +118,6 @@ class TailscaleStop : PicoBaseCommand() {
         val saved = profile.current().tailscale
         val clientId = saved?.clientId.orEmpty()
         val clientSecret = saved?.clientSecret.orEmpty()
-
         val failure =
             if (clientId.isBlank() || clientSecret.isBlank()) {
                 "no Tailscale OAuth credentials are configured. Configure them with 'easy-db-lab profile setup' " +

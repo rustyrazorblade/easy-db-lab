@@ -9,8 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.environment.ClusterContractSource
-import com.rustyrazorblade.easydblab.configuration.environment.ToolingForm
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -66,15 +64,11 @@ import com.rustyrazorblade.easydblab.services.cassandraversions.VersionSources
 import com.rustyrazorblade.easydblab.services.documents.DefaultDocumentService
 import com.rustyrazorblade.easydblab.services.documents.DocumentService
 import com.rustyrazorblade.easydblab.services.stress.StressTargetResolver
-import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
-import java.nio.file.Path
-
-private val servicesModuleLog = KotlinLogging.logger {}
 
 /**
  * Koin module for registering business services.
@@ -101,21 +95,10 @@ val servicesModule =
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
         factory { KitStorageResolver(get(), get()) }
+        factory { KitStorageSource(get()) }
         // Run by `init` on a cluster the user brings; the nodes easy-db-lab builds need no probe.
         factory { ClientNetworkProbe(get()) }
-        // Where helm and kubectl run follows the recorded environment: over SSH on the control node, or
-        // locally through the workspace bin/ wrappers. A factory, resolved from state.json each time,
-        // so an `init` inside the REPL or the server switches it for the next command. The SSH form's
-        // directory holds its local staging copy of stdin; it is injected because the JVM caches
-        // java.io.tmpdir at startup.
-        factory<ClusterTooling> {
-            val form = get<ClusterContractSource>().current().toolingForm
-            servicesModuleLog.debug { "Cluster tooling form: $form" }
-            when (form) {
-                ToolingForm.Ssh -> SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir")))
-                ToolingForm.Local -> LocalClusterTooling(get<Context>().workingDirectory, get())
-            }
-        }
+        includes(clusterToolingModule)
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -204,15 +187,16 @@ val servicesModule =
         factory { DashboardInstallContextFactory(get()) }
         factory { TemplateService(get(), get()) }
         factoryOf(::InstallTemplateResolver)
-        factoryOf(::KitProcessEnvironment)
         factoryOf(::KitStorageProvisioner)
         factoryOf(::WorkloadStepExecutor)
         factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         factory { KitWorkloadProbe(get(), get()) }
         factory<KitEndpointResolver> { DefaultKitEndpointResolver(get()) }
+        factory { CollectorPresence(get<K8sNamespaceOperations>()) }
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
         factory { ConfigChangeReport(get<K8sNamespaceOperations>(), get()) }
-        factory { TenantDirectory(get()) }
+        // Lazy: built with the observability services in every workspace; the S3 store needs the profile.
+        factory { TenantDirectory(lazy { get<ObjectStore>() }) }
         factoryOf(::ObservabilityDeployInputs)
         factoryOf(::CoreCollectorManifests)
         factoryOf(::CollectorAgentManifests)

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
@@ -29,7 +30,7 @@ private const val KIT_NAMESPACE = Constants.ContractDefaults.OWNED_NAMESPACE
  * @property size the capacity of each PV.
  * @property count how many PVs, from ordinal 0; null is one per node of the pool.
  * @property rebindReleased on a provisioned class, reopen the class's Released volumes for claims of
- *   the same name: for a kit whose operator deletes its claims on `stop` (CNPG, Altinity).
+ *   the same name: for a kit whose operator deletes its claims on `stop`.
  */
 data class KitVolumes(
     val kit: String,
@@ -47,7 +48,8 @@ data class KitVolumes(
  * node directories and the local PVs of that class, so the kit's claims can bind only its PVs. On
  * [KitStorage.Provisioned] the cluster provisions the volumes: it checks that the class still
  * retains, before any claim of the kit exists, reporting a refusal as an event; for a kit that asks
- * it reopens the class's Released volumes; and it creates and deletes nothing.
+ * it reopens the class's Released volumes; and it creates and deletes nothing. On
+ * [KitStorage.NoStorageClass] it refuses, with `Setup.NoDefaultKitStorageClass`, before any claim exists.
  */
 class KitStorageProvisioner(
     private val k8sService: K8sService,
@@ -68,6 +70,11 @@ class KitStorageProvisioner(
                 if (volumes.rebindReleased) reopenReleased(volumes.kit, storage.storageClass)
             }
             is KitStorage.LocalVolumes -> createLocalVolumes(volumes, storage.storageClassFor(volumes.kit), state)
+            is KitStorage.NoStorageClass -> {
+                val event = Event.Setup.NoDefaultKitStorageClass
+                eventBus.emit(event)
+                error(event.toDisplayString())
+            }
         }
     }
 
@@ -84,6 +91,7 @@ class KitStorageProvisioner(
     ) {
         when (storage) {
             is KitStorage.Provisioned -> log.info { "Kit storage of $kit is on ${storage.storageClass}; nothing to release" }
+            is KitStorage.NoStorageClass -> log.info { "Kit storage of $kit names no StorageClass; nothing to release" }
             is KitStorage.LocalVolumes -> {
                 // Checked before anything is deleted: the path goes to `sudo rm -rf` on each node.
                 val kitPath = kitPath(kit)

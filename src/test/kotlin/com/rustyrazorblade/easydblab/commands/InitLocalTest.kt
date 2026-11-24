@@ -116,6 +116,16 @@ class InitLocalTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the closing next step names the workspace kubeconfig and kit install, never up`() {
+        parsed("--local").execute()
+
+        assertThat(events).noneMatch { it is Event.Setup.InitNextSteps }
+        val next = events.filterIsInstance<Event.Setup.LocalInitNextSteps>().single()
+        assertThat(next.kubeconfig).isEqualTo(File(workspace, "kubeconfig").absolutePath)
+        assertThat(next.toDisplayString()).contains(next.kubeconfig, "kit install").doesNotContain("easy-db-lab up")
+    }
+
+    @Test
     fun `a plain init still needs the profile`() {
         assertThat(EnvironmentRequirements(StateClusterContractSource(get())).needsProfile(parsed())).isTrue()
     }
@@ -125,6 +135,16 @@ class InitLocalTest : BaseKoinTest() {
         parsed("--local", "--namespace", "lab-a").execute()
 
         assertThat(state().initConfig?.namespace).isEqualTo("lab-a")
+    }
+
+    /** A local cluster has no owned NVMe: the class and size `init` was given are what its kits claim on. */
+    @Test
+    fun `a kit storage class and size are recorded in a local workspace`() {
+        parsed("--local", "--kit-storage-class", "retain-local", "--kit-storage-size", "20Gi").execute()
+
+        val initConfig = requireNotNull(state().initConfig)
+        assertThat(initConfig.kitStorageClass).isEqualTo("retain-local")
+        assertThat(initConfig.kitStorageSize).isEqualTo("20Gi")
     }
 
     @Test

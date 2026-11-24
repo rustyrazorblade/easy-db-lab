@@ -40,19 +40,31 @@ class TemplateService(
         val state = clusterStateManager.load()
         val region = state.region(profileRegion)
         val controlHost = state.getControlHost()
-        val backend = StoreBackend.from(state, region)
-        val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
         return mapOf(
-            "ACCOUNT_BUCKET" to store.bucket,
             "AWS_REGION" to region,
             "CLUSTER_ID" to state.clusterId,
             "CLUSTER_NAME" to state.clusterLabelName(),
             "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
+            "TENANT" to state.tenant(),
+        ) + StoreBackend.ofOrNull(state, region)?.let { storeVariables(it, state) }.orEmpty()
+    }
+
+    /**
+     * The account bucket and the store fragment variables. Only Pyroscope's S3 fragment and the
+     * AWS-only kits and builders read them, so a cluster with no account bucket (a local or brought
+     * one, #1061) has none, and a template that needs one is left with its placeholder.
+     */
+    private fun storeVariables(
+        backend: StoreBackend,
+        state: ClusterState,
+    ): Map<String, String> {
+        val store = ObservabilityStore(backend.bucket, state.tenant(), backend.prefix)
+        return mapOf(
+            "ACCOUNT_BUCKET" to store.bucket,
             "STORE_BUCKET" to backend.bucket,
             "PROFILES_STORE_PREFIX" to store.profilesPrefix(),
-            "TENANT" to store.tenant,
         ) + storeLocation(backend)
     }
 

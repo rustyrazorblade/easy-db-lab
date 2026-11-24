@@ -7,6 +7,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.jupiter.params.provider.MethodSource
 
 class ClientNetworksTest {
@@ -201,6 +202,28 @@ class ClientNetworksTest {
 
         assertThat(networks.toJson()).isEqualTo("""["172.16.0.0/16","10.42.0.0/16"]""")
         assertThat(networks.toHbaJson()).isEqualTo("""["host all all 172.16.0.0/16 trust","host all all 10.42.0.0/16 trust"]""")
+    }
+
+    /**
+     * A port-forward reaches the kit pod from its own loopback, so a kit reached that way must trust
+     * 127.0.0.1/32. Nothing else reaches a pod's loopback without the Kubernetes API.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("environmentsWithoutBuiltNetworks")
+    fun `a kit reached by port-forward trusts the pod loopback after the recorded networks`(environment: Environment) {
+        val state = state(clientNetworks = listOf("172.18.0.0/16")).apply { this.environment = environment }
+
+        assertThat(ClientNetworks.forKits(state).cidrs.map { it.value }).containsExactly("172.18.0.0/16", "127.0.0.1/32")
+        assertThat(ClientNetworks.from(state).cidrs.map { it.value }).containsExactly("172.18.0.0/16")
+    }
+
+    /** EC2 reaches the pod through a NodePort, never its loopback: its trust is unchanged. */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(value = Exposure::class, names = ["Socks", "Direct"])
+    fun `an EC2 cluster never trusts the loopback`(exposure: Exposure) {
+        val state = state(cidr = "172.16.0.0/16").apply { this.exposure = exposure }
+
+        assertThat(ClientNetworks.forKits(state).cidrs.map { it.value }).containsExactly("172.16.0.0/16", Constants.K3s.CLUSTER_CIDR)
     }
 
     private companion object {

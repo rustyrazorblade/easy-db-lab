@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.requireChunkCount
 import picocli.CommandLine.Command
@@ -15,6 +17,7 @@ import java.io.File
  * Only completed chunks are offered — the one currently being written is excluded, because an
  * unfinalized chunk has no constant pool and no tool will read it.
  */
+@RequiresCapability(NodeCapability.NODE_SSH)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

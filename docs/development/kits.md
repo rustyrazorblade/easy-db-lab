@@ -1226,7 +1226,7 @@ clients only from the environment's networks: the VPC CIDR and the K3s cluster C
 each node's pod CIDR and InternalIP on a cluster it did not build (every node's InternalIP, in a
 role or not, since NodePort traffic can be SNATed from any node), plus every
 `init --client-network <cidr>`. A local workspace (`init --local`) has only its `--client-network`
-values; with none recorded, kit variables fail, naming the option, rather than trust the VPC default. Templates take `__CLIENT_NETWORKS_JSON__` (a JSON list of CIDRs)
+values; with none recorded, kit variables fail, naming the option, rather than trust the VPC default. Where the CLI reaches the cluster by port-forward (a local or brought workspace), the kits also trust `127.0.0.1/32`, the pod loopback the forward arrives on, so `postgres sql` and `clickhouse sql` work there; EC2 adds nothing. Templates take `__CLIENT_NETWORKS_JSON__` (a JSON list of CIDRs)
 and `__CLIENT_NETWORKS_HBA_JSON__` (one `host all all <cidr> trust` line each). Never hard-code
 `10.0.0.0/8`.
 

@@ -31,6 +31,12 @@ those resolve to. `init` records the choice:
 |---|---|---|---|
 | none (AWS, owned nodes) | Local volumes on `/mnt/db1` | `edl-local-<kit>`, one per kit | `10Ti` |
 | `--kit-storage-class <name>` | The cluster provisions volumes | `<name>` | `100Gi` |
+| none (a local or brought-kubeconfig workspace) | The cluster provisions volumes | the cluster's default class | `100Gi` |
+
+Every provisioned class must reclaim with `Retain`; a kit's `kit-storage` step refuses one that
+does not before any claim exists. K3s's default `local-path` reclaims with `Delete`, so on a local
+workspace create a copy of it with `reclaimPolicy: Retain` and pass `init --local
+--kit-storage-class <copy>`, or make that copy the default class.
 
 `--kit-storage-size <quantity>` (e.g. `500Gi`) replaces either default, and a kit's own
 `--storage-size` replaces both. A size that is not a positive Kubernetes quantity is refused at
@@ -66,13 +72,17 @@ A refusal is also reported as a `Setup.KitStorageClassRefused` event, from `up`,
 
 ### Stop and start on a provisioned class
 
-postgres and clickhouse `stop` delete the CNPG `Cluster` or the `ClickHouseInstallation`, and the
-operator deletes the claims with it. Their `Retain` volumes stay, in the `Released` phase, holding
-the data. The next `start` reopens them before it applies the resource again. Its `kit-storage`
-step (`rebind-released: true`) clears the deleted claim's UID from each Released volume of the
-class whose claim was in the kit namespace, so the claim of the same name that the operator creates
-binds that volume, not a new empty one. A claim of any other name cannot take it. Kafka, TiDB and
-the StatefulSet kits keep their claims across `stop` and need no reopening.
+Every built-in kit keeps its claims across `stop`, so the next `start` mounts the same volumes.
+postgres hibernates its CNPG `Cluster` instead of deleting it, and the ClickHouse installation
+retains its data claims (`reclaimPolicy: Retain`). Kafka, TiDB and the StatefulSet kits keep their
+claims as well. Only `uninstall` deletes a kit's claims.
+
+A custom kit whose operator deletes its claims on `stop` can declare `rebind-released: true` on its
+`kit-storage` step. Its `Retain` volumes stay `Released` holding the data, and the step clears the
+deleted claim's UID from each Released volume of the class whose claim was in the kit namespace,
+so the claim of the same name binds that volume, not a new empty one. Rebinding gives back the
+volume, not necessarily the dataset: an operator that bootstraps a resource it has not seen (CNPG
+runs `initdb`) can still set the old data aside.
 
 
 ## Pod Network Sysctls
@@ -273,13 +283,13 @@ Three modes are supported:
 When a kit with `type: scrape` targets starts successfully, easy-db-lab:
 
 1. Creates one ConfigMap `easydblab-metrics-<kit>-<job>` per scrape target in the cluster's install namespace (`default` unless `init --namespace` named another), labeled `easydblab.com/workload-metrics=true` and `easydblab.com/kit=<kit>`, containing the job name, port, and path.
-2. Regenerates the OTel collector ConfigMap to include a Prometheus scrape job per target.
-3. Applies the updated OTel ConfigMap so the running collector picks it up.
+2. If the observability stack is deployed, regenerates the OTel collector ConfigMap to include a Prometheus scrape job per target and applies it, so the collector rolls and picks it up. Nothing else of the collector (its RBAC, Service or account) is changed.
+3. If the stack is not deployed yet, changes nothing else and reports that the scrape job is recorded. The next `up` or `grafana update-config` builds the collector with every recorded job. Starting a kit never creates the collector.
 
 When the kit stops:
 
 1. Deletes all of the kit's metrics ConfigMaps via the `easydblab.com/kit` label selector.
-2. Regenerates and applies the OTel collector ConfigMap without the kit's scrape jobs.
+2. Where the stack is deployed, regenerates and applies the OTel collector ConfigMap without the kit's scrape jobs.
 
 This is fully automatic — no manual OTel configuration is required when starting or stopping kits.
 

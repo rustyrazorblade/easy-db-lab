@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ProfileRegion
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.environment.fixedContract
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
@@ -103,17 +104,16 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
         whenever(mockK8sClientProvider.createClient()).thenReturn(mockK8sClient)
         whenever(mockK8sService.applyResource(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenReturn(Result.success(emptyMap()))
+        stackDeployed(true)
 
         service =
             DefaultOtelSyncService(
                 mockK8sClientProvider,
                 mockK8sService,
                 otelManifestBuilder,
-                getKoin().get(),
+                ObservabilityDeployInputs(getKoin().get(), fixedContract({ capabilities }), getKoin().get<ProfileRegion>()),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
-                fixedContract({ capabilities }),
-                getKoin().get<ProfileRegion>(),
+                CollectorPresence(mockK8sService),
             )
     }
 
@@ -162,6 +162,18 @@ class OtelSyncServiceTest : BaseKoinTest() {
             Result.success(Unit)
         }
         return applied
+    }
+
+    /**
+     * Whether the observability stack is deployed, as the cluster tells it: the collector DaemonSet
+     * the deploy stamped with its config hash, or none.
+     */
+    private fun stackDeployed(deployed: Boolean) {
+        val collector = WorkloadRef(WorkloadKind.DaemonSet, Constants.OtelCollector.SERVICE_NAME)
+        // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenAnswer {
+            mapOf(collector to if (deployed) "deployed-hash" else null)
+        }
     }
 
     private fun appliedConfigHash(applied: List<HasMetadata>): String =
@@ -323,6 +335,94 @@ class OtelSyncServiceTest : BaseKoinTest() {
             config.replace("0.0.0.0:", ""),
         ).describedAs("no endpoint at a node IP").doesNotContainPattern("""\b\d{1,3}(\.\d{1,3}){3}:\d+""")
         assertThat(config).contains("mimir.default.svc", "loki.default.svc", "tempo.default.svc")
+    }
+
+    /**
+     * A K3s in Docker workspace has no account bucket (#1061), and the collector writes only to the
+     * in-cluster backends, so a kit start registers its scrape job there: through the real registry
+     * and the real sync, the collector config is rendered with the kit's job and applied.
+     */
+    @Test
+    fun `a K3s in Docker state with no account bucket registers a kit scrape job and renders the collector`() {
+        val local =
+            ClusterState(
+                name = "local",
+                environment = Environment.K3sDocker("/work/observability-data"),
+                initConfig = InitConfig(region = ""),
+            )
+        whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(local)
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenAnswer {
+            registerKitScrapeTarget()
+            Result.success(Unit)
+        }
+        val applied = captureApplied()
+        val registry = DefaultMetricsRegistryService(mockK8sService, service, getKoin().get()) { TestScopes.EC2 }
+
+        registry.register("scylladb", listOf(KitMetrics.Scrape(port = 9180, path = "/metrics"))).getOrThrow()
+
+        val config =
+            applied
+                .filterIsInstance<ConfigMap>()
+                .single()
+                .data.values
+                .single()
+        assertThat(config).contains("scylladb", "9180").doesNotContainPattern("__[A-Z][A-Z0-9_]*__")
+    }
+
+    /** With no observability stack, a sync applies nothing: a kit start must not create the collector or its RBAC. */
+    @Test
+    fun `with no observability stack a sync applies nothing and reports the job as recorded`() {
+        stackDeployed(false)
+        val applied = captureApplied()
+
+        val outcome = service.syncConfigMap().getOrThrow()
+
+        assertThat(applied).isEmpty()
+        assertThat(outcome).isEqualTo(CollectorSync.Deferred)
+    }
+
+    /**
+     * With the stack deployed, a sync changes only what a scrape job changes: the collector's
+     * ConfigMap, and its DaemonSet, whose template carries the new config hash and so rolls. The
+     * ServiceAccount, the cluster-wide RBAC and the Service are the deploy's and are left alone.
+     */
+    @Test
+    fun `with the stack deployed a sync applies only the collector ConfigMap and DaemonSet`() {
+        val applied = captureApplied()
+
+        val outcome = service.syncConfigMap().getOrThrow()
+
+        assertThat(applied.map { "${it.kind}/${it.metadata.name}" }).containsExactly(
+            "ConfigMap/otel-collector-config",
+            "DaemonSet/${Constants.OtelCollector.SERVICE_NAME}",
+        )
+        assertThat(outcome).isEqualTo(CollectorSync.Applied)
+    }
+
+    /**
+     * A kit start on a cluster with no stack records its scrape job and changes nothing else: the
+     * registry ConfigMap is written, no collector resource is applied, and the operator is told the
+     * job applies when the stack is deployed.
+     */
+    @Test
+    fun `a kit start with no observability stack records its scrape job and applies no collector resource`() {
+        stackDeployed(false)
+        val written = mutableListOf<String>()
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenAnswer {
+            written += it.getArgument<String>(1)
+            Result.success(Unit)
+        }
+        val applied = captureApplied()
+        val events = recordEvents()
+        val registry = DefaultMetricsRegistryService(mockK8sService, service, getKoin().get()) { TestScopes.EC2 }
+
+        registry.register("scylladb", listOf(KitMetrics.Scrape(port = 9180, path = "/metrics"))).getOrThrow()
+
+        assertThat(written).containsExactly("easydblab-metrics-scylladb-scylladb")
+        assertThat(applied).isEmpty()
+        assertThat(events).contains(Event.Kit.MetricsRecorded(kit = "scylladb", ports = listOf(9180)))
+        assertThat(events).noneMatch { it is Event.Kit.MetricsRegistered }
     }
 
     /** The collector's hash against [clusterConfig], built the way [CollectorResources] builds it. */

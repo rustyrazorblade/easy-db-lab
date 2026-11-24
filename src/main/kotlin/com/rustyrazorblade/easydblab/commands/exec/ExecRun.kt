@@ -3,10 +3,12 @@ package com.rustyrazorblade.easydblab.commands.exec
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.converters.PicoServerTypeConverter
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
@@ -31,7 +33,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * are quoted one by one, so each keeps its boundaries. The unit is named `edl-exec-<name>`, from
  * `--name` or from the command's first word, reduced to the characters systemd allows. A run
  * that fails on any host is reported per host and makes the command exit non-zero.
+ *
+ * It needs node SSH, so a workspace without it refuses the command before the SSH key check.
  */
+@RequiresCapability(NodeCapability.NODE_SSH)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

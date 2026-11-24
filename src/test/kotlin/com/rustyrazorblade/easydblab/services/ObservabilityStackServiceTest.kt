@@ -104,6 +104,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private lateinit var mockRemoteOps: RemoteOperationsService
     private lateinit var mockDashboardService: GrafanaDeployService
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockFiltered: FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>
     private lateinit var mockK8sClient: KubernetesClient
 
     private lateinit var service: DefaultObservabilityStackService
@@ -157,7 +158,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         mockK8sClient = mock()
         val mockConfigMapOps = mock<MixedOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
         val mockNamespacedOps = mock<NonNamespaceOperation<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
-        val mockFiltered = mock<FilterWatchListDeletable<ConfigMap, ConfigMapList, Resource<ConfigMap>>>()
+        mockFiltered = mock()
         val emptyConfigMapList = ConfigMapList().also { it.items = mutableListOf() }
 
         whenever(mockK8sClient.configMaps()).thenReturn(mockConfigMapOps)
@@ -1235,6 +1236,23 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>()).isNotEmpty().allMatch { it.changed }
     }
 
+    /**
+     * A kit started before the stack was deployed only recorded its scrape job (the sync deferred),
+     * so the deploy is what applies it: it reads every registry ConfigMap into the collector config.
+     */
+    @Test
+    fun `the stack deploy renders a scrape job for every kit recorded in the metrics registry`() {
+        val recorded =
+            ConfigMap().apply {
+                data = mapOf("kit-name" to "memcached", "job-name" to "memcached", "port" to "9150", "path" to "/metrics")
+            }
+        whenever(mockFiltered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf(recorded) })
+
+        service.deploy().getOrThrow()
+
+        assertThat(appliedOtelConfig()).contains("job_name: \"memcached-memcached\"", "9150")
+    }
+
     /** The config hash on the otel-collector DaemonSet among the resources applied so far. */
     private fun appliedCollectorHash(): String {
         val captor = argumentCaptor<HasMetadata>()
@@ -1274,14 +1292,21 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         reset(mockK8sService)
         stubK8sSuccess()
+        // The stack is deployed: the collector runs with a config hash.
+        whenever(mockK8sService.workloadConfigHashes(any(), any())).thenAnswer { invocation ->
+            invocation.getArgument<List<WorkloadRef>>(0).associateWith { "deployed-hash" }
+        }
         DefaultOtelSyncService(
             mockK8sClientProvider,
             mockK8sService,
             getKoin().get(),
-            mockClusterStateManager,
+            ObservabilityDeployInputs(
+                mockClusterStateManager,
+                fixedContract({ sharedCapabilities }, { ObservabilityHosting.from(state) }),
+                getKoin().get<ProfileRegion>(),
+            ),
             ConfigChangeReport(mockK8sService, getKoin().get()),
-            fixedContract({ sharedCapabilities }, { ObservabilityHosting.from(state) }),
-            getKoin().get<ProfileRegion>(),
+            CollectorPresence(mockK8sService),
         ).syncConfigMap().getOrThrow()
 
         assertThat(appliedCollectorHash()).isEqualTo(deployHash)

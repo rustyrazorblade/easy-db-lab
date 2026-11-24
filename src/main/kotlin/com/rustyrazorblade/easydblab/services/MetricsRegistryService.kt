@@ -24,6 +24,11 @@ interface MetricsRegistryService {
  * all targets for a kit by label selector. Including [kitName] in the ConfigMap name ensures
  * multiple kit instances with the same job name (e.g. postgres-duckdb and postgres-postgis
  * both declaring job "postgres") get separate ConfigMaps and separate OTel scrape jobs.
+ *
+ * The ConfigMaps are written whether or not the observability stack is deployed. Where it is not, the
+ * sync applies nothing ([CollectorSync.Deferred]) and [register] reports the job as recorded
+ * ([Event.Kit.MetricsRecorded]); the stack deploy reads every registry ConfigMap when it builds the
+ * collector, so the job applies then.
  */
 class DefaultMetricsRegistryService(
     private val k8sService: K8sStorageOperations,
@@ -77,8 +82,11 @@ class DefaultMetricsRegistryService(
                     ).getOrThrow()
             }
 
-            otelSyncService.syncConfigMap().getOrThrow()
-            eventBus.emit(Event.Kit.MetricsRegistered(kit = kitName, ports = targets.map { it.port }))
+            val ports = targets.map { it.port }
+            when (otelSyncService.syncConfigMap().getOrThrow()) {
+                CollectorSync.Applied -> eventBus.emit(Event.Kit.MetricsRegistered(kit = kitName, ports = ports))
+                CollectorSync.Deferred -> eventBus.emit(Event.Kit.MetricsRecorded(kit = kitName, ports = ports))
+            }
         }.onFailure {
             deregister(kitName)
                 .onFailure { e -> log.warn(e) { "Cleanup deregister also failed for $kitName" } }

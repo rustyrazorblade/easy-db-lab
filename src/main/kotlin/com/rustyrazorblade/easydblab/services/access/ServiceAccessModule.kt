@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.proxy.LoopbackPortSelector
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.effectiveExposure
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import org.koin.dsl.module
@@ -26,7 +27,7 @@ val serviceAccessModule =
             val socks = get<SocksProxyService>()
             val clients = get<K8sClientProvider>()
             ExposureServiceAccess(
-                exposure = { stateManager.load().exposure },
+                exposure = { stateManager.load().effectiveExposure() },
                 implementations =
                     mapOf(
                         Exposure.Socks to {

@@ -111,10 +111,9 @@ class ConfigHashRolloutIntegrationTest {
                 clientProvider,
                 k8sService,
                 otel,
-                stateManager,
+                ObservabilityDeployInputs(stateManager, StateClusterContractSource(stateManager), ProfileRegion.NONE),
                 ConfigChangeReport(k8sService, EventBus()),
-                StateClusterContractSource(stateManager),
-                ProfileRegion.NONE,
+                CollectorPresence(k8sService),
             )
     }
 

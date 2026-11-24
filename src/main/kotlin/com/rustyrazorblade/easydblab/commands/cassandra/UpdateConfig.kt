@@ -1,11 +1,14 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -23,6 +26,7 @@ import kotlin.io.path.inputStream
 /**
  * Upload the cassandra.yaml fragment to all nodes and apply to cassandra.yaml.
  */
+@RequiresCapability(NodeCapability.NODE_SSH, alternative = Constants.Cassandra.KIT_ALTERNATIVE)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

@@ -79,6 +79,14 @@ class ClusterConfigDataTest {
         )
     }
 
+    /** A local or brought cluster has no account bucket (#1061): it publishes no store, and everything else. */
+    @Test
+    fun `a state with no account bucket publishes no store keys and every other key`() {
+        val data = ClusterConfigData.of(state.copy(s3Bucket = null), "us-west-2")
+
+        assertThat(data.keys).containsExactlyInAnyOrder("cluster_name", "tenant", "namespace", "capabilities")
+    }
+
     @Test
     fun `a state with no control host renders the same contents`() {
         assertThat(ClusterConfigData.of(broughtCluster, "us-west-2")).isEqualTo(ClusterConfigData.of(state, "us-west-2"))

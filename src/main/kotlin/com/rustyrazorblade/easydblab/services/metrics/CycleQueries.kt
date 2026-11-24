@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoutes
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
+import com.rustyrazorblade.easydblab.proxy.effectiveExposure
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityHttp
 import com.rustyrazorblade.easydblab.services.MimirQueryService
@@ -70,7 +71,7 @@ class CycleQueries(
      */
     fun prepare(): Target {
         val state = loadState() ?: return Target.Unavailable(NOT_RUNNING)
-        return when (state.exposure) {
+        return when (state.effectiveExposure()) {
             Exposure.Socks ->
                 whenProvisioned(state) {
                     when (val lookup = routes.current(state)) {

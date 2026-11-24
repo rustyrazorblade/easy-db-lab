@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.TestContextFactory
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Exposure
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.configuration.tenancy.TestScopes
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesClientFactory
@@ -67,12 +68,41 @@ class ServiceAccessModuleTest {
         assertThat(requested).containsExactly(KubeApi(kubeconfig.toPath(), "pinned-context"))
     }
 
-    private fun withPortForwardCluster(block: (Koin) -> Unit) {
+    /**
+     * A kit's `sql` on a cluster the user brings opens its Service through a port-forward, even when the
+     * state records Socks (a hand-written one): the brought cluster has no db node in state to dial.
+     */
+    @Test
+    fun `a brought cluster that records Socks still opens a Service by port-forward`() {
+        withPortForwardCluster(
+            ClusterState(name = "test", environment = Environment.Kubeconfig(kubeconfig.absolutePath)).apply {
+                exposure = Exposure.Socks
+                kubeContext = "pinned-context"
+            },
+        ) { koin ->
+            runCatching { koin.get<ServiceAccess>().open(ClusterServices.LOKI.inNamespace(TestScopes.EC2.namespace)) }
+        }
+
+        assertThat(requested).containsExactly(KubeApi(kubeconfig.toPath(), "pinned-context"))
+    }
+
+    private fun withPortForwardCluster(block: (Koin) -> Unit) =
+        withPortForwardCluster(
+            ClusterState(name = "test").apply {
+                exposure = Exposure.PortForward
+                kubeContext = "pinned-context"
+            },
+            block,
+        )
+
+    private fun withPortForwardCluster(
+        state: ClusterState,
+        block: (Koin) -> Unit,
+    ) {
         kubeconfig.writeText(TWO_CONTEXT_KUBECONFIG)
         val stateManager = ClusterStateManager(File(workspace, "state.json"))
         stateManager.replace(
-            ClusterState(name = "test").apply {
-                exposure = Exposure.PortForward
+            state.apply {
                 kubeContext = "pinned-context"
             },
         )

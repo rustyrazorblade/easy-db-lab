@@ -2,10 +2,12 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
+import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver.TemplateSource
 import com.rustyrazorblade.easydblab.services.KitPlacementVariables
+import com.rustyrazorblade.easydblab.services.KitStorageSource
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import org.koin.core.component.inject
@@ -16,6 +18,9 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
     protected val templateService: TemplateService by inject()
     protected val resolver: InstallTemplateResolver by inject()
 
+    // Resolved only off the nodes easy-db-lab owns, where the cluster names the default kit class.
+    private val kitStorageSource: KitStorageSource by inject()
+
     internal fun renderAndWrite(
         source: TemplateSource,
         kitName: String,
@@ -23,7 +28,15 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
         extraVars: Map<String, String> = emptyMap(),
         placement: KitPlacementVariables = KitPlacementVariables.fromRecordedHosts(clusterState),
     ) {
-        val vars = TemplateVariables.from(state = clusterState, kitName = kitName, storageSize = storageSize, placement = placement)
+        val templateFiles = resolver.listTemplateFiles(source)
+        val vars =
+            TemplateVariables.from(
+                state = clusterState,
+                kitName = kitName,
+                storageSize = storageSize,
+                placement = placement,
+                kitStorage = kitStorageFor(templateFiles),
+            )
         val outputDir = context.workspaceFile(kitName)
         val tempDir = context.workspaceFile(".tmp-$kitName-${UUID.randomUUID()}")
         tempDir.mkdirs()
@@ -33,7 +46,7 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
 
         var swapped = false
         try {
-            for (entry in resolver.listTemplateFiles(source)) {
+            for (entry in templateFiles) {
                 val isTemplate = entry.name.endsWith(".template")
                 val outputName = if (isTemplate) entry.name.removeSuffix(".template") else entry.name
                 val content =
@@ -103,6 +116,18 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
 
         eventBus.emit(Event.Install.ScaffoldComplete(kit = kitName, outputDir = outputDir.path))
     }
+
+    /**
+     * The kit storage the templates render with. Only a template that names the class can need the
+     * cluster's default class, so only then, and only off the nodes easy-db-lab owns, is the cluster
+     * asked (`KitStorageSource`); a kit with no claim, and every kit on EC2, renders without asking it.
+     */
+    private fun kitStorageFor(templateFiles: List<InstallTemplateResolver.TemplateEntry>): KitStorage =
+        if (templateFiles.any { Constants.Kit.KIT_STORAGE_CLASS_PLACEHOLDER in it.content }) {
+            KitStorage.from(clusterState) { kitStorageSource.defaultClass() }
+        } else {
+            KitStorage.from(clusterState) { null }
+        }
 
     /**
      * Rewrites YAML `port:` lines in [content] whose current value matches a kit.yaml

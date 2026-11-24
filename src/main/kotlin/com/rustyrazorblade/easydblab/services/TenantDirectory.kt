@@ -10,10 +10,16 @@ import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
  * Mimir makes one directory per tenant under `mimir/` in the account bucket. The listing is one
  * `ListObjectsV2` with `Delimiter=/`; a directory whose name breaks the tenant name rule, such as
  * Mimir's own `__mimir_cluster/`, is not a tenant.
+ *
+ * The object store is built on the first listing, not with this object: the S3 store needs the
+ * profile, and the observability services that hold one are also built in workspaces with no AWS
+ * account, where nothing lists the store.
  */
 class TenantDirectory(
-    private val objectStore: ObjectStore,
+    private val objectStore: Lazy<ObjectStore>,
 ) {
+    constructor(objectStore: ObjectStore) : this(lazyOf(objectStore))
+
     companion object {
         private val TENANT = Regex(Constants.Observability.TENANT_PATTERN)
 
@@ -29,7 +35,7 @@ class TenantDirectory(
         val root = store.metricsRoot()
         val rootKey = root.getKey()
         val names =
-            objectStore
+            objectStore.value
                 .listFiles(root, recursive = false)
                 .map {
                     it.path

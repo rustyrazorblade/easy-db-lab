@@ -50,7 +50,7 @@ class MetricsRegistryServiceTest : BaseKoinTest() {
 
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.deleteConfigMapsByLabels(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockOtelSyncService.syncConfigMap()).thenReturn(Result.success(Unit))
+        whenever(mockOtelSyncService.syncConfigMap()).thenReturn(Result.success(CollectorSync.Applied))
 
         service = DefaultMetricsRegistryService(mockK8sService, mockOtelSyncService, eventBus) { TestScopes.EC2 }
     }

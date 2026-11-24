@@ -30,4 +30,6 @@ internal class RecordingClusterTooling(
         calls += call
         return respond(call)
     }
+
+    override fun unavailableReason(): String? = null
 }

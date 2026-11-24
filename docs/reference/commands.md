@@ -188,6 +188,11 @@ this machine with no SOCKS tunnel: `init` writes `EDL_NETWORK_MODE=direct` to th
 `.socks5-proxy.env`, every command writes it again before it runs, and `socks start` reports that
 no tunnel is needed.
 
+easy-db-lab cannot provision K3s in Docker yet, so `init --local` ends by asking you to start the
+cluster yourself, make its kubeconfig available at `<workspace>/kubeconfig`, and then run
+`kit install <kit>`. Kits in a workspace with no SSH host run helm and kubectl on this machine,
+through the workspace's `bin/` wrappers; they need no control node.
+
 ```bash
 mkdir -p clusters/local && cd clusters/local
 easy-db-lab init local --local --db.count 3
@@ -225,6 +230,11 @@ Absent capabilities:
 
 The set is published as the `capabilities` key of the `cluster-config` ConfigMap, kit processes
 get `EDL_NODE_SSH` from `node-ssh`, and `status` lists every capability.
+
+Without `node-ssh`, the commands that run on the nodes over SSH refuse before doing anything:
+`exec run`, `exec list`, `exec stop`, `configure-axonops`, `cassandra start`, `cassandra stop`,
+`cassandra update-config`, `cassandra nodetool` and every `cassandra profile` command. `cassandra cql`
+and a kit's `sql` still work, and need no SSH key there.
 
 #### Role node selectors
 

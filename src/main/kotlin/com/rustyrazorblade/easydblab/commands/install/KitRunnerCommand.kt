@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesFailureReason
+import com.rustyrazorblade.easydblab.services.ClusterTooling
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallStep
@@ -30,6 +31,7 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import com.rustyrazorblade.easydblab.services.requireAvailable
 import com.rustyrazorblade.easydblab.services.selectInstanceDashboards
 import com.rustyrazorblade.easydblab.services.uidsInstalledElsewhere
 import com.rustyrazorblade.easydblab.services.withKitName
@@ -74,6 +76,9 @@ class KitRunnerCommand(
     private val workspace: File by lazy { context.workingDirectory.absoluteFile }
     private val workspaceKubeconfig: File by lazy { WorkspaceKubeconfig.file(workspace) }
     private val workloadProbe: KitWorkloadProbe by inject()
+
+    /** Where helm and kubectl run for this workspace; asked whether it can reach the cluster before a step runs. */
+    private val clusterTooling: ClusterTooling by inject()
 
     private var processExitCode: Int = 0
 
@@ -147,7 +152,7 @@ class KitRunnerCommand(
      * fails the command.
      */
     private fun isAlreadyRunning(config: KitConfig): Boolean {
-        checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
+        clusterTooling.requireAvailable()
         return when (val presence = workloadProbe.find(kitName, config.runtime).getOrThrow()) {
             is WorkloadPresence.Absent -> false
             is WorkloadPresence.Present -> {
@@ -267,8 +272,8 @@ class KitRunnerCommand(
     /**
      * Runs [phase] — its typed steps, or else its script, the same way for both — reports it,
      * and returns its exit code. A phase that succeeded still fails when it was a `stop` whose
-     * workload did not leave (see [stoppedWorkloadIsGone]); without a control node there is
-     * nothing to wait on.
+     * workload did not leave (see [stoppedWorkloadIsGone]); when the cluster tooling cannot reach
+     * the cluster (no control node, no workspace kubeconfig) there is nothing to wait on.
      */
     private fun runPhase(
         phase: String,
@@ -286,7 +291,7 @@ class KitRunnerCommand(
         val exitCode =
             when {
                 stepsExitCode != 0 -> stepsExitCode
-                clusterState.getControlHost() == null || stoppedWorkloadIsGone(phase, config) -> 0
+                clusterTooling.unavailableReason() != null || stoppedWorkloadIsGone(phase, config) -> 0
                 else -> Constants.ExitCodes.ERROR
             }
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phase, exitCode = exitCode))
@@ -298,7 +303,7 @@ class KitRunnerCommand(
         steps: List<InstallStep>,
         envVars: Map<String, String>,
     ): Int {
-        checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
+        clusterTooling.requireAvailable()
 
         // The step executor has already reported a failed step as a typed event; rethrowing it
         // would have the command executor print it again as a raw exception.
@@ -474,8 +479,10 @@ class KitRunnerCommand(
             return true
         }
 
-        if (clusterState.getControlHost() == null) {
-            log.warn { "No control node found; skipping dashboard installation for $kitName" }
+        // The dashboards' tenant pickers come from the observability store in the account bucket. A
+        // cluster with no bucket (a local or brought cluster, until #1061) has no stack to install into.
+        if (clusterState.s3Bucket == null) {
+            log.warn { "The cluster has no account bucket, so no observability stack; skipping dashboard installation for $kitName" }
             return true
         }
 

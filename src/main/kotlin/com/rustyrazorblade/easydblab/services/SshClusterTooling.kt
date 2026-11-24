@@ -68,6 +68,12 @@ class SshClusterTooling(
         }
     }
 
+    override fun unavailableReason(): String? =
+        when (clusterStateManager.load().getControlHost()) {
+            null -> NO_CONTROL_NODE
+            else -> null
+        }
+
     /**
      * The control node as a failure names it: `alias (public address)`, or `alias (private address)`
      * when the public one is blank (`EC2InstanceService` records a blank `publicIp` for a node with
@@ -145,4 +151,9 @@ class SshClusterTooling(
      * argument renders as it always did (`-l 'easydblab/kit=memcached'`).
      */
     private fun alwaysQuoted(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    private companion object {
+        /** What [unavailableReason] says when the cluster state records no control node. */
+        const val NO_CONTROL_NODE = "no control node found in cluster state"
+    }
 }

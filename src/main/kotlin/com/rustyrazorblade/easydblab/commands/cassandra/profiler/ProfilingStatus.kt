@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.ProfilingEffectiveState
 import com.rustyrazorblade.easydblab.profiling.ProfilingFreshness
@@ -24,6 +26,7 @@ import java.time.Instant
  * hours after the CLI exited and cannot push an event, so it writes journald lines and counters, and
  * this command turns them into typed events when someone asks.
  */
+@RequiresCapability(NodeCapability.NODE_SSH)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

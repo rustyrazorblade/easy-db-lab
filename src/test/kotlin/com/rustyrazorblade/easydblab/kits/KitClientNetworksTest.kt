@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.kits
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource
 import org.assertj.core.api.Assertions.assertThat
@@ -18,21 +19,29 @@ class KitClientNetworksTest : BaseKoinTest() {
     private fun fixture(
         kit: String,
         clientNetworks: List<String>? = null,
+        environment: Environment = Environment.Ec2K3s,
     ) = BuiltinKitFixture(
         kit,
         TemplateService(ClusterStateManager(File(tempDir, "state.json")), getKoin().get()),
         clientNetworks = clientNetworks,
+        environment = environment,
     )
 
-    private fun clickHouseNetworks(clientNetworks: List<String>? = null): Any? =
-        fixture("clickhouse", clientNetworks)
+    private fun clickHouseNetworks(
+        clientNetworks: List<String>? = null,
+        environment: Environment = Environment.Ec2K3s,
+    ): Any? =
+        fixture("clickhouse", clientNetworks, environment)
             .render("clickhouseinstallation.yaml.template")
             .filterIsInstance<GenericKubernetesResource>()
             .single()
             .get<Map<String, Any>>("spec", "configuration", "users")["default/networks/ip"]
 
-    private fun postgresHba(clientNetworks: List<String>? = null): Any? =
-        fixture("postgres", clientNetworks)
+    private fun postgresHba(
+        clientNetworks: List<String>? = null,
+        environment: Environment = Environment.Ec2K3s,
+    ): Any? =
+        fixture("postgres", clientNetworks, environment)
             .render("postgres-cluster.yaml.template", POSTGRES_INSTALL_VARS)
             .filterIsInstance<GenericKubernetesResource>()
             .single { it.kind == "Cluster" }
@@ -53,6 +62,15 @@ class KitClientNetworksTest : BaseKoinTest() {
         assertThat(postgresHba(PROBED)).isEqualTo(PROBED.map { "host all all $it trust" })
         assertThat(postgresHba())
             .isEqualTo(listOf("host all all 172.16.0.0/16 trust", "host all all ${Constants.K3s.CLUSTER_CIDR} trust"))
+    }
+
+    /** `postgres sql` and `clickhouse sql` on a K3s in Docker workspace arrive on the pod loopback by port-forward. */
+    @Test
+    fun `a kit reached by port-forward also trusts the pod loopback`() {
+        val local = Environment.K3sDocker("/data")
+
+        assertThat(postgresHba(PROBED, local)).isEqualTo((PROBED + "127.0.0.1/32").map { "host all all $it trust" })
+        assertThat(clickHouseNetworks(PROBED, local)).isEqualTo(PROBED + "127.0.0.1/32")
     }
 
     private companion object {

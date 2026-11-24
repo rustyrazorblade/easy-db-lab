@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.environment
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.ObservabilityHosting
@@ -35,6 +36,11 @@ import com.rustyrazorblade.easydblab.configuration.StoreCredentials
  * @property storeKind where the observability backends keep their data (#1035).
  * @property networkMode how this machine reaches the cluster: on EC2 the mode `init` recorded in
  *   `state.json` (`socks` or `tailscale`); anywhere else always `direct`, whatever the state records.
+ * @property exposure how the CLI reaches a cluster Service: on EC2 the one `init` recorded (`Socks`, or
+ *   `Direct` under Tailscale); anywhere else always `PortForward` through the kubeconfig, whatever the
+ *   state records, since such a cluster has no node in state to dial.
+ * @property kitStorageDefault where kits claim when `init` recorded no kit StorageClass: local volumes on the
+ *   EC2 nodes easy-db-lab owns, the cluster's default class (which must retain) anywhere else.
  * @property nodeCapabilities the recorded capability set, or the environment's declared one.
  * @property hosting where the observability backends and Grafana run, with the `init` node labels.
  * @property namespace the namespace easy-db-lab installs into: the one `init --namespace` recorded, or
@@ -55,6 +61,8 @@ data class ClusterContract(
     val nodeAccessForm: NodeAccessForm,
     val storeKind: StoreKind,
     val networkMode: NetworkMode,
+    val exposure: Exposure,
+    val kitStorageDefault: KitStorageDefault,
     val nodeCapabilities: NodeCapabilities,
     val hosting: ObservabilityHosting,
     val namespace: String,
@@ -85,6 +93,8 @@ data class ClusterContract(
                         nodeAccessForm = NodeAccessForm.Ssh,
                         storeKind = StoreKind.ObjectStore,
                         networkMode = state.networkMode,
+                        exposure = state.exposure,
+                        kitStorageDefault = KitStorageDefault.LocalVolumes,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.NodePorts, StoreCredentials.InstanceRole),
                         namespace = recordedNamespace ?: Constants.ContractDefaults.OWNED_NAMESPACE,
@@ -100,6 +110,9 @@ data class ClusterContract(
                         nodeAccessForm = NodeAccessForm.ContainerExec,
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
+                        // Reached through its kubeconfig: no db node is in state to dial.
+                        exposure = Exposure.PortForward,
+                        kitStorageDefault = KitStorageDefault.ClusterDefaultClass,
                         nodeCapabilities = capabilities,
                         // The node is a container: the CLI reaches Services by a port-forward, never a node port.
                         hosting = hosted(Placement.CONTROL_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
@@ -116,6 +129,9 @@ data class ClusterContract(
                         nodeAccessForm = NodeAccessForm.None,
                         storeKind = StoreKind.ObjectStore,
                         networkMode = NetworkMode.Direct,
+                        // Reached through its kubeconfig: no db node is in state to dial.
+                        exposure = Exposure.PortForward,
+                        kitStorageDefault = KitStorageDefault.ClusterDefaultClass,
                         nodeCapabilities = capabilities,
                         hosting = hosted(Placement.ANY_NODE, nodeLabels, ServicePublishing.ClusterIp, StoreCredentials.NotProvided),
                         // Stays at the owned default until the kits take the cluster namespace (design D10).

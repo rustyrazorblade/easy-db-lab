@@ -6061,6 +6061,23 @@ sealed interface Event {
             override fun toDisplayString(): String = "Next you'll want to run easy-db-lab up to start your instances."
         }
 
+        /**
+         * The closing step of an `init` whose environment has no provisioner (K3s in Docker, a
+         * cluster the user brings): `up` would refuse the workspace, so the user starts the
+         * cluster, makes its kubeconfig available at [kubeconfig], and installs kits.
+         */
+        @Serializable
+        @SerialName("Setup.LocalInitNextSteps")
+        data class LocalInitNextSteps(
+            val kubeconfig: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                """
+                |Next, start your cluster and make its kubeconfig available at $kubeconfig.
+                |Then install a kit with easy-db-lab kit install <kit>; easy-db-lab kit list shows the kits.
+                """.trimMargin()
+        }
+
         @Serializable
         @SerialName("Setup.InitError")
         data class InitError(
@@ -6738,6 +6755,21 @@ sealed interface Event {
             val endpoints: List<EndpointAddress>,
         ) : Kit {
             override fun toDisplayString(): String = "Endpoints:\n" + endpoints.joinToString("\n") { it.displayLine() }
+        }
+
+        /**
+         * A kit's scrape jobs are recorded in the metrics registry, but no observability stack is
+         * deployed to scrape them yet: they apply when the stack is deployed (`up`,
+         * `grafana update-config`), which reads every recorded job.
+         */
+        @Serializable
+        @SerialName("Kit.MetricsRecorded")
+        data class MetricsRecorded(
+            val kit: String,
+            val ports: List<Int>,
+        ) : Kit {
+            override fun toDisplayString(): String =
+                "[$kit] metrics on ports ${ports.joinToString()} recorded; they apply when the observability stack is deployed"
         }
 
         @Serializable

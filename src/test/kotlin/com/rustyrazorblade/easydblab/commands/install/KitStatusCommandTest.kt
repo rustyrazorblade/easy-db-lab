@@ -133,7 +133,7 @@ class KitStatusCommandTest : BaseKoinTest() {
 
         val output = runStatus(listOf(runningPod))
 
-        assertThat(output.trim()).isEqualTo("Status:    Unknown (no control node in cluster state)")
+        assertThat(output.trim()).isEqualTo("Status:    Unknown (no control node found in cluster state)")
         verifyNoInteractions(mockKubeService, mockHelmService)
     }
 

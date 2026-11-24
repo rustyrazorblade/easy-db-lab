@@ -51,14 +51,27 @@ sealed interface StoreBackend {
             clusterState: ClusterState,
             defaultRegion: String,
         ): StoreBackend =
-            S3Backend(
-                bucket =
-                    checkNotNull(clusterState.s3Bucket) {
-                        "S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first."
-                    },
-                prefix = prefixOf(clusterState),
-                region = clusterState.initConfig?.region ?: defaultRegion,
-            )
+            checkNotNull(ofOrNull(clusterState, defaultRegion)) {
+                "S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first."
+            }
+
+        /**
+         * The store of [clusterState], or null when it has no account bucket: a local or brought
+         * cluster (#1061), or an EC2 one before `up`. For what can be rendered without a store (the
+         * collector config, the store keys of `cluster-config`); a backend that writes to the store
+         * calls [from], which fails.
+         */
+        fun ofOrNull(
+            clusterState: ClusterState,
+            defaultRegion: String,
+        ): StoreBackend? =
+            clusterState.s3Bucket?.let { bucket ->
+                S3Backend(
+                    bucket = bucket,
+                    prefix = prefixOf(clusterState),
+                    region = clusterState.initConfig?.region ?: defaultRegion,
+                )
+            }
     }
 }
 

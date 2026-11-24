@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -73,19 +74,89 @@ class PostgresKitTest : BaseKoinTest() {
     }
 
     /**
-     * `stop` deletes the CNPG Cluster and CNPG deletes its claims with it. On a provisioned class
-     * their Retain volumes go Released, so `start` must reopen them for the same-named claims, or
-     * the instance comes back on empty volumes.
+     * CNPG bootstraps a Cluster it has never seen: a Cluster applied again after `stop` deleted it
+     * ran `bootstrap.initdb` on the rebound volume, which moved the old PGDATA aside and served a
+     * new empty database. `stop` therefore hibernates the Cluster (`cnpg.io/hibernation=on`: CNPG
+     * removes the pods and keeps the Cluster, its status and its claims) and never deletes it or the
+     * objects it references.
      */
     @Test
-    fun `start reopens the Released volumes CNPG left at stop, before applying the Cluster`() {
-        val start = kit.config.start
-        val storage = start.filterIsInstance<InstallStep.KitStorage>().single()
-        val applied = start.indexOfFirst { it is InstallStep.Manifest && it.template == "postgres-cluster.yaml" }
+    fun `stop hibernates the Cluster and never deletes it, its claims, credentials or image catalog`() {
+        val deleted =
+            kit.config.stop
+                .filterIsInstance<InstallStep.Delete>()
+                .flatMap { it.kinds + it.kind }
+                .map { it.lowercase() }
+        val stub = StubKubectl(File(tempDir, "stub"))
+        stub.respond("get", "$CNPG_CLUSTER/postgres\n")
 
-        assertThat(storage.rebindReleased).isTrue()
-        assertThat(start.indexOf(storage)).isLessThan(applied)
+        val exit = stub.run(stopScript(), mapOf("KIT_NAME" to "postgres"))
+
+        assertThat(exit).withFailMessage(stub.output()).isEqualTo(0)
+        assertThat(deleted).doesNotContain("cluster", "secret", "imagecatalog", "pvc", "persistentvolumeclaim")
+        assertThat(stub.invocations()).anySatisfy { call ->
+            assertThat(call).startsWith("annotate $CNPG_CLUSTER postgres")
+            assertThat(call).contains("-n default", "--overwrite", "$HIBERNATION=on")
+        }
     }
+
+    /** A stop of an instance that never started (no Cluster) succeeds and annotates nothing. */
+    @Test
+    fun `stop of an instance with no Cluster succeeds without annotating`() {
+        val stub = StubKubectl(File(tempDir, "stub"))
+        stub.respond("get", "")
+
+        val exit = stub.run(stopScript(), mapOf("KIT_NAME" to "postgres"))
+
+        assertThat(exit).withFailMessage(stub.output()).isEqualTo(0)
+        assertThat(stub.invocations()).noneSatisfy { assertThat(it).startsWith("annotate") }
+    }
+
+    /**
+     * `start` applies the Cluster with hibernation off, so a Cluster `stop` hibernated is woken on
+     * its own volumes and status, with no new bootstrap.
+     */
+    @Test
+    fun `start applies the Cluster with hibernation off`() {
+        val cluster =
+            kit
+                .render("postgres-cluster.yaml.template", POSTGRES_INSTALL_VARS)
+                .filterIsInstance<GenericKubernetesResource>()
+                .single { it.kind == "Cluster" }
+
+        assertThat(cluster.metadata.annotations).containsEntry(HIBERNATION, "off")
+    }
+
+    /**
+     * The claims outlive `stop`, so the instance keeps them bound; `uninstall` is the one phase that
+     * deletes the Cluster and its claims, and does so before releasing the storage.
+     */
+    @Test
+    fun `uninstall deletes the Cluster and its claims before releasing the db storage`() {
+        val uninstall = kit.config.uninstall
+        val cluster = uninstall.indexOfFirst { it is InstallStep.Delete && it.kind == CNPG_CLUSTER && it.name == KIT_NAME_PLACEHOLDER }
+        val claims =
+            uninstall.indexOfFirst {
+                it is InstallStep.Delete && "pvc" in it.kinds && it.selector == "cnpg.io/cluster=$KIT_NAME_PLACEHOLDER"
+            }
+        val release = uninstall.indexOf(InstallStep.KitStorageDelete(nodeType = "db"))
+
+        assertThat(cluster).isNotNegative()
+        assertThat(claims).isGreaterThan(cluster)
+        assertThat(release).isGreaterThan(claims)
+        assertThat(
+            kit.config.start
+                .filterIsInstance<InstallStep.KitStorage>()
+                .single()
+                .rebindReleased,
+        ).isFalse()
+    }
+
+    private fun stopScript(): String =
+        kit.config.stop
+            .filterIsInstance<InstallStep.Shell>()
+            .single()
+            .script
 
     /** Uninstall removes the instance's local PVs, its `edl-local-<instance>` class and directories. */
     @Test
@@ -112,6 +183,23 @@ class PostgresKitTest : BaseKoinTest() {
 
     private companion object {
         const val KIT_NAME_PLACEHOLDER = "\${KIT_NAME}"
+
+        /** CNPG's declarative hibernation annotation. */
+        const val HIBERNATION = "cnpg.io/hibernation"
+
+        /** The CNPG Cluster resource, fully qualified so no other `cluster` kind can match. */
+        const val CNPG_CLUSTER = "cluster.postgresql.cnpg.io"
+
+        /** Values `kit install` derives for a postgres instance rather than reads from arg defaults. */
+        val POSTGRES_INSTALL_VARS =
+            mapOf(
+                "IMAGE" to "ghcr.io/cloudnative-pg/postgresql:17",
+                "PG_MAJOR_VERSION" to "17",
+                "SHARED_PRELOAD_LIBRARIES" to "[]",
+                "POST_INIT_SQL" to "[]",
+                "POSTGRES_UID" to "26",
+                "POSTGRES_GID" to "26",
+            )
 
         /** A kubectl `-l <selector>` flag, optionally quoted. */
         val LABEL_FLAG = Regex("""-l\s+["']?([^\s"']+)""")

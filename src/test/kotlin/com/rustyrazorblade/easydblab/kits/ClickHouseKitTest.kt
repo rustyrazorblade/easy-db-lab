@@ -94,18 +94,48 @@ class ClickHouseKitTest : BaseKoinTest() {
     }
 
     /**
-     * `stop` deletes the ClickHouseInstallation and the operator deletes its claims. On a
-     * provisioned class their Retain volumes go Released, so `start` must reopen them for the
-     * same-named claims, or ClickHouse comes back on empty volumes.
+     * With the operator's default reclaim policy (`Delete`), deleting the ClickHouseInstallation at
+     * `stop` first runs `DROP TABLE ... SYNC` for every MergeTree table and view on each host, then
+     * deletes the claims: the volume came back but its tables were gone (issue 985). `Retain` on
+     * the data claim template makes the operator skip both, so the claims and the tables survive
+     * `stop` and the next `start` mounts them as they were.
      */
     @Test
-    fun `start reopens the Released volumes the operator left at stop`() {
+    fun `the data claims are retained, so stop drops no table and deletes no claim`() {
+        val chi =
+            kit
+                .render("clickhouseinstallation.yaml.template")
+                .filterIsInstance<GenericKubernetesResource>()
+                .single()
+        val data =
+            chi
+                .get<List<Map<String, Any>>>("spec", "templates", "volumeClaimTemplates")
+                .single { it["name"] == chi.get<String>("spec", "configuration", "clusters", 0, "templates", "dataVolumeClaimTemplate") }
+
+        assertThat(data["reclaimPolicy"]).isEqualTo("Retain")
         assertThat(
             kit.config.start
                 .filterIsInstance<InstallStep.KitStorage>()
                 .single()
                 .rebindReleased,
-        ).isTrue()
+        ).isFalse()
+    }
+
+    /**
+     * The retained claims are the kit's to delete: `uninstall` (after `stop` removed the
+     * installation) deletes them before releasing the storage.
+     */
+    @Test
+    fun `uninstall deletes the retained claims before releasing the db storage`() {
+        val uninstall = kit.config.uninstall
+        val claims =
+            uninstall.indexOfFirst {
+                it is InstallStep.Delete && "pvc" in it.kinds && it.selector == "clickhouse.altinity.com/chi=clickhouse"
+            }
+        val release = uninstall.indexOf(InstallStep.KitStorageDelete(nodeType = "db"))
+
+        assertThat(claims).isNotNegative()
+        assertThat(release).isGreaterThan(claims)
     }
 
     @Test

@@ -20,13 +20,16 @@ import java.io.File
  *
  * `KIT_STORAGE_CLASS` and `KIT_STORAGE_SIZE` come from the environment's [KitStorage]: a kit's claims
  * name the class, and a kit's size arg defaults to `${KIT_STORAGE_SIZE}`.
+ * Off the nodes easy-db-lab owns the class can be the cluster's default, which only the cluster can
+ * name: a caller that renders claims passes the [KitStorage] `KitStorageSource` resolved. The default,
+ * which never asks the cluster, names no class there and is only for help text and arg defaults.
  *
  * The role variables (`DB_NODE_SELECTOR`, `APP_NODE_SELECTOR`, `DB_AFFINITY`, `*_NODE_LABELS`, `DB_NODE_COUNT`,
  * `APP_NODE_COUNT`) come from [placement]. Kit installs and kit processes pass one built by
  * [RoleNodes] from the Kubernetes API; the default counts the hosts `state.json` records.
  *
  * `CLIENT_NETWORKS_JSON` (a JSON list of CIDRs) and `CLIENT_NETWORKS_HBA_JSON` (one `pg_hba` trust
- * line per CIDR) come from [clientNetworks].
+ * line per CIDR) come from [clientNetworks]: `ClientNetworks.forKits`, which adds the pod loopback on a port-forward.
  */
 data class TemplateVariables(
     val clusterName: String,
@@ -153,12 +156,12 @@ data class TemplateVariables(
             kitName: String,
             storageSize: String,
             placement: KitPlacementVariables = KitPlacementVariables.fromRecordedHosts(state),
+            kitStorage: KitStorage = KitStorage.from(state) { null },
         ): TemplateVariables {
             val controlHost = state.getControlHost()
             val dbNodes = state.hosts[ServerType.Cassandra] ?: emptyList()
             val appNodes = state.hosts[ServerType.Stress] ?: emptyList()
             val region = state.initConfig?.region.orEmpty()
-            val kitStorage = KitStorage.from(state)
             val serviceDns = ServiceDns(InstallScope.of(state, ClusterContract.of(state)).namespace)
             return TemplateVariables(
                 clusterName = state.name,
@@ -166,7 +169,7 @@ data class TemplateVariables(
                 accountBucket = state.s3Bucket.orEmpty(),
                 region = region,
                 placement = placement,
-                clientNetworks = ClientNetworks.from(state),
+                clientNetworks = ClientNetworks.forKits(state),
                 controlHostPublic = controlHost?.publicIp.orEmpty(),
                 controlHostPrivate = controlHost?.privateIp.orEmpty(),
                 // No kit name, no kit: a blank class rather than the class of a kit named "".

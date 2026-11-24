@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
-import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -296,8 +295,8 @@ class DefaultCommandExecutor(
             }
         }
 
-        // Check if the command requires an SSH key
-        if (annotations.any { it is RequireSSHKey }) {
+        // Check if the command requires an SSH key: only where the nodes are reached over SSH
+        if (environmentRequirements.needsSshKey(command)) {
             if (!checkSSHKeyAvailability()) {
                 eventBus.emit(Event.Command.SshKeyMissing(requirementCheckDeps.userConfigProvider.sshKeyPath))
                 exitProcess(1)

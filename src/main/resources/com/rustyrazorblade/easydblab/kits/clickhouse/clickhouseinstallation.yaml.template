@@ -122,6 +122,10 @@ spec:
           nodeSelector: __DB_NODE_SELECTOR__
     volumeClaimTemplates:
       - name: data
+        # With the operator's default (Delete), deleting this installation at stop runs DROP TABLE
+        # ... SYNC on every MergeTree table and view and then deletes the claims. Retain skips
+        # both: the claims and their tables survive stop, and uninstall deletes the claims.
+        reclaimPolicy: Retain
         spec:
           storageClassName: __KIT_STORAGE_CLASS__
           accessModes:

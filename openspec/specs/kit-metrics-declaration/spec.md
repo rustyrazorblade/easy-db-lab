@@ -46,6 +46,19 @@ ConfigMap per `KitMetrics.Scrape` entry. Each ConfigMap SHALL be named
 - **THEN** four ConfigMaps SHALL exist, one per job, each named `easydblab-metrics-<job>`
 - **AND** each SHALL carry label `easydblab.com/kit: <kitName>`
 
+#### Scenario: No observability stack deployed
+
+- **WHEN** a scrape-type kit completes its `start` phase on a cluster where the OTel collector is not deployed
+- **THEN** its `easydblab-metrics-*` ConfigMaps SHALL be written
+- **AND** no collector resource (ConfigMap, DaemonSet, Service, ServiceAccount, ClusterRole or ClusterRoleBinding) SHALL be created or changed
+- **AND** the command SHALL report that the scrape job is recorded and applies when the stack is deployed
+- **AND** the next stack deploy SHALL render every recorded scrape job
+
+#### Scenario: Observability stack deployed
+
+- **WHEN** a scrape-type kit starts or stops on a cluster where the OTel collector is deployed
+- **THEN** only the collector ConfigMap and DaemonSet SHALL be applied, and the DaemonSet rolls through its config hash
+
 #### Scenario: Registry ConfigMaps not created after failed start
 
 - **WHEN** any step in the `start` phase fails

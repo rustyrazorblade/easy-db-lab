@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.AsprofArgValidator
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
@@ -21,6 +23,7 @@ import java.time.Instant
  * the arguments replaces the running session — the outgoing one is stopped cleanly, so its in-flight
  * chunk is finalized and still ships.
  */
+@RequiresCapability(NodeCapability.NODE_SSH)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

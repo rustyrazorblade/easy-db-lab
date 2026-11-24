@@ -180,9 +180,12 @@ If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for ev
   (the command path, the environment's display name, the missing capabilities, the `alternative`
   when not blank) and fails with `CommandFailedException`. Every AWS-only command carries
   `AWS_ACCOUNT` (`cassandra use` and `cassandra install` also `NODE_SSH`, with
-  `Constants.Cassandra.KIT_ALTERNATIVE`), `configure-aws` and `cassandra build` included. `cassandra start`
-  and `configure-axonops` carry `NODE_SSH` alone: they SSH to the nodes and read the profile's AxonOps
-  settings. `LocalWorkspaceNeedsNoProfileTest` walks the whole command tree (a workspace kit's commands
+  `Constants.Cassandra.KIT_ALTERNATIVE`), `configure-aws` and `cassandra build` included. `cassandra start`,
+  `cassandra stop`, `cassandra update-config` and `cassandra nodetool` carry `NODE_SSH` with the kit
+  alternative; `configure-axonops`, `exec run|list|stop` and `cassandra profile start|stop|status|fetch|flamegraph`
+  carry `NODE_SSH` alone: they SSH to the nodes. `cassandra cql` and a kit's `sql` carry no gate: they reach the
+  database through a client driver, by port-forward where there is no SSH. `EnvironmentRequirementsTest` lists
+  both sets in one table. `LocalWorkspaceNeedsNoProfileTest` walks the whole command tree (a workspace kit's commands
   included) in a K3s in Docker and a kubeconfig workspace and fails on any command there that loads `User`. The help-only parent groups (`spark`,
   `aws`, ...) are not commands the executor runs, so they carry nothing.
 - `@RequireProfileSetup` — require AWS profile configuration before execution, but only when the
@@ -195,7 +198,7 @@ If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for ev
   other recorded environment it emits `Event.Environment.ProvisionerUnavailable` and throws
   `CommandFailedException` before the profile, the state or AWS is touched
   (`UpTest`, `DownLocalWorkspaceTest`). A new provisioner widens `ClusterContract.hasProvisioner`.
-- `@RequireSSHKey` — require SSH key to be available
+- `@RequireSSHKey` — require the SSH key, only where the environment has `NODE_SSH` (`EnvironmentRequirements.needsSshKey`)
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
 - `@RequiresProxy` — command's execution path reaches the private K8s API (Fabric8, via
   `K8sClientProvider`) or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory`), and

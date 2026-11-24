@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.services.ClusterTooling
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -37,9 +38,12 @@ class KitStatusCommand(
     private val helmService: HelmService by inject()
     private val kubeService: K8sService by inject()
 
+    /** Where helm runs for this workspace; a form that cannot reach the cluster makes the status unknown. */
+    private val clusterTooling: ClusterTooling by inject()
+
     override fun execute() {
-        if (clusterState.getControlHost() == null) {
-            println("Status:    Unknown (no control node in cluster state)")
+        clusterTooling.unavailableReason()?.let { reason ->
+            println("Status:    Unknown ($reason)")
             return
         }
 

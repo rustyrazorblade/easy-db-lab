@@ -44,3 +44,12 @@ enum class ClientNetworkOrigin {
      */
     Recorded,
 }
+
+/** Where a cluster's kits claim their volumes when `init` recorded no `--kit-storage-class` (`KitStorage.from`). */
+enum class KitStorageDefault {
+    /** Per-kit local PVs on the NVMe of nodes easy-db-lab owns (EC2). */
+    LocalVolumes,
+
+    /** The cluster's default StorageClass, which must retain: there is no owned node to put a local PV on. */
+    ClusterDefaultClass,
+}

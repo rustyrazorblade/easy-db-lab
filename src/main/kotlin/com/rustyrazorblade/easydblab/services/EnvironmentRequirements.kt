@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
@@ -46,6 +47,14 @@ class EnvironmentRequirements(
     /** Whether [command] carries [RequireProfileSetup] and its target environment has an AWS account. */
     fun needsProfile(command: PicoCommand): Boolean =
         command::class.annotations.any { it is RequireProfileSetup } && NodeCapability.AWS_ACCOUNT in targetCapabilities(command)
+
+    /**
+     * Whether [command] carries [RequireSSHKey] and its environment reaches the nodes over SSH. The key
+     * opens SSH sessions and the SOCKS tunnel; a local or brought cluster is reached through its
+     * kubeconfig, so a client-driver command (`cassandra cql`, a kit's `sql`) needs no key there.
+     */
+    fun needsSshKey(command: PicoCommand): Boolean =
+        command::class.annotations.any { it is RequireSSHKey } && NodeCapability.NODE_SSH in targetCapabilities(command)
 
     private fun targetCapabilities(command: PicoCommand): NodeCapabilities =
         (command as? DeclaresEnvironment)?.declaredEnvironment()?.declaredCapabilities

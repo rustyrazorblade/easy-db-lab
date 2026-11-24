@@ -47,3 +47,13 @@ does not apply it to a pod-discovered target.
 ## Waiting for Postgres Pods
 
 Always use `cnpg.io/cluster=${KIT_NAME},cnpg.io/podRole=instance` as the label selector when waiting for running postgres pods — the same selector as the kit's `runtime`. **Do NOT use `cnpg.io/cluster=<name>` alone** — that label matches both running instance pods AND completed initdb job pods, causing `kubectl wait --for=condition=Ready` to time out on the completed job pod which can never become Ready. **Do NOT use `cnpg.io/podRole=instance` alone** either — `postgres` and `postgres-<extension>` run side by side, and an unscoped wait can be satisfied by the other instance's pods.
+
+## Stop Hibernates, Never Deletes the Cluster
+
+`stop` annotates the Cluster `cnpg.io/hibernation=on` (CNPG removes the instance pods and keeps the
+Cluster, its status and its claims), and `postgres-cluster.yaml.template` sets
+`cnpg.io/hibernation: "off"`, so the `start` apply wakes it on the same volumes. **Never delete the
+Cluster in `stop`**: CNPG treats a newly applied Cluster as new and runs `bootstrap.initdb`, which
+renames an existing PGDATA to `pgdata_<timestamp>` and serves an empty database, even when the
+claim rebinds the old volume. The Secret and ImageCatalog the Cluster references stay too. Only
+`uninstall` deletes the Cluster, then its claims (`cnpg.io/cluster=${KIT_NAME}`), then the storage.

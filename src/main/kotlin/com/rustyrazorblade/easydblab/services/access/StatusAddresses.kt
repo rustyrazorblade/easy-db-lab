@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.configuration.tenancy.InstallScope
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.proxy.effectiveExposure
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
@@ -70,7 +71,7 @@ class StatusAddresses(
     private val state: ClusterState,
 ) {
     private val log = KotlinLogging.logger {}
-    private val forwarded = state.exposure == Exposure.PortForward
+    private val forwarded = state.effectiveExposure() == Exposure.PortForward
 
     private val namespace = InstallScope.of(state, ClusterContract.of(state)).namespace
 

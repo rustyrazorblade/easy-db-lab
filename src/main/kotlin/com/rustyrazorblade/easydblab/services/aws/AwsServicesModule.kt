@@ -171,7 +171,8 @@ val awsServicesModule =
         }
         factory { ProfileResourceMarkers(get(), get()) }
 
-        factory { BucketRegion(get()) }
+        // Lazy: the observability services hold one in every workspace, and the S3 client needs the profile.
+        factory { BucketRegion(lazy { get<S3Client>() }) }
         factory {
             val bucketRegion = get<BucketRegion>()
             val regionalS3 = get<RegionalS3Clients>()

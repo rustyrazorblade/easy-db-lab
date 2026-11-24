@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
 
 /**
  * The create paths that are not a typed apply (a stress Job, the stress sidecar ConfigMap,
@@ -117,7 +118,7 @@ class OwnedCreatePathsIntegrationTest {
             EventBus(),
             ConfigChangeReport(k8sService, EventBus()),
             // The datasources ConfigMap does not ask the bucket's region.
-            BucketRegion(mock()),
+            BucketRegion(mock<S3Client>()),
         ).createDatasourcesConfigMap(TenantSet.of("default"), scope).getOrThrow()
 
         assertThat(configMapLabels("grafana-datasources")).containsAllEntriesOf(OwnershipLabels.of(CLUSTER_ID))
@@ -126,7 +127,7 @@ class OwnedCreatePathsIntegrationTest {
     @Test
     fun `a metrics registry ConfigMap carries the ownership labels`() {
         val otelSync = mock<OtelSyncService>()
-        whenever(otelSync.syncConfigMap()).thenReturn(Result.success(Unit))
+        whenever(otelSync.syncConfigMap()).thenReturn(Result.success(CollectorSync.Applied))
 
         DefaultMetricsRegistryService(k8sService, otelSync, EventBus()) { scope }
             .register("owned", listOf(KitMetrics.Scrape(port = 9363, path = "/metrics")))

@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.commands.aws.Vpcs
 import com.rustyrazorblade.easydblab.commands.cassandra.CassandraBuild
 import com.rustyrazorblade.easydblab.commands.cassandra.CassandraInstall
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
+import com.rustyrazorblade.easydblab.commands.exec.ExecRun
 import com.rustyrazorblade.easydblab.commands.ingress.IngressAllow
 import com.rustyrazorblade.easydblab.commands.ingress.IngressRevoke
 import com.rustyrazorblade.easydblab.commands.observability.CompactorStatus
@@ -220,6 +221,24 @@ class CommandExecutorTest : BaseKoinTest() {
         // Its first act is to announce the switch, before any SSH; that it never did proves nothing ran.
         assertThat(emitted.filterIsInstance<Event.Cassandra.UsingVersion>()).isEmpty()
         verify(mockUserConfigProvider, never()).isSetup()
+    }
+
+    /**
+     * `exec run` carries `@RequireSSHKey`, whose failure ends the process. In a workspace without node
+     * SSH the capability check must refuse it first, so the key is never looked for.
+     */
+    @Test
+    fun `exec run in a K3s in Docker workspace is refused by capability before the SSH key check`() {
+        recordEnvironment(Environment.K3sDocker("/data"))
+        whenever(mockUserConfigProvider.sshKeyPath).thenReturn(File(tempDir, "no-such-key").path)
+
+        val exitCode = commandExecutor.executeTopLevel(ExecRun(), "exec run")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        val unavailable = emitted.filterIsInstance<Event.Environment.CommandUnavailable>().single()
+        assertThat(unavailable.missing).containsExactly(NodeCapability.NODE_SSH)
+        assertThat(emitted.filterIsInstance<Event.Command.SshKeyMissing>()).isEmpty()
+        verify(mockUserConfigProvider, never()).sshKeyPath
     }
 
     @Test

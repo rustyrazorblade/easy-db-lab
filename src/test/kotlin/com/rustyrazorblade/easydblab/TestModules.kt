@@ -49,6 +49,7 @@ import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DataBucketTeardown
+import com.rustyrazorblade.easydblab.services.clusterToolingModule
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -89,6 +90,8 @@ object TestModules {
      */
     fun coreTestModules(tempDir: File): List<Module> =
         listOf(
+            // Production: the kit commands inject ClusterTooling; a test's own binding still overrides it.
+            clusterToolingModule,
             testContextModule(tempDir),
             testAWSModule(),
             testOutputModule(),

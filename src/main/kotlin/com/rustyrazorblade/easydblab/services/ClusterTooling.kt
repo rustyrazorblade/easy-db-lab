@@ -51,7 +51,33 @@ interface ClusterTooling {
         echo: Boolean = true,
         shellQuoted: Set<Int> = emptySet(),
     ): String
+
+    /**
+     * Why this form cannot reach the cluster now, as a lowercase phrase (`no control node found in
+     * cluster state`), or null when it can. It reads the workspace and runs nothing, so a command can
+     * ask before it writes anything: the SSH form needs a control node in the cluster state, the local
+     * form the workspace kubeconfig.
+     */
+    fun unavailableReason(): String?
 }
+
+/**
+ * Fails, naming [ClusterTooling.unavailableReason], when [this] form cannot reach the cluster now.
+ *
+ * @throws ClusterToolingUnavailableException when it cannot
+ */
+fun ClusterTooling.requireAvailable() {
+    unavailableReason()?.let { throw ClusterToolingUnavailableException(it) }
+}
+
+/**
+ * The bound [ClusterTooling] form cannot reach the cluster: [reason] is its
+ * [ClusterTooling.unavailableReason]. An [IllegalStateException], as the control-node checks it
+ * replaced threw.
+ */
+class ClusterToolingUnavailableException(
+    val reason: String,
+) : IllegalStateException(reason.replaceFirstChar { it.uppercaseChar() })
 
 /**
  * Fails fast when [stdin] is given and [args] does not hold exactly one `-`. The SSH form needs that

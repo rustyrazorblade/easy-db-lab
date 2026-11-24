@@ -31,6 +31,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.DeclaresEnvironment
 import com.rustyrazorblade.easydblab.kubernetes.KubeApi
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
@@ -612,9 +613,16 @@ class Init :
             // Schedule Up to run after Init's full lifecycle completes
             commandExecutor.schedule { Up().also { it.quiet = quiet } }
         } else {
-            eventBus.emit(Event.Setup.InitNextSteps)
+            eventBus.emit(nextSteps(contract))
         }
     }
+
+    /** `up` only where it can provision; elsewhere the user brings the cluster up and installs kits. */
+    private fun nextSteps(contract: ClusterContract): Event.Setup =
+        when (contract.hasProvisioner) {
+            true -> Event.Setup.InitNextSteps
+            false -> Event.Setup.LocalInitNextSteps(kubeconfig = WorkspaceKubeconfig.file(context.workingDirectory).path)
+        }
 
     /**
      * Fails before anything is cleaned or written when an option is given without the one it needs:

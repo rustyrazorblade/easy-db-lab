@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -93,6 +94,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         variables: Map<String, String> = emptyMap(),
         kitDir: File = tempDir,
         phase: String = "start",
+        state: ClusterState = clusterState,
     ): Result<Unit> =
         executor.execute(
             steps = steps,
@@ -100,7 +102,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             context =
                 StepExecutionContext(
                     kitName = "testdb",
-                    clusterState = clusterState,
+                    clusterState = state,
                     variables = variables,
                     kitDir = kitDir,
                     workspaceDir = workspace,
@@ -616,6 +618,74 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             )
 
             assertThat(capturedContent).isEqualTo("imageName: \${IMAGE}")
+        }
+    }
+
+    /**
+     * A K3s in Docker cluster has no db node in state and no owned NVMe: its kits claim on the
+     * cluster's default class, which must retain. K3s's `local-path` deletes, so it is refused.
+     */
+    @Nested
+    inner class KitStorageStepOnK3sInDocker {
+        private val localState =
+            ClusterState(name = "local", environment = Environment.K3sDocker("/data"), initConfig = InitConfig())
+
+        private val events = mutableListOf<Event>()
+
+        @BeforeEach
+        fun listen() {
+            get<EventBus>().addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+        }
+
+        private val step = InstallStep.KitStorage(nodeType = "db", storageSize = "10Gi")
+
+        @Test
+        fun `a default class that deletes is refused with KitStorageClassRefused and creates nothing`() {
+            whenever(k8sService.defaultStorageClass()).thenReturn(Result.success("local-path"))
+            whenever(k8sService.storageClassReclaimPolicy("local-path")).thenReturn(Result.success("Delete"))
+
+            val result = execute(listOf(step), state = localState)
+
+            assertThat(result.exceptionOrNull())
+                .isInstanceOf(StorageClassRefusedException::class.java)
+                .hasMessageContaining("StorageClass local-path reclaims with Delete")
+                .hasMessageContaining("init --kit-storage-class")
+                .hasMessageContaining("a copy of local-path with reclaimPolicy: Retain")
+            val refused = events.filterIsInstance<Event.Setup.KitStorageClassRefused>().single()
+            assertThat(refused.storageClass).isEqualTo("local-path")
+            assertThat(refused.reclaimPolicy).isEqualTo("Delete")
+            verify(k8sService, never()).ensureKitLocalStorageClass(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
+        }
+
+        @Test
+        fun `a default class that retains passes the step with no volume or class created`() {
+            whenever(k8sService.defaultStorageClass()).thenReturn(Result.success("retain-local"))
+            whenever(k8sService.storageClassReclaimPolicy("retain-local")).thenReturn(Result.success("Retain"))
+
+            assertThat(execute(listOf(step), state = localState).isSuccess).isTrue()
+
+            verify(k8sService, never()).ensureKitLocalStorageClass(any(), any())
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
+        }
+
+        @Test
+        fun `with no default class and none recorded it fails naming the flag`() {
+            whenever(k8sService.defaultStorageClass()).thenReturn(Result.success(null))
+
+            val result = execute(listOf(step), state = localState)
+
+            assertThat(result.exceptionOrNull()).hasMessageContaining("--kit-storage-class")
+            assertThat(events).anyMatch { it is Event.Setup.NoDefaultKitStorageClass }
+            verify(k8sService, never()).createLocalPersistentVolumes(any())
         }
     }
 }

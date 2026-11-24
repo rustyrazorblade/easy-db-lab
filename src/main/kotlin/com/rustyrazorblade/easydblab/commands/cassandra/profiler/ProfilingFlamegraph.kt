@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.profiling.JfrconvArgValidator
 import com.rustyrazorblade.easydblab.profiling.requireChunkCount
@@ -21,6 +23,7 @@ import java.io.File
  * `CompactionExecutor:4`): Pyroscope's ingest discards thread identity entirely, so `--threads` here
  * shows something the continuous-profiling path structurally cannot.
  */
+@RequiresCapability(NodeCapability.NODE_SSH)
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

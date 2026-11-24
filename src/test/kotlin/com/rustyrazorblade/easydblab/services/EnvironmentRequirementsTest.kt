@@ -1,8 +1,21 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
+import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresCapability
+import com.rustyrazorblade.easydblab.commands.cassandra.Cql
+import com.rustyrazorblade.easydblab.commands.cassandra.Nodetool
+import com.rustyrazorblade.easydblab.commands.cassandra.Stop
+import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFetch
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFlamegraph
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStart
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStatus
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStop
+import com.rustyrazorblade.easydblab.commands.exec.ExecList
+import com.rustyrazorblade.easydblab.commands.exec.ExecRun
+import com.rustyrazorblade.easydblab.commands.exec.ExecStop
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NodeCapability
@@ -13,6 +26,9 @@ import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
 
 /** When the AWS profile check applies: only where the target environment has an AWS account. */
@@ -39,6 +55,11 @@ class EnvironmentRequirementsTest {
     }
 
     private class PlainCommand : PicoCommand {
+        override fun execute() = Unit
+    }
+
+    @RequireSSHKey
+    private class SshKeyCommand : PicoCommand {
         override fun execute() = Unit
     }
 
@@ -113,5 +134,84 @@ class EnvironmentRequirementsTest {
         record(Environment.Ec2K3s, capabilities = setOf(NodeCapability.S3))
 
         assertThat(requirements.unavailable(UseCassandra())?.missing).containsExactly(NodeCapability.NODE_SSH)
+    }
+
+    /** `exec run` runs a systemd unit on each node over SSH, so a workspace without node SSH cannot serve it. */
+    @Test
+    fun `exec run is unavailable without node SSH, naming it`() {
+        record(Environment.K3sDocker("/data"))
+
+        assertThat(requirements.unavailable(ExecRun())?.missing).containsExactly(NodeCapability.NODE_SSH)
+    }
+
+    @Test
+    fun `exec run is available on EC2`() {
+        record(Environment.Ec2K3s)
+
+        assertThat(requirements.unavailable(ExecRun())).isNull()
+    }
+
+    /**
+     * Every command that reaches a node over SSH (`remoteOps`: systemd units, nodetool, config
+     * uploads, the profiler's desired-state file and chunk downloads) declares NODE_SSH, so a local
+     * or brought workspace refuses it before any side effect, and EC2 still runs it.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("nodeSshCommands")
+    fun `a command that reaches a node over SSH is unavailable without node SSH and available on EC2`(
+        name: String,
+        command: () -> PicoCommand,
+    ) {
+        record(Environment.K3sDocker("/data"))
+        assertThat(requirements.unavailable(command())?.missing).describedAs(name).containsExactly(NodeCapability.NODE_SSH)
+        record(Environment.Kubeconfig("/kube/config"))
+        assertThat(requirements.unavailable(command())?.missing).describedAs(name).contains(NodeCapability.NODE_SSH)
+
+        record(Environment.Ec2K3s)
+        assertThat(requirements.unavailable(command())).describedAs(name).isNull()
+    }
+
+    /** These reach the database through a client driver (CQL, JDBC), which works by port-forward: no gate. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("clientDriverCommands")
+    fun `a command that reaches the database through a client driver is available without node SSH`(
+        name: String,
+        command: () -> PicoCommand,
+    ) {
+        record(Environment.K3sDocker("/data"))
+
+        assertThat(requirements.unavailable(command())).describedAs(name).isNull()
+    }
+
+    /** The SSH key reaches nodes over SSH (or the SOCKS tunnel through one), so only an environment with node SSH asks for it. */
+    @Test
+    fun `the SSH key is required only where the nodes are reached over SSH`() {
+        record(Environment.Ec2K3s)
+        assertThat(requirements.needsSshKey(SshKeyCommand())).isTrue()
+        assertThat(requirements.needsSshKey(PlainCommand())).isFalse()
+
+        record(Environment.K3sDocker("/data"))
+        assertThat(requirements.needsSshKey(SshKeyCommand())).isFalse()
+    }
+
+    companion object {
+        @JvmStatic
+        fun nodeSshCommands(): List<Arguments> =
+            listOf<Pair<String, () -> PicoCommand>>(
+                "exec run" to ::ExecRun,
+                "exec list" to ::ExecList,
+                "exec stop" to ::ExecStop,
+                "cassandra stop" to ::Stop,
+                "cassandra update-config" to ::UpdateConfig,
+                "cassandra nodetool" to ::Nodetool,
+                "cassandra profile start" to ::ProfilingStart,
+                "cassandra profile stop" to ::ProfilingStop,
+                "cassandra profile status" to ::ProfilingStatus,
+                "cassandra profile fetch" to ::ProfilingFetch,
+                "cassandra profile flamegraph" to ::ProfilingFlamegraph,
+            ).map { (name, command) -> Arguments.of(name, command) }
+
+        @JvmStatic
+        fun clientDriverCommands(): List<Arguments> = listOf(Arguments.of("cassandra cql", { Cql() as PicoCommand }))
     }
 }

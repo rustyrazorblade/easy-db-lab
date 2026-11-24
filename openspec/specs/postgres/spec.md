@@ -41,12 +41,17 @@ Stop MUST preserve data; data is only deleted on uninstall. Starting after a sto
 
 #### Scenario: Data survives stop and start on a provisioned class
 - **GIVEN** a recorded kit StorageClass that reclaims with `Retain`
-- **WHEN** `postgres stop` deletes the Cluster and CNPG deletes its claims, and `postgres start` is run
-- **THEN** the `kit-storage` step (`rebind-released: true`) reopens the Released volumes before the Cluster is applied, and the new claims bind them, so the data is accessible.
+- **WHEN** data is written, `postgres stop` is run, and `postgres start` is run
+- **THEN** the data is accessible, on the same claims and volumes, with no new initdb job.
+
+#### Scenario: Stop hibernates the Cluster
+- **WHEN** the user runs `postgres stop`
+- **THEN** the CNPG `Cluster` is annotated `cnpg.io/hibernation=on` and the NodePort service is deleted; the `Cluster`, its claims, its credentials Secret and its ImageCatalog are kept, so CNPG removes the instance pods and keeps the dataset.
+- **AND** `postgres start` applies the `Cluster` with `cnpg.io/hibernation: "off"`, and CNPG brings the instances back on their own volumes. A `Cluster` deleted and applied again would run `bootstrap.initdb`, which moves an existing PGDATA aside and serves a new empty database, so `stop` never deletes it.
 
 #### Scenario: Uninstall deletes data
 - **WHEN** the user runs `postgres uninstall` on local volumes
-- **THEN** the CNPG operator is removed and the instance's PVs, its class `edl-local-<instance>` and its node directories are deleted.
+- **THEN** the instance's `Cluster`, its claims, Secret and ImageCatalog are deleted, the CNPG operator is removed when no other CNPG `Cluster` is left, and the instance's PVs, its class `edl-local-<instance>` and its node directories are deleted.
 
 #### Scenario: First start after fresh install
 - **WHEN** `postgres start` is run after a fresh install with no prior starts

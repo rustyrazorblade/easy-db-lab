@@ -9,7 +9,6 @@ import com.rustyrazorblade.easydblab.messageOrString
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
-import com.rustyrazorblade.easydblab.configuration.KitStorage as EnvironmentKitStorage
 
 private val log = KotlinLogging.logger {}
 
@@ -65,6 +64,8 @@ class WorkloadStepExecutor(
     private val kitProcessEnvironment: KitProcessEnvironment,
     private val kitStorageProvisioner: KitStorageProvisioner,
 ) {
+    private val kitStorageSource = KitStorageSource(k8sService)
+
     fun execute(
         steps: List<InstallStep>,
         phase: String,
@@ -219,7 +220,7 @@ class WorkloadStepExecutor(
                                     count = step.count,
                                     rebindReleased = step.rebindReleased,
                                 ),
-                            storage = EnvironmentKitStorage.from(ctx.clusterState),
+                            storage = kitStorageSource.of(ctx.clusterState),
                             state = ctx.clusterState,
                         )
                     }
@@ -229,7 +230,7 @@ class WorkloadStepExecutor(
                     kitStorageProvisioner.release(
                         kit = ctx.kitName,
                         nodeType = interp(step.nodeType),
-                        storage = EnvironmentKitStorage.from(ctx.clusterState),
+                        storage = kitStorageSource.of(ctx.clusterState),
                         state = ctx.clusterState,
                     )
 

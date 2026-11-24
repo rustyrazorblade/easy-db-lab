@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitStorageProvisioner
+import com.rustyrazorblade.easydblab.services.KitStorageSource
 import com.rustyrazorblade.easydblab.services.KitVolumes
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -21,6 +22,7 @@ import picocli.CommandLine.Option
 )
 class PlatformCreatePvs : PicoBaseCommand() {
     private val kitStorageProvisioner: KitStorageProvisioner by inject()
+    private val kitStorageSource: KitStorageSource by inject()
 
     @Option(
         names = ["--kit"],
@@ -56,7 +58,7 @@ class PlatformCreatePvs : PicoBaseCommand() {
         checkNotNull(clusterState.getControlHost()) { "No control node found. Is the cluster running?" }
         val targetHosts = clusterState.hosts[serverType].orEmpty()
         check(targetHosts.isNotEmpty()) { "No $nodeType nodes found in cluster state." }
-        val storage = KitStorage.from(clusterState)
+        val storage = KitStorage.from(clusterState) { kitStorageSource.defaultClass() }
         val volumes = KitVolumes(kit = kit, nodeType = nodeType, volumeClaimTemplateName = pvcTemplateName, size = size)
 
         when (storage) {
@@ -76,6 +78,8 @@ class PlatformCreatePvs : PicoBaseCommand() {
                 kitStorageProvisioner.provision(volumes, storage, clusterState)
                 eventBus.emit(Event.Platform.KitStorageClassChecked(kit = kit, storageClass = storage.storageClass))
             }
+            // No class to provision from; the provisioner refuses it with a typed event.
+            is KitStorage.NoStorageClass -> kitStorageProvisioner.provision(volumes, storage, clusterState)
         }
     }
 }

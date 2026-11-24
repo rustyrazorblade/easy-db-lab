@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
+import com.rustyrazorblade.easydblab.annotations.RequiresCapability
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
@@ -21,6 +24,7 @@ import picocli.CommandLine.Mixin
  * The sidecar DaemonSet, the running-workload record and the kit stop hooks belong to the whole
  * database, so they end only once the database runs on no db node, whatever earlier stops did.
  */
+@RequiresCapability(NodeCapability.NODE_SSH, alternative = Constants.Cassandra.KIT_ALTERNATIVE)
 @RequireProfileSetup
 @RequireSSHKey
 @RequiresProxy

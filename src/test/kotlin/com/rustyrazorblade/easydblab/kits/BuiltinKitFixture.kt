@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.TemplateService
@@ -27,6 +28,7 @@ class BuiltinKitFixture(
     kitStorageClass: String? = null,
     roleSelectors: RoleSelectors? = null,
     clientNetworks: List<String>? = null,
+    environment: Environment = Environment.Ec2K3s,
 ) {
     /**
      * A cluster with one control node, two db nodes and one app node, enough to resolve every
@@ -47,6 +49,7 @@ class BuiltinKitFixture(
                 ),
             roleSelectors = roleSelectors,
             clientNetworks = clientNetworks,
+            environment = environment,
         )
 
     /** The kit's parsed `kit.yaml`. */

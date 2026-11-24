@@ -94,9 +94,8 @@ install:
 start:
   - type: kit-storage
     node-type: db
-    # stop deletes the operator resource and the operator its claims; on a provisioned class
-    # the claims of the next start rebind the Released volumes that kept the data.
-    rebind-released: true
+    # The data claims are retained (reclaimPolicy: Retain in the installation), so they stay
+    # bound across stop and need no reopening.
   - type: manifest
     template: clickhouse-keeper.yaml
   - type: shell
@@ -204,6 +203,11 @@ uninstall:
   - type: delete
     kind: ClickHouseKeeperInstallation
     name: clickhouse-keeper
+    namespace: default
+  # The operator retains the data claims; uninstall is the one phase that deletes them.
+  - type: delete
+    kinds: [pvc]
+    selector: clickhouse.altinity.com/chi=clickhouse
     namespace: default
   - type: kit-storage-delete
   - type: helm-uninstall

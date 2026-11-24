@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.effectiveExposure
 import com.rustyrazorblade.easydblab.services.access.CassandraPodForward
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.ByteBuffer
@@ -100,7 +101,8 @@ class DefaultCqlSessionService(
 
     private fun getOrCreateSession(): CqlSession {
         val clusterState = clusterStateManager.load()
-        if (clusterState.exposure == Exposure.PortForward) return getOrCreateSingleEndpointSession()
+        val exposure = clusterState.effectiveExposure()
+        if (exposure == Exposure.PortForward) return getOrCreateSingleEndpointSession()
         val cassandraHosts = clusterState.hosts[ServerType.Cassandra] ?: emptyList()
 
         require(cassandraHosts.isNotEmpty()) { "No Cassandra hosts found in cluster state" }
@@ -120,7 +122,7 @@ class DefaultCqlSessionService(
         val contactPoints = cassandraHosts.map { it.privateIp }
 
         val session =
-            when (clusterState.exposure) {
+            when (exposure) {
                 Exposure.Direct -> {
                     log.info { "Creating new CqlSession via direct connection" }
                     sessionFactory.createDirectSession(contactPoints, datacenter)

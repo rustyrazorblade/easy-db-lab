@@ -449,19 +449,30 @@ class PortableObservabilityPlacementIntegrationTest {
             KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
         }
         val k8sService = DefaultK8sService(clientProvider, EventBus())
-        DefaultOtelSyncService(
-            clientProvider,
-            k8sService,
-            OtelManifestBuilder(templates),
-            stateManager,
-            ConfigChangeReport(k8sService, EventBus()),
-            // The local Docker capabilities with this test's hosting, which no recorded environment
-            // pairs yet: the claim storage arrives with #1035.
-            ClusterContractSource {
-                ClusterContract.of(state).copy(nodeCapabilities = NodeCapabilities.LOCAL_DOCKER, hosting = hosting)
-            },
-            ProfileRegion.NONE,
-        ).syncConfigMap().getOrThrow()
+        // The local Docker capabilities with this test's hosting, which no recorded environment
+        // pairs yet: the claim storage arrives with #1035.
+        val contract = ClusterContract.of(state).copy(nodeCapabilities = NodeCapabilities.LOCAL_DOCKER, hosting = hosting)
+        val inputs = ObservabilityDeployInputs(stateManager, ClusterContractSource { contract }, ProfileRegion.NONE)
+        // A kit sync updates a deployed collector only, so the collector is deployed first, as the stack deploy does.
+        val reading = inputs.read()
+        CollectorResources
+            .build(
+                OtelManifestBuilder(templates),
+                CollectorInputs(reading.state, reading.region, contract.nodeCapabilities, reading.scope),
+                emptyList(),
+            ).forEach { k8sService.applyResource(it).getOrThrow() }
+
+        val outcome =
+            DefaultOtelSyncService(
+                clientProvider,
+                k8sService,
+                OtelManifestBuilder(templates),
+                inputs,
+                ConfigChangeReport(k8sService, EventBus()),
+                CollectorPresence(k8sService),
+            ).syncConfigMap().getOrThrow()
+
+        assertThat(outcome).isEqualTo(CollectorSync.Applied)
 
         val config =
             client

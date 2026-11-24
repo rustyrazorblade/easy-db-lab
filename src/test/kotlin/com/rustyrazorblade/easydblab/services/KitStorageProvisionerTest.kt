@@ -216,8 +216,7 @@ class KitStorageProvisionerTest {
     @Nested
     inner class OnAProvisionedClass {
         /**
-         * postgres and clickhouse `stop` delete their CNPG Cluster or CHI, and the operator deletes
-         * the claims with it; the Retain PVs go Released. The next start must rebind them, or the
+         * A kit whose operator deletes its claims on `stop` leaves their Retain PVs Released. The next start must rebind them, or the
          * class provisions empty volumes and the data stays stranded on the Released PVs.
          */
         @Test

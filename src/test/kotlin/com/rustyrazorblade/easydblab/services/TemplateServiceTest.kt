@@ -125,10 +125,27 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildContextVariables fails and says to run up when the cluster has no account bucket yet`() {
+    fun `with no account bucket the context has no store entries and keeps the rest`() {
         setupClusterState(bucketName = null)
 
-        assertThatThrownBy { createService().buildContextVariables() }
+        val variables = createService().buildContextVariables()
+
+        assertThat(variables).doesNotContainKeys(
+            "ACCOUNT_BUCKET",
+            "STORE_BUCKET",
+            "PROFILES_STORE_PREFIX",
+            "STORE_REGION",
+            "STORE_ENDPOINT",
+        )
+        assertThat(variables).containsEntry("CLUSTER_NAME", "test-cluster-test-id").containsEntry("TENANT", "default")
+    }
+
+    /** The backends write to the store, so asking for it with no account bucket still fails at once. */
+    @Test
+    fun `the store backend fails and says to run up when the cluster has no account bucket yet`() {
+        setupClusterState(bucketName = null)
+
+        assertThatThrownBy { createService().storeBackend() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("easy-db-lab up")
     }

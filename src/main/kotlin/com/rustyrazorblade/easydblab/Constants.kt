@@ -1225,6 +1225,9 @@ object Constants {
     object Kit {
         const val CONFIG_FILE = "kit.yaml"
 
+        // The placeholder a kit claim names its StorageClass with (`KitStorage`).
+        const val KIT_STORAGE_CLASS_PLACEHOLDER = "__KIT_STORAGE_CLASS__"
+
         // Lifecycle phase names
         const val PHASE_INSTALL = "install"
         const val PHASE_START = "start"

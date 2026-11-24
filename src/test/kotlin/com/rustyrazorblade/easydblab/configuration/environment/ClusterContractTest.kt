@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.environment
 import com.rustyrazorblade.easydblab.configuration.BackendStorage
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
@@ -209,6 +210,36 @@ class ClusterContractTest {
         }
     }
 
+    /** Only EC2 nodes are easy-db-lab's, with the NVMe the per-kit local volumes live on. */
+    @Test
+    fun `only an EC2 cluster defaults its kits to local volumes, any other takes the cluster's default class`() {
+        assertThat(environments().associateWith { ClusterContract.of(stateFor(it)).kitStorageDefault })
+            .containsExactlyEntriesOf(
+                mapOf(
+                    Environment.Ec2K3s to KitStorageDefault.LocalVolumes,
+                    Environment.K3sDocker("/d") to KitStorageDefault.ClusterDefaultClass,
+                    Environment.Kubeconfig("/k") to KitStorageDefault.ClusterDefaultClass,
+                ),
+            )
+    }
+
+    /**
+     * A K3s in Docker or brought cluster is reached by a port-forward through its kubeconfig, whatever
+     * the state records (a hand-written or older state reads as Socks). EC2 keeps what `init` recorded.
+     */
+    @Test
+    fun `EC2 takes the recorded exposure and every other environment is port-forwarded whatever it records`() {
+        assertThat(ClusterContract.of(stateFor(Environment.Ec2K3s).apply { exposure = Exposure.Direct }).exposure)
+            .isEqualTo(Exposure.Direct)
+        assertThat(environmentsWithoutAws()).allSatisfy { environment ->
+            assertThat(
+                Exposure.entries.map { recorded ->
+                    ClusterContract.of(stateFor(environment).apply { exposure = recorded }).exposure
+                },
+            ).containsOnly(Exposure.PortForward)
+        }
+    }
+
     @Test
     fun `the state source reads the state on every call`(
         @TempDir tempDir: File,
@@ -277,6 +308,8 @@ class ClusterContractTest {
                     nodeAccessForm = NodeAccessForm.Ssh,
                     storeKind = StoreKind.ObjectStore,
                     networkMode = NetworkMode.Socks,
+                    exposure = Exposure.Socks,
+                    kitStorageDefault = KitStorageDefault.LocalVolumes,
                     nodeCapabilities = NodeCapabilities.AWS,
                     hosting = ObservabilityHosting.AWS,
                     namespace = "default",
@@ -296,6 +329,8 @@ class ClusterContractTest {
                     nodeAccessForm = NodeAccessForm.ContainerExec,
                     storeKind = StoreKind.ObjectStore,
                     networkMode = NetworkMode.Direct,
+                    exposure = Exposure.PortForward,
+                    kitStorageDefault = KitStorageDefault.ClusterDefaultClass,
                     nodeCapabilities = NodeCapabilities.LOCAL_DOCKER,
                     hosting =
                         ObservabilityHosting(
@@ -321,6 +356,8 @@ class ClusterContractTest {
                     nodeAccessForm = NodeAccessForm.None,
                     storeKind = StoreKind.ObjectStore,
                     networkMode = NetworkMode.Direct,
+                    exposure = Exposure.PortForward,
+                    kitStorageDefault = KitStorageDefault.ClusterDefaultClass,
                     nodeCapabilities = NodeCapabilities.NONE,
                     hosting =
                         ObservabilityHosting(

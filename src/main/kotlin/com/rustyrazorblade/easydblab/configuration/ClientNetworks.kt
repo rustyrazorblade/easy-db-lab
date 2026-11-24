@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.environment.ClientNetworkOrigin
 import com.rustyrazorblade.easydblab.configuration.environment.ClusterContract
 import com.rustyrazorblade.easydblab.network.Ipv4Cidr
+import com.rustyrazorblade.easydblab.proxy.effectiveExposure
 import kotlinx.serialization.json.Json
 
 /**
@@ -61,6 +62,24 @@ data class ClientNetworks(
             val values = recorded ?: builtNetworks(state)
             return ClientNetworks(values.map { parse(it, ::recordedNetworkError) }.distinct())
         }
+
+        /**
+         * The networks a database kit trusts: [from], plus the pod's own loopback `127.0.0.1/32` when
+         * the CLI reaches the cluster by port-forward ([Exposure.PortForward]). A port-forward arrives
+         * on the pod's loopback, which only a caller with the Kubernetes API can reach, so `postgres sql`
+         * and `clickhouse sql` then connect as they do on EC2: passwordless, from a trusted network. On
+         * EC2 the CLI reaches the kit through a NodePort (over SOCKS or Tailscale), which [from] covers.
+         */
+        fun forKits(state: ClusterState): ClientNetworks {
+            val networks = from(state)
+            return when (state.effectiveExposure()) {
+                Exposure.PortForward -> ClientNetworks((networks.cidrs + POD_LOOPBACK).distinct())
+                Exposure.Socks, Exposure.Direct -> networks
+            }
+        }
+
+        /** The pod's loopback, where a port-forward's connection arrives. */
+        private val POD_LOOPBACK = Ipv4Cidr.parse("127.0.0.1/32").getOrThrow()
 
         /** The networks easy-db-lab built, for a state that records none; refused anywhere else. */
         private fun builtNetworks(state: ClusterState): List<String> {

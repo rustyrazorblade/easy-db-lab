@@ -23,6 +23,10 @@ kind: Cluster
 metadata:
   name: __KIT_NAME__
   namespace: default
+  annotations:
+    # stop hibernates the Cluster (pods removed, Cluster and claims kept); start wakes it on its
+    # own volumes. Deleting and reapplying it would run initdb again on the old data.
+    cnpg.io/hibernation: "off"
 spec:
   instances: __INSTANCES__
   postgresUID: __POSTGRES_UID__

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
+import com.rustyrazorblade.easydblab.kubernetes.WorkspaceKubeconfig
 import com.rustyrazorblade.easydblab.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -86,6 +87,13 @@ class LocalClusterTooling(
         if (echo && stdout.isNotBlank()) println(stdout.trimEnd())
         return stdout
     }
+
+    /** The wrappers reach the cluster through the workspace kubeconfig, so its absence is the one reason. */
+    override fun unavailableReason(): String? =
+        when (WorkspaceKubeconfig.exists(workspace)) {
+            true -> null
+            false -> "no kubeconfig at ${WorkspaceKubeconfig.file(workspace)}"
+        }
 
     /** What a finished process wrote and how it ended. */
     private class Outcome(

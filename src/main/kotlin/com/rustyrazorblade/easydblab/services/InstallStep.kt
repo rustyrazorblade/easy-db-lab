@@ -120,9 +120,10 @@ sealed interface InstallStep {
      * does nothing, so a kit whose volume is optional (memcached extstore) creates no PV when the
      * feature is off.
      *
-     * [rebindReleased] is for a kit whose operator deletes its claims on `stop` (CNPG, Altinity):
-     * on a provisioned class the step reopens the class's Released volumes, so the claims the next
-     * apply makes rebind their data instead of getting new, empty volumes.
+     * [rebindReleased] is for a kit whose operator deletes its claims on `stop`: on a provisioned
+     * class the step reopens the class's Released volumes, so the claims the next apply makes
+     * rebind their data instead of getting new, empty volumes. No built-in kit needs it: postgres
+     * hibernates its Cluster and clickhouse retains its claims, so their claims outlive `stop`.
      */
     @Serializable
     @SerialName("kit-storage")

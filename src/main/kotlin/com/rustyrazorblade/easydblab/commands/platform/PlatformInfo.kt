@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.KitStorage
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitStorageSource
 import io.fabric8.kubernetes.api.model.PersistentVolume
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -43,11 +44,12 @@ sealed interface PvAvailability {
 )
 class PlatformInfo : PicoBaseCommand() {
     private val k8sService: K8sService by inject()
+    private val kitStorageSource: KitStorageSource by inject()
 
     override fun execute() {
         val dbNodeCount = clusterState.hosts[ServerType.Cassandra]?.size ?: 0
         val appNodeCount = clusterState.hosts[ServerType.Stress]?.size ?: 0
-        val kitStorage = KitStorage.from(clusterState)
+        val kitStorage = KitStorage.from(clusterState) { kitStorageSource.defaultClass() }
         val availablePvs =
             when (kitStorage) {
                 is KitStorage.LocalVolumes ->
@@ -55,7 +57,7 @@ class PlatformInfo : PicoBaseCommand() {
                         onSuccess = { PvAvailability.Counted(availablePvsByPool(it)) },
                         onFailure = { PvAvailability.Unreadable(it.message ?: it.javaClass.simpleName) },
                     )
-                is KitStorage.Provisioned -> null
+                is KitStorage.Provisioned, is KitStorage.NoStorageClass -> null
             }
 
         println(buildInfoText(dbNodeCount, appNodeCount, kitStorage, availablePvs))
@@ -126,6 +128,8 @@ class PlatformInfo : PicoBaseCommand() {
                         "default size ${kitStorage.defaultSize}"
                 is KitStorage.Provisioned ->
                     "StorageClass ${kitStorage.storageClass}, default size ${kitStorage.defaultSize}"
+                is KitStorage.NoStorageClass ->
+                    "no StorageClass (none recorded and the cluster has no default), default size ${kitStorage.defaultSize}"
             }
     }
 }

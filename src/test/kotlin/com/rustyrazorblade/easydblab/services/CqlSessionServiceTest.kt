@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Exposure
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.environment.Environment
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.access.CassandraPodForward
@@ -20,6 +21,9 @@ import io.fabric8.kubernetes.client.LocalPortForward
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -183,6 +187,35 @@ class CqlSessionServiceTest : BaseKoinTest() {
         verify(mockSessionFactory, never()).createSession(any(), any(), any())
     }
 
+    /**
+     * A cluster the user brings (or K3s in Docker) has no Cassandra host in its state, and may record
+     * Socks (a hand-written state, or one older than the field). Its contract is port-forwarded, so the
+     * session is the single-endpoint one, and no host lookup happens.
+     */
+    @ParameterizedTest(name = "{0}, recorded {1}")
+    @MethodSource("forwardedClusters")
+    fun `a cluster with no host in state takes the port-forward whatever exposure it records`(
+        environment: Environment,
+        recorded: Exposure,
+    ) {
+        whenever(mockClusterStateManager.load())
+            .thenReturn(ClusterState(name = "brought", environment = environment).apply { exposure = recorded })
+
+        val service =
+            DefaultCqlSessionService(
+                socksProxyService = mockSocksProxy,
+                clusterStateManager = mockClusterStateManager,
+                sessionFactory = mockSessionFactory,
+                resourceManager = mockResourceManager,
+                singleEndpoint = ::singleEndpoint,
+            )
+
+        service.execute("SELECT now() FROM system.local").getOrThrow()
+
+        verify(mockSessionFactory).createSingleEndpointSession(InetSocketAddress("127.0.0.1", 24042), "dc1")
+        verify(mockSocksProxy, never()).getLocalPort()
+    }
+
     @Test
     fun `a forward opened for a session that could not be created is closed when the CLI exits`() {
         whenever(mockClusterStateManager.load())
@@ -223,5 +256,13 @@ class CqlSessionServiceTest : BaseKoinTest() {
 
         assertThat(forwardedPorts).containsExactly(24042, 24042)
         verify(mockSessionFactory, times(1)).createSingleEndpointSession(any(), any())
+    }
+
+    companion object {
+        @JvmStatic
+        fun forwardedClusters(): List<Arguments> =
+            listOf(Environment.K3sDocker("/data"), Environment.Kubeconfig("/kube/config")).flatMap { environment ->
+                Exposure.entries.map { Arguments.of(environment, it) }
+            }
     }
 }

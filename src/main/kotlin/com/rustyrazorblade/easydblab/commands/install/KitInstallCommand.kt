@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.RoleSelectors
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.ClusterTooling
 import com.rustyrazorblade.easydblab.services.ExtensionRegistry
 import com.rustyrazorblade.easydblab.services.ExtensionResolver
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -17,6 +18,7 @@ import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import com.rustyrazorblade.easydblab.services.requireAvailable
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import java.io.File
@@ -38,6 +40,9 @@ class KitInstallCommand(
 ) : BaseInstallCommand() {
     private val workloadStepExecutor: WorkloadStepExecutor by inject()
     private val roleNodes: RoleNodes by inject()
+
+    /** Where helm and kubectl run for this workspace; asked whether it can reach the cluster before anything is written. */
+    private val clusterTooling: ClusterTooling by inject()
 
     internal val argValues: MutableMap<String, String> = mutableMapOf()
     internal var force: Boolean = false
@@ -110,6 +115,10 @@ class KitInstallCommand(
             return
         }
 
+        // Install steps reach the cluster; checked before the scaffold is written, so a workspace that
+        // cannot reach it is left with no half-installed kit.
+        if (config.install.isNotEmpty()) clusterTooling.requireAvailable()
+
         val extensionVars = buildExtensionVars()
         val storageSize = argValues.remove("STORAGE_SIZE").orEmpty()
         renderAndWrite(
@@ -121,7 +130,6 @@ class KitInstallCommand(
         )
 
         if (config.install.isNotEmpty()) {
-            checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
             val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables

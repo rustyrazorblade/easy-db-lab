@@ -43,7 +43,7 @@ The system MUST support installing, starting, stopping, and uninstalling ClickHo
 #### Scenario: Stop preserves data
 
 - **WHEN** the user runs `clickhouse stop`
-- **THEN** the ClickHouseInstallation and NodePort service are deleted, but PVs and on-disk data remain.
+- **THEN** the ClickHouseInstallation and NodePort service are deleted, but the data claims (`reclaimPolicy: Retain`), their PVs and the tables on them remain. With the operator's default reclaim policy, deleting the installation would first drop every MergeTree table and view and then delete the claims.
 
 #### Scenario: Start after stop resumes dataset
 

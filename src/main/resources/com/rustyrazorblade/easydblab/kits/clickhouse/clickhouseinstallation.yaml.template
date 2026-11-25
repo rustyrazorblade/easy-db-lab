@@ -131,6 +131,10 @@ spec:
                           - db
     volumeClaimTemplates:
       - name: data
+        # With the operator's default (Delete), deleting this installation at stop runs DROP TABLE
+        # ... SYNC on every MergeTree table and view and then deletes the claims (issue 985). Retain
+        # skips both: the claims and their tables survive stop, and uninstall deletes the claims.
+        reclaimPolicy: Retain
         spec:
           storageClassName: __STORAGE_CLASS_WFC__
           # Binds only this kit's platform PVs; every kit's PVs share the storage class.

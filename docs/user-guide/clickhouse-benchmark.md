@@ -85,8 +85,8 @@ When a statement fails, `prepare` shows the server's error and exits non-zero. I
 `hits`. When the load itself fails, it also says `hits may be partly loaded; run prepare --recreate
 to reload it`.
 
-`hits` lives on the target's disks. When you stop and start the `clickhouse` kit, the table is gone
-(issue 985), so run `prepare` again before the next `start`.
+`hits` lives on the target's disks and survives a `stop` and `start` of the `clickhouse` kit; run
+`prepare` again only after `clickhouse uninstall`.
 
 #### Loading from your own S3 files
 

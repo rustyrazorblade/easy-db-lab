@@ -24,10 +24,10 @@ The system SHALL create ClickHouse PersistentVolumes as the first step of `click
 
 The `platform-pvs` step in `start` MUST be idempotent: if PVs already exist (from a previous run), the system SHALL clear any stale claimRef UIDs and continue without error, not attempt to recreate the PVs.
 
-#### Scenario: Released PVs rebind on restart
+#### Scenario: Claims stay bound across a restart
 
-- **WHEN** `clickhouse stop` is run (deleting the CHI and PVCs) and then `clickhouse start` is run again
-- **THEN** the system detects the Released PVs, clears the stale claimRef UID, and the new PVCs bind successfully.
+- **WHEN** `clickhouse stop` is run (deleting the CHI, whose data claim template declares `reclaimPolicy: Retain`) and then `clickhouse start` is run again
+- **THEN** the operator deleted neither the claims nor any table, the existing PVs are left as they are, and the new pods mount the same claims.
 
 #### Scenario: Data survives a stop/start cycle
 
@@ -50,7 +50,7 @@ The system MUST NOT delete ClickHouse PVs or data during `clickhouse stop`. PVs 
 #### Scenario: Uninstall after start removes PVs and data
 
 - **WHEN** `clickhouse start` has been run and then `clickhouse uninstall` is run
-- **THEN** all clickhouse PVs are deleted and the data directory is removed from cluster nodes.
+- **THEN** the retained data claims (`clickhouse.altinity.com/chi=clickhouse`) are deleted first, then all clickhouse PVs, and the data directory is removed from cluster nodes.
 
 #### Scenario: Uninstall without prior start succeeds
 

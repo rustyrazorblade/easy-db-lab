@@ -18,6 +18,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.testcontainers.DockerClientFactory
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -37,6 +38,7 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         const val BOUND_SECONDS = 5L
         const val KILLED_EXIT_CODE = 137
         const val EVENTS_SECONDS = 30L
+        const val SINCE_MARGIN_SECONDS = 5L
         val LIFECYCLE_ACTIONS = arrayOf("start", "kill", "die", "destroy")
     }
 
@@ -74,17 +76,22 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
 
     /**
      * Records the container actions the daemon reports while [block] runs, keyed by container id,
-     * with a die carrying its exit code (`die:137`). The subscription is live and open before
-     * [block] starts: the daemon replays only its last 256 events, which the other tests'
-     * health-check execs overrun within the bound under a full parallel run, so a replay can lose a
-     * container's start. Only [LIFECYCLE_ACTIONS] are streamed, so the other tests' execs stay out.
+     * with a die carrying its exit code (`die:137`). The stream asks the daemon to replay from
+     * [SINCE_MARGIN_SECONDS] before the call, so a `start` the daemon emits before it has registered
+     * this subscriber is replayed, not lost; the stream being open does not prove the subscriber is
+     * registered. The margin also absorbs the rounding of the timestamp to whole seconds. The replay
+     * can include other tests' containers, which is harmless: callers read only the container id
+     * [Docker.runContainer] reported, and only [LIFECYCLE_ACTIONS] are streamed, so the other
+     * tests' execs stay out.
      */
     private fun recordingContainerEvents(block: () -> Unit): ContainerEvents {
         val events = ContainerEvents()
+        val since = Instant.now().epochSecond - SINCE_MARGIN_SECONDS
         daemon
             .eventsCmd()
             .withEventTypeFilter(EventType.CONTAINER)
             .withEventFilter(*LIFECYCLE_ACTIONS)
+            .withSince(since.toString())
             .exec(events)
             .use {
                 assertThat(events.awaitStarted(EVENTS_SECONDS, TimeUnit.SECONDS))
@@ -115,7 +122,9 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         fun of(containerId: String): List<String> = actions[containerId].orEmpty().toList()
 
         fun awaitDestroyOf(containerId: String) {
-            latchFor(containerId).await(EVENTS_SECONDS, TimeUnit.SECONDS)
+            assertThat(latchFor(containerId).await(EVENTS_SECONDS, TimeUnit.SECONDS))
+                .`as`("the daemon reported the destroy of container $containerId within $EVENTS_SECONDS seconds")
+                .isTrue()
         }
 
         private fun latchFor(containerId: String) = destroyed.computeIfAbsent(containerId) { CountDownLatch(1) }

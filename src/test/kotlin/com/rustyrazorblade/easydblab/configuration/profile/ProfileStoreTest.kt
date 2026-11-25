@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.profile.aws.LegacyAwsProfileR
 import com.rustyrazorblade.easydblab.configuration.profile.aws.awsProfileSerializers
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -200,6 +201,35 @@ class ProfileStoreTest {
         // The converted file is what the next command reads, even with the earlier file gone.
         legacyFile.delete()
         assertThat(store().load()).isEqualTo(loaded)
+    }
+
+    /**
+     * Converting the earlier file writes `profile.yaml`; a directory that cannot be written is
+     * `profile.yaml` as the file the failure names, not a raw IOException. The lock file exists
+     * already, so the lock opens and the failure is the migration write.
+     *
+     * Control: let the IOException escape `write`; the exception type check fails.
+     */
+    @Test
+    fun `a profile directory that cannot be written fails the conversion naming profile yaml`() {
+        legacy("aws-profile")
+        File(profileDir, Constants.ConfigPaths.PROFILE_LOCK_FILE).createNewFile()
+        val dir = profileDir.toPath()
+        val original = Files.getPosixFilePermissions(dir)
+        Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("r-xr-xr-x"))
+        try {
+            // Root can write anywhere, so the failure cannot be triggered.
+            assumeFalse(Files.isWritable(dir))
+
+            assertThatThrownBy { store().load() }
+                .isInstanceOfSatisfying(ProfileUnreadableException::class.java) { e ->
+                    assertThat(e.file).isEqualTo(profileFile)
+                    assertThat(e.message).contains(profileFile.path)
+                }
+            assertThat(profileFile).doesNotExist()
+        } finally {
+            Files.setPosixFilePermissions(dir, original)
+        }
     }
 
     /** Control: print a notice when converting; the captured stdout is not empty. */

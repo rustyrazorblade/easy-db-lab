@@ -137,8 +137,13 @@ class ProfileStore(
     private fun decode(): Profile = redacted(file) { yaml.decodeFromString(Profile.serializer(), file.readText()) }
 
     private fun write(profile: Profile) {
-        file.writeTextAtomically(yaml.encodeToString(Profile.serializer(), profile) + "\n") { staged ->
-            Files.setPosixFilePermissions(staged.toPath(), PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
+        val text = yaml.encodeToString(Profile.serializer(), profile) + "\n"
+        try {
+            file.writeTextAtomically(text) { staged ->
+                Files.setPosixFilePermissions(staged.toPath(), PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
+            }
+        } catch (e: IOException) {
+            throw ProfileUnreadableException(file, "Cannot write the profile file $file: ${e::class.simpleName}", e)
         }
     }
 
@@ -235,7 +240,15 @@ class ProfileStore(
                 } catch (e: IOException) {
                     throw ProfileUnreadableException(lockFile, "Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
                 }
-            channel.use { it.lock().use { block() } }
+            channel.use {
+                val held =
+                    try {
+                        it.lock()
+                    } catch (e: IOException) {
+                        throw ProfileUnreadableException(lockFile, "Cannot lock the profile lock file $lockFile: ${e::class.simpleName}", e)
+                    }
+                held.use { block() }
+            }
         }
 
     private companion object {

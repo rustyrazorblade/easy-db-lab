@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.containers
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import org.assertj.core.api.Assertions.assertThat
@@ -29,7 +30,9 @@ class PackerTest : BaseKoinTest() {
         val destination = packer.destinationForBuild()
 
         assertThat(destination.keyName).isEqualTo("easy-db-lab-late")
-        assertThat(destination.accountBucket).isEqualTo("easy-db-lab-late")
+        val build = PackerBuild("base.pkr.hcl", "0123456789ab", "us-west-2", maxAttempts = 1, keepOnError = false)
+        assertThat(Packer.buildCommand(build, Arch.AMD64, destination, "build-site-key", releaseVersion = null))
+            .containsSequence("-var", "s3_bucket=easy-db-lab-late")
     }
 
     /** Control: drop the key name check; a build with no key pair starts and the test fails. */

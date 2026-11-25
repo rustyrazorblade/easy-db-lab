@@ -141,7 +141,8 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
      * so every later command uses the one bucket the profile names.
      *
      * Control: save this call's bucket without reading the saved one inside `update`; the profile
-     * names this call's bucket and the other command's is orphaned.
+     * names this call's bucket and the other command's is orphaned. A second control: emit nothing
+     * for the unused bucket; the event check fails.
      */
     @Test
     fun `a bucket another command saved while this one created its own is kept`() {
@@ -152,10 +153,26 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
             null
         }
 
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
         val bucket = service.ensureAccountBucket()
 
+        val created = argumentCaptor<CreateBucketRequest>()
+        verify(mockS3Client).createBucket(created.capture())
         assertThat(bucket).isEqualTo("easy-db-lab-saved-first")
         assertThat(store.load().aws.accountBucket).isEqualTo("easy-db-lab-saved-first")
+        assertThat(emitted)
+            .contains(Event.Setup.S3BucketUnused(created.firstValue.bucket(), "easy-db-lab-saved-first"))
+            .noneMatch { it is Event.Setup.S3BucketCreated }
     }
 
     private fun s3Tags(vararg tags: Pair<String, String>) =

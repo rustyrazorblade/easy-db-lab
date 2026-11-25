@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import picocli.CommandLine
@@ -208,12 +209,14 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     /**
      * A profile file the user cannot read is reported like an undecodable one.
      *
-     * Control: catch only IllegalStateException in the command; the AccessDeniedException escapes.
+     * Control: drop the IOException redaction in the store; the FileNotFoundException escapes.
      */
     @Test
     fun `profile show reports a profile file it has no permission to read`() {
         val store = getKoin().get<ProfileStore>()
         Files.setPosixFilePermissions(store.file.toPath(), PosixFilePermissions.fromString("---------"))
+        // Root reads any file whatever its mode, so there is nothing to test there.
+        assumeFalse(Files.isReadable(store.file.toPath()))
 
         assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
 

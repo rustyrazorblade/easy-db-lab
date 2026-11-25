@@ -124,7 +124,11 @@ class ProfileStore(
     private fun migrate(): Profile {
         val profile =
             redacted(legacyFile) { legacyReader.migrate(legacyValues()) }
-                ?: error("The profile in $profileDir has no credentials. Run 'easy-db-lab profile setup' to finish it.")
+                ?: throw ProfileUnreadableException(
+                    legacyFile,
+                    "The profile in $profileDir has no credentials. Run 'easy-db-lab profile setup' to finish it.",
+                    cause = null,
+                )
         log.debug { "Converted $legacyFile into $file" }
         write(profile)
         return profile
@@ -212,8 +216,9 @@ class ProfileStore(
         where: String?,
         reason: String,
         cause: Throwable?,
-    ): IllegalStateException =
-        IllegalStateException(
+    ): ProfileUnreadableException =
+        ProfileUnreadableException(
+            source,
             "Cannot read $source${where?.let { " at $it" }.orEmpty()}: $reason. " +
                 "The text of the file is not shown because it can hold credentials. " +
                 "Fix the file or run 'easy-db-lab profile setup'.",
@@ -228,7 +233,7 @@ class ProfileStore(
                 try {
                     FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
                 } catch (e: IOException) {
-                    throw IllegalStateException("Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
+                    throw ProfileUnreadableException(lockFile, "Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
                 }
             channel.use { it.lock().use { block() } }
         }

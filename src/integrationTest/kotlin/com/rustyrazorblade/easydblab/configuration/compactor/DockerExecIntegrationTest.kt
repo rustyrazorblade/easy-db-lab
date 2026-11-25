@@ -1,8 +1,11 @@
 package com.rustyrazorblade.easydblab.configuration.compactor
 
+import com.rustyrazorblade.easydblab.ObservabilityBackends
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.testcontainers.DockerClientFactory
+import org.testcontainers.images.RemoteDockerImage
+import org.testcontainers.utility.DockerImageName
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
@@ -15,9 +18,10 @@ class DockerExecIntegrationTest {
     @Test
     fun `under concurrent execs every exit code is the command's own`() {
         val docker = DockerClientFactory.instance().client()
+        RemoteDockerImage(DockerImageName.parse(ObservabilityBackends.BUSYBOX_IMAGE)).get()
         val id =
             docker
-                .createContainerCmd("busybox:1.37.0-musl")
+                .createContainerCmd(ObservabilityBackends.BUSYBOX_IMAGE)
                 .withCmd("/bin/busybox", "sleep", "600")
                 .withLabels(DockerClientFactory.DEFAULT_LABELS)
                 .exec()

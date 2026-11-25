@@ -104,7 +104,9 @@ class AwsS3BucketService(
                 .update { profile -> profile.withAws { it.copy(accountBucket = it.accountBucket.ifBlank { bucketName }) } }
                 .aws
                 .accountBucket
-        if (saved == bucketName) eventBus.emit(Event.Setup.S3BucketCreated(bucketName))
+        eventBus.emit(
+            if (saved == bucketName) Event.Setup.S3BucketCreated(bucketName) else Event.Setup.S3BucketUnused(bucketName, saved),
+        )
         return saved
     }
 

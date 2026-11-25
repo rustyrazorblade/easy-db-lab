@@ -1,11 +1,15 @@
 package com.rustyrazorblade.easydblab
 
+import com.github.dockerjava.api.async.ResultCallback
 import com.github.dockerjava.api.model.Container
+import com.github.dockerjava.api.model.EventType
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.docker.DefaultDockerClientProvider
-import com.rustyrazorblade.easydblab.runCatchingException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -15,9 +19,11 @@ import org.mockito.kotlin.mock
 import org.testcontainers.DockerClientFactory
 import java.time.Duration
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.concurrent.thread
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import com.github.dockerjava.api.model.Event as DockerEvent
 
 /**
  * Runs a real container through [Docker.runContainer] on the local daemon: a container still
@@ -29,7 +35,9 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
         const val IMAGE = "busybox:1.36"
         const val SLEEP_SECONDS = 60
         const val BOUND_SECONDS = 5L
-        const val POLL_MILLIS = 200L
+        const val KILLED_EXIT_CODE = 137
+        const val EVENTS_SECONDS = 30L
+        val LIFECYCLE_ACTIONS = arrayOf("start", "kill", "die", "destroy")
     }
 
     override fun coreTestModules(): List<Module> = emptyList()
@@ -37,12 +45,81 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { EventBus() }
+                single {
+                    EventBus().apply {
+                        addListener(
+                            object : EventListener {
+                                override fun onEvent(envelope: EventEnvelope) {
+                                    (envelope.event as? Event.Docker.ContainerStarting)?.let { startedIds += it.containerId }
+                                }
+
+                                override fun close() = Unit
+                            },
+                        )
+                    }
+                }
                 single<OutputHandler> { BufferedOutputHandler() }
             },
         )
 
     private val daemon by lazy { DockerClientFactory.instance().client() }
+
+    private val startedIds = CopyOnWriteArrayList<String>()
+
+    /** The id of the one container [Docker.runContainer] started, as its start event reported it. */
+    private fun startedContainerId(): String {
+        assertThat(startedIds).`as`("the container start was reported once").hasSize(1)
+        return startedIds.single()
+    }
+
+    /**
+     * Records the container actions the daemon reports while [block] runs, keyed by container id,
+     * with a die carrying its exit code (`die:137`). The subscription is live and open before
+     * [block] starts: the daemon replays only its last 256 events, which the other tests'
+     * health-check execs overrun within the bound under a full parallel run, so a replay can lose a
+     * container's start. Only [LIFECYCLE_ACTIONS] are streamed, so the other tests' execs stay out.
+     */
+    private fun recordingContainerEvents(block: () -> Unit): ContainerEvents {
+        val events = ContainerEvents()
+        daemon
+            .eventsCmd()
+            .withEventTypeFilter(EventType.CONTAINER)
+            .withEventFilter(*LIFECYCLE_ACTIONS)
+            .exec(events)
+            .use {
+                assertThat(events.awaitStarted(EVENTS_SECONDS, TimeUnit.SECONDS))
+                    .`as`("the daemon opened the event stream")
+                    .isTrue()
+                block()
+                events.awaitDestroyOf(startedContainerId())
+            }
+        return events
+    }
+
+    /** Container actions in the order the daemon reported them, per container id. */
+    private class ContainerEvents : ResultCallback.Adapter<DockerEvent>() {
+        private val actions = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
+        private val destroyed = ConcurrentHashMap<String, CountDownLatch>()
+
+        override fun onNext(event: DockerEvent) {
+            val id = event.actor?.id ?: event.id ?: return
+            val action = event.action.orEmpty()
+            actions.computeIfAbsent(id) { CopyOnWriteArrayList() } +=
+                when (action) {
+                    "die" -> "die:${event.actor?.attributes?.get("exitCode").orEmpty()}"
+                    else -> action
+                }
+            if (action == "destroy") latchFor(id).countDown()
+        }
+
+        fun of(containerId: String): List<String> = actions[containerId].orEmpty().toList()
+
+        fun awaitDestroyOf(containerId: String) {
+            latchFor(containerId).await(EVENTS_SECONDS, TimeUnit.SECONDS)
+        }
+
+        private fun latchFor(containerId: String) = destroyed.computeIfAbsent(containerId) { CountDownLatch(1) }
+    }
 
     /** The containers, running or stopped, whose command carries [marker]. */
     private fun containersRunning(marker: String): List<Container> =
@@ -68,31 +145,24 @@ class DockerContainerBoundIntegrationTest : BaseKoinTest() {
     fun `a container still running when its wait ends is gone afterwards`() {
         val marker = "edl-${UUID.randomUUID().toString().take(8)}"
         val docker = docker()
-        val seenRunning = AtomicBoolean(false)
-        val watcherFailure = AtomicReference<Throwable>()
-        val watcher =
-            thread(isDaemon = true) {
-                runCatchingException {
-                    while (!seenRunning.get() && !Thread.currentThread().isInterrupted) {
-                        if (containersRunning(marker).any { it.state == "running" }) seenRunning.set(true)
-                        Thread.sleep(POLL_MILLIS)
-                    }
-                }.onFailure { e ->
-                    // An interrupt means the wait ended, and it can surface wrapped (an InterruptedIOException
-                    // cause); only a failure while still watching is the watcher's own.
-                    if (e !is InterruptedException && !Thread.currentThread().isInterrupted) watcherFailure.set(e)
-                }
+
+        val events =
+            recordingContainerEvents {
+                assertThatThrownBy {
+                    docker.runContainer(
+                        IMAGE,
+                        mutableListOf("sh", "-c", "sleep $SLEEP_SECONDS # $marker"),
+                        "",
+                        Duration.ofSeconds(BOUND_SECONDS),
+                    )
+                }.isInstanceOf(IllegalStateException::class.java)
+                    .hasMessageContaining("did not complete")
             }
 
-        assertThatThrownBy {
-            docker.runContainer(IMAGE, mutableListOf("sh", "-c", "sleep $SLEEP_SECONDS # $marker"), "", Duration.ofSeconds(BOUND_SECONDS))
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("did not complete")
-        watcher.interrupt()
-        watcher.join()
-
-        assertThat(watcherFailure.get()).`as`("the watcher could not list containers").isNull()
-        assertThat(seenRunning).`as`("the container was running when its wait ended").isTrue()
+        // The daemon's own record, not a sample of its state: it started, was killed while running
+        // (a sleep that exits on its own would die with 0 and no kill before it), and was destroyed.
+        assertThat(events.of(startedContainerId()))
+            .containsSubsequence("start", "kill", "die:$KILLED_EXIT_CODE", "destroy")
         assertThat(containersRunning(marker)).isEmpty()
     }
 

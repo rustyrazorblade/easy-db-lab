@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.profile.Destination
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileUnreadableException
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -65,11 +66,9 @@ class ProfileShow : PicoBaseCommand() {
             } else {
                 try {
                     ProfileSettings.Loaded(profileStore.load())
-                } catch (e: IllegalStateException) {
+                } catch (e: ProfileUnreadableException) {
                     log.warn { "Could not read the profile ${context.profile}: ${e::class.simpleName}" }
-                    // With no profile.yaml, the load failed converting the earlier file.
-                    val failed = profileStore.file.takeIf { it.exists() } ?: profileStore.legacyFile
-                    ProfileSettings.Unreadable(failed.absolutePath)
+                    ProfileSettings.Unreadable(e.file.absolutePath)
                 }
             }
 

@@ -45,6 +45,25 @@ class ProfileStoreTest {
     private val profileFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
     private val legacyFile get() = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
 
+    /**
+     * Converting the earlier file takes the lock; a lock file that cannot be opened is the file the
+     * failure names, so `profile show` reports it rather than a `settings.yaml` that reads fine.
+     *
+     * Control: throw a plain IllegalStateException for the lock file; the file check fails.
+     */
+    @Test
+    fun `a lock file that cannot be opened is the file the failure names`() {
+        legacy("aws-profile")
+        val lockFile = File(profileDir, Constants.ConfigPaths.PROFILE_LOCK_FILE)
+        check(lockFile.mkdir()) { "the lock path should become a directory" }
+
+        assertThatThrownBy { store().load() }
+            .isInstanceOfSatisfying(ProfileUnreadableException::class.java) { e ->
+                assertThat(e.file).isEqualTo(lockFile)
+                assertThat(e.message).contains(lockFile.path)
+            }
+    }
+
     /** Control: drop `tailscale` from the encoded profile; the rows with a Tailscale block fail. */
     @ParameterizedTest(name = "{0}")
     @MethodSource("profiles")

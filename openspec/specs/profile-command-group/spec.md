@@ -89,13 +89,14 @@ SHALL NOT throw.
 
 ### Requirement: `profile show` reports a malformed profile
 When the active profile's `settings.yaml` exists but cannot be deserialized, `profile show` SHALL
-report the profile as present but unreadable, naming the file path and `easy-db-lab profile setup`.
+report the profile as present but its file unusable, naming the failing file path, the reason (the
+read, decode, write or lock failure, never the file's text) and `easy-db-lab profile setup`.
 It SHALL NOT surface a raw deserialization error.
 
 #### Scenario: Truncated settings.yaml is reported, not thrown
 - **GIVEN** the active profile's `settings.yaml` exists but omits a field that has no default
 - **WHEN** the user runs `easy-db-lab profile show`
-- **THEN** the CLI reports the profile as present but unreadable and names the file path and `easy-db-lab profile setup`
+- **THEN** the CLI reports that the profile's file could not be used and names the file path, the reason and `easy-db-lab profile setup`
 - **AND** no raw deserialization error is shown
 
 ### Requirement: `profile show` honors the active profile selection

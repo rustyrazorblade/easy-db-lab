@@ -150,11 +150,13 @@ class ProfileShowTest {
 
     /** Control: print the profile directory instead of the failing file's path; the path check fails. */
     @Test
-    fun `an unreadable profile names profile yaml and profile setup`() {
-        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Unreadable("$PROFILE_DIR/profile.yaml"))
+    fun `a failed profile file names the file, the reason and profile setup`() {
+        val file = "$PROFILE_DIR/profile.yaml"
+        val reason = "Cannot write the profile file $file: IOException"
+        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason))
 
         assertThat(report)
-            .contains("could not be read:\n  $PROFILE_DIR/profile.yaml")
+            .contains("its file could not be used:\n  $file\n  $reason")
             .contains("easy-db-lab profile setup")
     }
 }

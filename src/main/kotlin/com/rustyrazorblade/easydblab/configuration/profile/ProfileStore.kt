@@ -124,7 +124,7 @@ class ProfileStore(
     private fun migrate(): Profile {
         val profile =
             redacted(legacyFile) { legacyReader.migrate(legacyValues()) }
-                ?: throw ProfileUnreadableException(
+                ?: throw ProfileFileException(
                     legacyFile,
                     "The profile in $profileDir has no credentials. Run 'easy-db-lab profile setup' to finish it.",
                     cause = null,
@@ -143,7 +143,7 @@ class ProfileStore(
                 Files.setPosixFilePermissions(staged.toPath(), PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
             }
         } catch (e: IOException) {
-            throw ProfileUnreadableException(file, "Cannot write the profile file $file: ${e::class.simpleName}", e)
+            throw ProfileFileException(file, "Cannot write the profile file $file: ${e::class.simpleName}", e)
         }
     }
 
@@ -221,8 +221,8 @@ class ProfileStore(
         where: String?,
         reason: String,
         cause: Throwable?,
-    ): ProfileUnreadableException =
-        ProfileUnreadableException(
+    ): ProfileFileException =
+        ProfileFileException(
             source,
             "Cannot read $source${where?.let { " at $it" }.orEmpty()}: $reason. " +
                 "The text of the file is not shown because it can hold credentials. " +
@@ -238,14 +238,14 @@ class ProfileStore(
                 try {
                     FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
                 } catch (e: IOException) {
-                    throw ProfileUnreadableException(lockFile, "Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
+                    throw ProfileFileException(lockFile, "Cannot open the profile lock file $lockFile: ${e::class.simpleName}", e)
                 }
             channel.use {
                 val held =
                     try {
                         it.lock()
                     } catch (e: IOException) {
-                        throw ProfileUnreadableException(lockFile, "Cannot lock the profile lock file $lockFile: ${e::class.simpleName}", e)
+                        throw ProfileFileException(lockFile, "Cannot lock the profile lock file $lockFile: ${e::class.simpleName}", e)
                     }
                 held.use { block() }
             }

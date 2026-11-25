@@ -181,8 +181,8 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
   - `loadForSetup()` gives setup flat keys (`region`, `awsProfile`, `keyName`, `s3Bucket`,
     `sshTransport`, ...) for either file, so a value that does not parse reaches setup to be asked again.
   - A parse error names the file and where parsing stopped, never the file's text (it holds secrets).
-    Every read failure (a parse error, an unreadable file, a lock file that cannot be opened) is a
-    `ProfileUnreadableException` carrying the `file` that failed, which `profile show` reports.
+    Every file failure (a parse error, an unreadable or unwritable file, a lock file that cannot be opened or locked) is a
+    `ProfileFileException` carrying the `file` that failed, which `profile show` reports.
 - **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
   `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.
   `isSetup()` is true when `profile.yaml` exists, or `settings.yaml` exists and holds credentials.

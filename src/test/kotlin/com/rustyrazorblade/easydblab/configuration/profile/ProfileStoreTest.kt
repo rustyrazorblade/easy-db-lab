@@ -59,7 +59,7 @@ class ProfileStoreTest {
         check(lockFile.mkdir()) { "the lock path should become a directory" }
 
         assertThatThrownBy { store().load() }
-            .isInstanceOfSatisfying(ProfileUnreadableException::class.java) { e ->
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
                 assertThat(e.file).isEqualTo(lockFile)
                 assertThat(e.message).contains(lockFile.path)
             }
@@ -222,7 +222,7 @@ class ProfileStoreTest {
             assumeFalse(Files.isWritable(dir))
 
             assertThatThrownBy { store().load() }
-                .isInstanceOfSatisfying(ProfileUnreadableException::class.java) { e ->
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
                     assertThat(e.file).isEqualTo(profileFile)
                     assertThat(e.message).contains(profileFile.path)
                 }

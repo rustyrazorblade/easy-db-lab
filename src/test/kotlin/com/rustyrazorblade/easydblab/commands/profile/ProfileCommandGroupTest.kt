@@ -181,7 +181,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
 
         val output = stdout.toString()
-        assertThat(output).contains("could not be read")
+        assertThat(output).contains("file could not be used")
         assertThat(output).contains("easy-db-lab profile setup")
         assertThat(output).doesNotContain("Exception")
         assertThat(output).doesNotContain("kaml")
@@ -202,8 +202,8 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         getKoin().get<ProfileShow>().execute()
 
         val output = stdout.toString()
-        assertThat(output).contains("could not be read:\n  ${store.legacyFile.absolutePath}")
-        assertThat(output).doesNotContain("could not be read:\n  ${store.file.absolutePath}")
+        assertThat(output).contains("file could not be used:\n  ${store.legacyFile.absolutePath}")
+        assertThat(output).doesNotContain("file could not be used:\n  ${store.file.absolutePath}")
     }
 
     /**
@@ -220,6 +220,37 @@ class ProfileCommandGroupTest : BaseKoinTest() {
 
         assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
 
-        assertThat(stdout.toString()).contains("could not be read:\n  ${store.file.absolutePath}")
+        assertThat(stdout.toString()).contains("file could not be used:\n  ${store.file.absolutePath}")
+    }
+
+    /**
+     * With a readable `settings.yaml` and a directory that cannot be written, the conversion fails
+     * on the write. The report names `profile.yaml` and the write reason, not "could not be read".
+     *
+     * Control: report every failure as "could not be read"; the reason check fails.
+     */
+    @Test
+    fun `profile show reports the write reason when the conversion cannot write profile yaml`() {
+        val store = getKoin().get<ProfileStore>()
+        store.file.delete()
+        val resource = "/com/rustyrazorblade/easydblab/configuration/profile/legacy/aws-profile.yaml"
+        store.legacyFile.writeBytes(checkNotNull(javaClass.getResource(resource)).readBytes())
+        File(context.profileDir, Constants.ConfigPaths.PROFILE_LOCK_FILE).createNewFile()
+        val dir = context.profileDir.toPath()
+        val original = Files.getPosixFilePermissions(dir)
+        Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("r-xr-xr-x"))
+        try {
+            // Root can write anywhere, so the failure cannot be triggered.
+            assumeFalse(Files.isWritable(dir))
+
+            getKoin().get<ProfileShow>().execute()
+
+            val output = stdout.toString()
+            assertThat(output).contains("its file could not be used:\n  ${store.file.absolutePath}")
+            assertThat(output).contains("Cannot write the profile file")
+            assertThat(output).doesNotContain("could not be read")
+        } finally {
+            Files.setPosixFilePermissions(dir, original)
+        }
     }
 }

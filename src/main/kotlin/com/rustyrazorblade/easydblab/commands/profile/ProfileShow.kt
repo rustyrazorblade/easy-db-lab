@@ -4,8 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.profile.Destination
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
-import com.rustyrazorblade.easydblab.configuration.profile.ProfileUnreadableException
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -27,9 +27,13 @@ sealed interface ProfileSettings {
     /** No profile is saved: the profile has never been set up. */
     data object Missing : ProfileSettings
 
-    /** A profile file exists but could not be read or decoded; [path] is the file that failed. */
-    data class Unreadable(
+    /**
+     * A profile file exists but could not be read, decoded, written or locked; [path] is the file
+     * that failed and [reason] the store's message, which never holds the file's text.
+     */
+    data class Failed(
         val path: String,
+        val reason: String,
     ) : ProfileSettings
 }
 
@@ -66,9 +70,9 @@ class ProfileShow : PicoBaseCommand() {
             } else {
                 try {
                     ProfileSettings.Loaded(profileStore.load())
-                } catch (e: ProfileUnreadableException) {
-                    log.warn { "Could not read the profile ${context.profile}: ${e::class.simpleName}" }
-                    ProfileSettings.Unreadable(e.file.absolutePath)
+                } catch (e: ProfileFileException) {
+                    log.warn { "Could not use a file of the profile ${context.profile}: ${e::class.simpleName}" }
+                    ProfileSettings.Failed(e.file.absolutePath, e.message.orEmpty())
                 }
             }
 
@@ -107,10 +111,11 @@ class ProfileShow : PicoBaseCommand() {
                         |This profile is not configured.
                         |$SETUP_HINT
                         """.trimMargin()
-                    is ProfileSettings.Unreadable ->
+                    is ProfileSettings.Failed ->
                         """
-                        |This profile is configured but could not be read:
+                        |This profile is configured but its file could not be used:
                         |  ${settings.path}
+                        |  ${settings.reason}
                         |$SETUP_HINT
                         """.trimMargin()
                 }

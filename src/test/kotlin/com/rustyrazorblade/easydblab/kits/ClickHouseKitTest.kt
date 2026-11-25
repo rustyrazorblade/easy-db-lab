@@ -179,6 +179,41 @@ class ClickHouseKitTest : BaseKoinTest() {
         ).contains("-l $KEEPER_POD_SELECTOR")
     }
 
+    /**
+     * With the operator's default reclaim policy, deleting the installation at `stop` dropped every
+     * MergeTree table and then deleted the claims (issue 985). The data claim template retains them.
+     */
+    @Test
+    fun `stop deletes the installation, whose data claims are retained`() {
+        val installation =
+            kit
+                .render("clickhouseinstallation.yaml.template")
+                .filterIsInstance<GenericKubernetesResource>()
+                .single { it.kind == "ClickHouseInstallation" }
+        val data =
+            installation
+                .get<List<Map<String, Any>>>("spec", "templates", "volumeClaimTemplates")
+                .single { it["name"] == "data" }
+
+        assertThat(
+            kit.config.stop
+                .filterIsInstance<InstallStep.Delete>()
+                .map { it.kind },
+        ).contains("ClickHouseInstallation")
+        assertThat(data).containsEntry("reclaimPolicy", "Retain")
+    }
+
+    /** The retained claims hold the volumes, so uninstall deletes them before it deletes the volumes. */
+    @Test
+    fun `uninstall deletes the installation's claims before its volumes`() {
+        val steps = kit.config.uninstall
+        val claims = steps.filterIsInstance<InstallStep.Delete>().single { it.bySelector }
+
+        assertThat(claims.kinds).containsExactly("pvc")
+        assertThat(parseLabelSelector(claims.selector)).isEqualTo(mapOf("clickhouse.altinity.com/chi" to "clickhouse"))
+        assertThat(steps.indexOf(claims)).isLessThan(steps.indexOfFirst { it is InstallStep.PlatformPvsDelete })
+    }
+
     @Test
     fun `native endpoint declares the default database and keeps a host and port url`() {
         val native = kit.config.endpoints.single { it.type == KitEndpoint.EndpointType.NATIVE }

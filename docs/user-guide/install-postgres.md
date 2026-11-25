@@ -48,11 +48,11 @@ stays in "the database system is in recovery mode" and never becomes Ready.
 
 ### stop
 
-Deletes the CNPG `Cluster` CR and the NodePort service. PersistentVolumes are retained — running `postgres start` again resumes from the existing dataset.
+Hibernates the CNPG `Cluster` (annotation `cnpg.io/hibernation=on`) and deletes the NodePort service. CNPG removes the instance pods and keeps the `Cluster`, its claims, its credentials Secret and its image catalog, so `postgres start` wakes the same instances on the same volumes and resumes the existing dataset. The `Cluster` is never deleted on stop: CNPG bootstraps a `Cluster` it has not seen with `initdb`, which moves the old data directory aside and serves a new empty database.
 
 ### uninstall
 
-Deletes PersistentVolumes and uninstalls the CNPG operator Helm release. The operator is shared by
+Deletes the `Cluster`, its claims, its credentials Secret and its image catalog, then the PersistentVolumes, and uninstalls the CNPG operator Helm release. The operator is shared by
 `postgres` and every `postgres-<extension>` instance, so it is kept while any CNPG `Cluster` is
 left and removed with the last one.
 

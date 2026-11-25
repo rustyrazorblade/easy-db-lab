@@ -39,9 +39,14 @@ Stop MUST preserve data; data is only deleted on uninstall. Starting after a sto
 - **WHEN** data is written to PostgreSQL, `postgres stop` is run, and then `postgres start` is run again
 - **THEN** the previously written data is accessible without any restore step.
 
+#### Scenario: Stop hibernates the Cluster
+- **WHEN** the user runs `postgres stop`
+- **THEN** the CNPG `Cluster` is annotated `cnpg.io/hibernation=on` and the NodePort service is deleted; the `Cluster`, its claims, its credentials Secret and its ImageCatalog are kept, so CNPG removes the instance pods and keeps the dataset.
+- **AND** `postgres start` applies the `Cluster` with `cnpg.io/hibernation: "off"`, and CNPG brings the instances back on their own volumes with no new initdb job. A `Cluster` deleted and applied again would run `bootstrap.initdb`, which moves an existing PGDATA aside and serves a new empty database, so `stop` never deletes it.
+
 #### Scenario: Uninstall deletes data
 - **WHEN** the user runs `postgres uninstall`
-- **THEN** the CNPG operator is removed and all PersistentVolumes for db nodes are deleted.
+- **THEN** the instance's `Cluster`, its claims, Secret and ImageCatalog are deleted, the CNPG operator is removed when no other CNPG `Cluster` is left, and the instance's PersistentVolumes on db nodes are deleted.
 
 #### Scenario: First start after fresh install
 - **WHEN** `postgres start` is run after a fresh install with no prior starts

@@ -378,8 +378,11 @@ easy-db-lab clickhouse stop
 ```
 
 This deletes the ClickHouseInstallation `clickhouse` (and with it the server pods) and the
-`clickhouse-nodeport` service. Keeper, the operator, and the PersistentVolumes stay in place, so
-`clickhouse start` redeploys onto the same volumes.
+`clickhouse-nodeport` service. The data claim template declares `reclaimPolicy: Retain`, so the
+operator keeps the claims and drops no table (with its default, `Delete`, it drops every MergeTree
+table and view and then deletes the claims). Keeper, the operator, the claims and their volumes stay
+in place, and `clickhouse start` redeploys onto the same claims with their tables. `uninstall`
+deletes the claims.
 
 To remove everything the kit created:
 
@@ -387,7 +390,7 @@ To remove everything the kit created:
 easy-db-lab clickhouse uninstall
 ```
 
-This deletes the ClickHouseKeeperInstallation `clickhouse-keeper`, the kit's PersistentVolumes, and
+This deletes the ClickHouseKeeperInstallation `clickhouse-keeper`, the data claims, the kit's PersistentVolumes, and
 the `clickhouse-operator` Helm release.
 
 ## Monitoring

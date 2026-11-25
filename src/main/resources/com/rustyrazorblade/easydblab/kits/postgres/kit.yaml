@@ -93,13 +93,31 @@ start:
     template: nodeport-service.yaml
 
 stop:
-  - type: delete
-    kind: Cluster
-    name: ${KIT_NAME}
-    namespace: default
+  # CNPG bootstraps (initdb) any Cluster it has not seen, and moves an existing PGDATA aside to do
+  # it, so stop never deletes the Cluster. Hibernation removes the instance pods and keeps the
+  # Cluster, its status and its claims; start applies the Cluster with hibernation off. The Secret
+  # and ImageCatalog the Cluster references stay too; start applies all three again.
+  - type: shell
+    script: |
+      set -euo pipefail
+      if [ -n "$(kubectl get cluster.postgresql.cnpg.io "${KIT_NAME}" -n default --ignore-not-found -o name)" ]; then
+        kubectl annotate cluster.postgresql.cnpg.io "${KIT_NAME}" -n default --overwrite cnpg.io/hibernation=on
+      fi
   - type: delete
     kind: Service
     name: ${KIT_NAME}-nodeport
+    namespace: default
+
+uninstall:
+  # The one phase that deletes the dataset: the Cluster, then its claims (CNPG deletes them with
+  # the Cluster; this removes any it left), then the credentials, the catalog and the storage.
+  - type: delete
+    kind: cluster.postgresql.cnpg.io
+    name: ${KIT_NAME}
+    namespace: default
+  - type: delete
+    kinds: [pvc]
+    selector: cnpg.io/cluster=${KIT_NAME}
     namespace: default
   - type: delete
     kind: Secret
@@ -109,8 +127,6 @@ stop:
     kind: ImageCatalog
     name: ${KIT_NAME}-catalog
     namespace: default
-
-uninstall:
   - type: platform-pvs-delete
   # postgres and every postgres-<extension> instance run on this one operator; it is removed only
   # once no CNPG Cluster is left.

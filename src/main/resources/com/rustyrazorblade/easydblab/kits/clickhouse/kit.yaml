@@ -202,6 +202,11 @@ uninstall:
     kind: ClickHouseKeeperInstallation
     name: clickhouse-keeper
     namespace: default
+  # The operator retains the data claims; uninstall is the one phase that deletes them.
+  - type: delete
+    kinds: [pvc]
+    selector: clickhouse.altinity.com/chi=clickhouse
+    namespace: default
   - type: platform-pvs-delete
   - type: helm-uninstall
     release: clickhouse-operator

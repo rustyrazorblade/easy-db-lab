@@ -185,6 +185,22 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         assertThat(output).contains("easy-db-lab profile setup")
         assertThat(output).doesNotContain("Exception")
         assertThat(output).doesNotContain("kaml")
+        assertFailureBodySaysPathAndHintOnce(output, profileFile(context.profileDir).absolutePath, "'destination' is required but missing")
+    }
+
+    /**
+     * The failure body (the header names `profile.yaml` on its own line) names the failing path once,
+     * gives the reason, and tells the user to run `profile setup` once.
+     */
+    private fun assertFailureBodySaysPathAndHintOnce(
+        output: String,
+        path: String,
+        reason: String,
+    ) {
+        val body = output.substringAfter("could not be used:")
+        assertThat(body.split(path)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split("profile setup")).describedAs("setup hint occurrences").hasSize(2)
+        assertThat(body).contains(reason)
     }
 
     /**
@@ -247,8 +263,8 @@ class ProfileCommandGroupTest : BaseKoinTest() {
 
             val output = stdout.toString()
             assertThat(output).contains("its file could not be used:\n  ${store.file.absolutePath}")
-            assertThat(output).contains("Cannot write the profile file")
             assertThat(output).doesNotContain("could not be read")
+            assertFailureBodySaysPathAndHintOnce(output, store.file.absolutePath, "while writing")
         } finally {
             Files.setPosixFilePermissions(dir, original)
         }

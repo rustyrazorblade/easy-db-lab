@@ -152,7 +152,7 @@ class ProfileShowTest {
     @Test
     fun `a failed profile file names the file, the reason and profile setup`() {
         val file = "$PROFILE_DIR/profile.yaml"
-        val reason = "Cannot write the profile file $file: IOException"
+        val reason = "IOException while writing"
         val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason))
 
         assertThat(report)

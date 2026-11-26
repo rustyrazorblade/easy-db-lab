@@ -72,7 +72,7 @@ class ProfileShow : PicoBaseCommand() {
                     ProfileSettings.Loaded(profileStore.load())
                 } catch (e: ProfileFileException) {
                     log.warn { "Could not use a file of the profile ${context.profile}: ${e::class.simpleName}" }
-                    ProfileSettings.Failed(e.file.absolutePath, e.message.orEmpty())
+                    ProfileSettings.Failed(e.file.absolutePath, e.reason)
                 }
             }
 

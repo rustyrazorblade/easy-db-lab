@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
@@ -715,6 +716,31 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(output)
                 .contains("Creating S3 bucket")
                 .contains("S3 bucket created")
+        }
+
+        /**
+         * A misspelled `accountBucket` would read as "no bucket yet": setup would run in full, create a
+         * second bucket and overwrite the file. It stops with the file's failure and changes nothing.
+         *
+         * Control: make loadForSetup lenient about unknown keys; a bucket is created and the file is rewritten.
+         */
+        @Test
+        fun `a misspelled key in profile yaml stops setup before it creates a bucket or changes the file`() {
+            seed(completeStaticProfile())
+            store.file.writeText(store.file.readText().replace("accountBucket:", "accountBuket:"))
+            val before = store.file.readBytes()
+            testPrompter = staticKeyAnswers()
+            setupTestModule()
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    assertThat(e.reason).contains("accountBuket")
+                    assertThat(e.message).doesNotContain("run 'easy-db-lab profile setup'")
+                }
+
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
+            assertThat(store.file.readBytes()).isEqualTo(before)
+            assertThat(testPrompter.getCallLog()).isEmpty()
         }
 
         @Test

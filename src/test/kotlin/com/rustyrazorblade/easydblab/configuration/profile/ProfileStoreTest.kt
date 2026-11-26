@@ -121,6 +121,37 @@ class ProfileStoreTest {
             }
     }
 
+    /** Control: skip the strict check in loadForSetup; setup reads the blank default and returns normally. */
+    @Test
+    fun `setup load fails on an unknown key like load does`() {
+        store().replace(profile(accessKey))
+        profileFile.writeText(profileFile.readText().replace("accountBucket:", "accountBuket:"))
+
+        assertThatThrownBy { store().loadForSetup() }
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.file).isEqualTo(profileFile)
+                assertThat(e.reason).contains("accountBuket").contains("accountBucket")
+                assertThat(e.message).contains("Fix or remove that key").doesNotContain("run 'easy-db-lab profile setup'")
+            }
+    }
+
+    /** Control: print the key whatever it looks like; the secret appears in the reason and the message. */
+    @Test
+    fun `a key that is not a short identifier is not shown`() {
+        store().replace(profile(accessKey))
+        val secretKey = "tskey-client-kAbC123dEf456gHi789jKl012mNo345pQr678sTu901"
+        profileFile.writeText(profileFile.readText().replace("accountBucket:", "$secretKey:"))
+
+        listOf({ store().load() }, { store().loadForSetup() }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    // The parent field (destination) is a known name, so it is shown; the bad key is not.
+                    assertThat(e.reason).contains("an unknown key").contains("accountBucket").doesNotContain(secretKey)
+                    assertThat(e.message).doesNotContain(secretKey)
+                }
+        }
+    }
+
     /** Control: drop the type from the error message; the assertion on the name fails. */
     @Test
     fun `unknown destination type fails naming the type`() {

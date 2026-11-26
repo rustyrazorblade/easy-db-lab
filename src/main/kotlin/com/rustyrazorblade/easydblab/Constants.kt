@@ -975,6 +975,10 @@ object Constants {
         // The key that names a destination's or a credential's type in the profile file
         const val PROFILE_TYPE_KEY = "type"
 
+        // A key name from profile.yaml is shown in an error only when it looks like a short identifier;
+        // anything else could be a pasted secret, so the error says "an unknown key" instead
+        const val PROFILE_SHOWN_KEY_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,40}$"
+
         // The profile key pair's private key, written owner-only under the active profile directory
         const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }

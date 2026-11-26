@@ -181,6 +181,10 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
   - `loadForSetup()` gives setup flat keys (`region`, `awsProfile`, `keyName`, `s3Bucket`,
     `sshTransport`, ...) for either file, so a value that does not parse reaches setup to be asked again.
   - A parse error names the file and where parsing stopped, never the file's text (it holds secrets).
+    `profile.yaml` decodes in strict mode, in `load()` and `loadForSetup()` alike: a misspelled key fails
+    the load instead of decoding to the blank default (which would make setup create a second bucket or
+    key pair). The error names the key only when it is a short identifier
+    (`Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN`), else says "an unknown key", and lists the known keys.
     Every file failure (a parse error, an unreadable or unwritable file, a lock file that cannot be opened or locked) is a
     `ProfileFileException` carrying the `file` that failed and a short `reason` (no path, no setup hint, never the file's text), which
     `profile show` prints after the path; `message` is the full sentence for logs.

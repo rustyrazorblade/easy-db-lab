@@ -10,6 +10,7 @@ import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlException
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
+import com.charleskorn.kaml.YamlPathSegment
 import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.writeTextAtomically
@@ -42,6 +43,9 @@ import kotlin.concurrent.withLock
  *
  * Parse errors never carry text from the file, which can hold an AWS secret, the AxonOps key or the
  * Tailscale client secret. They name the file, where parsing stopped and what kind of problem it was.
+ * The one exception is an unknown key: its name is shown on purpose, but only when it is a short
+ * identifier ([Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN]); a longer or odd key, which could be
+ * a pasted secret, is reported as "an unknown key".
  *
  * @param profileDir the active profile's directory
  */
@@ -95,10 +99,17 @@ class ProfileStore(
      * The saved values as flat setup keys (`region`, `awsProfile`, `keyName`, `sshTransport`, ...),
      * for either file; empty when neither exists. Setup prefills from these, so a value that does
      * not parse, such as an unknown SSH transport, reaches setup to be reported and asked again.
+     *
+     * @throws ProfileFileException when `profile.yaml` holds an unknown key, as [load] does: a
+     *   misspelled key would read as a blank value, and setup would create a second bucket or key pair
      */
     fun loadForSetup(): Map<String, String> =
         when {
-            file.exists() -> legacyReader.setupValues(scalars(parse(file), prefix = ""))
+            file.exists() -> {
+                val node = parse(file)
+                failOnUnknownKey()
+                legacyReader.setupValues(scalars(node, prefix = ""))
+            }
             legacyFile.exists() -> legacyValues()
             else -> emptyMap()
         }
@@ -139,6 +150,24 @@ class ProfileStore(
     }
 
     private fun decode(): Profile = redacted(file) { yaml.decodeFromString(Profile.serializer(), file.readText()) }
+
+    /**
+     * Decodes `profile.yaml` strictly and fails only for an unknown key. Every other failure (a value
+     * that does not parse) is left for setup to ask again, so it is ignored here.
+     */
+    private fun failOnUnknownKey() {
+        try {
+            yaml.decodeFromString(Profile.serializer(), file.readText())
+        } catch (e: YamlException) {
+            if (e.holdsUnknownKey()) redacted(file) { throw e }
+        } catch (_: SerializationException) {
+            // Not an unknown key: setup reports and asks again.
+        } catch (_: IllegalArgumentException) {
+            // Not an unknown key: setup reports and asks again.
+        }
+    }
+
+    private fun Throwable.holdsUnknownKey(): Boolean = generateSequence(this) { it.cause }.any { it is UnknownPropertyException }
 
     private fun write(profile: Profile) {
         val text = yaml.encodeToString(Profile.serializer(), profile) + "\n"
@@ -188,7 +217,7 @@ class ProfileStore(
         try {
             read()
         } catch (e: YamlException) {
-            throw unreadable(source, "line ${e.line}, column ${e.column}", reason(e), cause = null)
+            throw unreadable(source, "line ${e.line}, column ${e.column}", reason(e), cause = null, e.holdsUnknownKey())
         } catch (e: SerializationException) {
             throw unreadable(source, null, "a value has the wrong type or form", cause = null)
         } catch (e: IOException) {
@@ -204,17 +233,13 @@ class ProfileStore(
         }
 
     private fun reason(e: YamlException): String {
-        val field =
-            e.path
-                .toHumanReadableString()
-                .takeIf { it.isNotEmpty() }
-                ?.let { "field $it: " }
-                .orEmpty()
         // kaml wraps the precise failure (an unknown type, a failed `require`) in a property error.
         val chain = generateSequence<Throwable>(e) { it.cause }.toList()
         val ours = chain.firstOrNull { it.javaClass == IllegalArgumentException::class.java }
         val unknownType = chain.filterIsInstance<UnknownPolymorphicTypeException>().firstOrNull()
         val unknownKey = chain.filterIsInstance<UnknownPropertyException>().firstOrNull()
+        val path = unknownKey?.let { parentPath(it) } ?: e.path.toHumanReadableString()
+        val field = path.takeIf { it.isNotEmpty() }?.let { "field $it: " }.orEmpty()
         return field +
             when {
                 ours != null -> ours.message.orEmpty()
@@ -222,24 +247,43 @@ class ProfileStore(
                     "unknown type '${unknownType.typeName}'. Known types: ${unknownType.validTypeNames.sorted().joinToString(", ")}"
                 e is MissingRequiredPropertyException -> "'${e.propertyName}' is required but missing"
                 unknownKey != null ->
-                    "unknown key '${unknownKey.propertyName}'. Known keys: ${unknownKey.validPropertyNames.sorted().joinToString(", ")}"
+                    "${shownKey(unknownKey.propertyName)}. Known keys: ${unknownKey.validPropertyNames.sorted().joinToString(", ")}"
                 e is MalformedYamlException -> "the file is not valid YAML"
                 else -> "a value has the wrong type or form"
             }
     }
+
+    /**
+     * The dotted path to the map that holds the unknown key, without the key itself. Every key on it
+     * is a known field name, so it is safe to show; only [shownKey] decides whether the bad key is shown.
+     */
+    private fun parentPath(e: UnknownPropertyException): String =
+        e.path.segments
+            .filterIsInstance<YamlPathSegment.MapElementKey>()
+            .map { it.key }
+            .let { keys -> if (keys.lastOrNull() == e.propertyName) keys.dropLast(1) else keys }
+            .joinToString(".")
+
+    /** The key's name when it is a short identifier, else no name: a key is file text and could be a secret. */
+    private fun shownKey(name: String): String = if (shownKeyPattern.matches(name)) "unknown key '$name'" else "an unknown key"
 
     private fun unreadable(
         source: File,
         where: String?,
         reason: String,
         cause: Throwable?,
+        unknownKey: Boolean = false,
     ): ProfileFileException =
         ProfileFileException(
             source,
             where?.let { "$it: $reason" } ?: reason,
             "Cannot read $source${where?.let { " at $it" }.orEmpty()}: $reason. " +
                 "The text of the file is not shown because it can hold credentials. " +
-                "Fix the file or run 'easy-db-lab profile setup'.",
+                if (unknownKey) {
+                    "Fix or remove that key in the file; 'easy-db-lab profile setup' would stop at it too."
+                } else {
+                    "Fix the file or run 'easy-db-lab profile setup'."
+                },
             cause,
         )
 
@@ -276,6 +320,8 @@ class ProfileStore(
 
     private companion object {
         val log = KotlinLogging.logger {}
+
+        val shownKeyPattern = Regex(Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN)
 
         /** Taken before the file lock, by every thread of this JVM, for every profile. */
         val localLock = ReentrantLock()

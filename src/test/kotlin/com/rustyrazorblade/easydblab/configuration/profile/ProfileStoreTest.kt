@@ -102,14 +102,23 @@ class ProfileStoreTest {
         assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(profileFile.toPath()))).isEqualTo("rw-------")
     }
 
-    /** Control: turn strict mode on in the kaml configuration; the load fails. */
+    /**
+     * Control: turn strict mode off in the kaml configuration; the misspelled key decodes to the blank
+     * default and the load succeeds, so setup would create a second bucket.
+     */
     @Test
-    fun `unknown keys are ignored`() {
-        store().replace(profile(ssoProfile))
-        profileFile.writeText(
-            profileFile.readText().replace("destination:", "futureSetting: 7\ndestination:\n  futureNested: x"),
-        )
-        assertThat(store().load()).isEqualTo(profile(ssoProfile))
+    fun `unknown key fails the load naming the key and holding no file text`() {
+        store().replace(profile(accessKey))
+        profileFile.writeText(profileFile.readText().replace("accountBucket:", "accountBuket:"))
+        val secret = accessKey.secretAccessKey
+
+        assertThatThrownBy { store().load() }
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.file).isEqualTo(profileFile)
+                assertThat(e.reason).contains("accountBuket").contains("accountBucket")
+                assertThat(e.message).contains(profileFile.path).contains("accountBuket").doesNotContain(secret)
+                assertThat(e.reason).doesNotContain(secret)
+            }
     }
 
     /** Control: drop the type from the error message; the assertion on the name fails. */

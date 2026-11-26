@@ -4,6 +4,7 @@ import com.charleskorn.kaml.MalformedYamlException
 import com.charleskorn.kaml.MissingRequiredPropertyException
 import com.charleskorn.kaml.PolymorphismStyle
 import com.charleskorn.kaml.UnknownPolymorphicTypeException
+import com.charleskorn.kaml.UnknownPropertyException
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import com.charleskorn.kaml.YamlException
@@ -66,7 +67,9 @@ class ProfileStore(
             serializersModule = serializers,
             configuration =
                 YamlConfiguration(
-                    strictMode = false,
+                    // Strict: a misspelled key must fail the load. Decoding it to the blank default would
+                    // read as "not created yet", and the next command would create a second bucket or key pair.
+                    strictMode = true,
                     polymorphismStyle = PolymorphismStyle.Property,
                     polymorphismPropertyName = Constants.ConfigPaths.PROFILE_TYPE_KEY,
                 ),
@@ -211,12 +214,15 @@ class ProfileStore(
         val chain = generateSequence<Throwable>(e) { it.cause }.toList()
         val ours = chain.firstOrNull { it.javaClass == IllegalArgumentException::class.java }
         val unknownType = chain.filterIsInstance<UnknownPolymorphicTypeException>().firstOrNull()
+        val unknownKey = chain.filterIsInstance<UnknownPropertyException>().firstOrNull()
         return field +
             when {
                 ours != null -> ours.message.orEmpty()
                 unknownType != null ->
                     "unknown type '${unknownType.typeName}'. Known types: ${unknownType.validTypeNames.sorted().joinToString(", ")}"
                 e is MissingRequiredPropertyException -> "'${e.propertyName}' is required but missing"
+                unknownKey != null ->
+                    "unknown key '${unknownKey.propertyName}'. Known keys: ${unknownKey.validPropertyNames.sorted().joinToString(", ")}"
                 e is MalformedYamlException -> "the file is not valid YAML"
                 else -> "a value has the wrong type or form"
             }

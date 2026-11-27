@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.profile
 import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
+import com.charleskorn.kaml.YamlTaggedNode
 import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.PolymorphicKind
@@ -46,7 +47,8 @@ internal data class UnknownKey(
  * from [serializers] by the [typeKey] value, a sealed one (the AWS credentials) from its own
  * descriptor. A map whose type is unknown is skipped, because the decode reports the unknown type.
  * A list is walked item by item. A map field's keys are data, not field names, so they are never
- * reported; each of its values is walked. Scalars hold no keys.
+ * reported; each of its values is walked. A tagged node is walked as the node inside the tag, as
+ * kaml decodes it. Scalars hold no keys.
  */
 @OptIn(ExperimentalSerializationApi::class)
 internal class UnknownKeyFinder(
@@ -65,6 +67,8 @@ internal class UnknownKeyFinder(
         path: String,
     ): UnknownKey? =
         when {
+            // kaml decodes through a tag (`key: !x`), so the walk must too.
+            node is YamlTaggedNode -> find(node.innerNode, descriptor, path)
             descriptor.kind == StructureKind.LIST && node is YamlList -> inList(node, descriptor, path)
             descriptor.kind == StructureKind.MAP && node is YamlMap -> inMapValues(node, descriptor, path)
             node is YamlMap -> declaredBy(descriptor, node)?.let { inFields(node, it, descriptor.kind is PolymorphicKind, path) }

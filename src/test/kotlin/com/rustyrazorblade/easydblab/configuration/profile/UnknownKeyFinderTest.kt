@@ -37,7 +37,7 @@ class UnknownKeyFinderTest {
         finder.find(Yaml.default.parseToYamlNode(document.trimIndent()), Catalog.serializer().descriptor)
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("withUnknownKey")
+    @MethodSource("withUnknownKey", "withUnknownKeyUnderTag")
     internal fun `finds the first undeclared key in a list or map of classes`(
         case: String,
         document: String,
@@ -112,6 +112,22 @@ class UnknownKeyFinderTest {
                     titel: t
                     """,
                     UnknownKey("", "titel", CATALOG_KEYS, 3, 1),
+                ),
+            )
+
+        /** kaml decodes through a YAML tag, so the walk must find a key under one too. */
+        @JvmStatic
+        fun withUnknownKeyUnderTag(): List<Arguments> =
+            listOf(
+                Arguments.of(
+                    "unknown key in a tagged list item",
+                    """
+                    entries: !things
+                      - !thing
+                        name: a
+                        sise: 3
+                    """,
+                    UnknownKey("entries[0]", "sise", ENTRY_KEYS, 4, 5),
                 ),
             )
 

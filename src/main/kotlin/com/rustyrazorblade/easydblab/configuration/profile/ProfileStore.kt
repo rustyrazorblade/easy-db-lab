@@ -236,8 +236,7 @@ class ProfileStore(
             throw ProfileFileException(
                 file,
                 NOT_POSIX_REASON,
-                "Cannot write the profile file $file: $NOT_POSIX_REASON. " +
-                    "Put the profile directory on a file system with POSIX permissions.",
+                "Cannot write the profile file $file: $NOT_POSIX_REASON. ${ProfileFileRemedy.POSIX_FILE_SYSTEM_HINT}.",
                 e,
                 ProfileFileRemedy.POSIX_FILE_SYSTEM,
             )
@@ -339,7 +338,7 @@ class ProfileStore(
                     ProfileFileRemedy.RUN_SETUP -> "Fix the file or run 'easy-db-lab profile setup'."
                     ProfileFileRemedy.FIX_KEY -> "Fix or remove that key in the file; 'easy-db-lab profile setup' would stop at it too."
                     ProfileFileRemedy.FIX_FILE -> "Fix the file; 'easy-db-lab profile setup' would stop at it too."
-                    ProfileFileRemedy.POSIX_FILE_SYSTEM -> "Put the profile directory on a file system with POSIX permissions."
+                    ProfileFileRemedy.POSIX_FILE_SYSTEM -> "${ProfileFileRemedy.POSIX_FILE_SYSTEM_HINT}."
                 },
             cause,
             remedy,
@@ -385,9 +384,9 @@ class ProfileStore(
         /** Taken before the file lock, by every thread of this JVM, for every profile. */
         val localLock = ReentrantLock()
 
-        const val NOT_POSIX_REASON = "the file system cannot make the file owner-only (mode 0600)"
+        private const val NOT_POSIX_REASON = "the file system cannot make the file owner-only (mode 0600)"
 
-        fun setOwnerOnly(path: Path) {
+        private fun setOwnerOnly(path: Path) {
             Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
         }
     }

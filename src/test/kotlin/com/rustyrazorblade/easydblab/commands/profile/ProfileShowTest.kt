@@ -26,6 +26,7 @@ class ProfileShowTest {
     companion object {
         private const val PROFILE_NAME = "default"
         private const val PROFILE_DIR = "/home/tester/.easy-db-lab/profiles/default"
+        private const val POSIX_HINT = "Put the profile directory on a file system with POSIX permissions"
 
         // Sentinels chosen so they cannot appear in the report by coincidence.
         private const val ACCESS_KEY = "SENTINELACCESSKEYVALUE"
@@ -83,12 +84,20 @@ class ProfileShowTest {
         @JvmStatic
         fun failureHints(): Stream<Arguments> =
             Stream.of(
-                Arguments.of(ProfileFileRemedy.RUN_SETUP, "easy-db-lab profile setup", listOf("Fix or remove that key", "Fix the file")),
-                Arguments.of(ProfileFileRemedy.FIX_KEY, "Fix or remove that key in the file", listOf("profile setup", "Fix the file")),
-                Arguments.of(ProfileFileRemedy.FIX_FILE, "Fix the file", listOf("profile setup", "Fix or remove that key")),
+                Arguments.of(
+                    ProfileFileRemedy.RUN_SETUP,
+                    "easy-db-lab profile setup",
+                    listOf("Fix or remove that key", "Fix the file", POSIX_HINT),
+                ),
+                Arguments.of(
+                    ProfileFileRemedy.FIX_KEY,
+                    "Fix or remove that key in the file",
+                    listOf("profile setup", "Fix the file", POSIX_HINT),
+                ),
+                Arguments.of(ProfileFileRemedy.FIX_FILE, "Fix the file", listOf("profile setup", "Fix or remove that key", POSIX_HINT)),
                 Arguments.of(
                     ProfileFileRemedy.POSIX_FILE_SYSTEM,
-                    "Put the profile directory on a file system with POSIX permissions",
+                    POSIX_HINT,
                     listOf("profile setup", "Fix the file", "Fix or remove that key"),
                 ),
             )

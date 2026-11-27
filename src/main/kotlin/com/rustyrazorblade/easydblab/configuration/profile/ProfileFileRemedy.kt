@@ -23,4 +23,10 @@ enum class ProfileFileRemedy {
      * can fix it, so the user moves the profile directory to a file system with POSIX permissions.
      */
     POSIX_FILE_SYSTEM,
+    ;
+
+    companion object {
+        /** What the user does about a [POSIX_FILE_SYSTEM] failure; the store's message and `profile show` both say it. */
+        const val POSIX_FILE_SYSTEM_HINT = "Put the profile directory on a file system with POSIX permissions"
+    }
 }

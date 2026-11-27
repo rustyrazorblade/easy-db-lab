@@ -189,6 +189,26 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     }
 
     /**
+     * Setup stops at an unknown key, so the report tells the user to fix the key instead of naming setup.
+     *
+     * Control: drop the store's unknownKey flag from the report; the setup hint is printed and the test fails.
+     */
+    @Test
+    fun `profile show tells the user to fix an unknown key instead of running setup`() {
+        TestProfiles.storeWith(context.profileDir, TestProfiles.profile(accountBucket = "a-bucket"))
+        val file = profileFile(context.profileDir)
+        file.writeText(file.readText().replace("accountBucket:", "accountBuket:"))
+        check("accountBuket:" in file.readText()) { "the fixture should hold the misspelled key" }
+
+        getKoin().get<ProfileShow>().execute()
+
+        val body = stdout.toString().substringAfter("could not be used:")
+        assertThat(body.split(file.absolutePath)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split("Fix or remove that key in the file")).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).contains("unknown key 'accountBuket'").doesNotContain("profile setup")
+    }
+
+    /**
      * The failure body (the header names `profile.yaml` on its own line) names the failing path once,
      * gives the reason, and tells the user to run `profile setup` once.
      */

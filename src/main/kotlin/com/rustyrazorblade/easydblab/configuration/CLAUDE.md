@@ -181,13 +181,20 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
   - `loadForSetup()` gives setup flat keys (`region`, `awsProfile`, `keyName`, `s3Bucket`,
     `sshTransport`, ...) for either file, so a value that does not parse reaches setup to be asked again.
   - A parse error names the file and where parsing stopped, never the file's text (it holds secrets).
-    `profile.yaml` decodes in strict mode, in `load()` and `loadForSetup()` alike: a misspelled key fails
-    the load instead of decoding to the blank default (which would make setup create a second bucket or
-    key pair). The error names the key only when it is a short identifier
-    (`Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN`), else says "an unknown key", and lists the known keys.
+    A misspelled key in `profile.yaml` fails `load()` and `loadForSetup()` alike instead of decoding to the
+    blank default (which would make setup create a second bucket or key pair). `UnknownKeyFinder` finds it
+    before any value is decoded: it walks the parsed `YamlNode` tree against the serializer's field names
+    (an open polymorphic field resolves its subclass from the `SerializersModule` by the `type` key, a sealed
+    one from its own descriptor; an unknown type's map is skipped, since the decode reports the type), so a
+    bad value earlier in the file (an unknown `sshTransport`) cannot hide a key after it. kaml's strict mode
+    stays on behind it. The error gives the key's line and column and the dotted path of its map, names the
+    key only when it is a short identifier (`Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN`, 24 characters
+    at most, so a 40-character AWS secret is never shown), else says "an unknown key", and lists the known keys.
     Every file failure (a parse error, an unreadable or unwritable file, a lock file that cannot be opened or locked) is a
     `ProfileFileException` carrying the `file` that failed and a short `reason` (no path, no setup hint, never the file's text), which
-    `profile show` prints after the path; `message` is the full sentence for logs.
+    `profile show` prints after the path; `message` is the full sentence for logs. Its `unknownKey` flag is set for an
+    unknown key: setup would stop at the same key, so `profile show` prints "Fix or remove that key in the file" in
+    place of the setup hint.
 - **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
   `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.
   `isSetup()` is true when `profile.yaml` exists, or `settings.yaml` exists and holds credentials.

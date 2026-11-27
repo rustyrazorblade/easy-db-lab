@@ -976,8 +976,10 @@ object Constants {
         const val PROFILE_TYPE_KEY = "type"
 
         // A key name from profile.yaml is shown in an error only when it looks like a short identifier;
-        // anything else could be a pasted secret, so the error says "an unknown key" instead
-        const val PROFILE_SHOWN_KEY_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,40}$"
+        // anything else could be a pasted secret, so the error says "an unknown key" instead. The limit
+        // is 24 characters: the longest known key, "secretAccessKey", is 15, and a 40-character AWS
+        // secret access key with a leading letter and no "+"/"/" must not pass as an identifier.
+        const val PROFILE_SHOWN_KEY_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,23}$"
 
         // The profile key pair's private key, written owner-only under the active profile directory
         const val PROFILE_SSH_KEY_FILE = "secret.pem"

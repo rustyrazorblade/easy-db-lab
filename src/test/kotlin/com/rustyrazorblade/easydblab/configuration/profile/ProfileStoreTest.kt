@@ -135,21 +135,108 @@ class ProfileStoreTest {
             }
     }
 
-    /** Control: print the key whatever it looks like; the secret appears in the reason and the message. */
-    @Test
-    fun `a key that is not a short identifier is not shown`() {
+    /**
+     * A key's name is shown only when it is a short identifier (24 characters at most); anything else
+     * could be a pasted secret. A 40-character AWS secret access key with a leading letter and no
+     * `+` or `/` is an identifier by form, so only the length keeps it out.
+     *
+     * Control: widen the pattern back to 41 characters; the AWS-secret row shows the key and fails.
+     * Print the key whatever it looks like; every hidden row fails.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("unknownKeyNames")
+    fun `an unknown key is named only when it is a short identifier`(
+        description: String,
+        key: String,
+        shown: Boolean,
+    ) {
         store().replace(profile(accessKey))
-        val secretKey = "tskey-client-kAbC123dEf456gHi789jKl012mNo345pQr678sTu901"
-        profileFile.writeText(profileFile.readText().replace("accountBucket:", "$secretKey:"))
+        profileFile.writeText(profileFile.readText().replace("accountBucket:", "$key:"))
+
+        listOf({ store().load() }, { store().loadForSetup() }).forEach { read ->
+            assertThatThrownBy { read() }
+                .describedAs(description)
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    // The parent field (destination) is a known name, so it is always shown.
+                    assertThat(e.reason).contains("field destination: ").contains("accountBucket")
+                    assertThat(e.unknownKey).isTrue()
+                    if (shown) {
+                        assertThat(e.reason).contains("unknown key '$key'")
+                    } else {
+                        assertThat(e.reason).contains("an unknown key").doesNotContain(key)
+                        assertThat(e.message).doesNotContain(key)
+                    }
+                }
+        }
+    }
+
+    /**
+     * An unknown key fails both reads wherever it is, even after a value that does not parse (an
+     * unknown SSH transport earlier in the file): the key check never looks at a value. The reason
+     * names the map that holds the key and where the key starts.
+     *
+     * Control: restore the old check that decodes strictly and stops at the first failure; with the
+     * bad transport ahead of the key, loadForSetup returns normally and every row after `destination`
+     * fails. Drop the sealed-class branch from UnknownKeyFinder; the credentials row fails.
+     */
+    @ParameterizedTest(name = "{1} under ''{2}'', bad transport={3}")
+    @MethodSource("misspelledKeys")
+    fun `an unknown key fails both reads naming its map and place whatever the values`(
+        key: String,
+        misspelled: String,
+        parentPath: String,
+        badTransport: Boolean,
+    ) {
+        store().replace(profile(accessKey, Tailscale("fixture-ts-id", "fixture-ts-secret"), AxonOps("fixture-org", "fixture-key")))
+        val text =
+            profileFile
+                .readText()
+                .let { if (badTransport) withBadTransportFirst(it) else it }
+                .replace("\n$key:", "\n$misspelled:")
+                .replace(" $key:", " $misspelled:")
+        check(misspelled in text) { "the fixture should hold $misspelled" }
+        profileFile.writeText(text)
+        val line = text.lines().indexOfFirst { it.trimStart().startsWith("$misspelled:") } + 1
+        val column = text.lines()[line - 1].indexOf(misspelled) + 1
+        val field = if (parentPath.isEmpty()) "" else "field $parentPath: "
 
         listOf({ store().load() }, { store().loadForSetup() }).forEach { read ->
             assertThatThrownBy { read() }
                 .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
-                    // The parent field (destination) is a known name, so it is shown; the bad key is not.
-                    assertThat(e.reason).contains("an unknown key").contains("accountBucket").doesNotContain(secretKey)
-                    assertThat(e.message).doesNotContain(secretKey)
+                    assertThat(e.unknownKey).isTrue()
+                    assertThat(e.reason).startsWith("line $line, column $column: $field").contains("unknown key '$misspelled'")
+                    assertThat(e.reason).contains(key).doesNotContain("carrier-pigeon")
                 }
         }
+    }
+
+    /**
+     * The reported case: an unknown SSH transport ahead of a misspelled `accountBucket`. Setup must
+     * stop at the key, or it reads the bucket as blank and creates a second one.
+     *
+     * Control: restore the strict decode that stops at the first failure; it fails on the transport,
+     * ignores that failure, and loadForSetup returns normally.
+     */
+    @Test
+    fun `setup load names a misspelled key that follows an unknown ssh transport`() {
+        store().replace(profile(accessKey))
+        profileFile.writeText(withBadTransportFirst(profileFile.readText()).replace("accountBucket:", "accountBuket:"))
+
+        assertThatThrownBy { store().loadForSetup() }
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.reason).contains("unknown key 'accountBuket'")
+                assertThat(e.message).contains("Fix or remove that key")
+            }
+    }
+
+    /** [text] with the SSH transport set to an unknown value and moved to the top of the destination block. */
+    private fun withBadTransportFirst(text: String): String {
+        val moved =
+            text
+                .replace("  sshTransport: \"ssm\"\n", "")
+                .replace("  type: \"aws\"\n", "  type: \"aws\"\n  sshTransport: \"carrier-pigeon\"\n")
+        check(moved.indexOf("carrier-pigeon") < moved.indexOf("location:")) { "the bad transport should come first" }
+        return moved
     }
 
     /** Control: drop the type from the error message; the assertion on the name fails. */
@@ -393,6 +480,35 @@ class ProfileStoreTest {
         )
 
         private fun Profile.withAws(change: (AwsDestination) -> AwsDestination) = copy(destination = change(destination as AwsDestination))
+
+        /** Each row: what the key is, the key, and whether the error may name it. */
+        @JvmStatic
+        fun unknownKeyNames(): List<Arguments> {
+            // The form of an AWS secret access key: 40 characters, here with a leading letter and no "+" or "/".
+            val awsSecret = "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY12"
+            check(awsSecret.length == 40)
+            return listOf(
+                Arguments.of("a misspelled field", "accountBuket", true),
+                Arguments.of("an identifier of 24 characters", "a" + "b".repeat(23), true),
+                Arguments.of("an identifier of 25 characters", "a" + "b".repeat(24), false),
+                Arguments.of("a 40-character AWS secret access key", awsSecret, false),
+                Arguments.of("a Tailscale client secret", "tskey-client-kAbC123dEf456gHi789jKl012mNo345pQr678sTu901", false),
+            )
+        }
+
+        /** Each row: the declared key, its misspelling, the dotted path of its map, and whether a bad transport precedes it. */
+        @JvmStatic
+        fun misspelledKeys(): List<Arguments> =
+            listOf(
+                Triple("axonOps", "axonOpz", ""),
+                Triple("accountBucket", "accountBuket", "destination"),
+                Triple("region", "regoin", "destination.location"),
+                Triple("secretAccessKey", "secretAccesKey", "destination.credentials"),
+                Triple("tag", "tagg", "tailscale"),
+                Triple("key", "kee", "axonOps"),
+            ).flatMap { (key, misspelled, parent) ->
+                listOf(false, true).map { badTransport -> Arguments.of(key, misspelled, parent, badTransport) }
+            }
 
         @JvmStatic
         fun profiles(): List<Arguments> {

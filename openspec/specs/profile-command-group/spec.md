@@ -91,6 +91,9 @@ SHALL NOT throw.
 When the active profile's `settings.yaml` exists but cannot be deserialized, `profile show` SHALL
 report the profile as present but its file unusable, naming the failing file path, the reason (the
 read, decode, write or lock failure, never the file's text) and `easy-db-lab profile setup`.
+When the failure is an unknown key, `profile setup` would stop at the same key, so the report SHALL
+tell the user to fix or remove that key in the file instead of naming `easy-db-lab profile setup`.
+The path and the hint SHALL each appear once.
 It SHALL NOT surface a raw deserialization error.
 
 #### Scenario: Truncated settings.yaml is reported, not thrown
@@ -98,6 +101,12 @@ It SHALL NOT surface a raw deserialization error.
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the CLI reports that the profile's file could not be used and names the file path, the reason and `easy-db-lab profile setup`
 - **AND** no raw deserialization error is shown
+
+#### Scenario: An unknown key is reported without the setup hint
+- **GIVEN** the active profile's `profile.yaml` holds a key that no field declares
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI reports that the profile's file could not be used, names the file path and the reason, and says "Fix or remove that key in the file"
+- **AND** it does not name `easy-db-lab profile setup`
 
 ### Requirement: `profile show` honors the active profile selection
 `profile show` SHALL report the profile named by `EASY_DB_LAB_PROFILE`, reading its values from that

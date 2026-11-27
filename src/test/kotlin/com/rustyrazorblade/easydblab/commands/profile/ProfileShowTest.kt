@@ -78,6 +78,14 @@ class ProfileShowTest {
                 Arguments.of("Tailscale secret whitespace", null, Tailscale(TAILSCALE_ID, "   "), false, false),
             )
 
+        /** Each row: whether the failure is an unknown key, the hint the report gives, and the one it must not. */
+        @JvmStatic
+        fun failureHints(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of(false, "easy-db-lab profile setup", "Fix or remove that key"),
+                Arguments.of(true, "Fix or remove that key in the file", "profile setup"),
+            )
+
         private fun flag(enabled: Boolean) = if (enabled) "ENABLED" else "DISABLED"
     }
 
@@ -148,15 +156,27 @@ class ProfileShowTest {
             .contains("easy-db-lab profile setup")
     }
 
-    /** Control: print the profile directory instead of the failing file's path; the path check fails. */
-    @Test
-    fun `a failed profile file names the file, the reason and profile setup`() {
+    /**
+     * A failure names the file, the reason and one hint. An unknown key gets "fix or remove", not
+     * setup, because setup stops at the same key.
+     *
+     * Control: print the setup hint for every failure; the unknown-key row fails. Print the profile
+     * directory instead of the failing file's path; both rows fail.
+     */
+    @ParameterizedTest(name = "unknownKey={0}")
+    @MethodSource("failureHints")
+    fun `a failed profile file names the file, the reason and the one hint that fits`(
+        unknownKey: Boolean,
+        hint: String,
+        otherHint: String,
+    ) {
         val file = "$PROFILE_DIR/profile.yaml"
-        val reason = "IOException while writing"
-        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason))
+        val reason = "line 4, column 3: field destination: unknown key 'accountBuket'. Known keys: accountBucket"
+        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason, unknownKey))
 
-        assertThat(report)
-            .contains("its file could not be used:\n  $file\n  $reason")
-            .contains("easy-db-lab profile setup")
+        val body = report.substringAfter("could not be used:")
+        assertThat(body).startsWith("\n  $file\n  $reason\n")
+        assertThat(body.split(hint)).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).doesNotContain(otherHint)
     }
 }

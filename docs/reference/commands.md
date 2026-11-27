@@ -54,7 +54,6 @@ Secret values are never printed. `credentials` shows only the form: `aws-profile
 A profile made by an earlier release (`settings.yaml` only) is converted to `profile.yaml` when
 `profile show` reads it, as by any other command; `settings.yaml` is left unchanged.
 
-
 The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` when that is unset:
 
 ```bash

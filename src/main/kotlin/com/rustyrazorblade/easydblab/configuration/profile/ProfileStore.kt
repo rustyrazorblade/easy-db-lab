@@ -115,7 +115,8 @@ class ProfileStore(
 
     /**
      * The profile as it is saved now. With only the earlier file, converts it into `profile.yaml`
-     * under the lock, prints nothing, and leaves the earlier file as it was.
+     * under the lock, prints nothing, and leaves the earlier file as it was. Two first loads may both see
+     * no `profile.yaml`; [readUnlocked] checks again under the lock, so only one converts the earlier file.
      *
      * @throws IllegalStateException when the profile is not set up or a file cannot be read
      */
@@ -249,7 +250,7 @@ class ProfileStore(
     private fun readableLegacyValues(): Map<String, String>? =
         try {
             legacyValues()
-        } catch (_: IllegalStateException) {
+        } catch (_: ProfileFileException) {
             null
         }
 

@@ -98,7 +98,6 @@ converts it to `profile.yaml` without asking and without output. `settings.yaml`
 and never changed, so an earlier release can still read it; changes made after the conversion are
 saved only to `profile.yaml`.
 
-
 ```admonish tip
 Use a different profile by setting `EASY_DB_LAB_PROFILE` environment variable before running setup.
 ```

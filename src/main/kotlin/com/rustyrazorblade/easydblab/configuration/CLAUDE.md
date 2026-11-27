@@ -186,8 +186,11 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
     before any value is decoded: it walks the parsed `YamlNode` tree against the serializer's field names
     (an open polymorphic field resolves its subclass from the `SerializersModule` by the `type` key, a sealed
     one from its own descriptor; an unknown type's map is skipped, since the decode reports the type), so a
-    bad value earlier in the file (an unknown `sshTransport`) cannot hide a key after it. kaml's strict mode
-    stays on behind it. The error gives the key's line and column and the dotted path of its map, names the
+    bad value earlier in the file (an unknown `sshTransport`) cannot hide a key after it. It covers every shape:
+    a list is walked item by item (path segment `[i]`), and a map field's values are walked while its keys,
+    which are data, are never reported or shown (path segment `<key>`, `Constants.ConfigPaths.PROFILE_MAP_KEY_SEGMENT`).
+    kaml's strict mode stays on behind it, but never sees an unknown key: its error would name the key unredacted.
+    The error gives the key's line and column and the path of its map, names the
     key only when it is a short identifier (`Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN`, 24 characters
     at most, so a 40-character AWS secret is never shown), else says "an unknown key", and lists the known keys.
     Every file failure (a parse error, an unreadable or unwritable file, a lock file that cannot be opened or locked) is a

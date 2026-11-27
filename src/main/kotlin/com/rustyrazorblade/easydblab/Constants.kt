@@ -981,6 +981,9 @@ object Constants {
         // secret access key with a leading letter and no "+"/"/" must not pass as an identifier.
         const val PROFILE_SHOWN_KEY_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,23}$"
 
+        // Stands for a map entry's key in an unknown key's path: the key is file text and could be a secret
+        const val PROFILE_MAP_KEY_SEGMENT = "<key>"
+
         // The profile key pair's private key, written owner-only under the active profile directory
         const val PROFILE_SSH_KEY_FILE = "secret.pem"
     }

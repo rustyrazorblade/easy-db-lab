@@ -52,21 +52,51 @@ data:
     # refused (422), which the Java agent drops. Keeping the tokens on the data volume, which survives a
     # pod restart, leaves only a race: the port opens about 20ms before the tokens are read, and an
     # agent that pushes in that instant loses that one snapshot.
+    #
+    # Shutdown: the HTTP server closes only after every other module has stopped. The segment writer
+    # stops within a millisecond of SIGTERM, so until the port closes every push is refused (422
+    # "service is unavailable") and the Java agent drops it. Three modules held the port open; the
+    # settings below bound each one. With them the port closed 8-248ms after SIGTERM over 40 bare
+    # stops on EC2 (2 under 100ms, 38 at 100-248ms).
+    #
+    # The ring store is in-process (`inmemory`): this server runs as one replica, so the ring never
+    # leaves the process. On memberlist, 8-12% of stops held the port 1s more: the LEAVING update
+    # fell in the same wall-clock second as the last heartbeat, the ring merge (one-second
+    # timestamps) saw no change, and dskit slept `noChangeDetectedRetrySleep` (1s,
+    # kv/memberlist/memberlist_client.go, KV.CAS) before it retried. The in-process store wakes its
+    # watchers every 100ms (kv/consul/mock.go, maxWaitTime), so the ring module stops within 100ms.
+    # The tokens still come from tokens_file_path, so a restart rejoins with them.
     segment_writer:
       lifecycler:
         min_ready_duration: 0s
         tokens_file_path: /data/segment-writer-tokens
+        ring:
+          kvstore:
+            store: inmemory
 
-    # Shutdown: the HTTP server closes only after every other module has stopped, and the compaction
-    # worker stops only on its next poll tick (default 5s). The segment writer stops within a
-    # millisecond of SIGTERM, so until that tick every push is refused (422 "service is unavailable")
-    # and the Java agent drops it: a restart lost a snapshot whenever a push landed in that 0-5s
-    # window. At 100ms the port closes within 100ms of SIGTERM (10-92ms over 14 stops measured on
-    # EC2). Each tick costs two metastore Raft commands and one INFO log line ("polling compaction
-    # jobs", about 150 bytes): 864,000 lines a day. A longer tick cuts the noise but widens the window up to the tick:
-    # at 500ms one stop took 319ms.
+    # The compaction worker stops only on its next poll tick (default 5s), so the poll runs every
+    # 100ms. Each tick costs two metastore Raft commands and one INFO line ("polling compaction jobs",
+    # about 150 bytes, 864,000 a day); the node collector drops that one line before Loki
+    # (filter/pyroscope_poll in otel-collector-config.yaml).
+    #
+    # request_timeout bounds a poll still in flight when the metastore stops: its client retried
+    # "raft is already shutdown" about every 90ms and gave up only after 50 tries, which held the port
+    # 4.3s in 2 of 40 stops at the 5s default. At 250ms the worst stop was 248ms; at 1s one stop took
+    # 997ms. The same timeout bounds a job's block metadata fetch, and a timeout there loses nothing
+    # (Pyroscope 2.3.1 source):
+    # 1. runCompaction (pkg/compactionworker/worker.go) fetches the metadata before it reads or writes
+    #    any block, and returns on an error with job.compacted unset: "the job is not failed, but just
+    #    abandoned - another worker will pick it up and try again".
+    # 2. collectUpdates (same file) sends no status for a done job with no compacted result ("skipping
+    #    update for abandoned job"), so its lease is not renewed.
+    # 3. The scheduler reassigns the job when its lease (compaction_job_lease_duration, 15s) expires
+    #    and counts one failure (isAbandoned and assignJob, pkg/metastore/compaction/scheduler/schedule.go).
+    # 4. After compaction_max_failures (3) the job is no longer assigned (isFailed, same file). Its
+    #    source blocks stay in the index uncompacted, and queries still read them.
+    # Both calls go to the metastore in this process and take milliseconds.
     compaction_worker:
       job_poll_interval: 100ms
+      request_timeout: 250ms
 
     # Anonymous usage reporting to Grafana Labs. Its module stops last and holds shutdown 15s.
     analytics:

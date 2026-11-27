@@ -165,6 +165,10 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
         // The HTTP server closes only once the compaction worker stops, on its next poll tick.
         assertThat(scalarAt(config, "compaction_worker", "job_poll_interval")).isEqualTo("100ms")
+        // A poll in flight when the metastore stops retries until this timeout.
+        assertThat(scalarAt(config, "compaction_worker", "request_timeout")).isEqualTo("250ms")
+        // On memberlist, the LEAVING update can wait 1s for a ring change it can see.
+        assertThat(scalarAt(config, "segment_writer", "lifecycler", "ring", "kvstore", "store")).isEqualTo("inmemory")
     }
 
     @Test

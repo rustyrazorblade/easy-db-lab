@@ -29,6 +29,9 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -44,7 +47,15 @@ import java.util.UUID
  *
  * Empty windows alone cannot show one lost snapshot, so the test also reads the agent's log and
  * fails on any upload it dropped, apart from at most one push refused in the restarted server's
- * start race.
+ * start race and at most one in the stopping server's stop race.
+ *
+ * The stop race: Pyroscope 2.3.1 keeps its HTTP port open after SIGTERM until every module has
+ * stopped, and the compaction worker stops only on its next poll tick, while the segment writer is
+ * gone within a millisecond. A push in that window is refused with 422 "service is unavailable",
+ * which the agent drops. At the 5s default poll the window was 0 to 5 seconds and a push landed in
+ * it intermittently; `config.yaml` sets the poll to 100ms, and the test reads the window from the
+ * server's log (SIGTERM to "server stopped"), fails if it reaches [MAX_STOP_WINDOW], and allows
+ * only a refusal with that body logged inside it. Measured on EC2 at 100ms: 13 to 92ms in six runs of this test.
  */
 class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -231,8 +242,14 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         assertThat(jvm.logs.lines().count { UPLOAD_ERROR in it })
             .describedAs("upload errors the agent logged in the outage; JVM log:\n${jvm.logs}")
             .isPositive()
+        val stop = stopWindow(firstServerLog)
+        println("Pyroscope stop window: ${stop.duration().toMillis()}ms from SIGTERM to the port closing")
+        assertThat(stop.duration())
+            .describedAs("time the stopping server held its port open; server log tail:\n${firstServerLog.takeLast(SERVER_LOG_TAIL_CHARS)}")
+            .isLessThan(MAX_STOP_WINDOW)
         val dropped = droppedUploads(jvm.logs)
-        val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
+        val (startRace, notStartRace) = dropped.partition { EMPTY_RING in it.lowercase() }
+        val (stopRace, other) = notStartRace.partition { SERVICE_UNAVAILABLE in it && stop.holds(it) }
         assertThat(other)
             .describedAs(
                 "uploads the agent dropped; JVM log:\n${jvm.logs}\n" +
@@ -240,6 +257,38 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
                     "restarted server log tail:\n${second.logs.takeLast(SERVER_LOG_TAIL_CHARS)}",
             ).isEmpty()
         assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
+        assertThat(stopRace).describedAs("uploads refused in the stop race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
+    }
+
+    /**
+     * The time from SIGTERM to the port closing, read from the stopping server's own log. Pyroscope
+     * 2.3.1 closes its HTTP server only after every other module stops, and the segment writer stops
+     * first, so in this window a push is refused with 422 "service is unavailable".
+     */
+    private data class StopWindow(
+        val sigterm: Instant,
+        val portClosed: Instant,
+    ) {
+        fun duration(): Duration = Duration.between(sigterm, portClosed)
+
+        /**
+         * Whether the agent logged [agentLine] in this window. The agent logs a refusal after the
+         * answer arrives, a few milliseconds after the server sent it, and its stamp has no zone: the
+         * JDK image runs in UTC, as the server's stamps are.
+         */
+        fun holds(agentLine: String): Boolean {
+            val stamp = AGENT_STAMP.find(agentLine)?.groupValues?.get(1) ?: return false
+            val at = LocalDateTime.parse(stamp, AGENT_STAMP_FORMAT).toInstant(ZoneOffset.UTC)
+            return !at.isBefore(sigterm) && !at.isAfter(portClosed.plus(AGENT_LOG_DELAY))
+        }
+    }
+
+    private fun stopWindow(serverLog: String): StopWindow {
+        fun stampOf(message: String): Instant {
+            val line = checkNotNull(serverLog.lines().firstOrNull { message in it }) { "no \"$message\" in the server log" }
+            return Instant.parse(checkNotNull(SERVER_STAMP.find(line)) { "no ts= in: $line" }.groupValues[1])
+        }
+        return StopWindow(stampOf(SERVER_SIGTERM), stampOf(SERVER_PORT_CLOSED))
     }
 
     /**
@@ -314,3 +363,18 @@ private const val GAVE_UP = "Gave up uploading"
 private const val EMPTY_RING = "empty ring"
 private const val UPLOAD_ERROR = "Error uploading snapshot: "
 private val REFUSED_UPLOAD = Regex("$UPLOAD_ERROR(\\d{3}) ")
+private const val SERVICE_UNAVAILABLE = "service is unavailable"
+private const val SERVER_SIGTERM = "received SIGINT/SIGTERM"
+private const val SERVER_PORT_CLOSED = "msg=\"server stopped\""
+private val SERVER_STAMP = Regex("ts=(\\S+)")
+private val AGENT_STAMP = Regex("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}) ")
+private val AGENT_STAMP_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+
+/** How long after the server's answer the agent may log it. */
+private val AGENT_LOG_DELAY: Duration = Duration.ofSeconds(1)
+
+/**
+ * The longest stop the config allows: the compaction worker's 100ms poll tick plus the metastore's
+ * stop. A stop this long means the server again holds its port open for a fixed wait.
+ */
+private val MAX_STOP_WINDOW: Duration = Duration.ofSeconds(1)

@@ -163,6 +163,8 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "segment_writer", "lifecycler", "min_ready_duration")).isEqualTo("0s")
         assertThat(scalarAt(config, "analytics", "reporting_enabled")).isEqualTo("false")
+        // The HTTP server closes only once the compaction worker stops, on its next poll tick.
+        assertThat(scalarAt(config, "compaction_worker", "job_poll_interval")).isEqualTo("100ms")
     }
 
     @Test

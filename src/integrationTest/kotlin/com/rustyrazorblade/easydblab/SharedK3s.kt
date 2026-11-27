@@ -11,6 +11,7 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import io.fabric8.kubernetes.client.KubernetesClientException
 import io.fabric8.kubernetes.client.readiness.Readiness
 import org.testcontainers.containers.Container
+import org.testcontainers.images.builder.Transferable
 import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.time.Duration
@@ -31,6 +32,9 @@ import java.util.concurrent.TimeoutException
  * Sharing a cluster means sharing its state, so each test class works in its own namespace, created
  * with [createNamespace], and scopes every read and assertion to it. A test that needs cluster-scoped
  * resources (PersistentVolumes, node paths) keeps its own container.
+ *
+ * The shared cluster runs on embedded etcd, as a cluster's K3s does; [newContainer] still gives
+ * K3s's default kine over sqlite, unless the caller copies a datastore drop-in in.
  */
 object SharedK3s {
     /**
@@ -61,8 +65,19 @@ object SharedK3s {
 
     private const val NODE_SCHEDULABLE_TIMEOUT_SECONDS = 120L
 
+    /** The drop-in `start-k3s-server.sh` writes to put a cluster's K3s on embedded etcd. */
+    private const val DATASTORE_DROP_IN = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
+
+    /**
+     * The shared cluster runs on the datastore a cluster runs on: embedded etcd, from the drop-in
+     * read out of `start-k3s-server.sh`. K3s's default kine over sqlite can drop a watch event: when
+     * its poll finds a gap in the revision ids for over a second it moves past the gap, and a row
+     * that commits into the gap later is never sent to watchers. In CI a Node delete and a
+     * ServiceAccount create were each never seen by a watch, while a direct GET found the change.
+     */
     private val container: K3sContainer by lazy {
         newContainer(BUSYBOX_IMAGE, WEB_SERVER_IMAGE).apply {
+            withCopyToContainer(Transferable.of(serverScriptDropIn(DATASTORE_DROP_IN)), DATASTORE_DROP_IN)
             start()
             awaitSchedulable(this)
         }

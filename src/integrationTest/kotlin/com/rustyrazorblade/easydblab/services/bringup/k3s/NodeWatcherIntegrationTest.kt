@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.bringup.k3s
 
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Node
 import io.fabric8.kubernetes.api.model.NodeAddressBuilder
 import io.fabric8.kubernetes.api.model.NodeBuilder
@@ -9,6 +10,8 @@ import io.fabric8.kubernetes.api.model.NodeConditionBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -75,6 +78,31 @@ class NodeWatcherIntegrationTest {
         }
     }
 
+    /**
+     * Deletes the Node [name] and reads it directly until it is gone. This is test setup, not what
+     * the test proves, so it reads with GETs rather than a watch: a setup wait that depends on a
+     * watch event cannot then fail the test for a reason that is not [NodeWatcher]'s. A Node still
+     * there after the wait fails the test with its deletionTimestamp and finalizers.
+     */
+    private fun deleteAndAwaitGone(name: String) {
+        SharedK3s.client().use { client ->
+            val node = client.nodes().withName(name)
+            node.delete()
+            val last =
+                pollUntil(
+                    operationName = "Node $name gone",
+                    maxAttempts = Int.MAX_VALUE,
+                    interval = DELETE_POLL,
+                    deadline = Instant.now().plus(DELETE_WAIT),
+                    done = { it == null },
+                ) { node.get() }
+            check(last == null) {
+                "Node $name was still there ${DELETE_WAIT.toSeconds()}s after its delete: " +
+                    "deletionTimestamp=${last?.metadata?.deletionTimestamp}, finalizers=${last?.metadata?.finalizers}"
+            }
+        }
+    }
+
     @Test
     fun `a node that is already registered and Ready completes both`() {
         val node = containerNode()
@@ -109,14 +137,16 @@ class NodeWatcherIntegrationTest {
         assertThat(watch.ready).isNotDone()
 
         // The stale Node is removed and the replacement registers under the alias at its own IP.
-        SharedK3s.client().use { client ->
-            client.nodes().withName("db901").delete()
-            client.nodes().withName("db901").waitUntilCondition({ it == null }, 30, TimeUnit.SECONDS)
-        }
+        deleteAndAwaitGone("db901")
         createNode("db901", "10.9.0.99")
         watch.registered.get(30, TimeUnit.SECONDS)
         assertThat(watch.ready).isNotDone()
         markReady("db901")
         watch.ready.get(30, TimeUnit.SECONDS)
+    }
+
+    private companion object {
+        val DELETE_WAIT: Duration = Duration.ofSeconds(30)
+        val DELETE_POLL: Duration = Duration.ofMillis(200)
     }
 }

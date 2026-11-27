@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
+import com.rustyrazorblade.easydblab.SharedK3s
 import kotlinx.serialization.encodeToString
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -23,7 +24,6 @@ class StartK3sScriptsIntegrationTest {
         private const val IMAGE = "ubuntu:24.04"
         private const val RESOURCE_DIR = "com/rustyrazorblade/easydblab/services"
         private const val EVICTION_CONFIG = "/etc/rancher/k3s/config.yaml.d/10-kubelet-eviction.yaml"
-        private const val DATASTORE_CONFIG = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
         private const val KUBELET_LIMITS_CONFIG = "/etc/rancher/k3s/config.yaml.d/15-kubelet-limits.yaml"
         private const val ADMISSION_POLICY_CONFIG = "/etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml"
         private const val CALLS_LOG = "/tmp/calls.log"
@@ -238,10 +238,10 @@ class StartK3sScriptsIntegrationTest {
     fun `the server runs K3s on one-member embedded etcd with a larger quota`() {
         runScript(SERVER, mounted = true, runs = 2) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
-            assertThat(node.sh("grep -c '^cluster-init: true$' $DATASTORE_CONFIG")).isEqualTo("1")
-            assertThat(node.sh("grep -c 'quota-backend-bytes=8589934592' $DATASTORE_CONFIG")).isEqualTo("1")
+            assertThat(node.sh("grep -c '^cluster-init: true$' ${SharedK3s.DATASTORE_DROP_IN}")).isEqualTo("1")
+            assertThat(node.sh("grep -c 'quota-backend-bytes=8589934592' ${SharedK3s.DATASTORE_DROP_IN}")).isEqualTo("1")
             // The collector's k3s-etcd job scrapes etcd's metrics listener on the control node.
-            assertThat(node.sh("grep -c '^etcd-expose-metrics: true$' $DATASTORE_CONFIG")).isEqualTo("1")
+            assertThat(node.sh("grep -c '^etcd-expose-metrics: true$' ${SharedK3s.DATASTORE_DROP_IN}")).isEqualTo("1")
             assertThat(node.sh("grep -c eviction-hard= $EVICTION_CONFIG")).isEqualTo("1")
         }
     }
@@ -269,7 +269,7 @@ class StartK3sScriptsIntegrationTest {
             assertThat(node.exitCode).isNotZero()
             assertThat(node.output).contains("/mnt/db1").containsIgnoringCase("datastore")
             assertThat(node.sh("test -L /var/lib/rancher/k3s && echo link || echo none")).isEqualTo("none")
-            assertThat(node.sh("test -e $DATASTORE_CONFIG && echo present || echo absent")).isEqualTo("absent")
+            assertThat(node.sh("test -e ${SharedK3s.DATASTORE_DROP_IN} && echo present || echo absent")).isEqualTo("absent")
             assertThat(node.sh("cat $CALLS_LOG 2>/dev/null || true")).isEmpty()
         }
     }
@@ -278,7 +278,7 @@ class StartK3sScriptsIntegrationTest {
     fun `the agent writes no datastore setting`() {
         runScript(AGENT, mounted = true) { node ->
             assertThat(node.exitCode).describedAs(node.output).isZero()
-            assertThat(node.sh("test -e $DATASTORE_CONFIG && echo present || echo absent")).isEqualTo("absent")
+            assertThat(node.sh("test -e ${SharedK3s.DATASTORE_DROP_IN} && echo present || echo absent")).isEqualTo("absent")
             assertThat(node.sh("grep -rl 'cluster-init\\|etcd-arg\\|etcd-expose-metrics' /etc/rancher/k3s 2>/dev/null || true")).isEmpty()
         }
     }

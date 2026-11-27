@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
-import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -25,7 +23,6 @@ import org.testcontainers.containers.output.Slf4jLogConsumer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -55,15 +52,9 @@ class KitWorkloadProbeIntegrationTest {
         @Container
         @JvmStatic
         val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
-                .withPrivilegedMode(true)
-                .withCreateContainerCmdModifier { cmd ->
-                    cmd.hostConfig!!
-                        .withCgroupnsMode("host")
-                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native")
-                .let { (it as K3sContainer).withPreloadedImages(POD_IMAGE, SharedK3s.BUSYBOX_IMAGE) }
+            SharedK3s
+                .newContainer(POD_IMAGE, SharedK3s.BUSYBOX_IMAGE)
+                .withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s"))) as K3sContainer
     }
 
     private lateinit var client: KubernetesClient

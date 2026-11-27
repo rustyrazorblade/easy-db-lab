@@ -33,8 +33,8 @@ import java.util.concurrent.TimeoutException
  * with [createNamespace], and scopes every read and assertion to it. A test that needs cluster-scoped
  * resources (PersistentVolumes, node paths) keeps its own container.
  *
- * The shared cluster runs on embedded etcd, as a cluster's K3s does; [newContainer] still gives
- * K3s's default kine over sqlite, unless the caller copies a datastore drop-in in.
+ * The shared cluster, and every container [newContainer] gives, runs on embedded etcd, as a
+ * cluster's K3s does.
  */
 object SharedK3s {
     /**
@@ -66,18 +66,13 @@ object SharedK3s {
     private const val NODE_SCHEDULABLE_TIMEOUT_SECONDS = 120L
 
     /** The drop-in `start-k3s-server.sh` writes to put a cluster's K3s on embedded etcd. */
-    private const val DATASTORE_DROP_IN = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
+    const val DATASTORE_DROP_IN = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
 
-    /**
-     * The shared cluster runs on the datastore a cluster runs on: embedded etcd, from the drop-in
-     * read out of `start-k3s-server.sh`. K3s's default kine over sqlite can drop a watch event: when
-     * its poll finds a gap in the revision ids for over a second it moves past the gap, and a row
-     * that commits into the gap later is never sent to watchers. In CI a Node delete and a
-     * ServiceAccount create were each never seen by a watch, while a direct GET found the change.
-     */
+    private val NODE_GONE_TIMEOUT: Duration = Duration.ofSeconds(30)
+    private val NODE_GONE_POLL: Duration = Duration.ofMillis(200)
+
     private val container: K3sContainer by lazy {
         newContainer(BUSYBOX_IMAGE, WEB_SERVER_IMAGE).apply {
-            withCopyToContainer(Transferable.of(serverScriptDropIn(DATASTORE_DROP_IN)), DATASTORE_DROP_IN)
             start()
             awaitSchedulable(this)
         }
@@ -122,16 +117,69 @@ object SharedK3s {
      * A new, unstarted K3s container configured to run in Docker (privileged, the host cgroup
      * namespace, the native snapshotter) with [images] preloaded. For a test that needs a cluster of
      * its own, for instance one with config drop-ins in place before K3s first starts.
+     *
+     * K3s runs on the datastore a cluster runs on: embedded etcd, from the [DATASTORE_DROP_IN] read
+     * out of `start-k3s-server.sh`. K3s's default kine over sqlite can drop a watch event: when its
+     * poll finds a gap in the revision ids for over a second it moves past the gap, and a row that
+     * commits into the gap later is never sent to watchers. In CI a Node delete and a ServiceAccount
+     * create were each never seen by a watch, while a direct GET found the change. Only a test that
+     * needs kine itself sets [embeddedEtcd] to false.
      */
-    fun newContainer(vararg images: String): K3sContainer =
-        K3sContainer(DockerImageName.parse(K3S_IMAGE))
-            .withPrivilegedMode(true)
-            .withCreateContainerCmdModifier { cmd ->
-                checkNotNull(cmd.hostConfig) { "the create command has no host config" }
-                    .withCgroupnsMode("host")
-                    .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-            }.withEnv("K3S_SNAPSHOTTER", "native")
-            .let { (it as K3sContainer).withPreloadedImages(*images) }
+    fun newContainer(
+        vararg images: String,
+        embeddedEtcd: Boolean = true,
+    ): K3sContainer {
+        val container =
+            K3sContainer(DockerImageName.parse(K3S_IMAGE))
+                .withPrivilegedMode(true)
+                .withCreateContainerCmdModifier { cmd ->
+                    checkNotNull(cmd.hostConfig) { "the create command has no host config" }
+                        .withCgroupnsMode("host")
+                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
+                }.withEnv("K3S_SNAPSHOTTER", "native")
+                .let { (it as K3sContainer).withPreloadedImages(*images) }
+        if (embeddedEtcd) {
+            container.withCopyToContainer(Transferable.of(serverScriptDropIn(DATASTORE_DROP_IN)), DATASTORE_DROP_IN)
+        }
+        return container
+    }
+
+    /**
+     * Deletes the Node [name] from the shared cluster and waits until it is gone, as
+     * [awaitNodeGone] does.
+     */
+    fun deleteNodeAndAwaitGone(name: String) {
+        client().use { client ->
+            client.nodes().withName(name).delete()
+            awaitNodeGone(client, name)
+        }
+    }
+
+    /**
+     * Reads the Node [name] directly until it is gone, for at most [timeout]. This is for test setup
+     * and teardown, not for what a test proves, so it reads with GETs rather than a watch: a setup
+     * wait that depends on a watch event cannot then fail a test for a reason that is not the code
+     * under test's. A Node still there after the wait fails with its deletionTimestamp and finalizers.
+     */
+    fun awaitNodeGone(
+        client: KubernetesClient,
+        name: String,
+        timeout: Duration = NODE_GONE_TIMEOUT,
+    ) {
+        val node = client.nodes().withName(name)
+        val last =
+            pollUntil(
+                operationName = "Node $name gone",
+                maxAttempts = Int.MAX_VALUE,
+                interval = NODE_GONE_POLL,
+                deadline = Instant.now().plus(timeout),
+                done = { it == null },
+            ) { node.get() }
+        check(last == null) {
+            "Node $name was still there ${timeout.toSeconds()}s after its delete: " +
+                "deletionTimestamp=${last?.metadata?.deletionTimestamp}, finalizers=${last?.metadata?.finalizers}"
+        }
+    }
 
     /**
      * The body of the quoted heredoc `start-k3s-server.sh` writes to [path], so a test runs K3s with

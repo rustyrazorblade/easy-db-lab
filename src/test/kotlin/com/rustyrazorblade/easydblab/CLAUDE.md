@@ -172,9 +172,9 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 
 If K3s fails to start with `ContainerLaunchException` inside a nested container environment (e.g. CI), ensure the outer container is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write.
 
-**The shared cluster (`SharedK3s`) runs on embedded etcd**, from the datastore drop-in read out of `start-k3s-server.sh`, as a cluster's K3s does. K3s's default kine over sqlite can drop a watch event: its poll moves past a revision gap after a second, and a row that commits into the gap later never reaches a watcher. On kine, CI saw a watch miss a Node delete and a ServiceAccount create. `SharedK3s.newContainer()` still starts on kine, so a test with its own container that waits on a watch or an informer copies in the same drop-in (`SharedK3s.serverScriptDropIn`).
+**Every test K3s runs on embedded etcd**, from the datastore drop-in (`SharedK3s.DATASTORE_DROP_IN`) read out of `start-k3s-server.sh`, as a cluster's K3s does.  The shared cluster and every `SharedK3s.newContainer()` get it; a test that builds its own K3s container uses `newContainer`, not `K3sContainer(...)` directly. K3s's default kine over sqlite can drop a watch event: its poll moves past a revision gap after a second, and a row that commits into the gap later never reaches a watcher. On kine, CI saw a watch miss a Node delete and a ServiceAccount create. Only a test that needs kine itself opts out with `newContainer(embeddedEtcd = false)`.
 
-**Test setup and teardown wait with direct GETs, not a watch.** A wait that only prepares the state under test (a Node deleted, a ServiceAccount created) polls with `pollUntil` and, on a timeout, reports the object's direct state. A wait on the behaviour under test goes through the code under test (for example, `NodeWatcher`'s futures).
+**Test setup and teardown wait with direct GETs, not a watch.** A wait that only prepares the state under test (a Node deleted, a ServiceAccount created) polls with `pollUntil` and, on a timeout, reports the object's direct state.  For a Node, use `SharedK3s.awaitNodeGone` or `SharedK3s.deleteNodeAndAwaitGone`. A wait on the behaviour under test goes through the code under test (for example, `NodeWatcher`'s futures).
 
 ## Test Data Quality
 

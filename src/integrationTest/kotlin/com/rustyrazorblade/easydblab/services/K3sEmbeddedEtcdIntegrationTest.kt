@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.charleskorn.kaml.Yaml
 import com.github.dockerjava.api.model.Network.Ipam
-import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.SharedK3s
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -12,20 +11,18 @@ import org.junit.jupiter.api.Test
 import org.testcontainers.containers.Network
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.k3s.K3sContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 
 /**
  * Boots a real K3s with the datastore drop-in that `start-k3s-server.sh` writes, and proves the
  * server runs on embedded etcd, not kine/sqlite, and that its state survives a restart.
  *
- * The drop-in is read out of the packaged script, so the test fails when the script's settings
- * stop being valid K3s configuration. It has its own container, not [SharedK3s], because the
- * drop-in must be in place before K3s first starts and the restart changes the container.
+ * [SharedK3s.newContainer] reads the drop-in out of the packaged script, so the test fails when the
+ * script's settings stop being valid K3s configuration. It has its own container, not the shared
+ * cluster, because it needs a fixed address and the restart changes the container.
  */
 class K3sEmbeddedEtcdIntegrationTest {
     private companion object {
-        const val DROP_IN_PATH = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
         const val DATA_DIR = "/var/lib/rancher/k3s"
         const val READY_TIMEOUT_SECONDS = 180L
         const val POLL_MILLIS = 2_000L
@@ -91,17 +88,9 @@ class K3sEmbeddedEtcdIntegrationTest {
     @Test
     fun `K3s with the datastore drop-in runs on etcd and keeps its objects across a restart`() {
         val network = fixedSubnetNetwork()
-        val container =
-            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
-                .withPrivilegedMode(true)
-                .withNetwork(network)
-                .withCreateContainerCmdModifier { cmd ->
-                    checkNotNull(cmd.hostConfig) { "the create command has no host config" }
-                        .withCgroupnsMode("host")
-                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                    cmd.withIpv4Address(CONTAINER_IP)
-                }.withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
-        container.withCopyToContainer(Transferable.of(SharedK3s.serverScriptDropIn(DROP_IN_PATH)), DROP_IN_PATH)
+        val container = SharedK3s.newContainer()
+        container.withNetwork(network)
+        container.withCreateContainerCmdModifier { cmd -> cmd.withIpv4Address(CONTAINER_IP) }
         container.withCopyToContainer(
             Transferable.of(Yaml.default.encodeToString(K3sNodeIpConfig(nodeIp = CONTAINER_IP))),
             NODE_IP_DROP_IN_PATH,

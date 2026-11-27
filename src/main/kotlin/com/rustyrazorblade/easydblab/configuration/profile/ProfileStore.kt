@@ -189,9 +189,11 @@ class ProfileStore(
      * Fails when [node], the parsed `profile.yaml`, names a destination type this version does not
      * register, such as one a newer release wrote. Setup only knows the registered destinations, so it
      * must not rebuild such a profile from the raw values: the fields only that type knows would be lost.
+     * A destination or a type of another shape is left for the decode to report.
      */
     private fun failOnUnknownDestination(node: YamlNode) {
-        val type = (node as? YamlMap)?.get<YamlMap>(DESTINATION_FIELD)?.getScalar(Constants.ConfigPaths.PROFILE_TYPE_KEY) ?: return
+        val destination = (node.untagged() as? YamlMap)?.entryNamed(DESTINATION_FIELD) as? YamlMap ?: return
+        val type = destination.scalarNamed(Constants.ConfigPaths.PROFILE_TYPE_KEY) ?: return
         if (type.content in destinationTypes) return
         val shown = if (shownKeyPattern.matches(type.content)) "type '${type.content}'" else "a type"
         val reason =
@@ -296,6 +298,7 @@ class ProfileStore(
         return field +
             when {
                 ours != null -> ours.message.orEmpty()
+                // Only the sealed credentials type reaches here; failOnUnknownDestination reports the destination's.
                 unknownType != null ->
                     "unknown type '${unknownType.typeName}'. Known types: ${unknownType.validTypeNames.sorted().joinToString(", ")}"
                 e is MissingRequiredPropertyException -> "'${e.propertyName}' is required but missing"

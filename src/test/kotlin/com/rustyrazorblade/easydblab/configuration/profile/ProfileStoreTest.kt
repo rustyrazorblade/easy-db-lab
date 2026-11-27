@@ -570,6 +570,9 @@ class ProfileStoreTest {
                 test.profileFile.writeText(edit(test.profileFile.readText()))
             }
             val malformed = "awsProfile: [broken\n"
+            val tagDestinationAsGcp = { text: String ->
+                text.replace("destination:", "destination: !x").replace("type: \"aws\"", "type: \"gcp\"")
+            }
             return listOf(
                 Arguments.of(
                     "malformed profile.yaml",
@@ -590,6 +593,23 @@ class ProfileStoreTest {
                     "unknown destination type",
                     { test: ProfileStoreTest -> current(test) { it.replace("type: \"aws\"", "type: \"gcp\"") } },
                     ProfileFileRemedy.FIX_FILE,
+                ),
+                // The destination check reads the tree without kaml's throwing accessors, so a destination
+                // of another shape reaches the decode and is reported, never thrown as a raw kaml error.
+                Arguments.of(
+                    "unknown destination type under a tag",
+                    { test: ProfileStoreTest -> current(test, tagDestinationAsGcp) },
+                    ProfileFileRemedy.FIX_FILE,
+                ),
+                Arguments.of(
+                    "destination that is a scalar",
+                    { test: ProfileStoreTest -> test.profileFile.writeText("email: \"a@example.com\"\ndestination: aws\n") },
+                    ProfileFileRemedy.RUN_SETUP,
+                ),
+                Arguments.of(
+                    "destination type that is not a scalar",
+                    { test: ProfileStoreTest -> current(test) { it.replace("type: \"aws\"", "type: { a: b }") } },
+                    ProfileFileRemedy.RUN_SETUP,
                 ),
                 Arguments.of(
                     "unknown key",

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.profile
 import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
+import com.charleskorn.kaml.YamlScalar
 import com.charleskorn.kaml.YamlTaggedNode
 import com.rustyrazorblade.easydblab.Constants
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -37,7 +38,7 @@ internal data class UnknownKey(
  * Finds the first key in a parsed profile file that no field declares, without decoding a value.
  *
  * A strict decode stops at the first failure, so a bad value earlier in the file (an unknown SSH
- * transport, an unknown destination type) would hide a misspelled key after it, and setup would read
+ * transport, an unknown credentials type) would hide a misspelled key after it, and setup would read
  * the misspelled field as blank and create a second bucket or key pair. This walk compares each
  * map's keys to the serializer's field names and never looks at a value, so a bad value cannot hide
  * a bad key. The strict decode behind it reports an unknown key with its name unredacted, so this
@@ -45,7 +46,9 @@ internal data class UnknownKey(
  *
  * It names no destination type: an open polymorphic field (the destination) resolves its subclass
  * from [serializers] by the [typeKey] value, a sealed one (the AWS credentials) from its own
- * descriptor. A map whose type is unknown is skipped, because the decode reports the unknown type.
+ * descriptor. A map whose type is unknown, or whose type is not a scalar, is skipped. The profile
+ * store checks the destination type before this walk, so only an unknown credentials type reaches
+ * the decode, which reports it.
  * A list is walked item by item. A map field's keys are data, not field names, so they are never
  * reported; each of its values is walked. A tagged node is walked as the node inside the tag, as
  * kaml decodes it. Scalars hold no keys.
@@ -138,7 +141,22 @@ internal class UnknownKeyFinder(
         candidates: List<SerialDescriptor>,
         map: YamlMap,
     ): SerialDescriptor? {
-        val type = map.getScalar(typeKey)?.content ?: return null
+        val type = map.scalarNamed(typeKey)?.content ?: return null
         return candidates.firstOrNull { it.serialName == type }
     }
 }
+
+/** This node with any YAML tags removed, as kaml decodes it. */
+internal fun YamlNode.untagged(): YamlNode = if (this is YamlTaggedNode) innerNode.untagged() else this
+
+/**
+ * The value of the entry [name], untagged, or null when there is none. Unlike kaml's `get`, it never
+ * throws for a value of another shape, so a caller can leave that shape for the decode to report.
+ */
+internal fun YamlMap.entryNamed(name: String): YamlNode? {
+    val entry = entries.entries.firstOrNull { it.key.content == name } ?: return null
+    return entry.value.untagged()
+}
+
+/** The scalar value of the entry [name], or null when there is none or it is not a scalar. */
+internal fun YamlMap.scalarNamed(name: String): YamlScalar? = entryNamed(name) as? YamlScalar

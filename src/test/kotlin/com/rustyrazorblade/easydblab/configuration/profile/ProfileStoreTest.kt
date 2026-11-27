@@ -432,6 +432,24 @@ class ProfileStoreTest {
         assertThat((stale.destination as AwsDestination).accountBucket).isEmpty()
     }
 
+    /** Control: drop the hold-count check; the file lock throws OverlappingFileLockException, which names no profile. */
+    @Test
+    fun `a save from inside a change fails with a clear error and keeps the file`() {
+        store().replace(profile(ssoProfile))
+        val before = profileFile.readText()
+        val outer = store()
+
+        assertThatThrownBy {
+            outer.update { current ->
+                store().update { it.copy(email = "inner") }
+                current.copy(email = "outer")
+            }
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("from inside the change")
+        assertThat(profileFile.readText()).isEqualTo(before)
+        assertThat(store().update { it.copy(email = "after") }.email).isEqualTo("after")
+    }
+
     /** Control: drop the file lock and keep only a per-store lock; concurrent read-modify-writes lose changes. */
     @Test
     fun `concurrent updates from many threads keep every change`() {

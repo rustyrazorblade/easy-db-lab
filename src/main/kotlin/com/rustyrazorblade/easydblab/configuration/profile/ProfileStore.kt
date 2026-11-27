@@ -33,7 +33,9 @@ import kotlin.concurrent.withLock
  * file again, applies the change and replaces the file in one rename, with mode 0600 because it holds
  * credentials. Two commands that save different settings at once keep both. A JVM cannot take a
  * second lock on a file it holds already, so threads of one process take turns on [localLock] first,
- * and a change must not call back into the store.
+ * and a change must not call back into the store; a save inside a change fails at once with a clear
+ * error. Reads take no lock: every save replaces the file in one rename, so a read sees the whole of
+ * one save or the whole of the next.
  *
  * The earlier file is read, never written, moved or deleted, so a build of an earlier release keeps
  * working on the same profile. The store names no destination type: the [serializers] register each
@@ -88,6 +90,7 @@ class ProfileStore(
      * credentials. An earlier file that holds none was an interrupted setup, which setup finishes.
      */
     fun isSetup(): Boolean =
+        // An earlier file that does not parse counts as set up, so the next load reports why it fails.
         file.exists() ||
             (legacyFile.exists() && (readableLegacyValues()?.let { legacyReader.holdsCredentials(it) } ?: true))
 
@@ -203,13 +206,18 @@ class ProfileStore(
     private fun scalars(
         node: YamlNode,
         prefix: String,
-    ): Map<String, String> =
+    ): Map<String, String> = buildMap { addScalars(node, prefix) }
+
+    private fun MutableMap<String, String>.addScalars(
+        node: YamlNode,
+        prefix: String,
+    ) {
         when (node) {
-            is YamlMap ->
-                node.entries.entries.fold(emptyMap()) { found, (key, value) -> found + scalars(value, "$prefix${key.content}.") }
-            is YamlScalar -> mapOf(prefix.removeSuffix(".") to node.content)
-            else -> emptyMap()
+            is YamlMap -> node.entries.forEach { (key, value) -> addScalars(value, "$prefix${key.content}.") }
+            is YamlScalar -> put(prefix.removeSuffix("."), node.content)
+            else -> Unit
         }
+    }
 
     /** Runs [read] of [source] and turns a failure into one that carries no text from the file. */
     private fun <T> redacted(
@@ -279,32 +287,29 @@ class ProfileStore(
     /** Runs [block] while this thread holds [localLock] and this process holds the lock file. */
     private fun <T> locked(block: () -> T): T =
         localLock.withLock {
-            profileDir.mkdirs()
-            val channel =
-                try {
-                    FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-                } catch (e: IOException) {
-                    throw ProfileFileException(
-                        lockFile,
-                        "${e::class.simpleName} while opening the lock file",
-                        "Cannot open the profile lock file $lockFile: ${e::class.simpleName}",
-                        e,
-                    )
-                }
-            channel.use {
-                val held =
-                    try {
-                        it.lock()
-                    } catch (e: IOException) {
-                        throw ProfileFileException(
-                            lockFile,
-                            "${e::class.simpleName} while locking the lock file",
-                            "Cannot lock the profile lock file $lockFile: ${e::class.simpleName}",
-                            e,
-                        )
-                    }
-                held.use { block() }
+            // A second file lock from this thread would throw OverlappingFileLockException, which names no profile.
+            check(localLock.holdCount == 1) {
+                "A profile change saved the profile again from inside the change. Save once, after the change returns."
             }
+            profileDir.mkdirs()
+            val channel = onLockFile("open") { FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE) }
+            channel.use { onLockFile("lock") { it.lock() }.use { block() } }
+        }
+
+    /** Runs [action] on the lock file and reports an I/O failure as a [ProfileFileException] that names it. */
+    private fun <T> onLockFile(
+        verb: String,
+        action: () -> T,
+    ): T =
+        try {
+            action()
+        } catch (e: IOException) {
+            throw ProfileFileException(
+                lockFile,
+                "${e::class.simpleName} while ${verb}ing the lock file",
+                "Cannot $verb the profile lock file $lockFile: ${e::class.simpleName}",
+                e,
+            )
         }
 
     private companion object {

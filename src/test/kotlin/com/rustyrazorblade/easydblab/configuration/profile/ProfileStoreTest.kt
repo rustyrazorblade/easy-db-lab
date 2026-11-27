@@ -337,6 +337,25 @@ class ProfileStoreTest {
             }
     }
 
+    /**
+     * An earlier file that does not parse counts as set up, so the command runs and its load says why
+     * the file fails, instead of setup starting over a file it cannot read.
+     *
+     * Control: remove the catch in readableLegacyValues(); isSetup() throws and the test fails.
+     */
+    @Test
+    fun `an earlier file that does not parse counts as set up and its load says why`() {
+        legacyFile.writeText("awsProfile: [broken\n")
+
+        assertThat(store().isSetup()).isTrue()
+        assertThatThrownBy { store().load() }
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_FILE)
+                assertThat(e.file).isEqualTo(legacyFile)
+            }
+        assertThat(profileFile).doesNotExist()
+    }
+
     /** Control: make loadForSetup decode the profile; it throws and setup gets nothing. */
     @ParameterizedTest
     @ValueSource(strings = ["legacy/bad-transport.yaml:settings.yaml", "current/bad-transport.yaml:profile.yaml"])

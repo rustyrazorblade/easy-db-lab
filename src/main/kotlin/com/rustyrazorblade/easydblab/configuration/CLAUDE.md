@@ -203,8 +203,10 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
     everything else: a file that does not parse or cannot be read (`parse()`, which `loadForSetup()` runs on either
     file), a destination `type` this version does not register (checked before the unknown-key walk, in `load()` and
     `loadForSetup()` alike: setup would rebuild it as AWS and lose the fields only that type knows; the type is shown
-    only when it matches the shown-key pattern), and write and lock-file failures. `profile show` prints the setup
-    hint, "Fix or remove that key in the file" or "Fix the file" from it. Setup's review path loads the profile once and
+    only when it matches the shown-key pattern), and write and lock-file failures. `POSIX_FILE_SYSTEM` for a save on a
+    file system that cannot make the file owner-only (`Files.setPosixFilePermissions` throws
+    `UnsupportedOperationException`; the constructor's `makeOwnerOnly` is the seam a test replaces). `profile show` prints the setup
+    hint, "Fix or remove that key in the file", "Fix the file" or "Put the profile directory on a file system with POSIX permissions" from it. Setup's review path loads the profile once and
     rewrites one whose load fails with `RUN_SETUP` (an unknown transport, a value of the wrong form) from its flat values.
 - **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
   `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.

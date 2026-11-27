@@ -86,6 +86,11 @@ class ProfileShowTest {
                 Arguments.of(ProfileFileRemedy.RUN_SETUP, "easy-db-lab profile setup", listOf("Fix or remove that key", "Fix the file")),
                 Arguments.of(ProfileFileRemedy.FIX_KEY, "Fix or remove that key in the file", listOf("profile setup", "Fix the file")),
                 Arguments.of(ProfileFileRemedy.FIX_FILE, "Fix the file", listOf("profile setup", "Fix or remove that key")),
+                Arguments.of(
+                    ProfileFileRemedy.POSIX_FILE_SYSTEM,
+                    "Put the profile directory on a file system with POSIX permissions",
+                    listOf("profile setup", "Fix the file", "Fix or remove that key"),
+                ),
             )
 
         private fun flag(enabled: Boolean) = if (enabled) "ENABLED" else "DISABLED"

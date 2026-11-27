@@ -92,6 +92,8 @@ class ProfileShow : PicoBaseCommand() {
 
         private const val FIX_FILE_HINT = "Fix the file"
 
+        private const val POSIX_FILE_SYSTEM_HINT = "Put the profile directory on a file system with POSIX permissions"
+
         /**
          * Renders the whole report as one string.
          *
@@ -136,6 +138,7 @@ class ProfileShow : PicoBaseCommand() {
                 ProfileFileRemedy.RUN_SETUP -> SETUP_HINT
                 ProfileFileRemedy.FIX_KEY -> UNKNOWN_KEY_HINT
                 ProfileFileRemedy.FIX_FILE -> FIX_FILE_HINT
+                ProfileFileRemedy.POSIX_FILE_SYSTEM -> POSIX_FILE_SYSTEM_HINT
             }
 
         private fun settingsBlock(profile: Profile): String =

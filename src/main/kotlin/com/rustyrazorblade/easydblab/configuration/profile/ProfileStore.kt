@@ -21,6 +21,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.locks.ReentrantLock
@@ -57,11 +58,15 @@ import kotlin.concurrent.withLock
  * [loadForSetup] alike, so a bad value earlier in the file cannot hide a misspelled key after it.
  *
  * @param profileDir the active profile's directory
+ * @param makeOwnerOnly sets the staged file to mode 0600 before the rename. It throws
+ *   [UnsupportedOperationException] on a file system with no POSIX permissions; tests replace it to
+ *   reach that failure
  */
 class ProfileStore(
     val profileDir: File,
     serializers: SerializersModule,
     private val legacyReader: LegacyProfileReader,
+    private val makeOwnerOnly: (Path) -> Unit = ::setOwnerOnly,
 ) {
     /** The current profile file. */
     val file: File = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
@@ -217,25 +222,27 @@ class ProfileStore(
     private fun write(profile: Profile) {
         val text = yaml.encodeToString(Profile.serializer(), profile) + "\n"
         try {
-            file.writeTextAtomically(text) { staged ->
-                Files.setPosixFilePermissions(staged.toPath(), PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
-            }
+            file.writeTextAtomically(text) { staged -> makeOwnerOnly(staged.toPath()) }
         } catch (e: IOException) {
-            throw writeFailed(e)
+            throw ProfileFileException(
+                file,
+                "${e::class.simpleName} while writing",
+                "Cannot write the profile file $file: ${e::class.simpleName}",
+                e,
+                ProfileFileRemedy.FIX_FILE,
+            )
         } catch (e: UnsupportedOperationException) {
-            // A file system with no POSIX permissions cannot keep the credentials owner-only.
-            throw writeFailed(e)
+            // The file holds credentials, so it is never saved readable by others.
+            throw ProfileFileException(
+                file,
+                NOT_POSIX_REASON,
+                "Cannot write the profile file $file: $NOT_POSIX_REASON. " +
+                    "Put the profile directory on a file system with POSIX permissions.",
+                e,
+                ProfileFileRemedy.POSIX_FILE_SYSTEM,
+            )
         }
     }
-
-    private fun writeFailed(e: Exception) =
-        ProfileFileException(
-            file,
-            "${e::class.simpleName} while writing",
-            "Cannot write the profile file $file: ${e::class.simpleName}",
-            e,
-            ProfileFileRemedy.FIX_FILE,
-        )
 
     private fun legacyValues(): Map<String, String> = scalars(parse(legacyFile), prefix = "")
 
@@ -332,6 +339,7 @@ class ProfileStore(
                     ProfileFileRemedy.RUN_SETUP -> "Fix the file or run 'easy-db-lab profile setup'."
                     ProfileFileRemedy.FIX_KEY -> "Fix or remove that key in the file; 'easy-db-lab profile setup' would stop at it too."
                     ProfileFileRemedy.FIX_FILE -> "Fix the file; 'easy-db-lab profile setup' would stop at it too."
+                    ProfileFileRemedy.POSIX_FILE_SYSTEM -> "Put the profile directory on a file system with POSIX permissions."
                 },
             cause,
             remedy,
@@ -376,5 +384,11 @@ class ProfileStore(
 
         /** Taken before the file lock, by every thread of this JVM, for every profile. */
         val localLock = ReentrantLock()
+
+        const val NOT_POSIX_REASON = "the file system cannot make the file owner-only (mode 0600)"
+
+        fun setOwnerOnly(path: Path) {
+            Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
+        }
     }
 }

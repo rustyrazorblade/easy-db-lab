@@ -19,6 +19,13 @@ option SHALL pick or override the destination; a different destination needs a d
 - **WHEN** the user runs `easy-db-lab profile setup` again
 - **THEN** setup reviews that profile's destination settings and does not offer another destination
 
+#### Scenario: A file system that cannot keep the profile owner-only stops the save
+
+- **GIVEN** the profile directory is on a file system with no POSIX permissions
+- **WHEN** any command saves the profile
+- **THEN** the save fails, names the profile file, says the file system cannot make it owner-only, and says to put the profile directory on a file system with POSIX permissions
+- **AND** no profile file is written
+
 #### Scenario: Every command that needs a profile still requires one
 
 - **GIVEN** a profile name with no profile file

@@ -95,6 +95,30 @@ class ProfileStoreTest {
         assertThat(written).isEqualTo(golden.readText())
     }
 
+    /**
+     * A file system that cannot make the file owner-only stops the save with its own remedy, names the
+     * file and leaves no profile or staged file behind.
+     *
+     * Control: remove the UnsupportedOperationException catch in write(); the raw exception escapes and
+     * the type check fails.
+     */
+    @Test
+    fun `a file system with no POSIX permissions fails the save and writes nothing`() {
+        val store =
+            ProfileStore(profileDir, awsProfileSerializers, LegacyAwsProfileReader()) {
+                throw UnsupportedOperationException("no POSIX view")
+            }
+
+        assertThatThrownBy { store.replace(profile(ssoProfile)) }
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.remedy).isEqualTo(ProfileFileRemedy.POSIX_FILE_SYSTEM)
+                assertThat(e.file).isEqualTo(profileFile)
+                assertThat(e.reason).contains("owner-only")
+                assertThat(e.message).contains(profileFile.path).doesNotContain("profile setup")
+            }
+        assertThat(profileDir.listFiles().map { it.name }).containsOnly(Constants.ConfigPaths.PROFILE_LOCK_FILE)
+    }
+
     /** Control: skip setting 0600 on the temp file; it keeps the umask mode and the test fails. */
     @Test
     fun `save writes owner only permissions`() {

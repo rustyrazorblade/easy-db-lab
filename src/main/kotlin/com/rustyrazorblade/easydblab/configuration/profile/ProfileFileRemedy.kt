@@ -17,4 +17,10 @@ enum class ProfileFileRemedy {
 
     /** The file cannot be read, parsed, written or locked: setup fails the same way, so the user fixes the file. */
     FIX_FILE,
+
+    /**
+     * The profile directory is on a file system that cannot make a file owner-only. Nothing in the file
+     * can fix it, so the user moves the profile directory to a file system with POSIX permissions.
+     */
+    POSIX_FILE_SYSTEM,
 }

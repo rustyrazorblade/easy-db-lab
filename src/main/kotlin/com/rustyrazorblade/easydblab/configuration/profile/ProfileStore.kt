@@ -221,15 +221,21 @@ class ProfileStore(
                 Files.setPosixFilePermissions(staged.toPath(), PosixFilePermissions.fromString(Constants.ConfigPaths.PROFILE_FILE_MODE))
             }
         } catch (e: IOException) {
-            throw ProfileFileException(
-                file,
-                "${e::class.simpleName} while writing",
-                "Cannot write the profile file $file: ${e::class.simpleName}",
-                e,
-                ProfileFileRemedy.FIX_FILE,
-            )
+            throw writeFailed(e)
+        } catch (e: UnsupportedOperationException) {
+            // A file system with no POSIX permissions cannot keep the credentials owner-only.
+            throw writeFailed(e)
         }
     }
+
+    private fun writeFailed(e: Exception) =
+        ProfileFileException(
+            file,
+            "${e::class.simpleName} while writing",
+            "Cannot write the profile file $file: ${e::class.simpleName}",
+            e,
+            ProfileFileRemedy.FIX_FILE,
+        )
 
     private fun legacyValues(): Map<String, String> = scalars(parse(legacyFile), prefix = "")
 

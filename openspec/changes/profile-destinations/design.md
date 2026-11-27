@@ -175,7 +175,10 @@ Setup and store tests use a real `ProfileStore` on `@TempDir` and assert on the 
 - `ProfileStoreTest.a failure suggests setup only when setup repairs it` (a table: malformed
   `profile.yaml` and `settings.yaml`, unknown key, unknown SSH transport, unknown destination type).
   Control: report a parse failure as one setup repairs.
-- `ProfileStoreTest.unknown destination type fails naming the type`.  Control: default to AWS.
+- `ProfileStoreTest.unknown destination type fails load and loadForSetup naming the type`, as a
+  fix-the-file failure.  Control: drop the check from `loadForSetup`.
+- `SetupProfileTest.an unknown destination type stops setup and keeps the file`.  Setup never
+  rebuilds a destination it does not know as AWS.  Control: let `loadForSetup` read its values.
 - `ProfileStoreTest.unknown ssh transport fails naming value and choices`.  Control: default it.
 - `ProfileStoreTest.parse error message holds no file text` (a secret in a broken file).  Control:
   include the decoder message.

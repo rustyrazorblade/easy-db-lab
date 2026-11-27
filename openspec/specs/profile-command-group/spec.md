@@ -92,11 +92,13 @@ When the active profile's `settings.yaml` exists but cannot be deserialized, `pr
 report the profile as present but its file unusable, naming the failing file path, the reason (the
 read, decode, write or lock failure, never the file's text) and one hint.
 The hint SHALL name `easy-db-lab profile setup` only when setup repairs the failure: a value that does
-not decode (a wrong type, an unknown destination type, an unknown SSH transport, a missing required
-field), because setup reads the raw values. When the failure is an unknown key, setup would stop at
-the same key, so the hint SHALL tell the user to fix or remove that key in the file. For any other
-failure (a file that is not valid YAML or cannot be read, written or locked), setup would fail the
-same way, so the hint SHALL tell the user to fix the file.
+not decode (a wrong type, an unknown SSH transport, a missing required field), because setup reads
+the raw values. When the failure is an unknown key, setup would stop at the same key, so the hint
+SHALL tell the user to fix or remove that key in the file. For any other failure (a file that is not
+valid YAML or cannot be read, written or locked, or a destination type this version does not know),
+setup would fail the same way, so the hint SHALL tell the user to fix the file. Setup SHALL NOT
+rebuild a profile whose destination type this version does not know, because the fields only that
+type knows would be lost.
 The path and the hint SHALL each appear once.
 It SHALL NOT surface a raw deserialization error.
 

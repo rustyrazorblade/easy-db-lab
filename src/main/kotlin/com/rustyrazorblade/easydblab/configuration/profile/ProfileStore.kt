@@ -13,7 +13,9 @@ import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.getPolymorphicDescriptors
 import kotlinx.serialization.modules.SerializersModule
 import java.io.File
 import java.io.IOException
@@ -75,6 +77,14 @@ class ProfileStore(
 
     private val unknownKeys = UnknownKeyFinder(serializers, Constants.ConfigPaths.PROFILE_TYPE_KEY)
 
+    /** The `type` of every destination this version registers, such as `aws`. */
+    @OptIn(ExperimentalSerializationApi::class)
+    private val destinationTypes: Set<String> =
+        Profile.serializer().descriptor.let { profile ->
+            val destination = profile.getElementDescriptor(profile.getElementIndex(DESTINATION_FIELD))
+            serializers.getPolymorphicDescriptors(destination).map { it.serialName }.toSet()
+        }
+
     private val yaml =
         Yaml(
             serializersModule = serializers,
@@ -120,6 +130,7 @@ class ProfileStore(
         when {
             file.exists() -> {
                 val node = parse(file)
+                failOnUnknownDestination(node)
                 failOnUnknownKey(node)
                 legacyReader.setupValues(scalars(node, prefix = ""))
             }
@@ -167,9 +178,27 @@ class ProfileStore(
 
     private fun decode(): Profile {
         val node = parse(file)
+        failOnUnknownDestination(node)
         failOnUnknownKey(node)
-        // The file parsed and every key is known, so the failure is a value; setup reads raw values and repairs it.
+        // The file parsed, its destination is known and every key is declared, so the failure is a
+        // value; setup reads raw values and repairs it.
         return redacted(file, ProfileFileRemedy.RUN_SETUP) { yaml.decodeFromYamlNode(Profile.serializer(), node) }
+    }
+
+    /**
+     * Fails when [node], the parsed `profile.yaml`, names a destination type this version does not
+     * register, such as one a newer release wrote. Setup only knows the registered destinations, so it
+     * must not rebuild such a profile from the raw values: the fields only that type knows would be lost.
+     */
+    private fun failOnUnknownDestination(node: YamlNode) {
+        val type = (node as? YamlMap)?.get<YamlMap>(DESTINATION_FIELD)?.getScalar(Constants.ConfigPaths.PROFILE_TYPE_KEY) ?: return
+        if (type.content in destinationTypes) return
+        val shown = if (shownKeyPattern.matches(type.content)) "type '${type.content}'" else "a type"
+        val reason =
+            "field $DESTINATION_FIELD: this version does not know destination $shown. " +
+                "Known types: ${destinationTypes.sorted().joinToString(", ")}"
+        val where = "line ${type.location.line}, column ${type.location.column}"
+        throw unreadable(file, where, reason, cause = null, ProfileFileRemedy.FIX_FILE)
     }
 
     /**
@@ -332,6 +361,9 @@ class ProfileStore(
         val log = KotlinLogging.logger {}
 
         val shownKeyPattern = Regex(Constants.ConfigPaths.PROFILE_SHOWN_KEY_PATTERN)
+
+        /** The name of [Profile.destination] in the file. */
+        const val DESTINATION_FIELD = "destination"
 
         /** Taken before the file lock, by every thread of this JVM, for every profile. */
         val localLock = ReentrantLock()

@@ -276,15 +276,41 @@ class ProfileStoreTest {
         }
     }
 
-    /** Control: drop the type from the error message; the assertion on the name fails. */
+    /**
+     * An unknown destination type fails the load and setup's read alike, naming the type and the
+     * known ones, as a failure setup cannot repair: setup would rebuild it as AWS.
+     *
+     * Control: drop the check from loadForSetup; it returns the values and the second assertion fails.
+     */
     @Test
-    fun `unknown destination type fails naming the type`() {
+    fun `unknown destination type fails load and loadForSetup naming the type`() {
         store().replace(profile(ssoProfile))
         profileFile.writeText(profileFile.readText().replace("type: \"aws\"", "type: \"gcp\""))
+        listOf({ store().load() }, { store().loadForSetup() }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_FILE)
+                    assertThat(e.reason).contains("'gcp'").contains("Known types: aws")
+                    assertThat(e.message).doesNotContain("run 'easy-db-lab profile setup'")
+                }
+        }
+    }
+
+    /**
+     * The type is file text, so a value that is not a short identifier is not shown.
+     *
+     * Control: show the type whatever it is; the secret appears in the reason.
+     */
+    @Test
+    fun `an unknown destination type that is not an identifier is not shown`() {
+        val secret = "tskey-client-kAbC123dEf456gHi789jKl012mNo345pQr678sTu901"
+        store().replace(profile(ssoProfile))
+        profileFile.writeText(profileFile.readText().replace("type: \"aws\"", "type: \"$secret\""))
         assertThatThrownBy { store().load() }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("'gcp'")
-            .hasMessageContaining("aws")
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.reason).contains("a type").doesNotContain(secret)
+                assertThat(e.message).doesNotContain(secret)
+            }
     }
 
     /** Control: make loadForSetup decode the profile; it throws and setup gets nothing. */
@@ -563,7 +589,7 @@ class ProfileStoreTest {
                 Arguments.of(
                     "unknown destination type",
                     { test: ProfileStoreTest -> current(test) { it.replace("type: \"aws\"", "type: \"gcp\"") } },
-                    ProfileFileRemedy.RUN_SETUP,
+                    ProfileFileRemedy.FIX_FILE,
                 ),
                 Arguments.of(
                     "unknown key",

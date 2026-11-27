@@ -201,9 +201,11 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
     does not decode (`decode()`, the earlier file's `migrate`) and an earlier file with no credentials, since
     `loadForSetup()` reads raw scalars. `FIX_KEY` for an unknown key, where setup would stop too. `FIX_FILE` for
     everything else: a file that does not parse or cannot be read (`parse()`, which `loadForSetup()` runs on either
-    file), and write and lock-file failures. `profile show` prints the setup hint, "Fix or remove that key in the file"
-    or "Fix the file" from it. Setup's review path rewrites a profile whose load fails with `RUN_SETUP` from its flat
-    values, so an unknown destination type is repaired as an unknown transport is.
+    file), a destination `type` this version does not register (checked before the unknown-key walk, in `load()` and
+    `loadForSetup()` alike: setup would rebuild it as AWS and lose the fields only that type knows; the type is shown
+    only when it matches the shown-key pattern), and write and lock-file failures. `profile show` prints the setup
+    hint, "Fix or remove that key in the file" or "Fix the file" from it. Setup's review path loads the profile once and
+    rewrites one whose load fails with `RUN_SETUP` (an unknown transport, a value of the wrong form) from its flat values.
 - **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
   `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.
   `isSetup()` is true when `profile.yaml` exists, or `settings.yaml` exists and holds credentials.

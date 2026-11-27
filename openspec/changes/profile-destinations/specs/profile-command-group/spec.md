@@ -79,7 +79,9 @@ raw deserialization error or any text from the file.
 `profile setup` reads the raw values of either file, so it repairs a value that does not decode, but
 it parses both files and checks every key first. The hint SHALL name `easy-db-lab profile setup` only
 for a value that does not decode; for an unknown key it SHALL say to fix or remove that key in the
-file, and for a file that is not valid YAML or cannot be read, written or locked, to fix the file.
+file, and for a file that is not valid YAML or cannot be read, written or locked, or that names a
+destination type this version does not know, to fix the file. Setup SHALL NOT rebuild a profile whose
+destination type this version does not know.
 The path and the hint SHALL each appear once.
 
 #### Scenario: Truncated profile file is reported, not thrown
@@ -93,6 +95,12 @@ The path and the hint SHALL each appear once.
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the CLI names the file path and the reason, and says "Fix or remove that key in the file"
 - **AND** it does not name `easy-db-lab profile setup`
+
+#### Scenario: An unknown destination type is reported without the setup hint
+- **GIVEN** the active profile's current-format file names a destination type this version does not register
+- **WHEN** the user runs `easy-db-lab profile show` or `easy-db-lab profile setup`
+- **THEN** the CLI names the file path, the type when it is a short identifier, and the known types, and says "Fix the file"
+- **AND** setup changes nothing and creates no resources
 
 #### Scenario: A file that is not valid YAML is reported without the setup hint
 - **GIVEN** the active profile's current-format file, or its earlier-format file, is not valid YAML

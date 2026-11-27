@@ -87,8 +87,8 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun handleExistingProfile(saved: Map<String, String>) {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
-        val transportRepaired = repairUndecodableProfile(saved)
-        val destination = profileStore.load().aws
+        val reviewed = loadOrRepair(saved)
+        val destination = reviewed.profile.aws
 
         // A profile made before the easy_db_lab marker has a bucket and key pair with only the
         // legacy one. This needs working credentials, and runs before the prompts so a failure
@@ -99,45 +99,52 @@ class SetupProfile : PicoBaseCommand() {
 
         // Collect optional info, allowing updates
         eventBus.emit(Event.Setup.UpdatePrompt)
-        collectAndSaveOptionalInfoWithUpdate(saved, askTransport = !transportRepaired)
+        collectAndSaveOptionalInfoWithUpdate(saved, askTransport = !reviewed.transportAsked)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)
     }
 
     /**
-     * A saved value this version cannot decode (an unknown SSH transport, an unknown destination type,
-     * a value of the wrong form) makes every load of the profile fail, and with it every AWS client
-     * this command builds from the profile. Saves the profile again from the flat setup values, so the
-     * rest of setup can load it. A bad transport is reported and asked for first.
+     * The saved profile, loaded once. A saved value this version cannot decode (an unknown SSH
+     * transport, a value of the wrong form) makes every load of the profile fail, and with it every AWS
+     * client this command builds from the profile. Such a profile is saved again from the flat setup
+     * values, so the rest of setup can use it. A bad transport is reported and asked for first.
      *
-     * @return whether the transport was asked for, so the review does not ask a second time
+     * A destination type this version does not know never reaches the repair: [ProfileStore.loadForSetup]
+     * fails on it first, because a rebuild as AWS would lose the fields only that type knows.
      */
-    private fun repairUndecodableProfile(saved: Map<String, String>): Boolean {
+    private fun loadOrRepair(saved: Map<String, String>): ReviewedProfile {
         val unreadable = saved[Keys.SSH_TRANSPORT]?.takeIf { SshTransport.parse(it) == null }
-        if (unreadable == null && savedProfileDecodes()) return false
+        if (unreadable == null) loadIfDecodes()?.let { return ReviewedProfile(it, transportAsked = false) }
 
         val transport =
             unreadable?.let {
                 eventBus.emit(Event.Setup.InvalidSshTransport(it, SshTransport.entries.map { entry -> entry.configValue }))
                 promptForSshTransport(SshTransport.Direct)
             }
-        val repaired = profileFrom(saved) ?: throw SetupProfileException("The saved profile has no credentials")
-        profileStore.replace(transport?.let { chosen -> repaired.withAws { it.copy(sshTransport = chosen) } } ?: repaired)
-        return transport != null
+        val rebuilt = profileFrom(saved) ?: throw SetupProfileException("The saved profile has no credentials")
+        val repaired = transport?.let { chosen -> rebuilt.withAws { it.copy(sshTransport = chosen) } } ?: rebuilt
+        profileStore.replace(repaired)
+        return ReviewedProfile(repaired, transportAsked = transport != null)
     }
 
     /**
-     * Whether the saved profile loads. Only a failure setup repairs reads as false; any other (a file
-     * that changed under this command and no longer parses) is the user's to fix and is rethrown.
+     * The saved profile, or null when it fails in a way setup repairs. Any other failure (a file that
+     * changed under this command and no longer parses) is the user's to fix and is rethrown.
      */
-    private fun savedProfileDecodes(): Boolean =
+    private fun loadIfDecodes(): Profile? =
         try {
             profileStore.load()
-            true
         } catch (e: ProfileFileException) {
             if (e.remedy != ProfileFileRemedy.RUN_SETUP) throw e
-            false
+            null
         }
+
+    /** The profile the review continues from, and whether the transport was already asked for, so it is not asked twice. */
+    private data class ReviewedProfile(
+        val profile: Profile,
+        val transportAsked: Boolean,
+    )
 
     /**
      * Runs the full setup process for new profiles.

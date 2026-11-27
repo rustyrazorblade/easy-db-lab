@@ -405,21 +405,30 @@ class SetupProfileTest : BaseKoinTest() {
         }
 
         /**
-         * A destination type this version does not know fails every load, so the store tells the user
-         * setup repairs it. Setup saves the profile again from its flat values, as an AWS profile.
+         * A destination type this version does not know, such as one a newer release wrote, can hold
+         * fields only that type knows. Its AWS-looking values (a key pair, a bucket, a region) must not
+         * make setup save the profile again as AWS, which would lose those fields, or create AWS resources.
+         * Setup stops with a fix-the-file error before it asks anything, and the file is kept.
          *
-         * Control: repair only a bad transport on the review path; the load after the repair throws.
+         * Control: let loadForSetup read an unknown destination's values; setup rewrites the file as AWS.
          */
         @Test
-        fun `an unknown destination type is repaired by setup`() {
+        fun `an unknown destination type stops setup and keeps the file`() {
             seed(completeStaticProfile())
             store.file.writeText(store.file.readText().replace("type: \"aws\"", "type: \"gcp\""))
+            val before = store.file.readBytes()
             testPrompter = TestPrompter(mapOf("SSH transport" to ""))
             setupTestModule()
 
-            SetupProfile().execute()
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_FILE)
+                    assertThat(e.reason).contains("'gcp'").contains("aws")
+                }
 
-            assertThat(store.load().aws).isEqualTo(completeStaticProfile().aws)
+            assertThat(store.file.readBytes()).isEqualTo(before)
+            assertThat(testPrompter.getCallLog()).isEmpty()
+            verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
         }
 
         /**

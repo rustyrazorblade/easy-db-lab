@@ -232,7 +232,7 @@ Real AWS (before ready, `requires-aws`).  Copy `~/.easy-db-lab` to a temporary d
 branch build with `EASY_DB_LAB_USER_DIR` set to it.  This is extra isolation; the safety comes from D1
 (the earlier file is never written).  The default profile name is used; no profile is created.
 - `profile show`: `profile.yaml` appears, values match `settings.yaml`.
-- `profile setup` on the review path: STS validation and marker tags run; the saved file keeps every value.
+- `profile setup` on the review path: the marker tags run (S3 and EC2 calls with the profile's credentials; only a full setup validates the credentials through STS); the saved file keeps every value.
 - 3-node `init`/`up`/`down` with `embark_offhours=off`.
 - `settings.yaml` in the copy is byte-identical before and after (`cmp`).
 - Then main's build runs `profile show` on the same copy: it succeeds and its values match the

@@ -83,8 +83,8 @@
 
 ## 7. Verification
 
-- [ ] 7.1 (mechanical) `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21, through a Sonnet
+- [x] 7.1 (mechanical) `./gradlew ktlintFormat`, then `./gradlew check` on JDK 21, through a Sonnet
       build-engineer.
-- [ ] 7.2 (judgement) Real AWS run from the design's test plan, including the `cmp` of
+- [x] 7.2 (judgement) Real AWS run from the design's test plan, including the `cmp` of
       `settings.yaml` and main's `profile show` on the same copy afterwards; evidence in the PR,
       with each control's failing test name and assertion line.

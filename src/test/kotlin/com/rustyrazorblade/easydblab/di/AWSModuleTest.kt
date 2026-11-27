@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
 import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import org.assertj.core.api.Assertions.assertThat
@@ -25,21 +27,17 @@ internal class AWSModuleTest {
                 awsClientsModule,
                 awsServicesModule,
                 module {
-                    single {
-                        User(
-                            email = "test@example.com",
-                            region = "us-east-1",
-                            keyName = "test-key",
-                            awsProfile = "test-profile",
-                            awsAccessKey = "test-access-key",
-                            awsSecret = "test-secret-key",
+                    single<ProfileAccess> {
+                        TestProfiles.accessOf(
+                            TestProfiles.profile(region = "us-east-1", credentials = AwsCredentials.AwsProfile("test-profile")),
                         )
                     }
                 },
             )
 
+        // Control: build a static provider for every credential form; this fails.
         @Test
-        fun `should use ProfileCredentialsProvider when awsProfile is set`() {
+        fun `credentials provider follows the credential form - aws-profile gives a profile provider`() {
             val credentialsProvider: AwsCredentialsProvider by inject()
 
             assertThat(credentialsProvider).isInstanceOf(ProfileCredentialsProvider::class.java)
@@ -55,21 +53,17 @@ internal class AWSModuleTest {
                 awsClientsModule,
                 awsServicesModule,
                 module {
-                    single {
-                        User(
-                            email = "test@example.com",
-                            region = "us-west-2",
-                            keyName = "test-key",
-                            awsProfile = "",
-                            awsAccessKey = "test-access-key",
-                            awsSecret = "test-secret-key",
+                    single<ProfileAccess> {
+                        TestProfiles.accessOf(
+                            TestProfiles.profile(credentials = AwsCredentials.AccessKey("test-access-key", "test-secret-key")),
                         )
                     }
                 },
             )
 
+        // Control: build a profile provider for every credential form; this fails.
         @Test
-        fun `should use StaticCredentialsProvider when awsProfile is empty`() {
+        fun `credentials provider follows the credential form - access-key gives the static key`() {
             val credentialsProvider: AwsCredentialsProvider by inject()
 
             assertThat(credentialsProvider).isInstanceOf(StaticCredentialsProvider::class.java)

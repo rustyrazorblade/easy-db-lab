@@ -4,7 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
@@ -23,7 +23,7 @@ import kotlin.system.exitProcess
     description = ["Setup / configure axon-agent for use with the Cassandra cluster"],
 )
 class ConfigureAxonOps : PicoBaseCommand() {
-    private val userConfig: User by inject()
+    private val profile: ProfileAccess by inject()
     private val hostOperationsService: HostOperationsService by inject()
 
     @Option(names = ["--org"], description = ["AxonOps Organization Name"])
@@ -36,8 +36,10 @@ class ConfigureAxonOps : PicoBaseCommand() {
     var hosts = HostsMixin()
 
     override fun execute() {
-        val axonOrg = if (org.isNotBlank()) org else userConfig.axonOpsOrg
-        val axonKey = if (key.isNotBlank()) key else userConfig.axonOpsKey
+        val saved = profile.current().axonOps
+        val axonOrg = org.ifBlank { saved?.org.orEmpty() }
+        val axonKey = key.ifBlank { saved?.key.orEmpty() }
+
         if ((axonOrg.isBlank() || axonKey.isBlank())) {
             eventBus.emit(Event.Setup.AxonOpsMissingArgs)
             exitProcess(1)

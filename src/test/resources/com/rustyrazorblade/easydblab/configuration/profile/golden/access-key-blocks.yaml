@@ -1,0 +1,19 @@
+email: "someone@example.com"
+destination:
+  type: "aws"
+  location:
+    region: "us-west-2"
+  credentials:
+    type: "access-key"
+    accessKeyId: "AKIAFIXTUREKEY"
+    secretAccessKey: "fixture-secret-value"
+  keyName: "easy-db-lab-fixture-key"
+  accountBucket: "easy-db-lab-fixture-bucket"
+  sshTransport: "ssm"
+tailscale:
+  clientId: "fixture-ts-id"
+  clientSecret: "fixture-ts-secret"
+  tag: "tag:fixture"
+axonOps:
+  org: "fixture-org"
+  key: "fixture-axonops-key"

@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.CassandraBuildManifest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -19,7 +18,6 @@ import java.io.File
 class CassandraBuildCatalog(
     private val objectStore: ObjectStore,
     private val bucketService: AwsS3BucketService,
-    private val userConfig: User,
 ) {
     private val log = KotlinLogging.logger {}
 
@@ -70,5 +68,5 @@ class CassandraBuildCatalog(
      * Ensures the account bucket exists before handing back its builds prefix, so `cassandra build`
      * works on a profile that has never provisioned a cluster.
      */
-    private fun root(): ClusterS3Path = ClusterS3Path.cassandraBuildsRoot(bucketService.ensureAccountBucket(userConfig))
+    private fun root(): ClusterS3Path = ClusterS3Path.cassandraBuildsRoot(bucketService.ensureAccountBucket())
 }

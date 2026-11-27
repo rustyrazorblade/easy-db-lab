@@ -1,7 +1,12 @@
 package com.rustyrazorblade.easydblab.configuration
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /**
  * How this machine opens TCP connections to port 22 on cluster nodes.
@@ -17,8 +22,9 @@ import com.fasterxml.jackson.annotation.JsonValue
  *
  * @property configValue the value written to the profile and accepted from it and the setup prompt
  */
+@Serializable(with = SshTransportSerializer::class)
 enum class SshTransport(
-    @get:JsonValue val configValue: String,
+    val configValue: String,
 ) {
     Direct("direct"),
     Ssm("ssm"),
@@ -32,17 +38,31 @@ enum class SshTransport(
         fun parse(value: String): SshTransport? = entries.firstOrNull { it.configValue.equals(value.trim(), ignoreCase = true) }
 
         /**
-         * The profile file's decoder. Jackson is used only because [User] is still read with it.
-         * It accepts what [parse] accepts, so a hand-edited `SSM` reads the same as the prompt
-         * would take it, and rejects anything else rather than letting a typo fall back silently.
+         * The profile file's decoder. It accepts what [parse] accepts, so a hand-edited `SSM` reads the
+         * same as the prompt would take it, and rejects anything else rather than letting a typo fall
+         * back silently.
          *
          * @throws IllegalArgumentException naming [value] and the valid choices when it is not a transport
          */
-        @JvmStatic
-        @JsonCreator
         fun fromProfile(value: String): SshTransport =
             requireNotNull(parse(value)) {
                 "'$value' is not an SSH transport. Valid choices: ${entries.joinToString(", ") { it.configValue }}"
             }
     }
+}
+
+/**
+ * Writes an [SshTransport] as its [SshTransport.configValue] and reads it through
+ * [SshTransport.fromProfile], so a bad value in the profile file fails naming the value and the choices.
+ */
+object SshTransportSerializer : KSerializer<SshTransport> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("com.rustyrazorblade.easydblab.configuration.SshTransport", PrimitiveKind.STRING)
+
+    override fun serialize(
+        encoder: Encoder,
+        value: SshTransport,
+    ) = encoder.encodeString(value.configValue)
+
+    override fun deserialize(decoder: Decoder): SshTransport = SshTransport.fromProfile(decoder.decodeString())
 }

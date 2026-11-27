@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -43,16 +44,7 @@ class TailnetCleanupTest {
         clientSecret: String = "client-secret",
     ) = TailnetCleanup(
         tailscale,
-        User(
-            email = "a@b.c",
-            region = "us-west-2",
-            keyName = "key",
-            awsProfile = "p",
-            awsAccessKey = "",
-            awsSecret = "",
-            tailscaleClientId = clientId,
-            tailscaleClientSecret = clientSecret,
-        ),
+        TestProfiles.accessOf(TestProfiles.profile(tailscale = Tailscale.orNull(clientId, clientSecret))),
         eventBus,
     )
 

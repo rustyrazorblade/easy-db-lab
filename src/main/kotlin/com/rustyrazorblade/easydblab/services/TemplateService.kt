@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
 
@@ -17,11 +17,12 @@ private val UNRESOLVED_VAR_PATTERN = Regex("""__([A-Z][A-Z0-9_]*)__""")
  * with `__` prefix/suffix to avoid conflicts with Grafana's `${var}` syntax.
  *
  * @property clusterStateManager Provides access to current cluster state
- * @property user Provides fallback region configuration
+ * @property awsDestination the profile's AWS destination, whose region is the fallback when the
+ *   cluster state records none; read each time the variables are built
  */
 class TemplateService(
     private val clusterStateManager: ClusterStateManager,
-    private val user: User,
+    private val awsDestination: AwsDestinationAccess,
 ) {
     /**
      * Builds the variable map from current cluster state and user configuration.
@@ -30,7 +31,7 @@ class TemplateService(
      */
     fun buildContextVariables(): Map<String, String> {
         val state = clusterStateManager.load()
-        val region = state.initConfig?.region ?: user.region
+        val region = state.initConfig?.region ?: awsDestination.current().location.region
         val controlHost = state.getControlHost()
         val store = ObservabilityStore(state.s3Bucket.orEmpty(), state.tenant())
         return mapOf(

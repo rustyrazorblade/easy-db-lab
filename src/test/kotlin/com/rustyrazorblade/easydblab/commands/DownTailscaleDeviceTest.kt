@@ -4,7 +4,8 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
@@ -68,9 +69,7 @@ class DownTailscaleDeviceTest : BaseKoinTest() {
         )
 
     private fun withTailscaleCredentials() {
-        getKoin().declare(
-            getKoin().get<User>().copy(tailscaleClientId = "client-id", tailscaleClientSecret = "client-secret"),
-        )
+        getKoin().get<ProfileStore>().update { it.copy(tailscale = Tailscale("client-id", "client-secret")) }
     }
 
     private fun runDown(): Int =

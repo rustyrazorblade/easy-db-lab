@@ -8,8 +8,18 @@ import com.rustyrazorblade.easydblab.commands.SetupProfileException
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
+import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsLocation
+import com.rustyrazorblade.easydblab.configuration.profile.aws.LegacyAwsProfileReader
+import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
@@ -25,15 +35,24 @@ import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
+import com.rustyrazorblade.easydblab.configuration.profile.aws.LegacyAwsProfileReader.Companion as Keys
 
 /**
- * Sets up user profile interactively.
+ * Sets up the active profile interactively.
+ *
+ * A profile has exactly one destination; the only one available is AWS. A new profile states it
+ * (`Destination: AWS`) without asking, and re-running setup reviews that destination only: choosing
+ * another destination means another profile name.
+ *
+ * Setup prefills from the store's flat setup values (`ProfileStore.loadForSetup`), for the current
+ * `profile.yaml` or an earlier `settings.yaml`, so a value that does not parse, such as an unknown SSH
+ * transport, is reported and asked for again instead of stopping the command that fixes it.
  *
  * The setup process follows these phases:
- * 1. Check if profile already exists (early exit if complete)
+ * 1. Check if profile already exists (review path if complete)
  * 2. Collect core credentials (email, region, AWS profile or access key/secret)
  * 3. Validate AWS credentials (retry on failure)
- * 4. Collect optional info (AxonOps)
+ * 4. Collect optional info (AxonOps, Tailscale, SSH transport)
  * 5. Ensure AWS resources exist (key pair, IAM roles, S3 bucket, VPC, AMI)
  */
 @Command(
@@ -41,7 +60,7 @@ import picocli.CommandLine.Command
     description = ["Set up user profile interactively"],
 )
 class SetupProfile : PicoBaseCommand() {
-    private val userConfigProvider: UserConfigProvider by inject()
+    private val profileStore: ProfileStore by inject()
     private val awsResourceSetup: AWSResourceSetupService by inject()
     private val awsInfra: AwsInfrastructureService by inject()
     private val s3BucketService: AwsS3BucketService by inject()
@@ -53,82 +72,107 @@ class SetupProfile : PicoBaseCommand() {
     private val externalIpService: ExternalIpService by inject()
 
     override fun execute() {
-        val existingConfig = userConfigProvider.loadExistingConfig()
+        val saved = profileStore.loadForSetup()
 
-        if (isFullySetUp(existingConfig)) {
-            handleExistingProfile(existingConfig)
+        if (isFullySetUp(profileFrom(saved))) {
+            handleExistingProfile(saved)
             return
         }
 
-        runFullSetup(existingConfig)
+        runFullSetup(saved)
     }
 
     /**
-     * Handles the case when profile already exists.
-     * Prompts for each optional field individually, allowing updates.
+     * Reviews a complete profile's destination. Prompts for each optional field, allowing updates.
      */
-    private fun handleExistingProfile(existingConfig: Map<String, Any>) {
+    private fun handleExistingProfile(saved: Map<String, String>) {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
-        val userConfig = loadExistingUser(existingConfig)
+        val reviewed = loadOrRepair(saved)
+        val destination = reviewed.profile.aws
 
         // A profile made before the easy_db_lab marker has a bucket and key pair with only the
         // legacy one. This needs working credentials, and runs before the prompts so a failure
         // (expired credentials, a key pair that no longer exists) stops setup before any change.
-        // A complete profile always names a bucket; the check only guards a User read without one.
-        if (userConfig.s3Bucket.isNotBlank()) s3BucketService.ensureMarkerTags(userConfig.s3Bucket)
-        keyPairService.ensureMarkerTags(userConfig)
+        // A complete profile always names a bucket; the check only guards a profile read without one.
+        if (destination.accountBucket.isNotBlank()) s3BucketService.ensureMarkerTags(destination.accountBucket)
+        keyPairService.ensureMarkerTags(destination)
 
         // Collect optional info, allowing updates
         eventBus.emit(Event.Setup.UpdatePrompt)
-        collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
+        collectAndSaveOptionalInfoWithUpdate(saved, askTransport = !reviewed.transportAsked)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)
     }
 
     /**
-     * The saved profile as a [User]. A saved SSH transport this version cannot read would make the
-     * normal load fail, so in that case the User is rebuilt from the raw values with the default
-     * transport, the bad value is reported, and the update prompts that follow ask for it again.
+     * The saved profile, loaded once. A saved value this version cannot decode (an unknown SSH
+     * transport, a value of the wrong form) makes every load of the profile fail, and with it every AWS
+     * client this command builds from the profile. Such a profile is saved again from the flat setup
+     * values, so the rest of setup can use it. A bad transport is reported and asked for first.
+     *
+     * A destination type this version does not know never reaches the repair: [ProfileStore.loadForSetup]
+     * fails on it first, because a rebuild as AWS would lose the fields only that type knows.
      */
-    private fun loadExistingUser(existingConfig: Map<String, Any>): User {
-        val unreadable =
-            existingConfig[SSH_TRANSPORT_KEY]?.toString()?.takeIf { SshTransport.parse(it) == null }
-                ?: return userConfigProvider.getUserConfig()
+    private fun loadOrRepair(saved: Map<String, String>): ReviewedProfile {
+        val unreadable = saved[Keys.SSH_TRANSPORT]?.takeIf { SshTransport.parse(it) == null }
+        if (unreadable == null) loadIfDecodes()?.let { return ReviewedProfile(it, transportAsked = false) }
 
-        eventBus.emit(Event.Setup.InvalidSshTransport(unreadable, SshTransport.entries.map { it.configValue }))
-        val raw = { key: String -> (existingConfig[key] as? String).orEmpty() }
-        return createInitialUserConfig(
-            CoreCredentials(raw("email"), raw("region"), raw("awsProfile"), raw("awsAccessKey"), raw("awsSecret")),
-            existingConfig,
-        )
+        val transport =
+            unreadable?.let {
+                eventBus.emit(Event.Setup.InvalidSshTransport(it, SshTransport.entries.map { entry -> entry.configValue }))
+                promptForSshTransport(SshTransport.Direct)
+            }
+        val rebuilt = profileFrom(saved) ?: throw SetupProfileException("The saved profile has no credentials")
+        val repaired = transport?.let { chosen -> rebuilt.withAws { it.copy(sshTransport = chosen) } } ?: rebuilt
+        profileStore.replace(repaired)
+        return ReviewedProfile(repaired, transportAsked = transport != null)
     }
+
+    /**
+     * The saved profile, or null when it fails in a way setup repairs. Any other failure (a file that
+     * changed under this command and no longer parses) is the user's to fix and is rethrown.
+     */
+    private fun loadIfDecodes(): Profile? =
+        try {
+            profileStore.load()
+        } catch (e: ProfileFileException) {
+            if (e.remedy != ProfileFileRemedy.RUN_SETUP) throw e
+            null
+        }
+
+    /** The profile the review continues from, and whether the transport was already asked for, so it is not asked twice. */
+    private data class ReviewedProfile(
+        val profile: Profile,
+        val transportAsked: Boolean,
+    )
 
     /**
      * Runs the full setup process for new profiles.
      */
-    private fun runFullSetup(existingConfig: Map<String, Any>) {
+    private fun runFullSetup(saved: Map<String, String>) {
         showWelcomeMessage()
+        // Only a profile that has never recorded a destination fixes one; there is no choice to offer.
+        if (!profileStore.file.exists()) eventBus.emit(Event.Setup.DestinationSelected(AwsDestination.DISPLAY_NAME))
 
         // Retry loop for credential collection and validation
-        val (credentials, region) = collectAndValidateCredentials(existingConfig)
+        val core = collectAndValidateCredentials(saved)
 
-        val userConfig = createInitialUserConfig(credentials, existingConfig)
-        userConfigProvider.saveUserConfig(userConfig)
+        profileStore.replace(createInitialProfile(core, saved))
         eventBus.emit(Event.Setup.CredentialsSaved)
 
-        collectAndSaveOptionalInfo(existingConfig, userConfig)
+        collectAndSaveOptionalInfo(saved)
 
-        ensureAwsResources(userConfig, credentials, region)
+        ensureAwsResources(core)
 
         showSuccessMessage()
     }
 
     /**
      * Collects credentials and validates them, retrying on failure.
-     * Returns validated credentials and region.
+     * Returns the validated email, region and credentials.
      * @throws SetupProfileException if credentials fail validation after max retries
      */
-    private fun collectAndValidateCredentials(existingConfig: Map<String, Any>): Pair<CoreCredentials, String> {
+    private fun collectAndValidateCredentials(saved: Map<String, String>): CoreCredentials {
         var attempt = 0
         var regionRejected = false
         var credentialsRejected = false
@@ -139,20 +183,19 @@ class SetupProfile : PicoBaseCommand() {
             // A saved AWS profile is used until a credential check fails with it; the retry then
             // asks for the profile again instead of trying the same one. A rejected region is
             // asked for again the same way, and leaves the saved profile in use.
-            var retryConfig = existingConfig
-            if (credentialsRejected) retryConfig = retryConfig - "awsProfile"
-            if (regionRejected) retryConfig = retryConfig - "region"
-            val credentials = collectCoreCredentials(retryConfig)
-            val region = credentials.region
-            if (!acceptRegion(region, lastAttempt = attempt >= MAX_CREDENTIAL_RETRIES)) {
+            var retryConfig = saved
+            if (credentialsRejected) retryConfig = retryConfig - Keys.AWS_PROFILE
+            if (regionRejected) retryConfig = retryConfig - Keys.REGION
+            val core = collectCoreCredentials(retryConfig)
+            if (!acceptRegion(core.region, lastAttempt = attempt >= MAX_CREDENTIAL_RETRIES)) {
                 // Stays set: a later credentials retry must not read the rejected saved region again.
                 regionRejected = true
                 continue
             }
 
             try {
-                validateAwsCredentials(credentials, region)
-                return credentials to region
+                validateAwsCredentials(core.credentials, core.region)
+                return core
             } catch (e: SetupProfileException) {
                 if (attempt >= MAX_CREDENTIAL_RETRIES) {
                     throw e
@@ -186,71 +229,74 @@ class SetupProfile : PicoBaseCommand() {
         /** Maximum number of credential validation attempts before giving up. */
         const val MAX_CREDENTIAL_RETRIES = 3
 
-        /** The profile file's key for [User.sshTransport]. */
-        private const val SSH_TRANSPORT_KEY = "sshTransport"
+        private val reader = LegacyAwsProfileReader()
 
         /**
-         * Whether [existingConfig] describes a profile with nothing left to create: an email and
-         * region, a way to authenticate (a named AWS profile or static credentials), and the key
-         * pair and bucket every cluster needs. A profile missing any of these takes the full setup
-         * path, which keeps the values it has and creates the rest; the update path only
-         * re-prompts optional fields and would leave it incomplete.
+         * The profile the flat setup [values] describe, or null when they hold no credentials. A saved
+         * SSH transport that does not parse is left out, so the profile reads as using the default;
+         * setup reports the bad value and asks for it.
          */
-        internal fun isFullySetUp(existingConfig: Map<String, Any>): Boolean {
-            val hasEmailAndRegion = existingConfig.containsKey("email") && existingConfig.containsKey("region")
-            val hasProfile = existingConfig.isNotBlank("awsProfile")
-            val hasCredentials = existingConfig.containsKey("awsAccessKey") && existingConfig.containsKey("awsSecret")
-            val hasResources = existingConfig.isNotBlank("keyName") && existingConfig.isNotBlank("s3Bucket")
-
-            return hasEmailAndRegion && (hasProfile || hasCredentials) && hasResources
+        internal fun profileFrom(values: Map<String, String>): Profile? {
+            val transport = values[Keys.SSH_TRANSPORT]
+            val readable = if (transport != null && SshTransport.parse(transport) == null) values - Keys.SSH_TRANSPORT else values
+            return reader.migrate(readable)
         }
 
-        private fun Map<String, Any>.isNotBlank(key: String): Boolean = (this[key] as? String)?.isNotBlank() == true
+        /**
+         * Whether [profile] has nothing left to create: an email and region, a way to authenticate
+         * (which a [Profile] always has), and the key pair and bucket every cluster needs. A profile
+         * missing any of these takes the full setup path, which keeps the values it has and creates
+         * the rest; the review path only re-prompts optional fields and would leave it incomplete.
+         */
+        internal fun isFullySetUp(profile: Profile?): Boolean {
+            val destination = profile?.destination as? AwsDestination ?: return false
+            return profile.email.isNotBlank() &&
+                destination.location.region.isNotBlank() &&
+                destination.keyName.isNotBlank() &&
+                destination.accountBucket.isNotBlank()
+        }
     }
 
     /**
      * Collects core credentials required for AWS access.
      * Asks for AWS profile first; if provided, skips access key/secret prompts.
      */
-    private fun collectCoreCredentials(existingConfig: Map<String, Any>): CoreCredentials {
+    private fun collectCoreCredentials(saved: Map<String, String>): CoreCredentials {
         eventBus.emit(Event.Setup.EmailPromptInfo)
-        val email = promptIfMissing(existingConfig, "email", "What's your email?", "")
-        val region = promptIfMissing(existingConfig, "region", "What AWS region do you use?", "us-west-2")
+        val email = promptIfMissing(saved, Keys.EMAIL, "What's your email?", "")
+        val region = promptIfMissing(saved, Keys.REGION, "What AWS region do you use?", "us-west-2")
 
         // A profile that already names its AWS profile is not asked again. Otherwise ask first
         // (empty = manual credentials).
         val awsProfile =
-            (existingConfig["awsProfile"] as? String)?.takeIf { it.isNotBlank() }
+            saved[Keys.AWS_PROFILE]?.takeIf { it.isNotBlank() }
                 ?: prompter.prompt(
                     "AWS Profile name (or press Enter to enter credentials manually)",
                     "",
                 )
 
-        val (awsAccessKey, awsSecret) =
+        val credentials =
             if (awsProfile.isNotEmpty()) {
-                // Using profile - skip credential prompts
-                "" to ""
+                AwsCredentials.AwsProfile(awsProfile)
             } else {
-                // Manual credentials
-                val key = promptIfMissing(existingConfig, "awsAccessKey", "Please enter your AWS Access Key", "")
+                val key = promptIfMissing(saved, Keys.AWS_ACCESS_KEY, "Please enter your AWS Access Key", "")
                 val secret =
                     promptIfMissing(
-                        existingConfig,
-                        PromptField("awsSecret", "Please enter your AWS Secret Access Key", "", secret = true),
+                        saved,
+                        PromptField(Keys.AWS_SECRET, "Please enter your AWS Secret Access Key", "", secret = true),
                     )
-                key to secret
+                AwsCredentials.AccessKey(key, secret)
             }
 
-        return CoreCredentials(email, region, awsProfile, awsAccessKey, awsSecret)
+        return CoreCredentials(email, region, credentials)
     }
 
     /**
      * Validates AWS credentials and optionally displays IAM policies.
-     * Uses profile-based auth if awsProfile is set, otherwise static credentials.
      * @throws SetupProfileException if credentials are invalid
      */
     private fun validateAwsCredentials(
-        credentials: CoreCredentials,
+        credentials: AwsCredentials,
         region: String,
     ) {
         eventBus.emit(Event.Setup.ValidatingCredentials)
@@ -271,16 +317,16 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates an account identity using either profile or static credentials.
+     * Creates an account identity for the credential form the user gave.
      */
     private fun createAccountIdentity(
-        credentials: CoreCredentials,
+        credentials: AwsCredentials,
         region: String,
     ): AccountIdentity =
-        if (credentials.awsProfile.isNotEmpty()) {
-            awsClientFactory.createAccountIdentityWithProfile(credentials.awsProfile, region)
-        } else {
-            awsClientFactory.createAccountIdentity(credentials.awsAccessKey, credentials.awsSecret, region)
+        when (credentials) {
+            is AwsCredentials.AwsProfile -> awsClientFactory.createAccountIdentityWithProfile(credentials.name, region)
+            is AwsCredentials.AccessKey ->
+                awsClientFactory.createAccountIdentity(credentials.accessKeyId, credentials.secretAccessKey, region)
         }
 
     /**
@@ -300,112 +346,103 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * Creates the initial User configuration from collected credentials.
+     * The profile setup first saves: the validated credentials and region, with every other value
+     * the saved profile already held.
      */
-    private fun createInitialUserConfig(
-        credentials: CoreCredentials,
-        existingConfig: Map<String, Any>,
-    ): User =
-        User(
-            email = credentials.email,
-            region = credentials.region,
-            keyName = (existingConfig["keyName"] as? String).orEmpty(),
-            awsProfile = credentials.awsProfile,
-            awsAccessKey = credentials.awsAccessKey,
-            awsSecret = credentials.awsSecret,
-            axonOpsOrg = (existingConfig["axonOpsOrg"] as? String).orEmpty(),
-            axonOpsKey = (existingConfig["axonOpsKey"] as? String).orEmpty(),
-            tailscaleClientId = (existingConfig["tailscaleClientId"] as? String).orEmpty(),
-            tailscaleClientSecret = (existingConfig["tailscaleClientSecret"] as? String).orEmpty(),
-            tailscaleTag = existingConfig["tailscaleTag"] as? String ?: Constants.Tailscale.DEFAULT_DEVICE_TAG,
-            s3Bucket = (existingConfig["s3Bucket"] as? String).orEmpty(),
+    private fun createInitialProfile(
+        core: CoreCredentials,
+        saved: Map<String, String>,
+    ): Profile {
+        val value = { key: String -> saved[key].orEmpty() }
+        return Profile(
+            email = core.email,
+            destination =
+                AwsDestination(
+                    location = AwsLocation(core.region),
+                    credentials = core.credentials,
+                    keyName = value(Keys.KEY_NAME),
+                    accountBucket = value(Keys.S3_BUCKET),
+                    sshTransport = existingSshTransport(saved) ?: SshTransport.Direct,
+                ),
+            tailscale =
+                Tailscale.orNull(
+                    value(Keys.TAILSCALE_CLIENT_ID),
+                    value(Keys.TAILSCALE_CLIENT_SECRET),
+                    saved[Keys.TAILSCALE_TAG] ?: Constants.Tailscale.DEFAULT_DEVICE_TAG,
+                ),
+            axonOps = AxonOps.orNull(value(Keys.AXONOPS_ORG), value(Keys.AXONOPS_KEY)),
         )
+    }
 
     /**
-     * Collects optional configuration info and saves the updated config.
+     * Collects optional configuration info and saves it into the profile.
      * Used during initial setup - skips prompts for fields with no default.
      */
-    private fun collectAndSaveOptionalInfo(
-        existingConfig: Map<String, Any>,
-        userConfig: User,
-    ) {
-        val axonOpsOrg =
-            promptIfMissing(
-                existingConfig,
-                PromptField("axonOpsOrg", "AxonOps Org", "", skippable = true),
-            )
+    private fun collectAndSaveOptionalInfo(saved: Map<String, String>) {
+        val axonOpsOrg = promptIfMissing(saved, PromptField(Keys.AXONOPS_ORG, "AxonOps Org", "", skippable = true))
         val axonOpsKey =
-            promptIfMissing(
-                existingConfig,
-                PromptField("axonOpsKey", "AxonOps Key", "", secret = true, skippable = true),
-            )
-
-        userConfig.axonOpsOrg = axonOpsOrg
-        userConfig.axonOpsKey = axonOpsKey
+            promptIfMissing(saved, PromptField(Keys.AXONOPS_KEY, "AxonOps Key", "", secret = true, skippable = true))
 
         // Collect optional Tailscale credentials
         eventBus.emit(Event.Setup.TailscaleSetupInstructions(Constants.Tailscale.DEFAULT_DEVICE_TAG))
         val tailscaleClientId =
-            promptIfMissing(
-                existingConfig,
-                PromptField("tailscaleClientId", "Tailscale OAuth Client ID", "", skippable = true),
-            )
+            promptIfMissing(saved, PromptField(Keys.TAILSCALE_CLIENT_ID, "Tailscale OAuth Client ID", "", skippable = true))
         val tailscaleClientSecret =
             promptIfMissing(
-                existingConfig,
-                PromptField("tailscaleClientSecret", "Tailscale OAuth Client Secret", "", secret = true, skippable = true),
+                saved,
+                PromptField(Keys.TAILSCALE_CLIENT_SECRET, "Tailscale OAuth Client Secret", "", secret = true, skippable = true),
             )
 
-        userConfig.tailscaleClientId = tailscaleClientId
-        userConfig.tailscaleClientSecret = tailscaleClientSecret
+        val transport = existingSshTransport(saved) ?: promptForSshTransport(SshTransport.Direct)
 
-        userConfig.sshTransport = existingSshTransport(existingConfig) ?: promptForSshTransport(SshTransport.Direct)
-
-        userConfigProvider.saveUserConfig(userConfig)
+        saveOptionalInfo(OptionalInfo(axonOpsOrg, axonOpsKey, tailscaleClientId, tailscaleClientSecret, transport))
         eventBus.emit(Event.Setup.ConfigurationSaved)
     }
 
     /**
-     * Collects optional configuration info for update mode.
+     * Collects optional configuration info for the review of an existing profile.
      * Always prompts for each field, showing current value as default.
      * Empty input keeps the existing value.
+     *
+     * @param askTransport false when this run already asked for the transport
      */
     private fun collectAndSaveOptionalInfoWithUpdate(
-        existingConfig: Map<String, Any>,
-        userConfig: User,
+        saved: Map<String, String>,
+        askTransport: Boolean,
     ) {
+        val value = { key: String -> saved[key].orEmpty() }
+
         // AxonOps settings
         eventBus.emit(Event.Setup.AxonOpsConfigHeader)
-        userConfig.axonOpsOrg =
-            promptForUpdate(
-                "AxonOps Org",
-                (existingConfig["axonOpsOrg"] as? String).orEmpty(),
-            )
-        userConfig.axonOpsKey =
-            promptForUpdate(
-                "AxonOps Key",
-                (existingConfig["axonOpsKey"] as? String).orEmpty(),
-                secret = true,
-            )
+        val axonOpsOrg = promptForUpdate("AxonOps Org", value(Keys.AXONOPS_ORG))
+        val axonOpsKey = promptForUpdate("AxonOps Key", value(Keys.AXONOPS_KEY), secret = true)
 
         // Tailscale settings
         eventBus.emit(Event.Setup.TailscaleConfigHeader(Constants.Tailscale.DEFAULT_DEVICE_TAG))
-        userConfig.tailscaleClientId =
-            promptForUpdate(
-                "Tailscale OAuth Client ID",
-                (existingConfig["tailscaleClientId"] as? String).orEmpty(),
-            )
-        userConfig.tailscaleClientSecret =
-            promptForUpdate(
-                "Tailscale OAuth Client Secret",
-                (existingConfig["tailscaleClientSecret"] as? String).orEmpty(),
-                secret = true,
-            )
+        val tailscaleClientId = promptForUpdate("Tailscale OAuth Client ID", value(Keys.TAILSCALE_CLIENT_ID))
+        val tailscaleClientSecret = promptForUpdate("Tailscale OAuth Client Secret", value(Keys.TAILSCALE_CLIENT_SECRET), secret = true)
 
-        userConfig.sshTransport = promptForSshTransport(userConfig.sshTransport)
+        val current = profileStore.load().aws.sshTransport
+        val transport = if (askTransport) promptForSshTransport(current) else current
 
-        userConfigProvider.saveUserConfig(userConfig)
+        saveOptionalInfo(OptionalInfo(axonOpsOrg, axonOpsKey, tailscaleClientId, tailscaleClientSecret, transport))
         eventBus.emit(Event.Setup.ConfigSectionSaved)
+    }
+
+    /** Saves the optional settings into the profile as it is saved now; a half-set pair is kept. */
+    private fun saveOptionalInfo(info: OptionalInfo) {
+        profileStore.update { profile ->
+            profile
+                .copy(
+                    axonOps = AxonOps.orNull(info.axonOpsOrg, info.axonOpsKey),
+                    tailscale =
+                        Tailscale.orNull(
+                            info.tailscaleClientId,
+                            info.tailscaleClientSecret,
+                            profile.tailscale?.tag ?: Constants.Tailscale.DEFAULT_DEVICE_TAG,
+                        ),
+                ).withAws { it.copy(sshTransport = info.sshTransport) }
+        }
     }
 
     /**
@@ -426,9 +463,8 @@ class SetupProfile : PicoBaseCommand() {
         }
     }
 
-    /** The transport already saved in [existingConfig], or null when absent or unrecognized. */
-    private fun existingSshTransport(existingConfig: Map<String, Any>): SshTransport? =
-        (existingConfig[SSH_TRANSPORT_KEY] as? String)?.let { SshTransport.parse(it) }
+    /** The transport already saved in [saved], or null when absent or unrecognized. */
+    private fun existingSshTransport(saved: Map<String, String>): SshTransport? = saved[Keys.SSH_TRANSPORT]?.let { SshTransport.parse(it) }
 
     /**
      * Prompts for a field update, showing masked current value.
@@ -461,61 +497,46 @@ class SetupProfile : PicoBaseCommand() {
         }
 
     /**
-     * Ensures all required AWS resources exist.
+     * Ensures all required AWS resources exist. Each step reads the profile as saved now, so a key
+     * pair or bucket an earlier step saved is the one a later step, the AMI build among them, sees.
      */
-    private fun ensureAwsResources(
-        userConfig: User,
-        credentials: CoreCredentials,
-        region: String,
-    ) {
-        ensureKeyPair(userConfig, credentials, region)
-        ensureIamRoles(userConfig)
-        ensureS3Bucket(userConfig)
+    private fun ensureAwsResources(core: CoreCredentials) {
+        ensureKeyPair(core)
+        ensureIamRoles()
+        ensureS3Bucket()
         ensurePackerVpc()
-        ensureAmi(userConfig)
+        ensureAmi(core.region)
     }
 
     /**
-     * Generates an AWS key pair if one doesn't exist.
+     * Generates an AWS key pair if the profile names none; the key pair service saves its name.
      */
-    private fun ensureKeyPair(
-        userConfig: User,
-        credentials: CoreCredentials,
-        region: String,
-    ) {
-        if (userConfig.keyName.isBlank()) {
+    private fun ensureKeyPair(core: CoreCredentials) {
+        val destination = profileStore.load().aws
+        if (destination.keyName.isBlank()) {
             eventBus.emit(Event.Setup.GeneratingKeyPair)
-            val keyName =
-                keyPairService.generate(
-                    context.profileDir,
-                    region,
-                    credentials.awsProfile,
-                    credentials.awsAccessKey,
-                    credentials.awsSecret,
-                )
-            userConfig.keyName = keyName
-            userConfigProvider.saveUserConfig(userConfig)
+            keyPairService.generate(core.region, core.credentials)
             eventBus.emit(Event.Setup.KeyPairSaved)
         } else {
-            keyPairService.ensureMarkerTags(userConfig)
+            keyPairService.ensureMarkerTags(destination)
         }
     }
 
     /**
      * Ensures IAM roles are configured.
      */
-    private fun ensureIamRoles(userConfig: User) {
+    private fun ensureIamRoles() {
         eventBus.emit(Event.Setup.IamRolesConfiguring)
-        awsResourceSetup.ensureAWSResources(userConfig)
+        awsResourceSetup.ensureAWSResources()
         eventBus.emit(Event.Setup.IamRolesValidated)
     }
 
     /**
      * Creates an S3 bucket for shared resources if one doesn't exist, and gives an existing one
-     * any marker tag it lacks.
+     * any marker tag it lacks. The bucket service saves a new bucket's name into the profile.
      */
-    private fun ensureS3Bucket(userConfig: User) {
-        s3BucketService.ensureMarkedAccountBucket(userConfig)
+    private fun ensureS3Bucket() {
+        s3BucketService.ensureMarkedAccountBucket()
     }
 
     /**
@@ -530,7 +551,7 @@ class SetupProfile : PicoBaseCommand() {
     /**
      * Validates that a required AMI exists, offering to build one if not found.
      */
-    private fun ensureAmi(userConfig: User) {
+    private fun ensureAmi(region: String) {
         eventBus.emit(Event.Setup.CheckingAmi)
         val archType = Arch.AMD64
 
@@ -538,7 +559,7 @@ class SetupProfile : PicoBaseCommand() {
             amiValidator.validateAMI(overrideAMI = "", requiredArchitecture = archType)
             eventBus.emit(Event.Setup.AmiFound(archType.type))
         } catch (e: AMIValidationException.NoAMIFound) {
-            handleMissingAmi(archType, userConfig)
+            handleMissingAmi(archType, region)
         }
     }
 
@@ -547,7 +568,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun handleMissingAmi(
         archType: Arch,
-        userConfig: User,
+        region: String,
     ) {
         eventBus.emit(Event.Setup.AmiNotFound(archType.type))
 
@@ -558,7 +579,7 @@ class SetupProfile : PicoBaseCommand() {
             return
         }
 
-        buildAmi(archType, userConfig)
+        buildAmi(archType, region)
     }
 
     /**
@@ -566,7 +587,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun buildAmi(
         archType: Arch,
-        userConfig: User,
+        region: String,
     ) {
         runCatchingException {
             eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
@@ -575,7 +596,7 @@ class SetupProfile : PicoBaseCommand() {
                 commandExecutor.execute {
                     BuildImage().apply {
                         buildArgs.arch = archType
-                        buildArgs.region = userConfig.region
+                        buildArgs.region = region
                     }
                 }
 
@@ -583,10 +604,10 @@ class SetupProfile : PicoBaseCommand() {
             if (exitCode == 0) {
                 eventBus.emit(Event.Setup.AmiBuildSuccess)
             } else {
-                eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, userConfig.region))
+                eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, region))
             }
         }.onFailure { buildError ->
-            eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
+            eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, region))
         }
     }
 
@@ -625,12 +646,10 @@ class SetupProfile : PicoBaseCommand() {
      * Returns existing value if present, prompts user otherwise.
      */
     private fun promptIfMissing(
-        existingConfig: Map<String, Any>,
+        saved: Map<String, String>,
         field: PromptField,
     ): String {
-        if (existingConfig.containsKey(field.fieldName)) {
-            return existingConfig[field.fieldName] as String
-        }
+        saved[field.fieldName]?.let { return it }
 
         if (field.skippable && field.default.isEmpty()) {
             return ""
@@ -643,11 +662,11 @@ class SetupProfile : PicoBaseCommand() {
      * Convenience overload for non-skippable, non-secret fields.
      */
     private fun promptIfMissing(
-        existingConfig: Map<String, Any>,
+        saved: Map<String, String>,
         fieldName: String,
         prompt: String,
         default: String,
-    ): String = promptIfMissing(existingConfig, PromptField(fieldName, prompt, default))
+    ): String = promptIfMissing(saved, PromptField(fieldName, prompt, default))
 
     /**
      * Configuration for a field to prompt for.
@@ -661,13 +680,24 @@ class SetupProfile : PicoBaseCommand() {
     )
 
     /**
-     * Data class to hold core credentials collected during setup.
+     * The core values collected during setup: who owns the profile, where in AWS it runs, and how
+     * it authenticates.
      */
     private data class CoreCredentials(
         val email: String,
         val region: String,
-        val awsProfile: String,
-        val awsAccessKey: String,
-        val awsSecret: String,
+        val credentials: AwsCredentials,
+    )
+
+    /**
+     * The optional settings collected during setup. Either half of a pair may be blank; a half-set
+     * pair is saved so the next run can prefill it, and stays disabled.
+     */
+    private data class OptionalInfo(
+        val axonOpsOrg: String,
+        val axonOpsKey: String,
+        val tailscaleClientId: String,
+        val tailscaleClientSecret: String,
+        val sshTransport: SshTransport,
     )
 }

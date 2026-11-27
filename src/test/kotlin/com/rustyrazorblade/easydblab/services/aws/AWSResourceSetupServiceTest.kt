@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -267,11 +266,10 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should skip setup when IAM resources exist and valid`() {
         // Given: IAM resources already configured
-        val userConfig = createUserConfig()
         stubValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
 
         // When
-        service.ensureAWSResources(userConfig)
+        service.ensureAWSResources()
 
         // Then: Should validate but not create any resources
         verify(mockIamClient).getInstanceProfile(any<GetInstanceProfileRequest>())
@@ -287,7 +285,7 @@ internal class AWSResourceSetupServiceTest :
     fun `ensureAWSResources adds the Session Manager policy to a valid role that lacks it`() {
         stubValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE, inlinePolicies = listOf(Constants.AWS.InlinePolicies.S3_ACCESS))
 
-        service.ensureAWSResources(createUserConfig())
+        service.ensureAWSResources()
 
         val put = argumentCaptor<PutRolePolicyRequest>()
         verify(mockIamClient, atLeastOnce()).putRolePolicy(put.capture())
@@ -310,7 +308,7 @@ internal class AWSResourceSetupServiceTest :
     fun `ensureAWSResources leaves a role that carries the whole policy set untouched`() {
         stubValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
 
-        service.ensureAWSResources(createUserConfig())
+        service.ensureAWSResources()
 
         verify(mockIamClient, never()).putRolePolicy(any<PutRolePolicyRequest>())
         verify(mockIamClient, never()).attachRolePolicy(any<software.amazon.awssdk.services.iam.model.AttachRolePolicyRequest>())
@@ -321,7 +319,7 @@ internal class AWSResourceSetupServiceTest :
         stubInvalidThenValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         stubSuccessfulRoleCreation()
 
-        service.ensureAWSResources(createUserConfig())
+        service.ensureAWSResources()
 
         val put = argumentCaptor<PutRolePolicyRequest>()
         verify(mockIamClient, atLeastOnce()).putRolePolicy(put.capture())
@@ -332,12 +330,11 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should create IAM resources when validation fails`() {
         // Given: IAM resources not configured (validation fails initially, then succeeds)
-        val userConfig = createUserConfig()
         stubInvalidThenValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         stubSuccessfulRoleCreation()
 
         // When
-        service.ensureAWSResources(userConfig)
+        service.ensureAWSResources()
 
         // Then: Should execute full IAM setup workflow
         verify(mockStsClient).getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>())
@@ -348,12 +345,11 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should output repair warning when validation initially fails`() {
         // Given: IAM resources partially configured (fails initially, then succeeds)
-        val userConfig = createUserConfig()
         stubInvalidThenValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         stubSuccessfulRoleCreation()
 
         // When
-        service.ensureAWSResources(userConfig)
+        service.ensureAWSResources()
 
         // Then: Should emit repair warning event
         assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.RepairWarning }
@@ -362,7 +358,6 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should validate credentials before setup`() {
         // Given: IAM resources not configured
-        val userConfig = createUserConfig()
         stubInvalidRoleSetup()
 
         // Mock credential validation failure: a real 403 permission error from STS
@@ -382,7 +377,7 @@ internal class AWSResourceSetupServiceTest :
             .thenThrow(exception)
 
         // When/Then: the provider error is emitted once and the failure is rethrown as already reported
-        assertThatThrownBy { service.ensureAWSResources(userConfig) }
+        assertThatThrownBy { service.ensureAWSResources() }
             .isInstanceOf(CommandFailedException::class.java)
             .hasCause(exception)
 
@@ -397,7 +392,6 @@ internal class AWSResourceSetupServiceTest :
 
     @Test
     fun `expired credentials emit the authentication error with the policies`() {
-        val userConfig = createUserConfig()
         stubInvalidRoleSetup()
         val exception =
             StsException
@@ -414,7 +408,7 @@ internal class AWSResourceSetupServiceTest :
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(exception)
 
-        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isInstanceOf(CommandFailedException::class.java)
+        assertThatThrownBy { service.ensureAWSResources() }.isInstanceOf(CommandFailedException::class.java)
 
         val events = capturedEvents.map { it.event }
         val error = events.filterIsInstance<Event.Command.ProviderError>().single()
@@ -433,7 +427,7 @@ internal class AWSResourceSetupServiceTest :
         stubInvalidRoleSetup()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(stsFailure(403, "ExpiredToken"))
-        val failure = runCatching { service.ensureAWSResources(createUserConfig()) }.exceptionOrNull()!!
+        val failure = checkNotNull(runCatching { service.ensureAWSResources() }.exceptionOrNull()) { "setup should fail" }
 
         com.rustyrazorblade.easydblab.services
             .CommandFailureReporter(eventBus, listOf(AwsErrorHandler()))
@@ -446,12 +440,11 @@ internal class AWSResourceSetupServiceTest :
     @ParameterizedTest(name = "{0}")
     @MethodSource("neitherCredentialsNorPermission")
     fun `a failure that is neither credentials nor permission is rethrown unchanged with no guidance`(failure: StsException) {
-        val userConfig = createUserConfig()
         stubInvalidRoleSetup()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(failure)
 
-        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isSameAs(failure)
+        assertThatThrownBy { service.ensureAWSResources() }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
             it.event is Event.Command.ProviderError || it.event is Event.AwsSetup.PolicyDisplay
@@ -470,7 +463,7 @@ internal class AWSResourceSetupServiceTest :
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(failure)
 
-        assertThatThrownBy { unavailableService.ensureAWSResources(createUserConfig()) }.isSameAs(failure)
+        assertThatThrownBy { unavailableService.ensureAWSResources() }.isSameAs(failure)
 
         assertThat(capturedEvents).noneMatch {
             it.event is Event.Command.ProviderError || it.event is Event.AwsSetup.PolicyDisplay
@@ -480,12 +473,11 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should create all 3 IAM roles`() {
         // Given: IAM resources not configured (fails initially, then succeeds)
-        val userConfig = createUserConfig()
         stubInvalidThenValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
         stubSuccessfulRoleCreation()
 
         // When
-        service.ensureAWSResources(userConfig)
+        service.ensureAWSResources()
 
         // Then: Should have attempted to create roles via IAM client
         // createRole is called for EC2 instance role, EMR service role, and EMR EC2 role
@@ -497,7 +489,6 @@ internal class AWSResourceSetupServiceTest :
     fun `ensureAWSResources should throw when final validation fails`() {
         // Given: validation fails initially, createRoleWithS3Policy's internal validation passes,
         // but the final validation in finalizeSetup fails (e.g., no policies)
-        val userConfig = createUserConfig()
 
         val role = Role.builder().roleName(Constants.AWS.Roles.EC2_INSTANCE_ROLE).build()
         val validProfile =
@@ -530,7 +521,7 @@ internal class AWSResourceSetupServiceTest :
         // When/Then: Should throw IllegalStateException from finalizeSetup
         val exception =
             assertThrows<IllegalStateException> {
-                service.ensureAWSResources(userConfig)
+                service.ensureAWSResources()
             }
 
         assertThat(exception.message).contains("AWS resource setup completed but final validation failed")
@@ -539,7 +530,6 @@ internal class AWSResourceSetupServiceTest :
     @Test
     fun `ensureAWSResources should handle IAM permission errors`() {
         // Given: IAM resources not configured
-        val userConfig = createUserConfig()
         stubInvalidRoleSetup()
 
         // Mock IAM permission error during role creation
@@ -553,7 +543,7 @@ internal class AWSResourceSetupServiceTest :
 
         // When/Then: Should throw IamException
         assertThrows<IamException> {
-            service.ensureAWSResources(userConfig)
+            service.ensureAWSResources()
         }
 
         // Should emit IAM permission error event
@@ -561,13 +551,4 @@ internal class AWSResourceSetupServiceTest :
     }
 
     // Helper method to create test user config
-    private fun createUserConfig(): User =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
-            keyName = "test-key",
-            awsProfile = "default",
-            awsAccessKey = "",
-            awsSecret = "",
-        )
 }

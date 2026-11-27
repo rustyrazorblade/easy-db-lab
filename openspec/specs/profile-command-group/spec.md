@@ -89,14 +89,36 @@ SHALL NOT throw.
 
 ### Requirement: `profile show` reports a malformed profile
 When the active profile's `settings.yaml` exists but cannot be deserialized, `profile show` SHALL
-report the profile as present but unreadable, naming the file path and `easy-db-lab profile setup`.
+report the profile as present but its file unusable, naming the failing file path, the reason (the
+read, decode, write or lock failure, never the file's text) and one hint.
+The hint SHALL name `easy-db-lab profile setup` only when setup repairs the failure: a value that does
+not decode (a wrong type, an unknown SSH transport, a missing required field), because setup reads
+the raw values. When the failure is an unknown key, setup would stop at the same key, so the hint
+SHALL tell the user to fix or remove that key in the file. For any other failure (a file that is not
+valid YAML or cannot be read, written or locked, or a destination type this version does not know),
+setup would fail the same way, so the hint SHALL tell the user to fix the file. Setup SHALL NOT
+rebuild a profile whose destination type this version does not know, because the fields only that
+type knows would be lost.
+The path and the hint SHALL each appear once.
 It SHALL NOT surface a raw deserialization error.
 
 #### Scenario: Truncated settings.yaml is reported, not thrown
 - **GIVEN** the active profile's `settings.yaml` exists but omits a field that has no default
 - **WHEN** the user runs `easy-db-lab profile show`
-- **THEN** the CLI reports the profile as present but unreadable and names the file path and `easy-db-lab profile setup`
+- **THEN** the CLI reports that the profile's file could not be used and names the file path, the reason and `easy-db-lab profile setup`
 - **AND** no raw deserialization error is shown
+
+#### Scenario: An unknown key is reported without the setup hint
+- **GIVEN** the active profile's `profile.yaml` holds a key that no field declares
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI reports that the profile's file could not be used, names the file path and the reason, and says "Fix or remove that key in the file"
+- **AND** it does not name `easy-db-lab profile setup`
+
+#### Scenario: A file that is not valid YAML is reported without the setup hint
+- **GIVEN** the active profile's `profile.yaml` or `settings.yaml` is not valid YAML
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI reports that the profile's file could not be used, names the file path and the reason, and says "Fix the file"
+- **AND** it does not name `easy-db-lab profile setup`
 
 ### Requirement: `profile show` honors the active profile selection
 `profile show` SHALL report the profile named by `EASY_DB_LAB_PROFILE`, reading its values from that

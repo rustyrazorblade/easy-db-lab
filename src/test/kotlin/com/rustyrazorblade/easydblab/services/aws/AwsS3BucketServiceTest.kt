@@ -2,7 +2,10 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -93,9 +96,9 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
 
     @Test
     fun `a new account bucket carries both marker tags`() {
-        val user = get<User>().apply { s3Bucket = "" }
+        get<ProfileStore>().replace(TestProfiles.profile(accountBucket = ""))
 
-        val bucketName = service.ensureAccountBucket(user)
+        val bucketName = service.ensureAccountBucket()
 
         val request = argumentCaptor<PutBucketTaggingRequest>()
         verify(mockS3Client).putBucketTagging(request.capture())
@@ -108,7 +111,68 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         assertThat(tags)
             .containsEntry(Constants.Vpc.LEGACY_TAG_KEY, Constants.Vpc.TAG_VALUE)
             .containsEntry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE)
-            .containsEntry("Owner", user.email)
+            .containsEntry("Owner", TestProfiles.EMAIL)
+        assertThat(get<ProfileStore>().load().aws.accountBucket).isEqualTo(bucketName)
+    }
+
+    /**
+     * Two operations of one command each need the bucket; the second must see the bucket the first
+     * saved, though the profile it was handed at start had none.
+     *
+     * Control: read the bucket from an AwsDestination bound once in Koin; the second call creates
+     * a second bucket.
+     */
+    @Test
+    fun `two ensures with one stale profile create one bucket`() {
+        get<ProfileStore>().replace(TestProfiles.profile(accountBucket = ""))
+        val staleProfile = get<ProfileStore>().load()
+
+        val first = service.ensureAccountBucket()
+        val second = service.ensureAccountBucket()
+
+        assertThat(staleProfile.aws.accountBucket).isEmpty()
+        assertThat(second).isEqualTo(first)
+        verify(mockS3Client).createBucket(any<CreateBucketRequest>())
+        assertThat(get<ProfileStore>().load().aws.accountBucket).isEqualTo(first)
+    }
+
+    /**
+     * Another command can save its bucket while this one is creating its own; the saved bucket wins,
+     * so every later command uses the one bucket the profile names.
+     *
+     * Control: save this call's bucket without reading the saved one inside `update`; the profile
+     * names this call's bucket and the other command's is orphaned. A second control: emit nothing
+     * for the unused bucket; the event check fails.
+     */
+    @Test
+    fun `a bucket another command saved while this one created its own is kept`() {
+        val store = get<ProfileStore>()
+        store.replace(TestProfiles.profile(accountBucket = ""))
+        whenever(mockS3Client.createBucket(any<CreateBucketRequest>())).thenAnswer {
+            store.update { profile -> profile.withAws { it.copy(accountBucket = "easy-db-lab-saved-first") } }
+            null
+        }
+
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val bucket = service.ensureAccountBucket()
+
+        val created = argumentCaptor<CreateBucketRequest>()
+        verify(mockS3Client).createBucket(created.capture())
+        assertThat(bucket).isEqualTo("easy-db-lab-saved-first")
+        assertThat(store.load().aws.accountBucket).isEqualTo("easy-db-lab-saved-first")
+        assertThat(emitted)
+            .contains(Event.Setup.S3BucketUnused(created.firstValue.bucket(), "easy-db-lab-saved-first"))
+            .noneMatch { it is Event.Setup.S3BucketCreated }
     }
 
     private fun s3Tags(vararg tags: Pair<String, String>) =
@@ -123,9 +187,9 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
     /** Path resolution calls ensureAccountBucket often; for a bucket already set it must not touch S3. */
     @Test
     fun `an account bucket already in the profile is returned without any S3 call`() {
-        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        get<ProfileStore>().replace(TestProfiles.profile(accountBucket = "easy-db-lab-existing"))
 
-        assertThat(service.ensureAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+        assertThat(service.ensureAccountBucket()).isEqualTo("easy-db-lab-existing")
 
         verifyNoInteractions(mockS3Client)
     }
@@ -133,9 +197,9 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
     /** A bucket made in this call already carries both markers; reading it back would tag it twice. */
     @Test
     fun `a marked account bucket created now is tagged once and never read back`() {
-        val user = get<User>().apply { s3Bucket = "" }
+        get<ProfileStore>().replace(TestProfiles.profile(accountBucket = ""))
 
-        val bucketName = service.ensureMarkedAccountBucket(user)
+        val bucketName = service.ensureMarkedAccountBucket()
 
         assertThat(bucketName).startsWith("easy-db-lab-")
         verify(mockS3Client).putBucketTagging(any<PutBucketTaggingRequest>())
@@ -147,9 +211,9 @@ class AwsS3BucketServiceTest : BaseKoinTest() {
         whenever(mockS3Client.getBucketTagging(any<GetBucketTaggingRequest>())).thenReturn(
             GetBucketTaggingResponse.builder().tagSet(s3Tags("easy_cass_lab" to "1")).build(),
         )
-        val user = get<User>().apply { s3Bucket = "easy-db-lab-existing" }
+        get<ProfileStore>().replace(TestProfiles.profile(accountBucket = "easy-db-lab-existing"))
 
-        assertThat(service.ensureMarkedAccountBucket(user)).isEqualTo("easy-db-lab-existing")
+        assertThat(service.ensureMarkedAccountBucket()).isEqualTo("easy-db-lab-existing")
 
         val request = argumentCaptor<PutBucketTaggingRequest>()
         verify(mockS3Client).putBucketTagging(request.capture())

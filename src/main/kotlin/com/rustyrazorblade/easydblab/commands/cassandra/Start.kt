@@ -7,7 +7,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CassandraService
@@ -31,7 +31,7 @@ import picocli.CommandLine.Option
     description = ["Start cassandra on all nodes via service command"],
 )
 class Start : PicoBaseCommand() {
-    private val userConfig: User by inject()
+    private val profile: ProfileAccess by inject()
     private val cassandraService: CassandraService by inject()
     private val sidecarService: SidecarService by inject()
     private val hostOperationsService: HostOperationsService by inject()
@@ -63,7 +63,7 @@ class Start : PicoBaseCommand() {
 
     override fun execute() {
         validateVersionsAssigned()
-        val withAxonOps = userConfig.isAxonOpsEnabled() && !skipAxonOps
+        val withAxonOps = profile.current().isAxonOpsEnabled && !skipAxonOps
         selectAxonOpsAgents(withAxonOps)
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
@@ -94,7 +94,15 @@ class Start : PicoBaseCommand() {
         // Inform user about AxonOps Workbench configuration if it exists
         val axonOpsWorkbenchFile = context.workspaceFile(Constants.Workspace.AXONOPS_CONFIG_FILE)
         if (axonOpsWorkbenchFile.exists()) {
-            eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
+            eventBus.emit(
+                Event.Cassandra.AxonOpsWorkbenchInfo(
+                    profile
+                        .current()
+                        .axonOps
+                        ?.org
+                        .orEmpty(),
+                ),
+            )
         }
 
         clusterStateManager.addRunningWorkload("cassandra")

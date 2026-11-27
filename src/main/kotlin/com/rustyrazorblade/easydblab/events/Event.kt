@@ -5661,6 +5661,18 @@ sealed interface Event {
             override fun toDisplayString(): String = "Profile '$profileName' is already configured."
         }
 
+        /**
+         * A new profile's destination is fixed. A profile has exactly one destination, so it is
+         * chosen once, when the profile is created; an existing profile never emits this.
+         */
+        @Serializable
+        @SerialName("Setup.DestinationSelected")
+        data class DestinationSelected(
+            val destination: String,
+        ) : Setup {
+            override fun toDisplayString(): String = "Destination: $destination"
+        }
+
         @Serializable
         @SerialName("Setup.UpdatePrompt")
         data object UpdatePrompt : Setup {
@@ -5760,6 +5772,22 @@ sealed interface Event {
             val bucketName: String,
         ) : Setup {
             override fun toDisplayString(): String = "S3 bucket created: $bucketName"
+        }
+
+        /**
+         * Another command saved its account bucket while this one was creating [unusedBucket], so the
+         * profile keeps [savedBucket]. [unusedBucket] is left in the account, empty, for the owner to
+         * delete.
+         */
+        @Serializable
+        @SerialName("Setup.S3BucketUnused")
+        data class S3BucketUnused(
+            val unusedBucket: String,
+            val savedBucket: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Another command saved account bucket $savedBucket first; the bucket created now, " +
+                    "$unusedBucket, is unused and empty. Delete it when no command is using the profile."
         }
 
         @Serializable

@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import com.rustyrazorblade.easydblab.shellQuote
 
@@ -29,18 +29,17 @@ sealed interface SsmCliCredentials {
 
     companion object {
         /**
-         * Chooses the credentials for [user]: its named AWS profile when set, otherwise the file
-         * [credentialsManager] writes. The file is only touched in that case, because reading its
-         * path writes it to disk.
+         * Chooses the CLI credentials for the profile's [credentials]: its named AWS profile, or for
+         * an access key the file [credentialsManager] writes. The file is only touched in that case,
+         * because reading its path writes it to disk.
          */
-        fun forUser(
-            user: User,
+        fun forCredentials(
+            credentials: AwsCredentials,
             credentialsManager: AWSCredentialsManager,
         ): SsmCliCredentials =
-            if (user.awsProfile.isNotEmpty()) {
-                NamedProfile(user.awsProfile)
-            } else {
-                CredentialsFile(credentialsManager.credentialsPath)
+            when (credentials) {
+                is AwsCredentials.AwsProfile -> NamedProfile(credentials.name)
+                is AwsCredentials.AccessKey -> CredentialsFile(credentialsManager.credentialsPath)
             }
     }
 }

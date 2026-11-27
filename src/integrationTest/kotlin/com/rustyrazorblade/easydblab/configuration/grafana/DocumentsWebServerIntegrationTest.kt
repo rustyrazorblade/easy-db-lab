@@ -2,10 +2,10 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.Container
@@ -55,7 +55,7 @@ class DocumentsWebServerIntegrationTest {
         ).thenReturn(
             ClusterState(name = "test", s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
         )
-        val sidecars = GrafanaDocumentsSidecars(TemplateService(stateManager, mock<User>()))
+        val sidecars = GrafanaDocumentsSidecars(TemplateService(stateManager, TestProfiles.awsAccessOf()))
         val documents = DocumentsBucket(BUCKET, "eu-west-1")
 
         val webConfig =

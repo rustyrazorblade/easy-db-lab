@@ -2,13 +2,12 @@ package com.rustyrazorblade.easydblab.commands.metrics
 
 import com.rustyrazorblade.easydblab.CliProcess
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.RedisTestSupport
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
@@ -54,8 +53,7 @@ class MetricsStreamSignalIntegrationTest {
         workspace = File(root, "workspace").apply { mkdirs() }
         output = File(root, "out.log")
         val userDir = File(root, "user")
-        UserConfigProvider(File(userDir, "profiles/default").apply { mkdirs() })
-            .saveUserConfig(User("test@example.com", "us-west-2", "key", "", "access", "secret"))
+        TestProfiles.storeWith(File(userDir, "profiles/default").apply { mkdirs() })
         ClusterStateManager(File(workspace, "state.json")).replace(
             ClusterState(
                 name = "lab",

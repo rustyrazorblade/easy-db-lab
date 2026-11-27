@@ -1,12 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -42,7 +42,6 @@ class ClusterProvisioningServiceTest {
     private lateinit var emrProvisioningService: EMRProvisioningService
     private lateinit var openSearchService: OpenSearchService
     private lateinit var accountIdentity: AccountIdentity
-    private lateinit var user: User
     private lateinit var eventBus: EventBus
     private lateinit var service: ClusterProvisioningService
 
@@ -52,17 +51,15 @@ class ClusterProvisioningServiceTest {
         emrProvisioningService = mock()
         openSearchService = mock()
         accountIdentity = mock()
-        user = mock()
         eventBus = EventBus()
         whenever(accountIdentity.getAccountId()).thenReturn("123456789012")
-        whenever(user.region).thenReturn("us-west-2")
         service =
             DefaultClusterProvisioningService(
                 ec2InstanceService = ec2InstanceService,
                 emrProvisioningService = emrProvisioningService,
                 openSearchService = openSearchService,
                 accountIdentity = accountIdentity,
-                user = user,
+                awsDestination = TestProfiles.awsAccessOf(),
                 eventBus = eventBus,
             )
     }
@@ -601,7 +598,7 @@ class ClusterProvisioningServiceTest {
             subnetIds = listOf("subnet-1", "subnet-2"),
             tags = mapOf("ClusterId" to "test-cluster"),
             clusterName = "test-cluster",
-            userConfig = createUserConfig(),
+            keyName = TestProfiles.KEY_NAME,
         )
 
     private fun createServicesConfig(
@@ -614,16 +611,6 @@ class ClusterProvisioningServiceTest {
             securityGroupId = "sg-12345",
             tags = mapOf("ClusterId" to "test-cluster"),
             clusterState = clusterState,
-        )
-
-    private fun createUserConfig(): User =
-        User(
-            awsAccessKey = "test-access-key",
-            awsSecret = "test-secret",
-            region = "us-west-2",
-            email = "test@example.com",
-            keyName = "test-key",
-            awsProfile = "",
         )
 
     private fun createInitConfig(

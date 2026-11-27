@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -11,7 +12,10 @@ import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
+import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.withAws
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -188,7 +192,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up fails before any EC2 instance is launched when no S3 bucket is configured`() {
-        whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("")
+        whenever(mockS3BucketService.ensureAccountBucket()).thenReturn("")
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
@@ -573,9 +577,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when the nested ConfigureAxonOps command fails`() {
-        val userWithAxonOps =
-            tailscaleUser().copy(axonOpsOrg = "test-org", axonOpsKey = "test-key", tailscaleClientId = "", tailscaleClientSecret = "")
-        overrideUser(userWithAxonOps)
+        useProfile(TestProfiles.profile(axonOps = AxonOps("test-org", "test-key")))
         nestedCommandExitCodes["ConfigureAxonOps"] = 1
 
         assertThatThrownBy { newUp().execute() }
@@ -598,7 +600,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when writeAllConfigurationFiles fails`() {
-        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
+        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any()))
             .thenReturn(Result.failure(RuntimeException("disk full")))
 
         assertThatThrownBy { newUp().execute() }
@@ -699,7 +701,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up aborts when Tailscale fails to start and preserves the manual-start instruction`() {
-        overrideUser(tailscaleUser())
+        useProfile(tailscaleProfile())
         nestedCommandExitCodes["TailscaleStart"] = 1
 
         assertThatThrownBy { newUp().execute() }
@@ -716,7 +718,7 @@ class UpTest : UpTestFixture() {
      */
     @Test
     fun `up continues when Tailscale starts but the previously recorded device cannot be removed`() {
-        overrideUser(tailscaleUser())
+        useProfile(tailscaleProfile())
         val state = happyState().apply { tailscaleDeviceId = "nOldCNTRL" }
         clusterStateManager.replace(state)
         val tailscaleService = mock<TailscaleService>()
@@ -1204,7 +1206,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up fails before touching AWS when the ssm transport's plugin is missing`() {
-        overrideUser(ssmUser())
+        useProfile(ssmProfile())
         ssmToolFaults = listOf(SsmToolFault.NotFound(SsmTool.SessionManagerPlugin))
 
         assertThatThrownBy { newUp().execute() }
@@ -1214,14 +1216,14 @@ class UpTest : UpTestFixture() {
 
         // SsmToolsMissing is an error event, so the install hint goes to the error stream.
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("brew install --cask session-manager-plugin")
-        verify(mockS3BucketService, never()).ensureAccountBucket(any())
+        verify(mockS3BucketService, never()).ensureAccountBucket()
         verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
     }
 
     /** An installed tool that fails needs its own error read, not an install hint that would send the operator the wrong way. */
     @Test
     fun `up shows a failing tool's own output and no install hint`() {
-        overrideUser(ssmUser())
+        useProfile(ssmProfile())
         ssmToolFaults = listOf(SsmToolFault.Failed(SsmTool.AwsCli, 1, "dyld: Library not loaded: libpython3.11.dylib"))
 
         assertThatThrownBy { newUp().execute() }
@@ -1236,7 +1238,7 @@ class UpTest : UpTestFixture() {
 
     @Test
     fun `up provisions over ssm when the local tools are present`() {
-        overrideUser(ssmUser())
+        useProfile(ssmProfile())
 
         assertThatCode { newUp().execute() }.doesNotThrowAnyException()
 
@@ -1252,7 +1254,7 @@ class UpTest : UpTestFixture() {
         assertThat(localSsmToolingQueries).isZero()
     }
 
-    private fun ssmUser(): User = getKoin().get<User>().copy(sshTransport = SshTransport.Ssm)
+    private fun ssmProfile(): Profile = getKoin().get<ProfileStore>().load().withAws { it.copy(sshTransport = SshTransport.Ssm) }
 
     /** A copy of the state at every save, in order. */
     private fun captureSaves(): List<ClusterState> {

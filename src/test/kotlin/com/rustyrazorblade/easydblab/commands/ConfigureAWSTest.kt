@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -30,7 +29,7 @@ class ConfigureAWSTest : BaseKoinTest() {
         mockAWSResourceSetupService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
 
-        whenever(mockAWSResourceSetupService.ensureAWSResources(any())).then { }
+        whenever(mockAWSResourceSetupService.ensureAWSResources()).then { }
     }
 
     @Test
@@ -38,7 +37,7 @@ class ConfigureAWSTest : BaseKoinTest() {
         val command = ConfigureAWS()
         command.execute()
 
-        verify(mockAWSResourceSetupService).ensureAWSResources(any())
+        verify(mockAWSResourceSetupService).ensureAWSResources()
     }
 
     @Test

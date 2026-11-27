@@ -2,15 +2,14 @@ package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.EasyDBLabCommand
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.annotations.RequireDocker
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.CLUSTER_STATE
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
@@ -19,16 +18,17 @@ import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
-import org.koin.dsl.module
 import picocli.CommandLine
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Lifecycle-level guards for the `profile` command group.
@@ -41,15 +41,6 @@ import java.io.StringWriter
 class ProfileCommandGroupTest : BaseKoinTest() {
     private val stdout = ByteArrayOutputStream()
     private val originalOut = System.out
-
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                // Rebuilt on resolution rather than at module construction, so a test can point the
-                // context at another profile first.
-                single { UserConfigProvider(get<Context>().profileDir) }
-            },
-        )
 
     @BeforeEach
     fun captureStdout() {
@@ -64,7 +55,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
 
     private fun rootCommandLine() = CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory())
 
-    private fun settingsFile(profileDir: File) = File(profileDir, Constants.ConfigPaths.PROFILE_SETTINGS_FILE)
+    private fun profileFile(profileDir: File) = File(profileDir, Constants.ConfigPaths.PROFILE_FILE)
 
     @Test
     fun `profile group exposes show and setup`() {
@@ -170,10 +161,8 @@ class ProfileCommandGroupTest : BaseKoinTest() {
         // this is that value's path through the command.
         context.profile = "staging"
         context.profileDir = File(context.profilesDir, "staging").apply { mkdirs() }
-        context.yaml.writeValue(
-            settingsFile(context.profileDir),
-            userWith(email = "staging-user@example.com"),
-        )
+        // The core store binding is resolved on first use, so it is built over the staging directory.
+        TestProfiles.storeWith(context.profileDir, TestProfiles.profile(email = "staging-user@example.com"))
 
         getKoin().get<ProfileShow>().execute()
 
@@ -184,27 +173,142 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     }
 
     @Test
-    fun `profile show reports a truncated settings file instead of throwing`() {
-        // User has six constructor parameters with no defaults, so a file missing one of them
-        // fails deserialization. The command must report that, not surface the Jackson error.
-        settingsFile(context.profileDir).writeText("email: partial@example.com\n")
+    fun `profile show reports a truncated profile file instead of throwing`() {
+        // A profile needs a destination, so a file holding only the email fails to decode. The
+        // command must report that, not surface the decoder's exception.
+        profileFile(context.profileDir).writeText("email: partial@example.com\n")
 
         assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
 
         val output = stdout.toString()
-        assertThat(output).contains("could not be read")
+        assertThat(output).contains("file could not be used")
         assertThat(output).contains("easy-db-lab profile setup")
         assertThat(output).doesNotContain("Exception")
-        assertThat(output).doesNotContain("com.fasterxml.jackson")
+        assertThat(output).doesNotContain("kaml")
+        assertFailureBodySaysPathAndHintOnce(output, profileFile(context.profileDir).absolutePath, "'destination' is required but missing")
     }
 
-    private fun userWith(email: String) =
-        User(
-            email = email,
-            region = "eu-west-1",
-            keyName = "staging-key",
-            awsProfile = "staging-aws",
-            awsAccessKey = "",
-            awsSecret = "",
-        )
+    /**
+     * Setup stops at an unknown key, so the report tells the user to fix the key instead of naming setup.
+     *
+     * Control: print the setup hint for every remedy in the report; the setup hint is printed and the test fails.
+     */
+    @Test
+    fun `profile show tells the user to fix an unknown key instead of running setup`() {
+        TestProfiles.storeWith(context.profileDir, TestProfiles.profile(accountBucket = "a-bucket"))
+        val file = profileFile(context.profileDir)
+        file.writeText(file.readText().replace("accountBucket:", "accountBuket:"))
+        check("accountBuket:" in file.readText()) { "the fixture should hold the misspelled key" }
+
+        getKoin().get<ProfileShow>().execute()
+
+        val body = stdout.toString().substringAfter("could not be used:")
+        assertThat(body.split(file.absolutePath)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split("Fix or remove that key in the file")).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).contains("unknown key 'accountBuket'").doesNotContain("profile setup")
+    }
+
+    /**
+     * Setup parses `profile.yaml` too, so for a file that is not valid YAML it would fail the same way:
+     * the report tells the user to fix the file and does not name setup.
+     *
+     * Control: report a parse failure as one setup repairs; the setup hint is printed and the test fails.
+     */
+    @Test
+    fun `profile show tells the user to fix a malformed profile file instead of running setup`() {
+        val file = profileFile(context.profileDir)
+        file.writeText("email: [broken\n")
+
+        assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
+
+        val body = stdout.toString().substringAfter("could not be used:")
+        assertThat(body.split(file.absolutePath)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split("Fix the file")).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).contains("not valid YAML").doesNotContain("profile setup").doesNotContain("broken")
+    }
+
+    /**
+     * The failure body (the header names `profile.yaml` on its own line) names the failing path once,
+     * gives the reason, and gives the remedy's hint once.
+     */
+    private fun assertFailureBodySaysPathAndHintOnce(
+        output: String,
+        path: String,
+        reason: String,
+        hint: String = "profile setup",
+    ) {
+        val body = output.substringAfter("could not be used:")
+        assertThat(body.split(path)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split(hint)).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).contains(reason)
+    }
+
+    /**
+     * With only an earlier release's file, and that file broken, the report names the file that
+     * failed, not a `profile.yaml` that does not exist.
+     *
+     * Control: name `profile.yaml` in every unreadable report; the path check fails.
+     */
+    @Test
+    fun `profile show names the earlier file when it is the one that cannot be read`() {
+        val store = getKoin().get<ProfileStore>()
+        store.file.delete()
+        store.legacyFile.writeText("awsProfile: [broken\n")
+
+        getKoin().get<ProfileShow>().execute()
+
+        val output = stdout.toString()
+        assertThat(output).contains("file could not be used:\n  ${store.legacyFile.absolutePath}")
+        assertThat(output).doesNotContain("file could not be used:\n  ${store.file.absolutePath}")
+    }
+
+    /**
+     * A profile file the user cannot read is reported like an undecodable one.
+     *
+     * Control: drop the IOException redaction in the store; the FileNotFoundException escapes.
+     */
+    @Test
+    fun `profile show reports a profile file it has no permission to read`() {
+        val store = getKoin().get<ProfileStore>()
+        Files.setPosixFilePermissions(store.file.toPath(), PosixFilePermissions.fromString("---------"))
+        // Root reads any file whatever its mode, so there is nothing to test there.
+        assumeFalse(Files.isReadable(store.file.toPath()))
+
+        assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
+
+        assertThat(stdout.toString()).contains("file could not be used:\n  ${store.file.absolutePath}")
+    }
+
+    /**
+     * With a readable `settings.yaml` and a directory that cannot be written, the conversion fails
+     * on the write. The report names `profile.yaml` and the write reason, not "could not be read".
+     *
+     * Control: report every failure as "could not be read"; the reason check fails.
+     */
+    @Test
+    fun `profile show reports the write reason when the conversion cannot write profile yaml`() {
+        val store = getKoin().get<ProfileStore>()
+        store.file.delete()
+        val resource = "/com/rustyrazorblade/easydblab/configuration/profile/legacy/aws-profile.yaml"
+        store.legacyFile.writeBytes(checkNotNull(javaClass.getResource(resource)).readBytes())
+        File(context.profileDir, Constants.ConfigPaths.PROFILE_LOCK_FILE).createNewFile()
+        val dir = context.profileDir.toPath()
+        val original = Files.getPosixFilePermissions(dir)
+        Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("r-xr-xr-x"))
+        try {
+            // Root can write anywhere, so the failure cannot be triggered.
+            assumeFalse(Files.isWritable(dir))
+
+            getKoin().get<ProfileShow>().execute()
+
+            val output = stdout.toString()
+            assertThat(output).contains("its file could not be used:\n  ${store.file.absolutePath}")
+            assertThat(output).doesNotContain("could not be read")
+            // A write failure is not repaired by setup, so the report says to fix the file.
+            assertFailureBodySaysPathAndHintOnce(output, store.file.absolutePath, "while writing", hint = "Fix the file")
+            assertThat(output).doesNotContain("profile setup")
+        } finally {
+            Files.setPosixFilePermissions(dir, original)
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.YamlTestSupport
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -7,7 +8,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -75,16 +75,7 @@ internal class EMRProvisioningServiceTest {
                 hosts = mapOf(ServerType.Control to listOf(testControlHost)),
             ),
         )
-        val testUser =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        val templateService = TemplateService(mockClusterStateManager, testUser)
+        val templateService = TemplateService(mockClusterStateManager, TestProfiles.awsAccessOf(TestProfiles.profile(keyName = "")))
         service =
             DefaultEMRProvisioningService(
                 mockEmrService,

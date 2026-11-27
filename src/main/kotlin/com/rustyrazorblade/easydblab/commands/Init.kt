@@ -15,7 +15,8 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
@@ -65,7 +66,8 @@ import kotlin.system.exitProcess
     description = ["Initialize this directory for easy-db-lab"],
 )
 class Init : PicoBaseCommand() {
-    private val userConfig: User by inject()
+    private val profile: ProfileAccess by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
     private val infrastructureService: AwsInfrastructureService by inject()
@@ -491,12 +493,12 @@ class Init : PicoBaseCommand() {
                 initConfig =
                     InitConfig.fromInit(
                         init = this,
-                        region = userConfig.region,
+                        region = awsDestination.current().location.region,
                         dbArch = nodeArch(ServerType.Cassandra, resolvedDbInstanceType),
                         appArch = nodeArch(ServerType.Stress, resolvedAppInstanceType),
                         controlArch = nodeArch(ServerType.Control, DEFAULT_CONTROL_INSTANCE_TYPE),
                     ),
-                networkMode = if (userConfig.isTailscaleEnabled() && !noTailscale) NetworkMode.Tailscale else NetworkMode.Socks,
+                networkMode = if (profile.current().isTailscaleEnabled && !noTailscale) NetworkMode.Tailscale else NetworkMode.Socks,
             ).apply {
                 // Only a VPC the user gave with --vpc is recorded here; otherwise up creates one.
                 existingVpcId?.let { vpc ->

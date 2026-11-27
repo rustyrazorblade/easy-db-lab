@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.koin.dsl.module
@@ -28,7 +28,7 @@ val sshModule =
         single<SshRoute> {
             LazySshRoute {
                 val sshPort = get<SSHConfiguration>().sshPort
-                when (get<User>().sshTransport) {
+                when (get<AwsDestinationAccess>().current().sshTransport) {
                     SshTransport.Direct -> DirectSshRoute(sshPort)
                     SshTransport.Ssm -> SsmSshRoute(get(), sshPort, get())
                 }
@@ -41,12 +41,12 @@ val sshModule =
         // Remote operations for hosts in another region (an AMI build's own). Only the ssm
         // transport is bound to a region; direct dials the host's address from anywhere.
         factory {
-            val user = get<User>()
+            val destination = get<AwsDestinationAccess>().current()
             val config = get<SSHConfiguration>()
             RegionalRemoteOperations.forProfile(
                 shared = get(),
-                transport = user.sshTransport,
-                profileRegion = user.region,
+                transport = destination.sshTransport,
+                profileRegion = destination.location.region,
                 ssmRouteFor = { region -> get<RegionalSsmRoutes>().forRegion(region, config.sshPort) },
                 connectionsOver = { route -> DefaultSSHConnectionProvider(config, route) },
             )

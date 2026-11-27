@@ -3,8 +3,6 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
@@ -17,6 +15,8 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
@@ -218,7 +218,6 @@ val servicesModule =
             CassandraBuildCatalog(
                 get<ObjectStore>(),
                 get<AwsS3BucketService>(),
-                get<User>(),
             )
         }
 
@@ -230,7 +229,6 @@ val servicesModule =
                 profileBuildDir = context.cassandraVersionsExtra,
                 catalog = get(),
                 bucketService = get(),
-                user = get(),
             )
         }
         single { CassandraVersionResolver(get()) }
@@ -264,7 +262,7 @@ val servicesModule =
                 get<EMRProvisioningService>(),
                 get<OpenSearchService>(),
                 get<AccountIdentity>(),
-                get<User>(),
+                get<AwsDestinationAccess>(),
                 get<EventBus>(),
             )
         }
@@ -313,7 +311,6 @@ val servicesModule =
                 get<ClusterStateManager>(),
                 get<EventBus>(),
                 get<ClusterConfigurationService>(),
-                get<User>(),
             )
         }
 
@@ -325,13 +322,13 @@ val servicesModule =
 
         // Command executor for scheduling and executing commands with full lifecycle
         // Note: BackupRestoreService is lazily injected in DefaultCommandExecutor to avoid
-        // triggering the AWS dependency chain during profile setup (when settings.yaml doesn't exist yet)
+        // triggering the AWS dependency chain during profile setup (when profile.yaml doesn't exist yet)
         single<CommandExecutor> {
             DefaultCommandExecutor(
                 get<Context>(),
                 get<ClusterStateManager>(),
                 RequirementCheckDeps(
-                    get<UserConfigProvider>(),
+                    get<ProfileStore>(),
                     get<DockerClientProvider>(),
                 ),
                 get<ResourceManager>(),

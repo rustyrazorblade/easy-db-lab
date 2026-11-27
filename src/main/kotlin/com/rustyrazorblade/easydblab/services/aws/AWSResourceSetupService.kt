@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
@@ -92,11 +91,9 @@ class AWSResourceSetupService(
      *
      * Note: S3 buckets are created per-environment in the Up command, not here.
      *
-     * @param userConfig The user configuration (used for validation only, not modified)
      * @throws IllegalStateException if resource setup fails validation
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun ensureAWSResources(userConfig: User) {
+    fun ensureAWSResources() {
         val roleName = Constants.AWS.Roles.EC2_INSTANCE_ROLE
 
         // Early return if resources already exist and are valid, once the role carries every

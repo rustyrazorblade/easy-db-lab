@@ -1,9 +1,19 @@
 package com.rustyrazorblade.easydblab.commands.profile
 
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
+import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsLocation
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
+import java.util.stream.Stream
 
 /**
  * Tests the report text `profile show` produces.
@@ -13,141 +23,146 @@ import org.junit.jupiter.api.Test
  * annotations, which collaborators the lifecycle touched — lives in [ProfileCommandGroupTest].
  */
 class ProfileShowTest {
-    private companion object {
-        const val PROFILE_NAME = "default"
-        const val PROFILE_DIR = "/home/tester/.easy-db-lab/profiles/default"
+    companion object {
+        private const val PROFILE_NAME = "default"
+        private const val PROFILE_DIR = "/home/tester/.easy-db-lab/profiles/default"
+        private const val POSIX_HINT = "Put the profile directory on a file system with POSIX permissions"
 
         // Sentinels chosen so they cannot appear in the report by coincidence.
-        const val ACCESS_KEY = "SENTINELACCESSKEYVALUE"
-        const val SECRET = "SENTINELSECRETVALUE"
-        const val AXONOPS_KEY = "SENTINELAXONOPSKEYVALUE"
-        const val TAILSCALE_ID = "SENTINELTAILSCALEIDVALUE"
-        const val TAILSCALE_SECRET = "SENTINELTAILSCALESECRETVALUE"
+        private const val ACCESS_KEY = "SENTINELACCESSKEYVALUE"
+        private const val SECRET = "SENTINELSECRETVALUE"
+        private const val AXONOPS_KEY = "SENTINELAXONOPSKEYVALUE"
+        private const val TAILSCALE_ID = "SENTINELTAILSCALEIDVALUE"
+        private const val TAILSCALE_SECRET = "SENTINELTAILSCALESECRETVALUE"
+        private val SECRETS = listOf(ACCESS_KEY, SECRET, AXONOPS_KEY, TAILSCALE_ID, TAILSCALE_SECRET)
+
+        private val NAMED = AwsCredentials.AwsProfile("tester-aws-profile")
+        private val KEYS = AwsCredentials.AccessKey(ACCESS_KEY, SECRET)
+
+        private fun profile(
+            credentials: AwsCredentials = NAMED,
+            axonOps: AxonOps? = AxonOps("tester-org", AXONOPS_KEY),
+            tailscale: Tailscale? = Tailscale(TAILSCALE_ID, TAILSCALE_SECRET),
+            sshTransport: SshTransport = SshTransport.Direct,
+        ) = Profile(
+            email = "tester@example.com",
+            destination =
+                AwsDestination(
+                    location = AwsLocation("eu-central-1"),
+                    credentials = credentials,
+                    keyName = "tester-keypair",
+                    accountBucket = "tester-account-bucket",
+                    sshTransport = sshTransport,
+                ),
+            tailscale = tailscale,
+            axonOps = axonOps,
+        )
+
+        private fun reportFor(profile: Profile) = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Loaded(profile))
+
+        @JvmStatic
+        fun credentialForms(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of(NAMED, "credentials\\s+aws-profile tester-aws-profile"),
+                Arguments.of(KEYS, "credentials\\s+access-key\\s*\n"),
+            )
+
+        /** Each row: the blocks, then whether AxonOps and Tailscale read ENABLED. */
+        @JvmStatic
+        fun featureBlocks(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of("both blocks complete", AxonOps("org", AXONOPS_KEY), Tailscale(TAILSCALE_ID, TAILSCALE_SECRET), true, true),
+                Arguments.of("no blocks", null, null, false, false),
+                Arguments.of("AxonOps key blank", AxonOps("org", ""), Tailscale(TAILSCALE_ID, TAILSCALE_SECRET), false, true),
+                Arguments.of("AxonOps org blank", AxonOps("", AXONOPS_KEY), null, false, false),
+                Arguments.of("AxonOps key whitespace", AxonOps("org", "   "), null, false, false),
+                Arguments.of("Tailscale id empty", null, Tailscale("", TAILSCALE_SECRET), false, false),
+                Arguments.of("Tailscale secret whitespace", null, Tailscale(TAILSCALE_ID, "   "), false, false),
+            )
+
+        /** Each row: whether the failure is an unknown key, the hint the report gives, and the one it must not. */
+        @JvmStatic
+        fun failureHints(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of(
+                    ProfileFileRemedy.RUN_SETUP,
+                    "easy-db-lab profile setup",
+                    listOf("Fix or remove that key", "Fix the file", POSIX_HINT),
+                ),
+                Arguments.of(
+                    ProfileFileRemedy.FIX_KEY,
+                    "Fix or remove that key in the file",
+                    listOf("profile setup", "Fix the file", POSIX_HINT),
+                ),
+                Arguments.of(ProfileFileRemedy.FIX_FILE, "Fix the file", listOf("profile setup", "Fix or remove that key", POSIX_HINT)),
+                Arguments.of(
+                    ProfileFileRemedy.POSIX_FILE_SYSTEM,
+                    POSIX_HINT,
+                    listOf("profile setup", "Fix the file", "Fix or remove that key"),
+                ),
+            )
+
+        private fun flag(enabled: Boolean) = if (enabled) "ENABLED" else "DISABLED"
     }
 
-    private fun user(
-        axonOpsOrg: String = "tester-org",
-        axonOpsKey: String = AXONOPS_KEY,
-        tailscaleClientId: String = TAILSCALE_ID,
-        tailscaleClientSecret: String = TAILSCALE_SECRET,
-    ) = User(
-        email = "tester@example.com",
-        region = "eu-central-1",
-        keyName = "tester-keypair",
-        awsProfile = "tester-aws-profile",
-        awsAccessKey = ACCESS_KEY,
-        awsSecret = SECRET,
-        axonOpsOrg = axonOpsOrg,
-        axonOpsKey = axonOpsKey,
-        tailscaleClientId = tailscaleClientId,
-        tailscaleClientSecret = tailscaleClientSecret,
-        s3Bucket = "easy-db-lab-tester-bucket",
-    )
-
-    private fun reportFor(user: User) = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Loaded(user))
-
+    /** Control: leave the destination line out of the report; the `destination` pattern fails. */
     @Test
-    fun `report names the profile, its directory, and all five visible settings`() {
-        val report = reportFor(user())
+    fun `report names the profile, its directory, its file, the destination and every visible setting`() {
+        val report = reportFor(profile())
 
         assertThat(report)
             .contains(PROFILE_NAME)
-            .contains(PROFILE_DIR)
-            .contains("tester@example.com")
-            .contains("eu-central-1")
-            .contains("tester-keypair")
-            .contains("tester-aws-profile")
-            .contains("easy-db-lab-tester-bucket")
+            .contains("$PROFILE_DIR/profile.yaml")
+            .containsPattern("email\\s+tester@example.com")
+            .containsPattern("destination\\s+AWS")
+            .containsPattern("region\\s+eu-central-1")
+            .containsPattern("keyName\\s+tester-keypair")
+            .containsPattern("accountBucket\\s+tester-account-bucket")
+            .containsPattern("sshTransport\\s+direct")
     }
 
-    @Test
-    fun `report contains none of the five secret values`() {
-        val report = reportFor(user())
+    /** Control: print the access key secret masked by SetupProfile.maskValue; the `****` check fails. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("credentialForms")
+    fun `credentials show their form and never a secret`(
+        credentials: AwsCredentials,
+        expectedLine: String,
+    ) {
+        val report = reportFor(profile(credentials = credentials))
 
-        assertThat(report)
-            .doesNotContain(ACCESS_KEY)
-            .doesNotContain(SECRET)
-            .doesNotContain(AXONOPS_KEY)
-            .doesNotContain(TAILSCALE_ID)
-            .doesNotContain(TAILSCALE_SECRET)
-    }
-
-    @Test
-    fun `a masking helper would leak the first character, so no leading fragment appears either`() {
-        // SetupProfile.maskValue renders "S****" for every one of these. If buildReport ever
-        // reuses it the sentinel assertions above still pass, so guard the leading fragment too.
-        val report = reportFor(user())
-
+        assertThat(report).containsPattern(expectedLine)
+        SECRETS.forEach { assertThat(report).doesNotContain(it) }
+        // SetupProfile.maskValue renders "S****"; a report that reused it would leak a fragment.
         assertThat(report).doesNotContain("****")
     }
 
-    @Test
-    fun `AxonOps is ENABLED when both the org and the key are present`() {
-        // Anchored to the AxonOps line: the same fixture renders "Tailscale ENABLED", so two
-        // independent contains() calls would pass even if this line read DISABLED.
-        assertThat(reportFor(user())).containsPattern("AxonOps\\s+ENABLED")
+    /** Control: show a feature enabled when its block exists; the half-set rows fail. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("featureBlocks")
+    fun `feature flags follow the block rules`(
+        description: String,
+        axonOps: AxonOps?,
+        tailscale: Tailscale?,
+        axonOpsEnabled: Boolean,
+        tailscaleEnabled: Boolean,
+    ) {
+        val report = reportFor(profile(axonOps = axonOps, tailscale = tailscale))
+
+        assertThat(report)
+            .describedAs(description)
+            .containsPattern("AxonOps\\s+${flag(axonOpsEnabled)}")
+            .containsPattern("Tailscale\\s+${flag(tailscaleEnabled)}")
     }
 
-    @Test
-    fun `AxonOps is DISABLED when no key is present`() {
-        val report = reportFor(user(axonOpsKey = ""))
-
-        assertThat(report).containsPattern("AxonOps\\s+DISABLED")
-    }
-
-    @Test
-    fun `AxonOps is DISABLED when the key is set but the org is blank`() {
-        // SetupProfile prompts for the org and the key as independent skippable fields, so this
-        // state is reachable. Up and cassandra Start both skip AxonOps in it.
-        val report = reportFor(user(axonOpsOrg = "", axonOpsKey = AXONOPS_KEY))
-
-        assertThat(report).containsPattern("AxonOps\\s+DISABLED")
-    }
-
-    @Test
-    fun `AxonOps is DISABLED when the key is whitespace rather than empty`() {
-        // isAxonOpsEnabled() uses isNotBlank(), so whitespace must not read as configured.
-        val report = reportFor(user(axonOpsKey = "   "))
-
-        assertThat(report).containsPattern("AxonOps\\s+DISABLED")
-    }
-
-    @Test
-    fun `Tailscale is ENABLED when both credentials are present`() {
-        val report = reportFor(user())
-
-        assertThat(report).containsPattern("Tailscale\\s+ENABLED")
-    }
-
-    @Test
-    fun `Tailscale is DISABLED when the client id is empty`() {
-        val report = reportFor(user(tailscaleClientId = ""))
-
-        assertThat(report).containsPattern("Tailscale\\s+DISABLED")
-    }
-
-    @Test
-    fun `Tailscale is DISABLED when the client secret is blank rather than empty`() {
-        // isTailscaleEnabled() uses isNotBlank(), so whitespace must not read as configured.
-        val report = reportFor(user(tailscaleClientSecret = "   "))
-
-        assertThat(report).containsPattern("Tailscale\\s+DISABLED")
-    }
-
-    @Test
-    fun `SSH transport reads direct for a profile that never chose one`() {
-        assertThat(reportFor(user())).containsPattern("SSH\\s+direct")
-    }
-
+    /** Control: print the transport's enum name; the line reads `Ssm` and the pattern fails. */
     @Test
     fun `SSH transport reads ssm once the profile selects it`() {
-        val report = reportFor(user().apply { sshTransport = SshTransport.Ssm })
-
-        assertThat(report).containsPattern("SSH\\s+ssm")
+        assertThat(reportFor(profile(sshTransport = SshTransport.Ssm))).containsPattern("sshTransport\\s+ssm")
     }
 
+    /** Control: drop the setup hint from the missing report; the test fails. */
     @Test
-    fun `a missing settings file reports the profile as not configured and names profile setup`() {
+    fun `a missing profile reports it as not configured and names profile setup`() {
         val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Missing)
 
         assertThat(report)
@@ -157,13 +172,27 @@ class ProfileShowTest {
             .contains("easy-db-lab profile setup")
     }
 
-    @Test
-    fun `an unreadable settings file names the file path and profile setup`() {
-        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Unreadable)
+    /**
+     * A failure names the file, the reason and one hint. Only a failure setup repairs names setup; an
+     * unknown key gets "fix or remove", and a file setup cannot parse gets "fix the file".
+     *
+     * Control: print the setup hint for every failure; the two rows that are not RUN_SETUP fail. Print
+     * the profile directory instead of the failing file's path; every row fails.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("failureHints")
+    fun `a failed profile file names the file, the reason and the one hint that fits`(
+        remedy: ProfileFileRemedy,
+        hint: String,
+        otherHints: List<String>,
+    ) {
+        val file = "$PROFILE_DIR/profile.yaml"
+        val reason = "line 4, column 3: field destination: unknown key 'accountBuket'. Known keys: accountBucket"
+        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason, remedy))
 
-        assertThat(report)
-            .contains("$PROFILE_DIR/settings.yaml")
-            .contains("could not be read")
-            .contains("easy-db-lab profile setup")
+        val body = report.substringAfter("could not be used:")
+        assertThat(body).startsWith("\n  $file\n  $reason\n")
+        assertThat(body.split(hint)).describedAs("hint occurrences").hasSize(2)
+        otherHints.forEach { assertThat(body).doesNotContain(it) }
     }
 }

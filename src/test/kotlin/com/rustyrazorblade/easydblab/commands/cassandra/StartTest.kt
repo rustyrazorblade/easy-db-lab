@@ -8,7 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -92,18 +93,7 @@ class StartTest : BaseKoinTest() {
     private val nodes = FakeNodes()
 
     private fun enableAxonOps() {
-        getKoin().declare(
-            User(
-                email = "test@example.com",
-                region = "us-west-2",
-                keyName = "test-key",
-                awsProfile = "",
-                awsAccessKey = "test-access-key",
-                awsSecret = "test-secret",
-                axonOpsOrg = "my-org",
-                axonOpsKey = "my-key",
-            ),
-        )
+        getKoin().get<ProfileStore>().update { it.copy(axonOps = AxonOps("my-org", "my-key")) }
     }
 
     private fun dropIns(alias: String) = nodes.commandsOn(alias).filter { it.contains(AxonOpsAgents.DROP_IN) }

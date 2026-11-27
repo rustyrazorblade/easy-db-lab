@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.ssm.RegionalSsmRoutes
 import com.rustyrazorblade.easydblab.providers.aws.ssm.SdkSsmSessionTerminator
@@ -50,22 +52,13 @@ val awsClientsModule =
         // Recognises AWS credential and permission failures; takes no profile, so it resolves before one exists
         single { AwsErrorHandler() } bind ProviderErrorHandler::class
 
-        // Provide AWS region as singleton
-        single { Region.of(get<User>().region) }
+        // The active profile's AWS destination, read at each call; never bound as a value
+        single<AwsDestinationAccess> { AwsDestinationAccess.from(get<ProfileAccess>()) }
 
-        // Provide credentials provider based on User configuration
-        single<AwsCredentialsProvider> {
-            val user = get<User>()
-            when {
-                // If awsProfile is set, use ProfileCredentialsProvider
-                user.awsProfile.isNotEmpty() -> ProfileCredentialsProvider.create(user.awsProfile)
-                // Otherwise use static credentials from User
-                else ->
-                    StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(user.awsAccessKey, user.awsSecret),
-                    )
-            }
-        }
+        // Region and credentials do not change within a process, so they are read once
+        single { Region.of(get<AwsDestinationAccess>().current().location.region) }
+
+        single<AwsCredentialsProvider> { credentialsProviderFor(get<AwsDestinationAccess>().current().credentials) }
 
         // Provide AWS SDK clients as singletons with credentials and optional telemetry
         single {
@@ -160,9 +153,9 @@ val awsClientsModule =
         single { InstanceRolePolicies(get()) }
 
         // SSM Session Manager SSH transport, in the profile region
-        single { ssmSessionCommands(get<User>().region) }
+        single { ssmSessionCommands(get<Region>().id()) }
 
-        single<SsmSessionTerminator> { ssmSessionTerminator(get<User>().region) }
+        single<SsmSessionTerminator> { ssmSessionTerminator(get<Region>().id()) }
 
         // The SSM route for a region named at call time (an AMI build's own region)
         single<RegionalSsmRoutes> {
@@ -170,14 +163,22 @@ val awsClientsModule =
         }
     }
 
+/** The SDK credentials provider for the profile's credential form. */
+internal fun credentialsProviderFor(credentials: AwsCredentials): AwsCredentialsProvider =
+    when (credentials) {
+        is AwsCredentials.AwsProfile -> ProfileCredentialsProvider.create(credentials.name)
+        is AwsCredentials.AccessKey ->
+            StaticCredentialsProvider.create(AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey))
+    }
+
 /** The `aws ssm start-session` command lines for instances in [region], with the profile's credentials. */
 private fun Scope.ssmSessionCommands(region: String): SsmSessionCommandBuilder {
-    val user = get<User>()
+    val destination = get<AwsDestinationAccess>()
     val credentialsManager = get<AWSCredentialsManager>()
     val profileDir = get<Context>().profileDir
     return SsmSessionCommandBuilder(
         region,
-        { SsmCliCredentials.forUser(user, credentialsManager) },
+        { SsmCliCredentials.forCredentials(destination.current().credentials, credentialsManager) },
         sshProxyWrapper = { SsmProxyWrapper(profileDir).install() },
     )
 }

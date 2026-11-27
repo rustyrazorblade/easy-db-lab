@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import com.rustyrazorblade.easydblab.configuration.User
 import java.io.File
 import java.nio.file.Files
 
@@ -11,7 +10,8 @@ import java.nio.file.Files
 object TestContextFactory {
     /**
      * Creates a Context instance configured for testing.
-     * Creates a temporary directory and a fake user configuration.
+     * Creates a temporary directory and writes [TestProfiles.profile] as its default profile's
+     * `profile.yaml`, through the real store.
      *
      * @param tempDir JUnit @TempDir directory for test isolation (automatically cleaned up)
      * @param workingDirectory Optional working directory for lab operations.
@@ -26,19 +26,6 @@ object TestContextFactory {
         val testTempDirectory = Files.createTempDirectory(tempDir.toPath(), "easydblab")
         assert(testTempDirectory != null)
 
-        // Create a default profile with a fake user
-        val user =
-            User(
-                email = "test@rustyrazorblade.com",
-                region = "us-west-2",
-                keyName = "test",
-                awsProfile = "test",
-                awsAccessKey = "test",
-                awsSecret = "test",
-                axonOpsOrg = "",
-                axonOpsKey = "",
-            )
-
         val context =
             Context(
                 easyDbLabUserDirectory = testTempDirectory.toFile(),
@@ -48,9 +35,7 @@ object TestContextFactory {
                 appHome = testTempDirectory.resolve("app").toString(),
             )
 
-        // userConfigFile is accessed through the profileDir
-        val userConfigFile = File(context.profileDir, "settings.yaml")
-        context.yaml.writeValue(userConfigFile, user)
+        TestProfiles.storeWith(context.profileDir)
 
         return context
     }

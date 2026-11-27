@@ -26,7 +26,7 @@ import java.nio.file.Path
  * Example usage:
  * ```kotlin
  * val objectStore: ObjectStore by inject()
- * val s3Path = clusterState.s3Path(userConfig).sparkJars().resolve("myapp.jar")
+ * val s3Path = clusterState.s3Path().sparkJars().resolve("myapp.jar")
  * val result = objectStore.uploadFile(localJar, s3Path, showProgress = true)
  * ```
  */

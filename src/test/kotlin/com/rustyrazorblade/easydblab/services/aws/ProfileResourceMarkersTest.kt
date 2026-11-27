@@ -1,7 +1,10 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.TestProfiles
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
@@ -22,7 +25,6 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingResponse
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
-import java.io.File
 import software.amazon.awssdk.services.ec2.model.Tag as Ec2Tag
 import software.amazon.awssdk.services.s3.model.Tag as S3Tag
 
@@ -74,20 +76,22 @@ class ProfileResourceMarkersTest : BaseKoinTest() {
         val factory: AWSClientFactory = mock()
         whenever(factory.createEc2ClientWithProfile("lab", "us-west-2")).thenReturn(ec2)
         whenever(ec2.describeKeyPairs(any<DescribeKeyPairsRequest>())).thenReturn(legacyKeyPair())
-        val user =
-            get<User>().apply {
-                s3Bucket = "easy-db-lab-existing"
-                keyName = "lab-key"
-                awsProfile = "lab"
-                region = "us-west-2"
-            }
+        get<ProfileStore>().replace(
+            TestProfiles.profile(
+                accountBucket = "easy-db-lab-existing",
+                keyName = "lab-key",
+                credentials = AwsCredentials.AwsProfile("lab"),
+                region = "us-west-2",
+            ),
+        )
         val markers =
             ProfileResourceMarkers(
                 get<AwsS3BucketService>(),
-                AwsKeyPairService(get<EventBus>(), factory, AwsErrorHandler(), File("settings.yaml")),
+                AwsKeyPairService(get<EventBus>(), factory, AwsErrorHandler(), get<ProfileStore>()),
+                get<AwsDestinationAccess>(),
             )
 
-        assertThat(markers.ensureAccountBucketAndKeyPair(user)).isEqualTo("easy-db-lab-existing")
+        assertThat(markers.ensureAccountBucketAndKeyPair()).isEqualTo("easy-db-lab-existing")
 
         val bucketTags = argumentCaptor<PutBucketTaggingRequest>()
         verify(s3).putBucketTagging(bucketTags.capture())

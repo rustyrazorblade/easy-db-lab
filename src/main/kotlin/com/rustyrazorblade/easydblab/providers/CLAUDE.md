@@ -165,7 +165,7 @@ A handler claims an exception by its type alone and takes no dependencies, so it
 
 ### SSH Transport (`direct` / `ssm`)
 
-The profile's `User.sshTransport` decides how a TCP connection to a node's port 22 is made; SSH
+The profile's AWS destination `sshTransport` (`AwsDestination.sshTransport`, in `profile.yaml`) decides how a TCP connection to a node's port 22 is made; SSH
 itself is the same either way. It is read from the profile at runtime, never snapshotted into
 `state.json`, because clusters are provisioned identically under both transports.
 
@@ -176,7 +176,7 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 The binding is a `LazySshRoute`: the profile is read on the route's first use, not when Koin
 builds it. `profile setup` creates the profile, and Koin builds the SOCKS proxy (which holds the
 route) before that command runs, so a route that read the profile at construction made
-`profile setup` fail on a new profile. Nothing built at Koin resolution may read `User` or
+`profile setup` fail on a new profile. Nothing built at Koin resolution may read the profile (`ProfileAccess`, `AwsDestinationAccess`) or
 anything else that needs the profile (`ProcessSocksProxyService` takes `verifyAttempts` as a
 function for the same reason).
 

@@ -7,10 +7,10 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJar
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
@@ -110,16 +110,7 @@ class K8sServiceIntegrationTest {
         whenever(mockClusterStateManager.load()).thenReturn(
             ClusterState(name = "test"),
         )
-        val testUser =
-            User(
-                region = "us-west-2",
-                email = "test@example.com",
-                keyName = "",
-                awsProfile = "",
-                awsAccessKey = "",
-                awsSecret = "",
-            )
-        templateService = TemplateService(mockClusterStateManager, testUser)
+        templateService = TemplateService(mockClusterStateManager, TestProfiles.awsAccessOf(TestProfiles.profile(keyName = "")))
 
         val clusterConfig =
             ConfigMapBuilder()

@@ -1,9 +1,11 @@
 package com.rustyrazorblade.easydblab.commands.observability
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.compactorlease.LeaseRecord
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
+import com.rustyrazorblade.easydblab.configuration.profile.aws.aws
 import com.rustyrazorblade.easydblab.services.aws.CompactorLeaseReader
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -41,19 +43,8 @@ class CompactorStatusTest : BaseKoinTest() {
                         clock = FixedClock(now),
                     )
                 }
-                single {
-                    User(
-                        email = "test@example.com",
-                        region = "us-west-2",
-                        keyName = "test-key",
-                        awsProfile = "",
-                        awsAccessKey = "k",
-                        awsSecret = "s",
-                        axonOpsOrg = "",
-                        axonOpsKey = "",
-                        s3Bucket = bucket,
-                    )
-                }
+                // Read at use, as the production accessor is, so a test can set the bucket first
+                single<AwsDestinationAccess> { AwsDestinationAccess { TestProfiles.profile(accountBucket = bucket).aws } }
             },
         )
 

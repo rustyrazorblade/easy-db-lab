@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.services.cassandraversions
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -65,7 +64,6 @@ class DefaultVersionSources(
     override val profileBuildDir: File,
     private val catalog: CassandraBuildCatalog,
     private val bucketService: AwsS3BucketService,
-    private val user: User,
     private val http: PublicHttp = PublicHttp(),
 ) : VersionSources {
     private val profileBuildSource = ProfileBuildSource(profileBuildDir)
@@ -110,7 +108,7 @@ class DefaultVersionSources(
 
     override fun catalogBuildNames(): List<String> = catalog.list().map { it.name }
 
-    override fun downloadCacheRoot(): ClusterS3Path = ClusterS3Path.downloadCacheRoot(bucketService.ensureAccountBucket(user))
+    override fun downloadCacheRoot(): ClusterS3Path = ClusterS3Path.downloadCacheRoot(bucketService.ensureAccountBucket())
 
     private fun fetchOptional(url: String): String? =
         try {

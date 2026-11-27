@@ -1,6 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.aws.ssm
 
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -107,7 +107,7 @@ internal class SsmSessionCommandTest {
 
     @Test
     fun `a profile with a named AWS profile uses it and never writes the credentials file`() {
-        val credentials = SsmCliCredentials.forUser(user(awsProfile = "sso-lab"), credentialsManager())
+        val credentials = SsmCliCredentials.forCredentials(AwsCredentials.AwsProfile("sso-lab"), credentialsManager())
 
         assertThat(credentials).isEqualTo(SsmCliCredentials.NamedProfile("sso-lab"))
         assertThat(profileDir.listFiles()).isEmpty()
@@ -115,7 +115,7 @@ internal class SsmSessionCommandTest {
 
     @Test
     fun `a profile with static keys uses the credentials file it writes under the default profile`() {
-        val credentials = SsmCliCredentials.forUser(user(awsProfile = ""), credentialsManager())
+        val credentials = SsmCliCredentials.forCredentials(AwsCredentials.AccessKey("AKIA", "secret"), credentialsManager())
 
         val file = File(profileDir, "awscredentials")
         assertThat(credentials).isEqualTo(SsmCliCredentials.CredentialsFile(file.absolutePath))
@@ -124,14 +124,4 @@ internal class SsmSessionCommandTest {
 
     private fun credentialsManager() =
         AWSCredentialsManager(profileDir, StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIA", "secret")))
-
-    private fun user(awsProfile: String) =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
-            keyName = "key",
-            awsProfile = awsProfile,
-            awsAccessKey = "AKIA",
-            awsSecret = "secret",
-        )
 }

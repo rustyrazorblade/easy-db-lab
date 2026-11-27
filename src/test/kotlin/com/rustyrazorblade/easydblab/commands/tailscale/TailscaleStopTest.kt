@@ -7,7 +7,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
+import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -119,18 +120,7 @@ class TailscaleStopTest : BaseKoinTest() {
             )
         stateManager.replace(stateWithKey)
 
-        val userWithTailscale =
-            User(
-                email = "test@example.com",
-                region = "us-west-2",
-                keyName = "test-key",
-                awsProfile = "",
-                awsAccessKey = "test-access-key",
-                awsSecret = "test-secret",
-                tailscaleClientId = "ts-client-id",
-                tailscaleClientSecret = "ts-client-secret",
-            )
-        getKoin().declare(userWithTailscale)
+        getKoin().get<ProfileStore>().update { it.copy(tailscale = Tailscale("ts-client-id", "ts-client-secret")) }
 
         whenever(mockTailscaleService.isConnected(any())).thenReturn(Result.success(true))
         whenever(mockTailscaleService.stopTailscale(any())).thenReturn(Result.success(Unit))
@@ -230,18 +220,7 @@ class TailscaleStopTest : BaseKoinTest() {
         )
 
     private fun declareTailscaleUser() {
-        getKoin().declare(
-            User(
-                email = "test@example.com",
-                region = "us-west-2",
-                keyName = "test-key",
-                awsProfile = "",
-                awsAccessKey = "test-access-key",
-                awsSecret = "test-secret",
-                tailscaleClientId = "ts-client-id",
-                tailscaleClientSecret = "ts-client-secret",
-            ),
-        )
+        getKoin().get<ProfileStore>().update { it.copy(tailscale = Tailscale("ts-client-id", "ts-client-secret")) }
     }
 
     private fun stubRunningAndStops() {

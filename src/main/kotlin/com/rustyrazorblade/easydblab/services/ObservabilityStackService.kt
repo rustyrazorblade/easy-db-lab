@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
-import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
@@ -16,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
@@ -74,7 +74,7 @@ class DefaultObservabilityStackService(
     private val k8sClientProvider: K8sClientProvider,
     private val remoteOps: RemoteOperationsService,
     private val clusterStateManager: ClusterStateManager,
-    private val user: User,
+    private val awsDestination: AwsDestinationAccess,
     private val eventBus: EventBus,
     private val grafanaDeployService: GrafanaDeployService,
     private val otelManifestBuilder: OtelManifestBuilder,
@@ -120,7 +120,7 @@ class DefaultObservabilityStackService(
             val collector =
                 Stage(
                     "OTel Collector",
-                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, user.region, scrapeConfigs),
+                    CollectorResources.build(otelManifestBuilder, controlNode, clusterState, region(), scrapeConfigs),
                 )
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
@@ -192,6 +192,9 @@ class DefaultObservabilityStackService(
                     error("Observability stack did not become ready: ${exception.messageOrString()}")
                 }
         }
+
+    /** The profile's region, read at use so a profile saved during this run is the one deployed. */
+    private fun region(): String = awsDestination.current().location.region
 
     /**
      * How long the rollout and readiness waits may take: the base for the stack itself plus
@@ -329,7 +332,7 @@ class DefaultObservabilityStackService(
         controlNode: ClusterHost,
         clusterState: ClusterState,
     ): Map<String, String> {
-        val configData = ClusterConfigData.of(controlNode, clusterState, user.region)
+        val configData = ClusterConfigData.of(controlNode, clusterState, region())
 
         k8sService
             .createConfigMap(

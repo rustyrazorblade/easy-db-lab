@@ -1,7 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
@@ -33,7 +34,7 @@ class ServicesModuleTest {
             single<K8sService> { mock() }
             single<ClusterStateManager> { mock() }
             single { EventBus() }
-            single<User> { mock() }
+            single<AwsDestinationAccess> { TestProfiles.awsAccessOf() }
         }
 
     @Test

@@ -960,8 +960,29 @@ object Constants {
         // Local config files
         const val CASSANDRA_PATCH_FILE = "cassandra.patch.yaml"
 
-        // Per-profile user settings, written under the active profile directory
+        // The profile, written owner-only under the active profile directory
+        const val PROFILE_FILE = "profile.yaml"
+
+        // Held while a process reads, changes and writes the profile file
+        const val PROFILE_LOCK_FILE = "profile.yaml.lock"
+
+        // The profile file of earlier releases: read once to convert it, never written or deleted
         const val PROFILE_SETTINGS_FILE = "settings.yaml"
+
+        // The POSIX mode of the profile file: it holds credentials, so only its owner reads it
+        const val PROFILE_FILE_MODE = "rw-------"
+
+        // The key that names a destination's or a credential's type in the profile file
+        const val PROFILE_TYPE_KEY = "type"
+
+        // A key name from profile.yaml is shown in an error only when it looks like a short identifier;
+        // anything else could be a pasted secret, so the error says "an unknown key" instead. The limit
+        // is 24 characters: the longest known key, "secretAccessKey", is 15, and a 40-character AWS
+        // secret access key with a leading letter and no "+"/"/" must not pass as an identifier.
+        const val PROFILE_SHOWN_KEY_PATTERN = "^[A-Za-z][A-Za-z0-9_]{0,23}$"
+
+        // Stands for a map entry's key in an unknown key's path: the key is file text and could be a secret
+        const val PROFILE_MAP_KEY_SEGMENT = "<key>"
 
         // The profile key pair's private key, written owner-only under the active profile directory
         const val PROFILE_SSH_KEY_FILE = "secret.pem"

@@ -5,7 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.Host
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
@@ -36,7 +36,7 @@ import picocli.CommandLine.Option
 )
 class TailscaleStart : PicoBaseCommand() {
     private val tailscaleService: TailscaleService by inject()
-    private val user: User by inject()
+    private val profile: ProfileAccess by inject()
 
     @Option(
         names = ["--client-id"],
@@ -78,9 +78,10 @@ class TailscaleStart : PicoBaseCommand() {
     }
 
     private fun resolveCredentials(): TailscaleCredentials? {
-        val resolvedClientId = clientId ?: user.tailscaleClientId
-        val resolvedClientSecret = clientSecret ?: user.tailscaleClientSecret
-        val resolvedTag = tag ?: user.tailscaleTag.ifEmpty { Constants.Tailscale.DEFAULT_DEVICE_TAG }
+        val saved = profile.current().tailscale
+        val resolvedClientId = clientId ?: saved?.clientId.orEmpty()
+        val resolvedClientSecret = clientSecret ?: saved?.clientSecret.orEmpty()
+        val resolvedTag = tag ?: saved?.tag.orEmpty().ifEmpty { Constants.Tailscale.DEFAULT_DEVICE_TAG }
 
         if (resolvedClientId.isBlank() || resolvedClientSecret.isBlank()) {
             showMissingCredentialsError()

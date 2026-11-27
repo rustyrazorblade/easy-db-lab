@@ -9,7 +9,8 @@ import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.SshTransport
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.messageOrString
@@ -45,7 +46,7 @@ class Packer(
     private val imageDocker: Docker by inject { parametersOf(context) }
     private val packerImage: PackerImage by inject { parametersOf(imageDocker) }
     private val eventBus: EventBus by inject()
-    private val user: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val buildSites: BuildSites by inject()
 
     // Used on the last failed attempt to capture diagnostics from its builders, in the build region.
@@ -72,7 +73,7 @@ class Packer(
         internal fun buildCommand(
             build: PackerBuild,
             arch: Arch,
-            user: User,
+            destination: AwsDestination,
             keyPairName: String,
             releaseVersion: String?,
         ): List<String> =
@@ -83,12 +84,12 @@ class Packer(
                 add("-on-error=abort")
                 addVar("region", build.region)
                 addVar("arch", arch.type)
-                addVar("s3_bucket", user.s3Bucket)
+                addVar("s3_bucket", destination.accountBucket)
                 // Build with a key pair holding the user's own key so an instance left up via
                 // --keep-on-error can be SSH'd into with ${profileDir}/secret.pem.
                 addVar("ssh_keypair_name", keyPairName)
                 addVar("ssh_private_key_file", Constants.Paths.SSH_KEY_MOUNT)
-                if (user.sshTransport == SshTransport.Ssm) {
+                if (destination.sshTransport == SshTransport.Ssm) {
                     addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
                 }
                 // Keepalive replies keep a quiet script's stream busy, and the read/write timeout
@@ -143,6 +144,18 @@ class Packer(
         }
     }
 
+    /**
+     * The destination a build starts with, read as saved now, not when this Packer was made: setup
+     * creates the key pair and bucket, then builds the image in the same process.
+     */
+    internal fun destinationForBuild(): AwsDestination {
+        val destination = awsDestination.current()
+        require(destination.keyName.isNotEmpty() && secretKeyFile.exists()) {
+            "AWS keypair not configured (key: '${destination.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
+        }
+        return destination
+    }
+
     fun build(
         name: String,
         buildArgs: BuildArgsMixin,
@@ -159,9 +172,7 @@ class Packer(
     ) {
         require(name.isNotBlank()) { "Build name cannot be blank" }
         require(region.isNotBlank()) { "Build region cannot be blank" }
-        require(user.keyName.isNotEmpty() && secretKeyFile.exists()) {
-            "AWS keypair not configured (key: '${user.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
-        }
+        val destination = destinationForBuild()
 
         val build =
             PackerBuild(
@@ -173,12 +184,12 @@ class Packer(
             )
         val packerDir = packerDirectory()
         // Resolved first, so a failed image build stops before Packer launches any instance.
-        val image = packerImage.ensure(user.sshTransport)
+        val image = packerImage.ensure(destination.sshTransport)
         val releaseVersion = if (isRelease) context.version.toString() else null
         val outcome =
             inBuildRegion(build, buildSites, regionalRemote) { site, remote ->
                 // A release build uses the release version as the image version and makes the AMI public.
-                val command = buildCommand(build, arch, user, site.keyPairName, releaseVersion)
+                val command = buildCommand(build, arch, destination, site.keyPairName, releaseVersion)
                 runAttempts(build, site, remote) { _, logFile -> runAttempt(image, command, packerDir, logFile) }
             }
         when (outcome) {

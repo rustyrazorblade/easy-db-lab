@@ -310,7 +310,7 @@ data class ClusterState(
     var openSearchDomain: OpenSearchClusterState? = null,
     // Infrastructure resource IDs for cleanup
     var infrastructure: InfrastructureState? = null,
-    // S3 bucket for this environment (account-level bucket from User.s3Bucket)
+    // S3 bucket for this environment (the profile's account bucket, AwsDestination.accountBucket)
     var s3Bucket: String? = null,
     // Per-cluster data bucket for ClickHouse data and CloudWatch metrics
     var dataBucket: String = "",

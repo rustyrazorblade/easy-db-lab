@@ -1,13 +1,13 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.NetworkMode
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
@@ -41,6 +41,8 @@ internal class BackupRestoreServiceTest {
 
     private lateinit var service: BackupRestoreService
 
+    private val profileStore by lazy { TestProfiles.storeWith(File(tempDir, "profile")) }
+
     @BeforeEach
     fun setUp() {
         service =
@@ -51,18 +53,11 @@ internal class BackupRestoreServiceTest {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 DefaultClusterConfigurationService(
-                    mock<UserConfigProvider>().also { whenever(it.sshKeyPath).thenReturn("/path/to/key") },
+                    profileStore,
+                    AwsDestinationAccess.from { profileStore.load() },
                     com.rustyrazorblade.easydblab.events
                         .EventBus(),
                     DirectSshRoute(22),
-                ),
-                User(
-                    awsAccessKey = "k",
-                    awsSecret = "s",
-                    region = "us-west-2",
-                    email = "test@example.com",
-                    keyName = "test-key",
-                    awsProfile = "",
                 ),
             )
     }
@@ -144,7 +139,7 @@ internal class BackupRestoreServiceTest {
 
             val sshConfig = File(tempDir, "sshConfig").readText()
             assertThat(sshConfig)
-                .contains("IdentityFile /path/to/key")
+                .contains("IdentityFile ${profileStore.sshKeyPath}")
                 .contains("Host db0")
                 .contains("Hostname 1.2.3.4")
             assertThat(File(tempDir, "env.sh")).exists()

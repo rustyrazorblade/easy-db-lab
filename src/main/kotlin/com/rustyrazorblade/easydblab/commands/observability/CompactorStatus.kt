@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.commands.observability
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.compactorlease.LeaseRecord
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.services.aws.CompactorLease
 import com.rustyrazorblade.easydblab.services.aws.CompactorLeaseReader
 import org.koin.core.component.inject
@@ -22,11 +22,14 @@ import kotlin.time.Duration.Companion.seconds
     mixinStandardHelpOptions = true,
 )
 class CompactorStatus : PicoBaseCommand() {
-    private val user: User by inject()
+    private val awsDestination: AwsDestinationAccess by inject()
     private val leaseReader: CompactorLeaseReader by inject()
 
     override fun execute() {
-        val bucket = user.s3Bucket.ifBlank { error("No account bucket in the profile. Run 'easy-db-lab up' once to create it.") }
+        val bucket =
+            awsDestination.current().accountBucket.ifBlank {
+                error("No account bucket in the profile. Run 'easy-db-lab up' once to create it.")
+            }
         println(
             when (val lease = leaseReader.read(bucket)) {
                 is CompactorLease.None -> "No compactor holds the lease (bucket region ${lease.region})"

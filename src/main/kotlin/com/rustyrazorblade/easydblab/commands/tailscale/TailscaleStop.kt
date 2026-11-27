@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.commands.tailscale
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileAccess
 import com.rustyrazorblade.easydblab.configuration.update
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.messageOrString
@@ -26,7 +26,7 @@ import picocli.CommandLine.Command
 )
 class TailscaleStop : PicoBaseCommand() {
     private val tailscaleService: TailscaleService by inject()
-    private val user: User by inject()
+    private val profile: ProfileAccess by inject()
     private val log = KotlinLogging.logger {}
 
     /**
@@ -84,8 +84,9 @@ class TailscaleStop : PicoBaseCommand() {
     private fun deleteTailscaleAuthKey() {
         val keyId = clusterState.tailscaleAuthKeyId ?: return
 
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
+        val saved = profile.current().tailscale
+        val clientId = saved?.clientId.orEmpty()
+        val clientSecret = saved?.clientSecret.orEmpty()
         if (clientId.isBlank() || clientSecret.isBlank()) {
             eventBus.emit(Event.Tailscale.AuthKeyNotDeleted(keyId, "no Tailscale OAuth credentials are configured"))
             return
@@ -114,8 +115,9 @@ class TailscaleStop : PicoBaseCommand() {
         val deviceId = clusterState.tailscaleDeviceId
         if (deviceId.isNullOrBlank()) return
 
-        val clientId = user.tailscaleClientId
-        val clientSecret = user.tailscaleClientSecret
+        val saved = profile.current().tailscale
+        val clientId = saved?.clientId.orEmpty()
+        val clientSecret = saved?.clientSecret.orEmpty()
         val failure =
             if (clientId.isBlank() || clientSecret.isBlank()) {
                 "no Tailscale OAuth credentials are configured. Configure them with 'easy-db-lab profile setup' " +

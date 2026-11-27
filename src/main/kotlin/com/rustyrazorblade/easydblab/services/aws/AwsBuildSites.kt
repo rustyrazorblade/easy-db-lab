@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestinationAccess
 import com.rustyrazorblade.easydblab.containers.BuildSite
 import com.rustyrazorblade.easydblab.containers.BuildSites
 import com.rustyrazorblade.easydblab.containers.BuilderInstances
@@ -35,7 +36,8 @@ import java.io.File
  *
  * @param ec2For a new EC2 client for a region; the site closes it
  * @param infrastructureFor the infrastructure service over a region's VPC service, which sets up the packer network
- * @param profileRegion the region the profile's key pair [profileKeyName] lives in
+ * @param profile the profile's AWS destination, read when a site opens: its region is where the
+ *   profile's key pair lives, and setup may create that key pair after this was built
  * @param profileKeyFile the profile's private key
  */
 class AwsBuildSites(
@@ -43,14 +45,15 @@ class AwsBuildSites(
     private val infrastructureFor: (VpcService) -> AwsInfrastructureService,
     private val eventBus: EventBus,
     private val externalIpService: ExternalIpService,
-    private val profileRegion: String,
-    private val profileKeyName: String,
+    private val profile: AwsDestinationAccess,
     private val profileKeyFile: File,
 ) : BuildSites {
     override fun open(
         region: String,
         buildId: String,
     ): BuildSite {
+        val destination = profile.current()
+        val profileRegion = destination.location.region
         val ec2 = ec2For(region)
         return runCleaningUpOnFailure(cleanup = { ec2.close() }) {
             infrastructureFor(EC2VpcService(ec2, eventBus))
@@ -58,9 +61,9 @@ class AwsBuildSites(
             val keyPair =
                 when (region) {
                     profileRegion -> null
-                    else -> importBuildKey(ec2, region, buildId)
+                    else -> importBuildKey(ec2, region, profileRegion, buildId)
                 }
-            Ec2BuildSite(region, keyPair ?: profileKeyName, keyPair, Ec2BuilderInstances(ec2, buildId), ec2)
+            Ec2BuildSite(region, keyPair ?: destination.keyName, keyPair, Ec2BuilderInstances(ec2, buildId), ec2)
         }
     }
 
@@ -68,6 +71,7 @@ class AwsBuildSites(
     private fun importBuildKey(
         ec2: Ec2Client,
         region: String,
+        profileRegion: String,
         buildId: String,
     ): String {
         val name = Constants.Packer.BUILD_KEY_PAIR_PREFIX + buildId

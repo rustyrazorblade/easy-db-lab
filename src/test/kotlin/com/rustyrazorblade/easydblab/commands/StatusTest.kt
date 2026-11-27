@@ -12,7 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.NodeState
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
@@ -572,8 +572,6 @@ class StatusTest : BaseKoinTest() {
         setupBasicClusterState()
         setupInstanceStates()
 
-        val mockUserConfigProvider: UserConfigProvider = mock()
-        whenever(mockUserConfigProvider.isSetup()).thenReturn(true)
         val mockDockerClientProvider: DockerClientProvider = mock()
         val mockResourceManager: ResourceManager = mock()
         val mockSocksProxyService: SocksProxyService = mock()
@@ -586,7 +584,7 @@ class StatusTest : BaseKoinTest() {
                 clusterStateManager = mockClusterStateManager,
                 requirementCheckDeps =
                     RequirementCheckDeps(
-                        userConfigProvider = mockUserConfigProvider,
+                        profileStore = getKoin().get<ProfileStore>(),
                         dockerClientProvider = mockDockerClientProvider,
                     ),
                 resourceManager = mockResourceManager,

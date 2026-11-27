@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.profile.Destination
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
@@ -29,14 +30,13 @@ sealed interface ProfileSettings {
 
     /**
      * A profile file exists but could not be read, decoded, written or locked; [path] is the file
-     * that failed and [reason] the store's message, which never holds the file's text. [unknownKey]
-     * is true when the failure is an unknown key in the file: setup would stop at the same key, so
-     * the report tells the user to fix or remove it instead of naming setup.
+     * that failed and [reason] the store's message, which never holds the file's text. [remedy] is
+     * the store's word on what fixes it: the report names setup only when setup repairs the failure.
      */
     data class Failed(
         val path: String,
         val reason: String,
-        val unknownKey: Boolean = false,
+        val remedy: ProfileFileRemedy,
     ) : ProfileSettings
 }
 
@@ -75,7 +75,7 @@ class ProfileShow : PicoBaseCommand() {
                     ProfileSettings.Loaded(profileStore.load())
                 } catch (e: ProfileFileException) {
                     log.warn { "Could not use a file of the profile ${context.profile}: ${e::class.simpleName}" }
-                    ProfileSettings.Failed(e.file.absolutePath, e.reason, e.unknownKey)
+                    ProfileSettings.Failed(e.file.absolutePath, e.reason, e.remedy)
                 }
             }
 
@@ -87,8 +87,10 @@ class ProfileShow : PicoBaseCommand() {
 
         private const val SETUP_HINT = "Run: easy-db-lab profile setup"
 
-        // Setup stops at an unknown key too, so naming it would send the user in a circle.
+        // Setup stops at an unknown key, and at a file it cannot read or parse, so naming it would send the user in a circle.
         private const val UNKNOWN_KEY_HINT = "Fix or remove that key in the file"
+
+        private const val FIX_FILE_HINT = "Fix the file"
 
         /**
          * Renders the whole report as one string.
@@ -122,12 +124,19 @@ class ProfileShow : PicoBaseCommand() {
                         |This profile is configured but its file could not be used:
                         |  ${settings.path}
                         |  ${settings.reason}
-                        |${if (settings.unknownKey) UNKNOWN_KEY_HINT else SETUP_HINT}
+                        |${hint(settings.remedy)}
                         """.trimMargin()
                 }
 
             return "$header\n\n$body"
         }
+
+        private fun hint(remedy: ProfileFileRemedy): String =
+            when (remedy) {
+                ProfileFileRemedy.RUN_SETUP -> SETUP_HINT
+                ProfileFileRemedy.FIX_KEY -> UNKNOWN_KEY_HINT
+                ProfileFileRemedy.FIX_FILE -> FIX_FILE_HINT
+            }
 
         private fun settingsBlock(profile: Profile): String =
             """

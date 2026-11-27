@@ -73,12 +73,29 @@ earlier-format `settings.yaml`, that the profile is not configured and name
 - **AND** the interactive setup flow does not run and no exception is raised
 
 ### Requirement: `profile show` reports a malformed profile
-When the active profile's file exists but cannot be read, `profile show` SHALL report the profile as
-present but unreadable, naming the file path and `easy-db-lab profile setup`. It SHALL NOT surface a
+When the active profile's file exists but cannot be used, `profile show` SHALL report the profile as
+present but unreadable, naming the failing file path, the reason and one hint. It SHALL NOT surface a
 raw deserialization error or any text from the file.
+`profile setup` reads the raw values of either file, so it repairs a value that does not decode, but
+it parses both files and checks every key first. The hint SHALL name `easy-db-lab profile setup` only
+for a value that does not decode; for an unknown key it SHALL say to fix or remove that key in the
+file, and for a file that is not valid YAML or cannot be read, written or locked, to fix the file.
+The path and the hint SHALL each appear once.
 
 #### Scenario: Truncated profile file is reported, not thrown
 - **GIVEN** the active profile's current-format file exists but omits a field that has no default
 - **WHEN** the user runs `easy-db-lab profile show`
 - **THEN** the CLI reports the profile as present but unreadable and names the file path and `easy-db-lab profile setup`
 - **AND** no raw deserialization error is shown
+
+#### Scenario: An unknown key is reported without the setup hint
+- **GIVEN** the active profile's current-format file holds a key that no field declares
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI names the file path and the reason, and says "Fix or remove that key in the file"
+- **AND** it does not name `easy-db-lab profile setup`
+
+#### Scenario: A file that is not valid YAML is reported without the setup hint
+- **GIVEN** the active profile's current-format file, or its earlier-format file, is not valid YAML
+- **WHEN** the user runs `easy-db-lab profile show`
+- **THEN** the CLI names the file path and the reason, and says "Fix the file"
+- **AND** it does not name `easy-db-lab profile setup`

@@ -10,6 +10,8 @@ import com.rustyrazorblade.easydblab.configuration.Policy
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
@@ -85,7 +87,7 @@ class SetupProfile : PicoBaseCommand() {
      */
     private fun handleExistingProfile(saved: Map<String, String>) {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
-        val transportRepaired = repairUnreadableTransport(saved)
+        val transportRepaired = repairUndecodableProfile(saved)
         val destination = profileStore.load().aws
 
         // A profile made before the easy_db_lab marker has a bucket and key pair with only the
@@ -103,22 +105,39 @@ class SetupProfile : PicoBaseCommand() {
     }
 
     /**
-     * A saved SSH transport this version cannot read makes every load of the profile fail, and
-     * with it every AWS client this command builds from the profile. Reports the bad value, asks
-     * for the transport, and saves the profile with the answer, so the rest of setup can load it.
+     * A saved value this version cannot decode (an unknown SSH transport, an unknown destination type,
+     * a value of the wrong form) makes every load of the profile fail, and with it every AWS client
+     * this command builds from the profile. Saves the profile again from the flat setup values, so the
+     * rest of setup can load it. A bad transport is reported and asked for first.
      *
      * @return whether the transport was asked for, so the review does not ask a second time
      */
-    private fun repairUnreadableTransport(saved: Map<String, String>): Boolean {
-        val unreadable = saved[Keys.SSH_TRANSPORT]?.takeIf { SshTransport.parse(it) == null } ?: return false
+    private fun repairUndecodableProfile(saved: Map<String, String>): Boolean {
+        val unreadable = saved[Keys.SSH_TRANSPORT]?.takeIf { SshTransport.parse(it) == null }
+        if (unreadable == null && savedProfileDecodes()) return false
 
-        val choices = SshTransport.entries.map { it.configValue }
-        eventBus.emit(Event.Setup.InvalidSshTransport(unreadable, choices))
-        val transport = promptForSshTransport(SshTransport.Direct)
+        val transport =
+            unreadable?.let {
+                eventBus.emit(Event.Setup.InvalidSshTransport(it, SshTransport.entries.map { entry -> entry.configValue }))
+                promptForSshTransport(SshTransport.Direct)
+            }
         val repaired = profileFrom(saved) ?: throw SetupProfileException("The saved profile has no credentials")
-        profileStore.replace(repaired.withAws { it.copy(sshTransport = transport) })
-        return true
+        profileStore.replace(transport?.let { chosen -> repaired.withAws { it.copy(sshTransport = chosen) } } ?: repaired)
+        return transport != null
     }
+
+    /**
+     * Whether the saved profile loads. Only a failure setup repairs reads as false; any other (a file
+     * that changed under this command and no longer parses) is the user's to fix and is rethrown.
+     */
+    private fun savedProfileDecodes(): Boolean =
+        try {
+            profileStore.load()
+            true
+        } catch (e: ProfileFileException) {
+            if (e.remedy != ProfileFileRemedy.RUN_SETUP) throw e
+            false
+        }
 
     /**
      * Runs the full setup process for new profiles.

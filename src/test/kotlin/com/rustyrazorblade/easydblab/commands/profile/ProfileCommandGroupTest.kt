@@ -191,7 +191,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     /**
      * Setup stops at an unknown key, so the report tells the user to fix the key instead of naming setup.
      *
-     * Control: drop the store's unknownKey flag from the report; the setup hint is printed and the test fails.
+     * Control: print the setup hint for every remedy in the report; the setup hint is printed and the test fails.
      */
     @Test
     fun `profile show tells the user to fix an unknown key instead of running setup`() {
@@ -209,17 +209,37 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     }
 
     /**
+     * Setup parses `profile.yaml` too, so for a file that is not valid YAML it would fail the same way:
+     * the report tells the user to fix the file and does not name setup.
+     *
+     * Control: report a parse failure as one setup repairs; the setup hint is printed and the test fails.
+     */
+    @Test
+    fun `profile show tells the user to fix a malformed profile file instead of running setup`() {
+        val file = profileFile(context.profileDir)
+        file.writeText("email: [broken\n")
+
+        assertThatCode { getKoin().get<ProfileShow>().execute() }.doesNotThrowAnyException()
+
+        val body = stdout.toString().substringAfter("could not be used:")
+        assertThat(body.split(file.absolutePath)).describedAs("path occurrences").hasSize(2)
+        assertThat(body.split("Fix the file")).describedAs("hint occurrences").hasSize(2)
+        assertThat(body).contains("not valid YAML").doesNotContain("profile setup").doesNotContain("broken")
+    }
+
+    /**
      * The failure body (the header names `profile.yaml` on its own line) names the failing path once,
-     * gives the reason, and tells the user to run `profile setup` once.
+     * gives the reason, and gives the remedy's hint once.
      */
     private fun assertFailureBodySaysPathAndHintOnce(
         output: String,
         path: String,
         reason: String,
+        hint: String = "profile setup",
     ) {
         val body = output.substringAfter("could not be used:")
         assertThat(body.split(path)).describedAs("path occurrences").hasSize(2)
-        assertThat(body.split("profile setup")).describedAs("setup hint occurrences").hasSize(2)
+        assertThat(body.split(hint)).describedAs("hint occurrences").hasSize(2)
         assertThat(body).contains(reason)
     }
 
@@ -284,7 +304,9 @@ class ProfileCommandGroupTest : BaseKoinTest() {
             val output = stdout.toString()
             assertThat(output).contains("its file could not be used:\n  ${store.file.absolutePath}")
             assertThat(output).doesNotContain("could not be read")
-            assertFailureBodySaysPathAndHintOnce(output, store.file.absolutePath, "while writing")
+            // A write failure is not repaired by setup, so the report says to fix the file.
+            assertFailureBodySaysPathAndHintOnce(output, store.file.absolutePath, "while writing", hint = "Fix the file")
+            assertThat(output).doesNotContain("profile setup")
         } finally {
             Files.setPosixFilePermissions(dir, original)
         }

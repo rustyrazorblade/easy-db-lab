@@ -159,7 +159,7 @@ class ProfileStoreTest {
                 .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
                     // The parent field (destination) is a known name, so it is always shown.
                     assertThat(e.reason).contains("field destination: ").contains("accountBucket")
-                    assertThat(e.unknownKey).isTrue()
+                    assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_KEY)
                     if (shown) {
                         assertThat(e.reason).contains("unknown key '$key'")
                     } else {
@@ -203,7 +203,7 @@ class ProfileStoreTest {
         listOf({ store().load() }, { store().loadForSetup() }).forEach { read ->
             assertThatThrownBy { read() }
                 .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
-                    assertThat(e.unknownKey).isTrue()
+                    assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_KEY)
                     assertThat(e.reason).startsWith("line $line, column $column: $field").contains("unknown key '$misspelled'")
                     assertThat(e.reason).contains(key).doesNotContain("carrier-pigeon")
                 }
@@ -237,6 +237,43 @@ class ProfileStoreTest {
                 .replace("  type: \"aws\"\n", "  type: \"aws\"\n  sshTransport: \"carrier-pigeon\"\n")
         check(moved.indexOf("carrier-pigeon") < moved.indexOf("location:")) { "the bad transport should come first" }
         return moved
+    }
+
+    /**
+     * A failure names setup only when setup repairs it. Setup reads the raw values of either file, so
+     * it repairs a value that does not decode; it parses both files and checks the keys first, so it
+     * cannot repair a file that does not parse, cannot be read, or holds an unknown key.
+     *
+     * Control: pass RUN_SETUP for the parse in `parse()`; both malformed rows fail. Pass FIX_FILE for the
+     * decode; the transport and type rows fail.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("failureKinds")
+    fun `a failure suggests setup only when setup repairs it`(
+        description: String,
+        breakFiles: (ProfileStoreTest) -> Unit,
+        remedy: ProfileFileRemedy,
+    ) {
+        breakFiles(this)
+
+        assertThatThrownBy { store().load() }
+            .describedAs(description)
+            .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                assertThat(e.remedy).isEqualTo(remedy)
+                if (remedy == ProfileFileRemedy.RUN_SETUP) {
+                    assertThat(e.message).contains("run 'easy-db-lab profile setup'")
+                } else {
+                    assertThat(e.message).doesNotContain("run 'easy-db-lab profile setup'").contains("would stop at it too")
+                }
+            }
+        // What setup does with the same files: a failure it repairs never stops it, one it cannot always does.
+        if (remedy == ProfileFileRemedy.RUN_SETUP) {
+            assertThat(store().loadForSetup()).describedAs(description).isNotEmpty()
+        } else {
+            assertThatThrownBy { store().loadForSetup() }
+                .describedAs(description)
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e -> assertThat(e.remedy).isEqualTo(remedy) }
+        }
     }
 
     /** Control: drop the type from the error message; the assertion on the name fails. */
@@ -498,6 +535,43 @@ class ProfileStoreTest {
         )
 
         private fun Profile.withAws(change: (AwsDestination) -> AwsDestination) = copy(destination = change(destination as AwsDestination))
+
+        /** Each row: the failure, how it is made in the profile directory, and the remedy the store reports. */
+        @JvmStatic
+        fun failureKinds(): List<Arguments> {
+            val current = { test: ProfileStoreTest, edit: (String) -> String ->
+                test.store().replace(profile(ssoProfile))
+                test.profileFile.writeText(edit(test.profileFile.readText()))
+            }
+            val malformed = "awsProfile: [broken\n"
+            return listOf(
+                Arguments.of(
+                    "malformed profile.yaml",
+                    { test: ProfileStoreTest -> current(test) { malformed } },
+                    ProfileFileRemedy.FIX_FILE,
+                ),
+                Arguments.of(
+                    "malformed settings.yaml",
+                    { test: ProfileStoreTest -> test.legacyFile.writeText(malformed) },
+                    ProfileFileRemedy.FIX_FILE,
+                ),
+                Arguments.of(
+                    "unknown ssh transport",
+                    { test: ProfileStoreTest -> current(test) { it.replace("sshTransport: \"ssm\"", "sshTransport: \"carrier-pigeon\"") } },
+                    ProfileFileRemedy.RUN_SETUP,
+                ),
+                Arguments.of(
+                    "unknown destination type",
+                    { test: ProfileStoreTest -> current(test) { it.replace("type: \"aws\"", "type: \"gcp\"") } },
+                    ProfileFileRemedy.RUN_SETUP,
+                ),
+                Arguments.of(
+                    "unknown key",
+                    { test: ProfileStoreTest -> current(test) { it.replace("accountBucket:", "accountBuket:") } },
+                    ProfileFileRemedy.FIX_KEY,
+                ),
+            )
+        }
 
         /** Each row: what the key is, the key, and whether the error may name it. */
         @JvmStatic

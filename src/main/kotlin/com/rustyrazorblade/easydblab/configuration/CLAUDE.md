@@ -196,9 +196,14 @@ feature blocks. It lives in `${profileDir}/profile.yaml` (kotlinx.serialization 
     at most, so a 40-character AWS secret is never shown), else says "an unknown key", and lists the known keys.
     Every file failure (a parse error, an unreadable or unwritable file, a lock file that cannot be opened or locked) is a
     `ProfileFileException` carrying the `file` that failed and a short `reason` (no path, no setup hint, never the file's text), which
-    `profile show` prints after the path; `message` is the full sentence for logs. Its `unknownKey` flag is set for an
-    unknown key: setup would stop at the same key, so `profile show` prints "Fix or remove that key in the file" in
-    place of the setup hint.
+    `profile show` prints after the path; `message` is the full sentence for logs. Its `remedy` (`ProfileFileRemedy`)
+    says what fixes it, and every construction site sets it. `RUN_SETUP` only for a failure setup repairs: a value that
+    does not decode (`decode()`, the earlier file's `migrate`) and an earlier file with no credentials, since
+    `loadForSetup()` reads raw scalars. `FIX_KEY` for an unknown key, where setup would stop too. `FIX_FILE` for
+    everything else: a file that does not parse or cannot be read (`parse()`, which `loadForSetup()` runs on either
+    file), and write and lock-file failures. `profile show` prints the setup hint, "Fix or remove that key in the file"
+    or "Fix the file" from it. Setup's review path rewrites a profile whose load fails with `RUN_SETUP` from its flat
+    values, so an unknown destination type is repaired as an unknown transport is.
 - **Migration** — with only an earlier release's `settings.yaml`, the first `load()` converts it into
   `profile.yaml` under the lock, prints nothing, and never writes or deletes `settings.yaml`.
   `isSetup()` is true when `profile.yaml` exists, or `settings.yaml` exists and holds credentials.

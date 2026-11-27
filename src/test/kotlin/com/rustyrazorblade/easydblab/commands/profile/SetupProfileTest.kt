@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileException
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
 import com.rustyrazorblade.easydblab.configuration.profile.ProfileStore
 import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
@@ -404,6 +405,24 @@ class SetupProfileTest : BaseKoinTest() {
         }
 
         /**
+         * A destination type this version does not know fails every load, so the store tells the user
+         * setup repairs it. Setup saves the profile again from its flat values, as an AWS profile.
+         *
+         * Control: repair only a bad transport on the review path; the load after the repair throws.
+         */
+        @Test
+        fun `an unknown destination type is repaired by setup`() {
+            seed(completeStaticProfile())
+            store.file.writeText(store.file.readText().replace("type: \"aws\"", "type: \"gcp\""))
+            testPrompter = TestPrompter(mapOf("SSH transport" to ""))
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            assertThat(store.load().aws).isEqualTo(completeStaticProfile().aws)
+        }
+
+        /**
          * A saved transport this version cannot read makes the profile fail to load, which would
          * leave setup, the command that fixes a profile, unable to run. Setup reads the flat setup
          * values instead, keeps every other value, and asks for the transport once. This holds for
@@ -740,6 +759,32 @@ class SetupProfileTest : BaseKoinTest() {
 
             verify(get<S3Client>(), never()).createBucket(any<CreateBucketRequest>())
             assertThat(store.file.readBytes()).isEqualTo(before)
+            assertThat(testPrompter.getCallLog()).isEmpty()
+        }
+
+        /**
+         * Setup parses the file before it asks anything, so a file that is not valid YAML stops it
+         * with the store's error, which tells the user to fix the file and does not name setup.
+         *
+         * Control: report the parse failure as one setup repairs; the remedy check fails.
+         */
+        @ParameterizedTest(name = "earlier file: {0}")
+        @ValueSource(booleans = [false, true])
+        fun `a malformed profile file stops setup with a fix-the-file error and changes nothing`(earlier: Boolean) {
+            val broken = if (earlier) store.legacyFile.also { store.file.delete() } else store.file
+            broken.writeText("awsProfile: [broken\n")
+            val before = broken.readBytes()
+            testPrompter = staticKeyAnswers()
+            setupTestModule()
+
+            assertThatThrownBy { SetupProfile().execute() }
+                .isInstanceOfSatisfying(ProfileFileException::class.java) { e ->
+                    assertThat(e.file).isEqualTo(broken)
+                    assertThat(e.remedy).isEqualTo(ProfileFileRemedy.FIX_FILE)
+                    assertThat(e.message).doesNotContain("run 'easy-db-lab profile setup'")
+                }
+
+            assertThat(broken.readBytes()).isEqualTo(before)
             assertThat(testPrompter.getCallLog()).isEmpty()
         }
 

@@ -41,6 +41,10 @@ import kotlin.concurrent.withLock
  * working on the same profile. The store names no destination type: the [serializers] register each
  * destination, and [legacyReader] knows the earlier file's keys.
  *
+ * Every failure is a [ProfileFileException] whose [ProfileFileRemedy] says whether `profile setup`
+ * repairs it: only a value that does not decode does, since setup reads the raw values ([loadForSetup]).
+ * A file that cannot be read or parsed, or that holds an unknown key, stops setup too.
+ *
  * Parse errors never carry text from the file, which can hold an AWS secret, the AxonOps key or the
  * Tailscale client secret. They name the file, where parsing stopped and what kind of problem it was.
  * The one exception is an unknown key: its name is shown on purpose, but only when it is a short
@@ -107,9 +111,10 @@ class ProfileStore(
      * for either file; empty when neither exists. Setup prefills from these, so a value that does
      * not parse, such as an unknown SSH transport, reaches setup to be reported and asked again.
      *
-     * @throws ProfileFileException when `profile.yaml` holds an unknown key, as [load] does, whatever
-     *   its values: a misspelled key would read as a blank value, and setup would create a second
-     *   bucket or key pair
+     * @throws ProfileFileException when either file cannot be read or parsed, or `profile.yaml` holds
+     *   an unknown key, as [load] does, whatever its values: a misspelled key would read as a blank
+     *   value, and setup would create a second bucket or key pair. Setup cannot repair these, so their
+     *   remedy is never [ProfileFileRemedy.RUN_SETUP]
      */
     fun loadForSetup(): Map<String, String> =
         when {
@@ -144,13 +149,16 @@ class ProfileStore(
         }
 
     private fun migrate(): Profile {
+        // Parsed first, so a file that does not parse is reported as one setup cannot repair.
+        val values = legacyValues()
         val profile =
-            redacted(legacyFile) { legacyReader.migrate(legacyValues()) }
+            redacted(legacyFile, ProfileFileRemedy.RUN_SETUP) { legacyReader.migrate(values) }
                 ?: throw ProfileFileException(
                     legacyFile,
                     "the profile has no credentials",
                     "The profile in $profileDir has no credentials. Run 'easy-db-lab profile setup' to finish it.",
                     cause = null,
+                    remedy = ProfileFileRemedy.RUN_SETUP,
                 )
         log.debug { "Converted $legacyFile into $file" }
         write(profile)
@@ -160,7 +168,8 @@ class ProfileStore(
     private fun decode(): Profile {
         val node = parse(file)
         failOnUnknownKey(node)
-        return redacted(file) { yaml.decodeFromYamlNode(Profile.serializer(), node) }
+        // The file parsed and every key is known, so the failure is a value; setup reads raw values and repairs it.
+        return redacted(file, ProfileFileRemedy.RUN_SETUP) { yaml.decodeFromYamlNode(Profile.serializer(), node) }
     }
 
     /**
@@ -171,7 +180,7 @@ class ProfileStore(
         val key = unknownKeys.find(node, Profile.serializer().descriptor) ?: return
         val field = if (key.parentPath.isEmpty()) "" else "field ${key.parentPath}: "
         val reason = "$field${shownKey(key.name)}. Known keys: ${key.knownKeys.sorted().joinToString(", ")}"
-        throw unreadable(file, "line ${key.line}, column ${key.column}", reason, cause = null, unknownKey = true)
+        throw unreadable(file, "line ${key.line}, column ${key.column}", reason, cause = null, ProfileFileRemedy.FIX_KEY)
     }
 
     private fun write(profile: Profile) {
@@ -186,6 +195,7 @@ class ProfileStore(
                 "${e::class.simpleName} while writing",
                 "Cannot write the profile file $file: ${e::class.simpleName}",
                 e,
+                ProfileFileRemedy.FIX_FILE,
             )
         }
     }
@@ -200,7 +210,8 @@ class ProfileStore(
             null
         }
 
-    private fun parse(source: File): YamlNode = redacted(source) { yaml.parseToYamlNode(source.readText()) }
+    /** Setup parses the file too, so a file that cannot be read or parsed is one only the user can fix. */
+    private fun parse(source: File): YamlNode = redacted(source, ProfileFileRemedy.FIX_FILE) { yaml.parseToYamlNode(source.readText()) }
 
     /** Every scalar under [node], keyed by its dotted path. */
     private fun scalars(
@@ -219,27 +230,31 @@ class ProfileStore(
         }
     }
 
-    /** Runs [read] of [source] and turns a failure into one that carries no text from the file. */
+    /**
+     * Runs [read] of [source] and turns a failure into one that carries no text from the file.
+     * [remedy] is what fixes a failure of this read: the caller knows whether it parses or decodes.
+     */
     private fun <T> redacted(
         source: File,
+        remedy: ProfileFileRemedy,
         read: () -> T,
     ): T =
         try {
             read()
         } catch (e: YamlException) {
-            throw unreadable(source, "line ${e.line}, column ${e.column}", reason(e), cause = null)
+            throw unreadable(source, "line ${e.line}, column ${e.column}", reason(e), cause = null, remedy)
         } catch (e: SerializationException) {
-            throw unreadable(source, null, "a value has the wrong type or form", cause = null)
+            throw unreadable(source, null, "a value has the wrong type or form", cause = null, remedy)
         } catch (e: IOException) {
             // A file the user cannot read (permissions, a directory in its place). The message names
             // only the path and the reason, never the file's text.
-            throw unreadable(source, null, "the file cannot be read (${e::class.simpleName})", cause = e)
+            throw unreadable(source, null, "the file cannot be read (${e::class.simpleName})", cause = e, remedy)
         } catch (e: IllegalArgumentException) {
             // Only a plain IllegalArgumentException is ours (a failed `require`, such as an unknown SSH
             // transport, which names the bad choice and the valid ones). A subclass such as
             // NumberFormatException comes from the JDK and quotes the bad input.
             val ours = e.takeIf { it.javaClass == IllegalArgumentException::class.java }
-            throw unreadable(source, null, ours?.message ?: "a value has the wrong type or form", cause = ours)
+            throw unreadable(source, null, ours?.message ?: "a value has the wrong type or form", cause = ours, remedy)
         }
 
     private fun reason(e: YamlException): String {
@@ -268,20 +283,20 @@ class ProfileStore(
         where: String?,
         reason: String,
         cause: Throwable?,
-        unknownKey: Boolean = false,
+        remedy: ProfileFileRemedy,
     ): ProfileFileException =
         ProfileFileException(
             source,
             where?.let { "$it: $reason" } ?: reason,
             "Cannot read $source${where?.let { " at $it" }.orEmpty()}: $reason. " +
                 "The text of the file is not shown because it can hold credentials. " +
-                if (unknownKey) {
-                    "Fix or remove that key in the file; 'easy-db-lab profile setup' would stop at it too."
-                } else {
-                    "Fix the file or run 'easy-db-lab profile setup'."
+                when (remedy) {
+                    ProfileFileRemedy.RUN_SETUP -> "Fix the file or run 'easy-db-lab profile setup'."
+                    ProfileFileRemedy.FIX_KEY -> "Fix or remove that key in the file; 'easy-db-lab profile setup' would stop at it too."
+                    ProfileFileRemedy.FIX_FILE -> "Fix the file; 'easy-db-lab profile setup' would stop at it too."
                 },
             cause,
-            unknownKey,
+            remedy,
         )
 
     /** Runs [block] while this thread holds [localLock] and this process holds the lock file. */
@@ -309,6 +324,7 @@ class ProfileStore(
                 "${e::class.simpleName} while ${verb}ing the lock file",
                 "Cannot $verb the profile lock file $lockFile: ${e::class.simpleName}",
                 e,
+                ProfileFileRemedy.FIX_FILE,
             )
         }
 

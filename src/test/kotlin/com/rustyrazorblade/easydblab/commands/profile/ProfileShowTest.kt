@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.profile
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.profile.AxonOps
 import com.rustyrazorblade.easydblab.configuration.profile.Profile
+import com.rustyrazorblade.easydblab.configuration.profile.ProfileFileRemedy
 import com.rustyrazorblade.easydblab.configuration.profile.Tailscale
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsCredentials
 import com.rustyrazorblade.easydblab.configuration.profile.aws.AwsDestination
@@ -82,8 +83,9 @@ class ProfileShowTest {
         @JvmStatic
         fun failureHints(): Stream<Arguments> =
             Stream.of(
-                Arguments.of(false, "easy-db-lab profile setup", "Fix or remove that key"),
-                Arguments.of(true, "Fix or remove that key in the file", "profile setup"),
+                Arguments.of(ProfileFileRemedy.RUN_SETUP, "easy-db-lab profile setup", listOf("Fix or remove that key", "Fix the file")),
+                Arguments.of(ProfileFileRemedy.FIX_KEY, "Fix or remove that key in the file", listOf("profile setup", "Fix the file")),
+                Arguments.of(ProfileFileRemedy.FIX_FILE, "Fix the file", listOf("profile setup", "Fix or remove that key")),
             )
 
         private fun flag(enabled: Boolean) = if (enabled) "ENABLED" else "DISABLED"
@@ -157,26 +159,26 @@ class ProfileShowTest {
     }
 
     /**
-     * A failure names the file, the reason and one hint. An unknown key gets "fix or remove", not
-     * setup, because setup stops at the same key.
+     * A failure names the file, the reason and one hint. Only a failure setup repairs names setup; an
+     * unknown key gets "fix or remove", and a file setup cannot parse gets "fix the file".
      *
-     * Control: print the setup hint for every failure; the unknown-key row fails. Print the profile
-     * directory instead of the failing file's path; both rows fail.
+     * Control: print the setup hint for every failure; the two rows that are not RUN_SETUP fail. Print
+     * the profile directory instead of the failing file's path; every row fails.
      */
-    @ParameterizedTest(name = "unknownKey={0}")
+    @ParameterizedTest(name = "{0}")
     @MethodSource("failureHints")
     fun `a failed profile file names the file, the reason and the one hint that fits`(
-        unknownKey: Boolean,
+        remedy: ProfileFileRemedy,
         hint: String,
-        otherHint: String,
+        otherHints: List<String>,
     ) {
         val file = "$PROFILE_DIR/profile.yaml"
         val reason = "line 4, column 3: field destination: unknown key 'accountBuket'. Known keys: accountBucket"
-        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason, unknownKey))
+        val report = ProfileShow.buildReport(PROFILE_NAME, PROFILE_DIR, ProfileSettings.Failed(file, reason, remedy))
 
         val body = report.substringAfter("could not be used:")
         assertThat(body).startsWith("\n  $file\n  $reason\n")
         assertThat(body.split(hint)).describedAs("hint occurrences").hasSize(2)
-        assertThat(body).doesNotContain(otherHint)
+        otherHints.forEach { assertThat(body).doesNotContain(it) }
     }
 }

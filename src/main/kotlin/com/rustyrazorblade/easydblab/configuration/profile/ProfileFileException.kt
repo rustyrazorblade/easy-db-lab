@@ -10,16 +10,16 @@ import java.io.File
  *
  * [message] is the full sentence for logs and other callers: it names the file and the reason, and
  * may tell the user how to recover. [reason] is only why it failed, with neither the path nor the
- * setup hint, so a report that prints the path and the hint itself does not say either twice.
+ * hint, so a report that prints the path and the hint itself does not say either twice.
  * Neither holds the file's text, which can hold credentials.
  *
- * [unknownKey] is true when the failure is an unknown key in `profile.yaml`. `profile setup` would
- * stop at the same key, so a report tells the user to fix or remove it rather than to run setup.
+ * [remedy] is what the user can do about it. Only a [ProfileFileRemedy.RUN_SETUP] failure is one
+ * `profile setup` repairs; for any other, setup would fail the same way, so a report must not name it.
  */
 class ProfileFileException(
     val file: File,
     val reason: String,
     message: String,
     cause: Throwable?,
-    val unknownKey: Boolean = false,
+    val remedy: ProfileFileRemedy,
 ) : IllegalStateException(message, cause)

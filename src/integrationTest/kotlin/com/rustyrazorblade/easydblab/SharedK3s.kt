@@ -88,27 +88,29 @@ object SharedK3s {
      */
     fun awaitSchedulable(container: K3sContainer) {
         KubernetesClientBuilder().withConfig(Config.fromKubeconfig(container.kubeConfigYaml)).build().use { client ->
-            val nodes =
-                pollUntil(
-                    operationName = "K3s node schedulable",
-                    maxAttempts = Int.MAX_VALUE,
-                    interval = NODE_GONE_POLL,
-                    deadline = Instant.now().plus(NODE_SCHEDULABLE_TIMEOUT),
-                    done = ::allSchedulable,
+            try {
+                DirectReadWait.await(
+                    "the K3s node is Ready and untainted",
+                    NODE_SCHEDULABLE_TIMEOUT,
+                    ::describeNodes,
+                    ::allSchedulable,
                 ) { client.nodes().list().items }
-            if (!allSchedulable(nodes)) {
-                throw AssertionError(
-                    "the K3s node was not Ready and untainted after ${NODE_SCHEDULABLE_TIMEOUT.toSeconds()}s\n" +
-                        nodes.joinToString("\n") {
-                            "node ${it.metadata.name}: ready=${Readiness.isNodeReady(it)} " +
-                                "taints=${it.spec?.taints.orEmpty().map { t -> "${t.key}:${t.effect}" }}"
-                        } + "\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
-                )
+            } catch (e: AssertionError) {
+                // The wait's own message carries the last read; a failed last read has none, so read once more.
+                val nodes = runCatching { describeNodes(client.nodes().list().items) }.getOrElse { "nodes unavailable: $it" }
+                throw AssertionError("${e.message}\nnodes now:\n$nodes\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}", e)
             }
         }
     }
 
     private fun allSchedulable(nodes: List<Node>): Boolean = nodes.isNotEmpty() && nodes.all(::isSchedulable)
+
+    private fun describeNodes(nodes: List<Node>): String =
+        nodes
+            .joinToString("\n") {
+                "node ${it.metadata.name}: ready=${Readiness.isNodeReady(it)} " +
+                    "taints=${it.spec?.taints.orEmpty().map { t -> "${t.key}:${t.effect}" }}"
+            }.ifEmpty { "no nodes" }
 
     private fun isSchedulable(node: Node): Boolean =
         Readiness.isNodeReady(node) &&
@@ -251,13 +253,13 @@ object SharedK3s {
      *
      * When the wait fails, the error names the namespace and carries the last read, the account's
      * state read once more, the controller-manager lease, the namespace's diagnostics, and
-     * [logTail], the K3s log the cluster's own failure would show in.
+     * [k3sLog], the K3s log the cluster's own failure would show in.
      */
     fun awaitServiceAccount(
         client: KubernetesClient,
         namespace: String,
         name: String = "default",
-        logTail: () -> String,
+        k3sLog: () -> String,
     ) {
         val lastRead = readServiceAccountUntilFound(client, namespace, name)
         if (lastRead is ServiceAccountRead.Found) return
@@ -271,7 +273,7 @@ object SharedK3s {
                 }}\n" +
                 "${runCatching { K3sDiagnostics.clusterDiagnostics(client, namespace) }.getOrElse {
                     "cluster diagnostics unavailable: ${it.messageOrString()}"
-                }}\nK3s log tail, without orphaned pod cgroup lines:\n${withoutCgroupNoise(logTail())}",
+                }}\nK3s log tail, without orphaned pod cgroup lines:\n${withoutCgroupNoise(k3sLog())}",
             lastReadFailure,
         )
     }

@@ -137,10 +137,8 @@ class KitEndpointHostIntegrationTest {
     @Test
     fun `resolves to the node running the ready pod, and is not served once the pod is gone`() {
         val pod = coordinator(ready = true)
-        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, pod.metadata.name), "is Ready", WAIT) {
-            it != null &&
-                Readiness.isPodReady(it)
-        }
+        val ref = DirectReadWait.PodRef(NAMESPACE, pod.metadata.name)
+        DirectReadWait.awaitPod(client, ref, "is Ready", WAIT) { it != null && Readiness.isPodReady(it) }
 
         val listed = k8s.listPodsByLabel(SELECTOR, NAMESPACE).getOrThrow().single()
         assertThat(listed.nodeName).isEqualTo(node().metadata.name)
@@ -160,10 +158,8 @@ class KitEndpointHostIntegrationTest {
     @Test
     fun `a pod that runs but is not ready does not serve`() {
         val pod = coordinator(ready = false)
-        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, pod.metadata.name), "is Running", WAIT) {
-            it?.status?.phase ==
-                "Running"
-        }
+        val ref = DirectReadWait.PodRef(NAMESPACE, pod.metadata.name)
+        DirectReadWait.awaitPod(client, ref, "is Running", WAIT) { it?.status?.phase == "Running" }
 
         val listed = k8s.listPodsByLabel(SELECTOR, NAMESPACE).getOrThrow().single()
         assertThat(listed.status).isEqualTo("Running")

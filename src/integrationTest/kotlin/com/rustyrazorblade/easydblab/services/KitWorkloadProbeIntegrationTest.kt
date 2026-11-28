@@ -274,10 +274,8 @@ class KitWorkloadProbeIntegrationTest {
                     .build(),
             ).create()
         withClusterDiagnostics(client, NAMESPACE) {
-            DirectReadWait.awaitPods(client, DirectReadWait.PodSelection(NAMESPACE, "easydblab/kit=deployed"), "number 2", WAIT) {
-                it.size ==
-                    2
-            }
+            val deployed = DirectReadWait.PodSelection(NAMESPACE, "easydblab/kit=deployed")
+            DirectReadWait.awaitPods(client, deployed, "are 2 pods", WAIT) { it.size == 2 }
         }
 
         client

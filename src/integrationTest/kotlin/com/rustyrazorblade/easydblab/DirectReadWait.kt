@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.KubernetesClientException
 import java.time.Duration
 import java.time.Instant
 
@@ -20,8 +21,9 @@ object DirectReadWait {
 
     /**
      * Reads with [read] until [done] accepts the result, for at most [timeout], and returns that
-     * result. A read that throws is tried again within the time; the last read's exception is
-     * rethrown. When the time runs out, it fails with [what] and [describe] of the last read.
+     * result. A read that throws is tried again within the time. When the time runs out, it fails
+     * with [what] and [describe] of the last read, or, when the last read threw, with that exception
+     * as the cause. An interrupt ends the wait by throwing.
      */
     fun <T> await(
         what: String,
@@ -30,7 +32,24 @@ object DirectReadWait {
         done: (T) -> Boolean,
         read: () -> T,
     ): T {
-        val last =
+        val last = pollOrFail(what, timeout, done, read)
+        if (!done(last)) {
+            throw AssertionError("$what: not reached after ${timeout.toSeconds()}s; last read: ${describe(last)}")
+        }
+        return last
+    }
+
+    /**
+     * Runs the poll for [await]. A last read that failed becomes an [AssertionError] that names
+     * [what] and carries the failure as its cause, so the report says which wait it was.
+     */
+    private fun <T> pollOrFail(
+        what: String,
+        timeout: Duration,
+        done: (T) -> Boolean,
+        read: () -> T,
+    ): T =
+        try {
             pollUntil(
                 operationName = what,
                 maxAttempts = Int.MAX_VALUE,
@@ -39,11 +58,12 @@ object DirectReadWait {
                 done = done,
                 poll = read,
             )
-        if (!done(last)) {
-            throw AssertionError("$what: not reached after ${timeout.toSeconds()}s; last read: ${describe(last)}")
+        } catch (e: KubernetesClientException) {
+            // fabric8 turns an interrupted read into a KubernetesClientException and sets the
+            // interrupt flag again; that read ends the wait, as any interrupt does.
+            if (Thread.currentThread().isInterrupted) throw e
+            throw AssertionError("$what: not reached after ${timeout.toSeconds()}s; last read failed", e)
         }
-        return last
-    }
 
     /**
      * Reads [pod] until [done] accepts it (null when there is no such pod), and returns the last

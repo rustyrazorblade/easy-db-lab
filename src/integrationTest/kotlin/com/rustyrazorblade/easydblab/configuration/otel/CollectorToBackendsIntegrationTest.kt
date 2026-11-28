@@ -31,7 +31,6 @@ import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
 import java.time.Duration
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -256,41 +255,6 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
 
         // Nothing went to another tenant.
         assertThat(results(ObservabilityBackends.get("$mimirUrl/prometheus/api/v1/query?query=edl_e2e_probe", "other").body())).isEmpty()
-    }
-
-    /**
-     * The Pyroscope server logs "polling compaction jobs" on every 100ms poll tick, and the
-     * collector drops that one line before Loki. Its other lines, and the same text from any other
-     * pod, still arrive. The pod log files are written after the collector starts, as the kubelet
-     * writes them, and the file path carries the pod as it does on a node.
-     */
-    @Test
-    fun `only the Pyroscope poll line is dropped from container logs`() {
-        val (mimir, loki) = startBackends()
-        val collector = startCollector(mimir, loki)
-        // Now, so Loki takes the lines and the query window holds them.
-        val stamp = Instant.now().toString()
-        val poll =
-            "ts=$stamp caller=worker.go:250 level=info component=compaction-worker " +
-                "msg=\"polling compaction jobs\" updates=0 capacity=16"
-        val kept = "ts=$stamp caller=worker.go:231 level=info component=compaction-worker msg=\"closing job queue\""
-        // The same exact line, told apart only by its counter, from a pod that is not Pyroscope.
-        val otherPod = poll.replace("updates=0", "updates=7")
-
-        fun cri(vararg lines: String) = lines.joinToString("") { "$stamp stderr F $it\n" }
-        collector.copyFileToContainer(
-            Transferable.of(cri(poll, kept)),
-            "/var/log/pods/default_pyroscope-7d9f8b6c4-x2k9z_0b8e5c1a-1111-2222-3333-444455556666/pyroscope/0.log",
-        )
-        collector.copyFileToContainer(
-            Transferable.of(cri(otherPod)),
-            "/var/log/pods/default_e2e-app-5c6d7e8f9-q7w8e_0b8e5c1a-7777-8888-9999-000011112222/app/0.log",
-        )
-
-        await(collector) { lokiStreams(loki, "{cluster=\"$CLUSTER\"} |= \"closing job queue\"").firstOrNull() }
-        await(collector) { lokiStreams(loki, "{cluster=\"$CLUSTER\"} |= \"updates=7\"").firstOrNull() }
-        val polls = lokiStreams(loki, "{cluster=\"$CLUSTER\"} |= \"updates=0\"")
-        assertThat(polls).describedAs("the Pyroscope poll line reached Loki").isEmpty()
     }
 
     /**

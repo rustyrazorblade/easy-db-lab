@@ -49,7 +49,7 @@ The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting logs fr
   - System logs: `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog` (excludes container log paths)
   - Tool runner logs: `/var/log/easydblab/tools/*.log`
   - Cassandra JVM GC log: `/mnt/db1/cassandra/logs/gc.log*` (`source="cassandra-gc"`). The JVM writes it directly, so the Java agent never sees it.
-- **`logs/containers`** — K8s pod stdout/stderr from all running pods, enriched with Kubernetes metadata (pod name, namespace, container name, kit label). Automatically covers any K8s-native kit without per-kit configuration. One line is dropped before Loki: the Pyroscope server's "polling compaction jobs", which it logs ten times a second (`filter/pyroscope_poll` matches the Pyroscope pod and that exact line, and keeps every other line). Logs are stored on NVMe at `/mnt/db1/container-logs/` (symlinked from `/var/log/pods`) to keep the boot volume free.
+- **`logs/containers`** — K8s pod stdout/stderr from all running pods, enriched with Kubernetes metadata (pod name, namespace, container name, kit label). Automatically covers any K8s-native kit without per-kit configuration. Logs are stored on NVMe at `/mnt/db1/container-logs/` (symlinked from `/var/log/pods`) to keep the boot volume free.
 - **`logs/otlp`** — logs pushed via OTLP: Cassandra's application logs from the OpenTelemetry Java agent in the Cassandra JVM (`service_name="cassandra"`), Fluent Bit's journald lines, and remote applications (e.g. EMR Spark JVMs). This is the only path for Cassandra's `system.log` and `debug.log`; the collector does not tail those files, so each line is stored once.
 - **systemd journal** — collected via a separate Fluent Bit DaemonSet (`fluent-bit-journald`)
 

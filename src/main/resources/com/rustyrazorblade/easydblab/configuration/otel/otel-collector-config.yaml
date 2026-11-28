@@ -307,16 +307,6 @@ processors:
         statements:
           - set(attributes["host.name"], attributes["easydblab.emr_host_name"]) where attributes["easydblab.emr_host_name"] != nil
           - delete_key(attributes, "easydblab.emr_host_name")
-  # Drops one line: the Pyroscope compaction worker's "polling compaction jobs", which it logs at
-  # INFO on every poll tick. The server polls every 100ms so it stops within about 100ms of SIGTERM
-  # (see pyroscope/config.yaml), which makes this line 864,000 a day, about 126 MB, kept forever in
-  # Loki. Pyroscope has only a global log level, so the drop is here. The condition names the
-  # Pyroscope pod (namespace, pod name and container, which the container operator reads from the
-  # log file path) and the whole line, so every other Pyroscope line still reaches Loki.
-  filter/pyroscope_poll:
-    error_mode: propagate
-    log_conditions:
-      - resource.attributes["k8s.namespace.name"] == "default" and resource.attributes["k8s.container.name"] == "pyroscope" and IsMatch(resource.attributes["k8s.pod.name"], "^pyroscope-[a-z0-9]+-[a-z0-9]+$") and IsMatch(log.body, "^ts=\\S+ caller=worker\\.go:\\d+ level=info component=compaction-worker msg=\"polling compaction jobs\" updates=\\d+ capacity=\\d+$")
   # Copy k8s.app.instance resource attribute to a log-level service attribute so
   # container logs share the same service field as journald logs.
   transform/add_service:
@@ -750,10 +740,9 @@ service:
       receivers: [file_log/system, file_log/tools, file_log/cassandra]
       processors: [resource/cluster, resource_detection, transform/node_role_from_host, batch]
       exporters: [otlp_http/logs]
-    # filter/pyroscope_poll first: the line it drops needs no enrichment.
     logs/containers:
       receivers: [file_log/containers, file_log/clickhouse-containers]
-      processors: [filter/pyroscope_poll, k8s_attributes, transform/add_service, resource/cluster, batch]
+      processors: [k8s_attributes, transform/add_service, resource/cluster, batch]
       exporters: [otlp_http/logs]
     # OTLP logs — the Cassandra JVM agent (the only path for Cassandra's application logs) and
     # Fluent Bit's journald lines. resource/drop_sdk_metadata

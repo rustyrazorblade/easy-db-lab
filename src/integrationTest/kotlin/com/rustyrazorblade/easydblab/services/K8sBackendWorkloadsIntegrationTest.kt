@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -8,6 +9,7 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
@@ -127,12 +129,19 @@ class K8sBackendWorkloadsIntegrationTest {
     private fun deployReady(name: String) {
         deploy(backend(name))
         runCatching {
-            client
-                .apps()
-                .deployments()
-                .inNamespace(NAMESPACE)
-                .withName(name)
-                .waitUntilReady(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            DirectReadWait.await(
+                "deployment $name in namespace $NAMESPACE is Ready",
+                Duration.ofSeconds(READY_TIMEOUT_SECONDS),
+                { "status=${it?.status}" },
+                { it != null && Readiness.isDeploymentReady(it) },
+            ) {
+                client
+                    .apps()
+                    .deployments()
+                    .inNamespace(NAMESPACE)
+                    .withName(name)
+                    .get()
+            }
         }.getOrElse { throw AssertionError("$name never became ready\n${clusterDiagnostics(client, NAMESPACE)}", it) }
     }
 

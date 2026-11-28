@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.extension.TestWatcher
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
-import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -155,10 +154,7 @@ class NodeCleanupIntegrationTest {
                 afterDelete = {
                     SharedK3s.client().use { client ->
                         release(client.nodes().withName(alias))
-                        client
-                            .nodes()
-                            .withName(alias)
-                            .waitUntilCondition({ it == null }, OLD_NODE_GONE_SECONDS, TimeUnit.SECONDS)
+                        SharedK3s.awaitNodeGone(client, alias)
                         replacementUid =
                             client
                                 .nodes()
@@ -259,7 +255,6 @@ class NodeCleanupIntegrationTest {
         const val REPLACE_WAIT_SECONDS = 30L
         const val HELD_WAIT_SECONDS = 3L
         const val RELEASE_ATTEMPTS = 5
-        const val OLD_NODE_GONE_SECONDS = 20L
         const val LOG_TAIL_CHARS = 64_000
         val RELEVANT_LOG_LINE = Regex("wrangler|node-controller|\\bdb\\d+")
     }

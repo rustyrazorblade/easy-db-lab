@@ -109,10 +109,7 @@ class NodeWatcherIntegrationTest {
         assertThat(watch.ready).isNotDone()
 
         // The stale Node is removed and the replacement registers under the alias at its own IP.
-        SharedK3s.client().use { client ->
-            client.nodes().withName("db901").delete()
-            client.nodes().withName("db901").waitUntilCondition({ it == null }, 30, TimeUnit.SECONDS)
-        }
+        SharedK3s.deleteNodeAndAwaitGone("db901")
         createNode("db901", "10.9.0.99")
         watch.registered.get(30, TimeUnit.SECONDS)
         assertThat(watch.ready).isNotDone()

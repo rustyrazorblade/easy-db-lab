@@ -1,11 +1,9 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
-import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -62,7 +60,6 @@ import org.testcontainers.containers.output.Slf4jLogConsumer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
-import org.testcontainers.utility.DockerImageName
 import java.io.File
 
 /**
@@ -83,15 +80,7 @@ class K8sServiceIntegrationTest {
         @Container
         @JvmStatic
         val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
-                .withPrivilegedMode(true)
-                .withCreateContainerCmdModifier { cmd ->
-                    cmd.hostConfig!!
-                        .withCgroupnsMode("host")
-                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native")
-                .let { (it as K3sContainer).withPreloadedImages() }
+            SharedK3s.newContainer().withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s"))) as K3sContainer
     }
 
     private lateinit var client: KubernetesClient

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.TestProfiles
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -13,6 +14,7 @@ import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.IntOrString
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -68,11 +71,9 @@ class DocumentsWebServerIntegrationTest {
         client.resource(webConfig).create()
         client.resource(stubConfigMap()).create()
         client.resource(pod(webContainer(sidecars, documents), stubContainer(), sidecars)).create()
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(POD)
-            .waitUntilReady(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, POD), "is Ready", Duration.ofSeconds(READY_TIMEOUT_SECONDS)) {
+            it != null && Readiness.isPodReady(it)
+        }
     }
 
     /** The stub S3 endpoint's nginx configuration. */

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.testcontainers.images.builder.Transferable
 import org.testcontainers.k3s.K3sContainer
-import java.util.concurrent.TimeUnit
+import java.time.Duration
 
 /**
  * Applies the pod network sysctl policy to a real K3s that runs with the two drop-ins `up` writes
@@ -32,7 +33,7 @@ import java.util.concurrent.TimeUnit
 class PodNetworkTuningIntegrationTest {
     private companion object {
         const val API_SERVER_DROP_IN = "/etc/rancher/k3s/config.yaml.d/30-admission-policy.yaml"
-        const val POD_TIMEOUT_SECONDS = 120L
+        val POD_TIMEOUT: Duration = Duration.ofSeconds(120)
 
         /** The keys a pod keeps at the kernel default (R1), with the value a new network namespace starts with. */
         val KERNEL_DEFAULT_KEYS =
@@ -190,9 +191,11 @@ class PodNetworkTuningIntegrationTest {
         val pods = client.pods().inNamespace(namespace)
         pods.resource(reader).create()
         val finished =
-            pods
-                .withName("reads-sysctls")
-                .waitUntilCondition({ it?.status?.phase in setOf("Succeeded", "Failed") }, POD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            checkNotNull(
+                DirectReadWait.awaitPod(client, DirectReadWait.PodRef(namespace, "reads-sysctls"), "has finished", POD_TIMEOUT) {
+                    it?.status?.phase in setOf("Succeeded", "Failed")
+                },
+            )
         assertThat(finished.status.phase)
             .describedAs("the kubelet ran the pod (reason ${finished.status.reason}: ${finished.status.message})")
             .isEqualTo("Succeeded")

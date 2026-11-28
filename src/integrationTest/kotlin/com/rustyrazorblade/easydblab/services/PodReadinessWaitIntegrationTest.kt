@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
 import java.time.Duration
-import java.util.concurrent.TimeUnit
 
 /**
  * Proves [DefaultK8sNamespaceOperations.waitForPodsReady] against a real K3s cluster.
@@ -32,7 +32,7 @@ class PodReadinessWaitIntegrationTest {
     companion object {
         private const val NAMESPACE = "readiness-wait"
         private const val IMAGE = SharedK3s.BUSYBOX_IMAGE
-        private const val JOB_TIMEOUT_SECONDS = 180L
+        private val JOB_TIMEOUT: Duration = Duration.ofSeconds(180)
         private const val WAIT_TIMEOUT_SECONDS = 20
         private const val LONG_WAIT_TIMEOUT_SECONDS = 600
         private const val FAIL_FAST_LIMIT_SECONDS = 30L
@@ -99,13 +99,15 @@ class PodReadinessWaitIntegrationTest {
         finished: (Job?) -> Boolean,
     ): List<String?> {
         client.resource(job(name, command)).create()
-        client
-            .batch()
-            .v1()
-            .jobs()
-            .inNamespace(NAMESPACE)
-            .withName(name)
-            .waitUntilCondition(finished, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.await("job $name in namespace $NAMESPACE has finished", JOB_TIMEOUT, { "status=${it?.status}" }, finished) {
+            client
+                .batch()
+                .v1()
+                .jobs()
+                .inNamespace(NAMESPACE)
+                .withName(name)
+                .get()
+        }
         return client
             .pods()
             .inNamespace(NAMESPACE)
@@ -152,11 +154,7 @@ class PodReadinessWaitIntegrationTest {
                 .endSpec()
                 .build()
         client.resource(unpullable).create()
-        client
-            .pods()
-            .inNamespace(namespace)
-            .withName("unpullable")
-            .waitUntilCondition(::isBackingOff, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(namespace, "unpullable"), "is backing off", JOB_TIMEOUT, ::isBackingOff)
 
         val started = System.nanoTime()
         val result = ops.waitForPodsReady(LONG_WAIT_TIMEOUT_SECONDS, namespace)

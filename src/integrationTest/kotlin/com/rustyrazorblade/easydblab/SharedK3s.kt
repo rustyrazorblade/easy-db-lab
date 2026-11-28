@@ -16,8 +16,6 @@ import org.testcontainers.k3s.K3sContainer
 import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 import java.time.Instant
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 /**
  * Single, JVM-wide K3s cluster shared by the Kubernetes integration tests that can live in a
@@ -63,7 +61,7 @@ object SharedK3s {
 
     private const val SERVER_SCRIPT_RESOURCE = "/com/rustyrazorblade/easydblab/services/start-k3s-server.sh"
 
-    private const val NODE_SCHEDULABLE_TIMEOUT_SECONDS = 120L
+    private val NODE_SCHEDULABLE_TIMEOUT: Duration = Duration.ofSeconds(120)
 
     /** The drop-in `start-k3s-server.sh` writes to put a cluster's K3s on embedded etcd. */
     const val DATASTORE_DROP_IN = "/etc/rancher/k3s/config.yaml.d/20-datastore.yaml"
@@ -85,26 +83,32 @@ object SharedK3s {
      * the node can still carry the `node.kubernetes.io/not-ready` or
      * `node.cloudprovider.kubernetes.io/uninitialized` taint then. A DaemonSet created in that window
      * is reported with `desiredNumberScheduled` 0 and its generation observed, which is a complete
-     * rollout, so a test that waits on it right away saw it succeed with no pod at all.
+     * rollout, so a test that waits on it right away saw it succeed with no pod at all. It reads the
+     * nodes with GETs, not a watch, as every setup wait does.
      */
     fun awaitSchedulable(container: K3sContainer) {
         KubernetesClientBuilder().withConfig(Config.fromKubeconfig(container.kubeConfigYaml)).build().use { client ->
-            try {
-                client
-                    .nodes()
-                    .informOnCondition { nodes -> nodes.isNotEmpty() && nodes.all(::isSchedulable) }
-                    .get(NODE_SCHEDULABLE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            } catch (e: TimeoutException) {
+            val nodes =
+                pollUntil(
+                    operationName = "K3s node schedulable",
+                    maxAttempts = Int.MAX_VALUE,
+                    interval = NODE_GONE_POLL,
+                    deadline = Instant.now().plus(NODE_SCHEDULABLE_TIMEOUT),
+                    done = ::allSchedulable,
+                ) { client.nodes().list().items }
+            if (!allSchedulable(nodes)) {
                 throw AssertionError(
-                    "the K3s node was not Ready and untainted after ${NODE_SCHEDULABLE_TIMEOUT_SECONDS}s\n" +
-                        client.nodes().list().items.joinToString("\n") {
-                            "node ${it.metadata.name}: taints=${it.spec?.taints.orEmpty().map { t -> "${t.key}:${t.effect}" }}"
+                    "the K3s node was not Ready and untainted after ${NODE_SCHEDULABLE_TIMEOUT.toSeconds()}s\n" +
+                        nodes.joinToString("\n") {
+                            "node ${it.metadata.name}: ready=${Readiness.isNodeReady(it)} " +
+                                "taints=${it.spec?.taints.orEmpty().map { t -> "${t.key}:${t.effect}" }}"
                         } + "\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
-                    e,
                 )
             }
         }
     }
+
+    private fun allSchedulable(nodes: List<Node>): Boolean = nodes.isNotEmpty() && nodes.all(::isSchedulable)
 
     private fun isSchedulable(node: Node): Boolean =
         Readiness.isNodeReady(node) &&
@@ -211,12 +215,12 @@ object SharedK3s {
     fun logTail(chars: Int = LOG_TAIL_CHARS): String = container.logs.takeLast(chars)
 
     /**
-     * The last part of the K3s container's log without the kubelet's orphaned-pod-cgroup lines.
-     * Every K3s test container shares the host cgroup tree, so each kubelet sees the others' pod
-     * cgroups as orphans and logs several lines a second about them; unfiltered, they fill the tail.
+     * The last part of a K3s log without the kubelet's orphaned-pod-cgroup lines. Every K3s test
+     * container shares the host cgroup tree, so each kubelet sees the others' pod cgroups as orphans
+     * and logs several lines a second about them; unfiltered, they fill the tail.
      */
-    private fun controlPlaneLogTail(): String =
-        container.logs
+    private fun withoutCgroupNoise(log: String): String =
+        log
             .lineSequence()
             .filterNot { line -> ORPHAN_CGROUP_NOISE.any { it in line } }
             .joinToString("\n")
@@ -236,31 +240,43 @@ object SharedK3s {
                         .endMetadata()
                         .build(),
                 ).create()
-            val lastRead = awaitDefaultServiceAccount(client, name)
-            if (lastRead !is ServiceAccountRead.Found) {
-                val lastReadFailure = (lastRead as? ServiceAccountRead.ReadFailure)?.cause
-                // A K3s that is up but whose controllers are starved says so in its own log; keep it.
-                throw AssertionError(
-                    "no default ServiceAccount in $name (the wait allows ${NAMESPACE_READY_TIMEOUT.toSeconds()}s); " +
-                        "last read: ${lastRead.describe()}\n" +
-                        "${runCatching { serviceAccountState(client, name) }.getOrElse {
-                            "service account state unavailable: ${it.messageOrString()}"
-                        }}\n" +
-                        "${runCatching {
-                            K3sDiagnostics.clusterDiagnostics(
-                                client,
-                                name,
-                            )
-                        }.getOrElse {
-                            "cluster diagnostics unavailable: ${it.messageOrString()}"
-                        }}\nK3s log tail, without orphaned pod cgroup lines:\n${controlPlaneLogTail()}",
-                    lastReadFailure,
-                )
-            }
+            awaitServiceAccount(client, name) { container.logs }
         }
     }
 
-    /** One direct read of a namespace's `default` ServiceAccount. */
+    /**
+     * Waits until the ServiceAccount [name] exists in [namespace], reading it directly as
+     * [readServiceAccountUntilFound] does. A test with a K3s container of its own calls it with that
+     * container's client and log; [createNamespace] calls it for the shared cluster.
+     *
+     * When the wait fails, the error names the namespace and carries the last read, the account's
+     * state read once more, the controller-manager lease, the namespace's diagnostics, and
+     * [logTail], the K3s log the cluster's own failure would show in.
+     */
+    fun awaitServiceAccount(
+        client: KubernetesClient,
+        namespace: String,
+        name: String = "default",
+        logTail: () -> String,
+    ) {
+        val lastRead = readServiceAccountUntilFound(client, namespace, name)
+        if (lastRead is ServiceAccountRead.Found) return
+        val lastReadFailure = (lastRead as? ServiceAccountRead.ReadFailure)?.cause
+        // A K3s that is up but whose controllers are starved says so in its own log; keep it.
+        throw AssertionError(
+            "no ServiceAccount $name in namespace $namespace (the wait allows ${NAMESPACE_READY_TIMEOUT.toSeconds()}s); " +
+                "last read: ${lastRead.describe()}\n" +
+                "${runCatching { serviceAccountState(client, namespace, name) }.getOrElse {
+                    "service account state unavailable: ${it.messageOrString()}"
+                }}\n" +
+                "${runCatching { K3sDiagnostics.clusterDiagnostics(client, namespace) }.getOrElse {
+                    "cluster diagnostics unavailable: ${it.messageOrString()}"
+                }}\nK3s log tail, without orphaned pod cgroup lines:\n${withoutCgroupNoise(logTail())}",
+            lastReadFailure,
+        )
+    }
+
+    /** One direct read of a namespace's ServiceAccount. */
     private sealed interface ServiceAccountRead {
         fun describe(): String
 
@@ -296,7 +312,7 @@ object SharedK3s {
     }
 
     /**
-     * Reads [namespace]'s `default` ServiceAccount directly until it exists, for at most
+     * Reads the ServiceAccount [name] in [namespace] directly until it exists, for at most
      * [NAMESPACE_READY_TIMEOUT], and returns the last read. Each read is a plain GET, not a watch:
      * in CI an informer's watch on this account sometimes never delivered the ADDED event, and the
      * wait timed out with the account in place since the second the wait began.
@@ -307,17 +323,18 @@ object SharedK3s {
      * [ServiceAccountRead.Rejected], so the caller's report still carries the cluster's state. An
      * interrupt ends the wait by throwing.
      */
-    private fun awaitDefaultServiceAccount(
+    private fun readServiceAccountUntilFound(
         client: KubernetesClient,
         namespace: String,
+        name: String,
     ): ServiceAccountRead {
         val account =
             client
                 .serviceAccounts()
                 .inNamespace(namespace)
-                .withName("default")
+                .withName(name)
         return pollUntil(
-            operationName = "default ServiceAccount in $namespace",
+            operationName = "ServiceAccount $name in namespace $namespace",
             maxAttempts = Int.MAX_VALUE,
             interval = SERVICE_ACCOUNT_POLL,
             deadline = Instant.now().plus(NAMESPACE_READY_TIMEOUT),
@@ -349,12 +366,13 @@ object SharedK3s {
     private fun serviceAccountState(
         client: KubernetesClient,
         namespace: String,
+        name: String,
     ): String {
         val account =
             client
                 .serviceAccounts()
                 .inNamespace(namespace)
-                .withName("default")
+                .withName(name)
                 .get()
         val lease =
             client
@@ -362,7 +380,7 @@ object SharedK3s {
                 .inNamespace("kube-system")
                 .withName("kube-controller-manager")
                 .get()
-        return "default ServiceAccount read directly: " +
+        return "ServiceAccount $name read directly: " +
             (account?.metadata?.creationTimestamp?.let { "exists, created $it" } ?: "absent") +
             "; kube-controller-manager lease: holder=${lease?.spec?.holderIdentity} " +
             "renewed=${lease?.spec?.renewTime} now=${Instant.now()}"

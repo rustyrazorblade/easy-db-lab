@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -24,7 +25,6 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.k3s.K3sContainer
 import java.time.Duration
-import java.util.concurrent.TimeUnit
 
 /**
  * Runs [KitWorkloadProbe] against a real K3s cluster: the start-phase collision check must find
@@ -44,6 +44,7 @@ class KitWorkloadProbeIntegrationTest {
     companion object {
         private const val OTHER_NAMESPACE = "elsewhere"
         private const val WAIT_SECONDS = 60L
+        private val WAIT: Duration = Duration.ofSeconds(WAIT_SECONDS)
         private const val IMPATIENT_POLLS = 3
         private const val HOLD_SECONDS = "3600"
         private const val NAMESPACE = "default"
@@ -78,11 +79,7 @@ class KitWorkloadProbeIntegrationTest {
             ).create()
         for (namespace in listOf("default", OTHER_NAMESPACE)) {
             // Pod admission needs the namespace's default ServiceAccount, which K3s creates asynchronously.
-            client
-                .serviceAccounts()
-                .inNamespace(namespace)
-                .withName("default")
-                .waitUntilCondition({ it != null }, WAIT_SECONDS, TimeUnit.SECONDS)
+            SharedK3s.awaitServiceAccount(client, namespace) { k3s.logs }
         }
     }
 
@@ -127,11 +124,14 @@ class KitWorkloadProbeIntegrationTest {
      * for it to run before they delete it.
      */
     private fun awaitRunning(name: String) {
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(name)
-            .waitUntilCondition({ it?.status?.phase == "Running" }, WAIT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, name), "is Running", WAIT) { it?.status?.phase == "Running" }
+    }
+
+    /** Waits until the API server has marked [name] for deletion. */
+    private fun awaitDeletionMarked(name: String) {
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, name), "is marked for deletion", WAIT) {
+            it?.metadata?.deletionTimestamp != null
+        }
     }
 
     @Test
@@ -173,11 +173,7 @@ class KitWorkloadProbeIntegrationTest {
             .inNamespace("default")
             .withName("stopping-0")
             .delete()
-        client
-            .pods()
-            .inNamespace("default")
-            .withName("stopping-0")
-            .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
+        awaitDeletionMarked("stopping-0")
 
         assertThat(probe.find("stopping", podsRuntime("stopping")).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/stopping-0")))
@@ -205,11 +201,7 @@ class KitWorkloadProbeIntegrationTest {
             .inNamespace("default")
             .withName(name)
             .delete()
-        client
-            .pods()
-            .inNamespace("default")
-            .withName(name)
-            .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
+        awaitDeletionMarked(name)
     }
 
     @Test
@@ -281,12 +273,12 @@ class KitWorkloadProbeIntegrationTest {
                     .endSpec()
                     .build(),
             ).create()
-        client
-            .pods()
-            .inNamespace("default")
-            .withLabel("easydblab/kit", "deployed")
-            .informOnCondition { it.size == 2 }
-            .let { pods -> withClusterDiagnostics(client, NAMESPACE) { pods.get(WAIT_SECONDS, TimeUnit.SECONDS) } }
+        withClusterDiagnostics(client, NAMESPACE) {
+            DirectReadWait.awaitPods(client, DirectReadWait.PodSelection(NAMESPACE, "easydblab/kit=deployed"), "number 2", WAIT) {
+                it.size ==
+                    2
+            }
+        }
 
         client
             .apps()

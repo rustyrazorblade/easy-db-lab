@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
@@ -21,7 +22,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
 
 /**
  * Proves [DefaultK8sNamespaceOperations.waitForRollouts] against a real K3s cluster.
@@ -50,6 +50,7 @@ class RolloutWaitIntegrationTest {
          * about 70 s after the pod starts.
          */
         private const val FAIL_FAST_LIMIT_SECONDS = 150L
+        private val FAIL_FAST_LIMIT: Duration = Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS)
 
         /** An image on a reserved TLD (RFC 2606) that no registry can serve. */
         private const val UNPULLABLE_IMAGE = "registry.invalid/easy-db-lab/no-such-image:1"
@@ -258,18 +259,19 @@ class RolloutWaitIntegrationTest {
      * on it, so a fix lands on pods that would block the wait.
      */
     private fun awaitCrashLoop(app: String) {
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withLabel("app", app)
-            .informOnCondition { pods ->
-                pods.any { pod ->
-                    pod.status?.containerStatuses.orEmpty().any {
-                        it.state?.waiting?.reason == Constants.K8s.CRASH_LOOP_BACK_OFF &&
-                            (it.restartCount ?: 0) >= Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS
-                    }
+        DirectReadWait.awaitPods(
+            client,
+            DirectReadWait.PodSelection(NAMESPACE, "app=$app"),
+            "reach the crash-loop restart count",
+            FAIL_FAST_LIMIT,
+        ) { pods ->
+            pods.any { pod ->
+                pod.status?.containerStatuses.orEmpty().any {
+                    it.state?.waiting?.reason == Constants.K8s.CRASH_LOOP_BACK_OFF &&
+                        (it.restartCount ?: 0) >= Constants.K8s.ROLLOUT_CRASH_LOOP_MIN_RESTARTS
                 }
-            }.get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
+            }
+        }
     }
 
     /** The highest container restart count among the pods of [app]. */
@@ -298,7 +300,7 @@ class RolloutWaitIntegrationTest {
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
 
         assertThat(result.isFailure).isTrue()
-        assertThat(elapsed).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
+        assertThat(elapsed).isLessThan(FAIL_FAST_LIMIT)
         val nodeName = nodeName()
         assertThat(result.exceptionOrNull())
             .hasMessageStartingWith("Rollout cannot complete: ")
@@ -429,12 +431,9 @@ class RolloutWaitIntegrationTest {
         createDeployment(name, readinessCommand = "false")
         // The timeout lists the pods it waits on with their node and phase, so the pod must be running
         // (never Ready: its probe fails) before the short wait starts, or a slow start leaves it Pending.
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withLabel("app", name)
-            .informOnCondition { pods -> pods.any { it.status?.phase == "Running" } }
-            .get(FAIL_FAST_LIMIT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPods(client, DirectReadWait.PodSelection(NAMESPACE, "app=$name"), "have one Running", FAIL_FAST_LIMIT) { pods ->
+            pods.any { it.status?.phase == "Running" }
+        }
 
         val result =
             ops.waitForRollouts(

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.DirectReadWait
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.WorkspaceK8s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -8,13 +9,14 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.readiness.Readiness
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import java.util.concurrent.TimeUnit
+import java.time.Duration
 
 /**
  * Runs [KitEndpointHost] over the real pod listing on a K3s cluster: an endpoint with a
@@ -31,7 +33,7 @@ class KitEndpointHostIntegrationTest {
     companion object {
         private const val NAMESPACE = "kit-endpoint-host"
         private const val KIT = "querykit"
-        private const val WAIT_SECONDS = 60L
+        private val WAIT: Duration = Duration.ofSeconds(60)
         private const val DECOY_IP = "192.0.2.1"
         private const val SELECTOR = "app.kubernetes.io/name=$KIT,app.kubernetes.io/component=coordinator"
     }
@@ -66,12 +68,7 @@ class KitEndpointHostIntegrationTest {
             .withLabelSelector(SELECTOR)
             .withGracePeriod(0L)
             .delete()
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withLabelSelector(SELECTOR)
-            .informOnCondition { it.isEmpty() }
-            .get(WAIT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPods(client, DirectReadWait.PodSelection(NAMESPACE, SELECTOR), "are all gone", WAIT) { it.isEmpty() }
     }
 
     @AfterAll
@@ -140,11 +137,10 @@ class KitEndpointHostIntegrationTest {
     @Test
     fun `resolves to the node running the ready pod, and is not served once the pod is gone`() {
         val pod = coordinator(ready = true)
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(pod.metadata.name)
-            .waitUntilReady(WAIT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, pod.metadata.name), "is Ready", WAIT) {
+            it != null &&
+                Readiness.isPodReady(it)
+        }
 
         val listed = k8s.listPodsByLabel(SELECTOR, NAMESPACE).getOrThrow().single()
         assertThat(listed.nodeName).isEqualTo(node().metadata.name)
@@ -164,11 +160,10 @@ class KitEndpointHostIntegrationTest {
     @Test
     fun `a pod that runs but is not ready does not serve`() {
         val pod = coordinator(ready = false)
-        client
-            .pods()
-            .inNamespace(NAMESPACE)
-            .withName(pod.metadata.name)
-            .waitUntilCondition({ it?.status?.phase == "Running" }, WAIT_SECONDS, TimeUnit.SECONDS)
+        DirectReadWait.awaitPod(client, DirectReadWait.PodRef(NAMESPACE, pod.metadata.name), "is Running", WAIT) {
+            it?.status?.phase ==
+                "Running"
+        }
 
         val listed = k8s.listPodsByLabel(SELECTOR, NAMESPACE).getOrThrow().single()
         assertThat(listed.status).isEqualTo("Running")

@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.KubernetesClient
-import io.fabric8.kubernetes.client.KubernetesClientException
 import java.time.Duration
 import java.time.Instant
 
@@ -40,8 +39,12 @@ object DirectReadWait {
     }
 
     /**
-     * Runs the poll for [await]. A last read that failed becomes an [AssertionError] that names
-     * [what] and carries the failure as its cause, so the report says which wait it was.
+     * Runs the poll for [await]. Whatever exception ends the poll (a fabric8 failure, an OkHttp
+     * `IOException`, an `IllegalStateException` from the read) becomes an [AssertionError] that
+     * names [what] and carries the exception as its cause, so the report says which wait it was.
+     * An [Error], an [InterruptedException], and any exception thrown while the thread's interrupt
+     * flag is set pass through unchanged: fabric8 turns an interrupted read into a
+     * `KubernetesClientException` and sets the flag again, and an interrupt ends the wait.
      */
     private fun <T> pollOrFail(
         what: String,
@@ -49,7 +52,7 @@ object DirectReadWait {
         done: (T) -> Boolean,
         read: () -> T,
     ): T =
-        try {
+        runCatching {
             pollUntil(
                 operationName = what,
                 maxAttempts = Int.MAX_VALUE,
@@ -58,10 +61,8 @@ object DirectReadWait {
                 done = done,
                 poll = read,
             )
-        } catch (e: KubernetesClientException) {
-            // fabric8 turns an interrupted read into a KubernetesClientException and sets the
-            // interrupt flag again; that read ends the wait, as any interrupt does.
-            if (Thread.currentThread().isInterrupted) throw e
+        }.getOrElse { e ->
+            if (e is Error || e is InterruptedException || Thread.currentThread().isInterrupted) throw e
             throw AssertionError("$what: not reached after ${timeout.toSeconds()}s; last read failed", e)
         }
 

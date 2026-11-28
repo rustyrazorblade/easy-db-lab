@@ -96,9 +96,19 @@ object SharedK3s {
                     ::allSchedulable,
                 ) { client.nodes().list().items }
             } catch (e: AssertionError) {
-                // The wait's own message carries the last read; a failed last read has none, so read once more.
-                val nodes = runCatching { describeNodes(client.nodes().list().items) }.getOrElse { "nodes unavailable: $it" }
-                throw AssertionError("${e.message}\nnodes now:\n$nodes\nK3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}", e)
+                // The wait's message, carried by the cause, lists the nodes of its last read. A last
+                // read that failed (the error has a cause) has none, so read them once more.
+                val nodes =
+                    if (e.cause == null) {
+                        ""
+                    } else {
+                        "nodes now:\n" + runCatching { describeNodes(client.nodes().list().items) }.getOrElse { "nodes unavailable: $it" } +
+                            "\n"
+                    }
+                throw AssertionError(
+                    "the K3s node never became schedulable\n${nodes}K3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
+                    e,
+                )
             }
         }
     }

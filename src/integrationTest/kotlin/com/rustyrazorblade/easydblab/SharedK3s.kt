@@ -96,21 +96,27 @@ object SharedK3s {
                     ::allSchedulable,
                 ) { client.nodes().list().items }
             } catch (e: AssertionError) {
-                // The wait's message, carried by the cause, lists the nodes of its last read. A last
-                // read that failed (the error has a cause) has none, so read them once more.
-                val nodes =
-                    if (e.cause == null) {
-                        ""
-                    } else {
-                        "nodes now:\n" + runCatching { describeNodes(client.nodes().list().items) }.getOrElse { "nodes unavailable: $it" } +
-                            "\n"
-                    }
                 throw AssertionError(
-                    "the K3s node never became schedulable\n${nodes}K3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
+                    "the K3s node never became schedulable\n${nodesAfterFailure(client, e)}" +
+                        "K3s log tail:\n${container.logs.takeLast(LOG_TAIL_CHARS)}",
                     e,
                 )
             }
         }
+    }
+
+    /**
+     * The nodes to add to a failed [awaitSchedulable] report. The wait's message, carried by [failure],
+     * lists the nodes of its last read; a last read that failed (the error has a cause) has none, so
+     * this reads them once more. Otherwise it returns an empty string.
+     */
+    private fun nodesAfterFailure(
+        client: KubernetesClient,
+        failure: AssertionError,
+    ): String {
+        if (failure.cause == null) return ""
+        val nodes = runCatching { describeNodes(client.nodes().list().items) }.getOrElse { "nodes unavailable: $it" }
+        return "nodes now:\n$nodes\n"
     }
 
     private fun allSchedulable(nodes: List<Node>): Boolean = nodes.isNotEmpty() && nodes.all(::isSchedulable)

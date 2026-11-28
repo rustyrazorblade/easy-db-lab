@@ -9,7 +9,8 @@ import java.time.Duration
 /**
  * Proves how [DirectReadWait.await] reports a wait whose reads fail: a read that keeps throwing
  * ends in an [AssertionError] that names the wait and keeps the read's exception as its cause, and
- * an interrupted thread gets the read's own exception back, unwrapped.
+ * an interrupt (a set interrupt flag, or a read that throws [InterruptedException]) gets the read's
+ * own exception back, unwrapped.
  *
  * The reads throw directly, so the test needs no cluster.
  */
@@ -33,7 +34,6 @@ class DirectReadWaitTest {
             .isInstanceOf(AssertionError::class.java)
             .hasMessageContaining("the probe is ready")
             .hasMessageContaining("last read failed")
-            .hasCause(failure)
         assertThat(thrown.cause).isSameAs(failure)
     }
 
@@ -47,6 +47,19 @@ class DirectReadWaitTest {
                 DirectReadWait.await<String>("the probe is ready", Duration.ofSeconds(1), { it }, { true }) { throw failure }
             }
 
+        assertThat(Thread.currentThread().isInterrupted).isTrue()
         assertThat(thrown).isSameAs(failure)
+    }
+
+    @Test
+    fun `a read that throws InterruptedException gets that exception back`() {
+        val interrupt = InterruptedException("the read was interrupted")
+
+        val thrown =
+            catchThrowable {
+                DirectReadWait.await<String>("the probe is ready", Duration.ofSeconds(1), { it }, { true }) { throw interrupt }
+            }
+
+        assertThat(thrown).isSameAs(interrupt)
     }
 }

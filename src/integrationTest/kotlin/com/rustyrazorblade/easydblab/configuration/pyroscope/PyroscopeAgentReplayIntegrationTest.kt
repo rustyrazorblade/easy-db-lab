@@ -29,6 +29,9 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -44,7 +47,13 @@ import java.util.UUID
  *
  * Empty windows alone cannot show one lost snapshot, so the test also reads the agent's log and
  * fails on any upload it dropped, apart from at most one push refused in the restarted server's
- * start race.
+ * start race and any push refused while the first server stops.
+ *
+ * The stop: Pyroscope 2.3.1 keeps its HTTP port open after SIGTERM until every module has stopped,
+ * while the segment writer is gone within a millisecond, so a push in that time is refused with 422
+ * "service is unavailable" and the agent drops it. That loss is accepted. The test reads the stop
+ * from the server's log (SIGTERM to "server stopped") and allows only refusals with that body
+ * that the agent logged inside it.
  */
 class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -224,15 +233,19 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
         // One dropped snapshot leaves no window empty, since its neighbours overlap both windows
         // it touches, so the agent's own log is what shows a drop. The restarted server opens its
         // port about 20ms before it reads its ring tokens, and a push in that instant is refused
-        // with an empty ring: at most that one drop is allowed (the race the design states).
+        // with an empty ring: at most that one drop is allowed. The stopping server refuses pushes
+        // with "service is unavailable" until its port closes; those drops are accepted, and only
+        // when the agent logged them inside that stop.
         // The agent logs every failed upload with the prefix the check below reads, a connection
         // error as well as a refused status. A 150s outage fails many uploads, so a log without
         // the prefix means the agent's message changed and the check could no longer see a drop.
         assertThat(jvm.logs.lines().count { UPLOAD_ERROR in it })
             .describedAs("upload errors the agent logged in the outage; JVM log:\n${jvm.logs}")
             .isPositive()
+        val stop = stopWindow(firstServerLog)
         val dropped = droppedUploads(jvm.logs)
-        val (startRace, other) = dropped.partition { EMPTY_RING in it.lowercase() }
+        val (startRace, notStartRace) = dropped.partition { EMPTY_RING in it.lowercase() }
+        val other = notStartRace.filterNot { SERVICE_UNAVAILABLE in it && stop.holds(it) }
         assertThat(other)
             .describedAs(
                 "uploads the agent dropped; JVM log:\n${jvm.logs}\n" +
@@ -240,6 +253,36 @@ class PyroscopeAgentReplayIntegrationTest : BaseKoinTest() {
                     "restarted server log tail:\n${second.logs.takeLast(SERVER_LOG_TAIL_CHARS)}",
             ).isEmpty()
         assertThat(startRace).describedAs("uploads refused in the start race; JVM log:\n${jvm.logs}").hasSizeLessThanOrEqualTo(1)
+    }
+
+    /**
+     * The time from SIGTERM to the port closing, read from the stopping server's own log. Pyroscope
+     * 2.3.1 closes its HTTP server only after every other module stops, and the segment writer stops
+     * first, so in this window a push is refused with 422 "service is unavailable". That loss is
+     * accepted, so the test only checks that each such refusal falls inside the window.
+     */
+    private data class StopWindow(
+        val sigterm: Instant,
+        val portClosed: Instant,
+    ) {
+        /**
+         * Whether the agent logged [agentLine] in this window. The agent logs a refusal after the
+         * answer arrives, a few milliseconds after the server sent it, and its stamp has no zone: the
+         * JDK image runs in UTC, as the server's stamps are.
+         */
+        fun holds(agentLine: String): Boolean {
+            val stamp = AGENT_STAMP.find(agentLine)?.groupValues?.get(1) ?: return false
+            val at = LocalDateTime.parse(stamp, AGENT_STAMP_FORMAT).toInstant(ZoneOffset.UTC)
+            return !at.isBefore(sigterm) && !at.isAfter(portClosed.plus(AGENT_LOG_DELAY))
+        }
+    }
+
+    private fun stopWindow(serverLog: String): StopWindow {
+        fun stampOf(message: String): Instant {
+            val line = checkNotNull(serverLog.lines().firstOrNull { message in it }) { "no \"$message\" in the server log" }
+            return Instant.parse(checkNotNull(SERVER_STAMP.find(line)) { "no ts= in: $line" }.groupValues[1])
+        }
+        return StopWindow(stampOf(SERVER_SIGTERM), stampOf(SERVER_PORT_CLOSED))
     }
 
     /**
@@ -314,3 +357,12 @@ private const val GAVE_UP = "Gave up uploading"
 private const val EMPTY_RING = "empty ring"
 private const val UPLOAD_ERROR = "Error uploading snapshot: "
 private val REFUSED_UPLOAD = Regex("$UPLOAD_ERROR(\\d{3}) ")
+private const val SERVICE_UNAVAILABLE = "service is unavailable"
+private const val SERVER_SIGTERM = "received SIGINT/SIGTERM"
+private const val SERVER_PORT_CLOSED = "msg=\"server stopped\""
+private val SERVER_STAMP = Regex("ts=(\\S+)")
+private val AGENT_STAMP = Regex("^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}) ")
+private val AGENT_STAMP_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+
+/** How long after the server's answer the agent may log it. */
+private val AGENT_LOG_DELAY: Duration = Duration.ofSeconds(1)

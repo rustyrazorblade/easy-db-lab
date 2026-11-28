@@ -79,7 +79,7 @@
       `docs/reference/commands.md` (line 47): `profile show` fields and files.
 - [x] 6.2 (mechanical) `configuration/CLAUDE.md` (profile model, store, accessors, lock),
       `commands/CLAUDE.md` ("Require a profile").
-- [ ] 6.3 (mechanical) Archive the spec deltas after the merge.
+- [x] 6.3 (mechanical) Archive the spec deltas after the merge.
 
 ## 7. Verification
 
